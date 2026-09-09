@@ -654,6 +654,38 @@ public final class StateStore implements AutoCloseable {
         });
   }
 
+  /** Every recorded snapshot row, ordered by run id then id. */
+  public List<SnapshotRecord> snapshots() {
+    return read(
+        c -> {
+          List<SnapshotRecord> out = new ArrayList<>();
+          try (Statement s = c.createStatement();
+              ResultSet rs = s.executeQuery("SELECT * FROM snapshots ORDER BY run_id, id")) {
+            while (rs.next()) {
+              out.add(readSnapshot(rs));
+            }
+          }
+          return List.copyOf(out);
+        });
+  }
+
+  /**
+   * Removes the {@code snapshots} rows of {@code runId/stepId} after retention pruning deleted the
+   * directory (spec §5.6); returns how many rows went. The journal ({@code step_transitions}) and
+   * the audit trail are untouched, so the run's history still names the snapshot it once had.
+   */
+  public int deleteSnapshot(String runId, String stepId) {
+    return write(
+        c -> {
+          try (PreparedStatement ps =
+              c.prepareStatement("DELETE FROM snapshots WHERE run_id=? AND step_id=?")) {
+            ps.setString(1, runId);
+            ps.setString(2, stepId);
+            return ps.executeUpdate();
+          }
+        });
+  }
+
   private static SnapshotRecord readSnapshot(ResultSet rs) throws SQLException {
     return new SnapshotRecord(
         rs.getString("id"),

@@ -224,6 +224,23 @@ public final class SnapshotStore {
    */
   public List<Snapshot> prune(Duration retention, int maxSnapshots, Set<String> protectedRunIds)
       throws IOException {
+    List<Snapshot> removed = pruneCandidates(retention, maxSnapshots, protectedRunIds);
+    for (Snapshot snapshot : removed) {
+      LOG.info("pruning snapshot {}/{}", snapshot.runId(), snapshot.stepId());
+      deleteRecursively(snapshot.dir());
+      deleteIfEmpty(snapshot.dir().getParent());
+    }
+    return removed;
+  }
+
+  /**
+   * What {@link #prune} with the same arguments would delete, oldest first, without touching the
+   * disk: every unprotected snapshot older than {@code retention}, then the oldest unprotected
+   * survivors beyond {@code maxSnapshots}. A snapshot whose run id is in {@code protectedRunIds} is
+   * never a candidate.
+   */
+  public List<Snapshot> pruneCandidates(
+      Duration retention, int maxSnapshots, Set<String> protectedRunIds) throws IOException {
     if (maxSnapshots < 0) {
       throw new IllegalArgumentException("maxSnapshots must not be negative");
     }
@@ -252,11 +269,6 @@ public final class SnapshotStore {
           excess--;
         }
       }
-    }
-    for (Snapshot snapshot : removed) {
-      LOG.info("pruning snapshot {}/{}", snapshot.runId(), snapshot.stepId());
-      deleteRecursively(snapshot.dir());
-      deleteIfEmpty(snapshot.dir().getParent());
     }
     return List.copyOf(removed);
   }
