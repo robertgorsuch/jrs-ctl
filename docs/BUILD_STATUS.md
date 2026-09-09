@@ -9,10 +9,14 @@ Maintained by the build agent. Updated at the end of every phase.
 | 2 | Adapter + Init + Doctor | done | `Phase2AdapterDoctorTest` + 75 jrs, 27 ops, 17 app unit tests |
 | 3 | Hotfix | done | `Phase3HotfixTest` (7 cases against the packaged jar) + 52 ops, 31 app unit tests |
 | 4 | Export/Import | done | `Phase4ExportImportTest` (4 cases) + 47 jrs, 15 ops, 18 app unit tests |
-| 5 | Upgrade | in progress | |
-| 6 | Console | in progress (front-end merged; backend in flight) | |
-| 7 | Distribution | not started | |
-| 8 | Hardening | not started | |
+| 5 | Upgrade | done | `Phase5UpgradeTest` (5 cases with fake vendor scripts) + 38 ops unit tests |
+| 6 | Console | done | `Phase6ConsoleTest` + 23 app unit tests; UI checked by hand in Chrome against the real backend |
+| 7 | Distribution | done | `Phase7DistributionTest` (image manifest, `--version`/`selfcheck` with no JDK on PATH, unpacked archive); `-Pdist` |
+| 8 | Hardening | in progress | |
+
+## Verified against a real server
+
+`init` and `doctor` were run from the packaged jar against the JasperReports Server 10.0.0 PRO installation on the build machine (`C:\Jaspersoft\jasperreports-server-10.0.0`, Windows service `jasperreportsTomcat`, port 8081). `init` detected the layout, port, webapp, service, database type and bundled Java 17; `doctor` passed 18 of 21 checks (server, auth, identity 10.0.0 PRO MULTI, compat, layout, service, permissions, disk, keystore, vendor tools, vendor Java); the remaining items were the operator's database credentials and the REST-login probe, which has since been fixed.
 
 ## Environment facts
 
