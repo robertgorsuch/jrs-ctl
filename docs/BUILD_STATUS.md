@@ -8,9 +8,9 @@ Maintained by the build agent. Updated at the end of every phase.
 | 1 | Core + Engine | done | `Phase1CoreEngineTest` + 213 core unit tests |
 | 2 | Adapter + Init + Doctor | done | `Phase2AdapterDoctorTest` + 75 jrs, 27 ops, 17 app unit tests |
 | 3 | Hotfix | done | `Phase3HotfixTest` (7 cases against the packaged jar) + 52 ops, 31 app unit tests |
-| 4 | Export/Import | in progress (jrs strategies merged, ops/app in flight) | |
-| 5 | Upgrade | not started | |
-| 6 | Console | not started | |
+| 4 | Export/Import | done | `Phase4ExportImportTest` (4 cases) + 47 jrs, 15 ops, 18 app unit tests |
+| 5 | Upgrade | in progress | |
+| 6 | Console | in progress (front-end merged; backend in flight) | |
 | 7 | Distribution | not started | |
 | 8 | Hardening | not started | |
 
