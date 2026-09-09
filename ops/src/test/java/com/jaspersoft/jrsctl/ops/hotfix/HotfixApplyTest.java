@@ -58,7 +58,7 @@ class HotfixApplyTest {
               "start-service",
               "wait-for-server",
               "run-postchecks");
-      assertThat(plan.summary().operation()).isEqualTo("hotfix apply");
+      assertThat(plan.summary().operation()).isEqualTo("hotfix.apply");
       assertThat(plan.summary().target()).startsWith(HotfixFixture.ID);
       assertThat(plan.summary().serviceRestart()).isTrue();
       assertThat(plan.summary().strategy()).isEqualTo("snapshot");

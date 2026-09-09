@@ -7,8 +7,8 @@ Maintained by the build agent. Updated at the end of every phase.
 | 0 | Skeleton | done | `Phase0SkeletonTest` |
 | 1 | Core + Engine | done | `Phase1CoreEngineTest` + 213 core unit tests |
 | 2 | Adapter + Init + Doctor | done | `Phase2AdapterDoctorTest` + 75 jrs, 27 ops, 17 app unit tests |
-| 3 | Hotfix | in progress | |
-| 4 | Export/Import | not started | |
+| 3 | Hotfix | done | `Phase3HotfixTest` (7 cases against the packaged jar) + 52 ops, 31 app unit tests |
+| 4 | Export/Import | in progress (jrs strategies merged, ops/app in flight) | |
 | 5 | Upgrade | not started | |
 | 6 | Console | not started | |
 | 7 | Distribution | not started | |

@@ -51,8 +51,8 @@ import java.util.function.Function;
  */
 public final class DefaultHotfixOperations implements HotfixOperations {
 
-  static final String APPLY_OPERATION = "hotfix apply";
-  static final String ROLLBACK_OPERATION = "hotfix rollback";
+  static final String APPLY_OPERATION = "hotfix.apply";
+  static final String ROLLBACK_OPERATION = "hotfix.rollback";
   static final String STRATEGY = "snapshot";
 
   private final HotfixRuntime rt;

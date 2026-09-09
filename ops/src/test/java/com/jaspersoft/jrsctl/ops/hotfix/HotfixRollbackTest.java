@@ -41,7 +41,7 @@ class HotfixRollbackTest {
               "wait-for-server",
               "record-rolled-back");
       assertThat(plan.byPhase().keySet()).containsExactly("rollback");
-      assertThat(plan.summary().operation()).isEqualTo("hotfix rollback");
+      assertThat(plan.summary().operation()).isEqualTo("hotfix.rollback");
       assertThat(plan.summary().backupLocations())
           .containsExactly(f.fake.home.snapshots().resolve("r-apply").resolve("snapshot"));
 
