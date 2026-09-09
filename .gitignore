@@ -11,3 +11,6 @@ design/canvas/jrsctl-screens.html
 *.jfr
 hs_err_pid*
 .flattened-pom.xml
+
+# agent worktrees live inside the repo dir
+.claude/worktrees/
