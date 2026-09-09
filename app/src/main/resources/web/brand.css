@@ -1,78 +1,79 @@
 /* jrsctl console brand tokens — Actian Jaspersoft.
    Replacing this file rebrands the console; nothing else references colour literals.
-   Values marked provisional await the official brand guide (docs/branding.md). */
+   Sourced from Actian's own actian.com-sampled palette (see docs/branding.md for provenance
+   and the derivation of tokens Actian's palette doesn't give directly). */
 
 :root {
-  --brand-navy: #0B1F3A;      /* provisional */
-  --brand-blue: #1F5EFF;      /* provisional */
-  --brand-blue-ink: #143FB0;  /* provisional */
-  --brand-sky: #DCE6FF;       /* provisional */
+  --brand-navy: #12161E;
+  --brand-blue: #0F5FDC;
+  --brand-blue-ink: #19368E;
+  --brand-sky: #DBE7FA;
 
-  --paper: #F4F6F9;
+  --paper: #EFF3F7;
   --surface: #FFFFFF;
-  --ink: #16202C;
-  --ink-2: #4B5A6B;
-  --ink-3: #7D8A99;
-  --rule: #D6DDE6;
-  --mono-bg: #EAEEF3;
+  --ink: #344054;
+  --ink-2: #556579;
+  --ink-3: #929DAB;
+  --rule: #D0D5DD;
+  --mono-bg: #E6EBF1;
 
-  --ok: #177A5B;
-  --ok-wash: #E1F2EA;
-  --warn: #A05E0A;
-  --warn-wash: #F8EEDD;
-  --fail: #B23A2E;
-  --fail-wash: #F8E4E1;
+  --ok: #198754;
+  --ok-wash: #E3F1EA;
+  --warn: #E87722;
+  --warn-wash: #FCECE0;
+  --fail: #DC3545;
+  --fail-wash: #FBE7E9;
 
-  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --font-ui: "Open Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Consolas", "Cascadia Mono", ui-monospace, monospace;
 
-  --radius: 4px;
+  --radius: 6px;
   --nav-width: 216px;
   --topbar-height: 56px;
 
   /* Text and rules on the navy ground (nav rail, log pane). Same in both themes. */
   --on-navy: #FFFFFF;
-  --on-navy-2: #C9D2DB;
-  --on-navy-3: #7F8B98;
-  --navy-rule: #2C3743;
-  --log-bg: #0F1418;
-  --log-accent: #8FB0FF;   /* provisional */
+  --on-navy-2: #D2D5D9;
+  --on-navy-3: #A4A9B2;
+  --navy-rule: #363940;
+  --log-bg: #12161E;
+  --log-accent: #36D6D9;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --brand-sky: #1A2A4A;
-    --paper: #121924;
-    --surface: #1A2330;
-    --ink: #E6EBF1;
-    --ink-2: #B3BECB;
-    --ink-3: #7F8B99;
-    --rule: #2B3644;
-    --mono-bg: #222D3B;
-    --brand-blue-ink: #8FB0FF;
-    --ok: #4CC49A;
-    --ok-wash: #163327;
-    --warn: #E0A24A;
-    --warn-wash: #33270F;
-    --fail: #E27A6C;
-    --fail-wash: #3A1C18;
+    --brand-sky: #112648;
+    --paper: #12161E;
+    --surface: #252930;
+    --ink: #F3F4F5;
+    --ink-2: #D6D9DD;
+    --ink-3: #B2BAC3;
+    --rule: #383B42;
+    --mono-bg: #2E3239;
+    --brand-blue-ink: #7BA7EC;
+    --ok: #75B798;
+    --ok-wash: #142F2A;
+    --warn: #EFA064;
+    --warn-wash: #412B1F;
+    --fail: #E77681;
+    --fail-wash: #3E1D27;
   }
 }
 
 :root[data-theme="dark"] {
-  --brand-sky: #1A2A4A;
-  --paper: #121924;
-  --surface: #1A2330;
-  --ink: #E6EBF1;
-  --ink-2: #B3BECB;
-  --ink-3: #7F8B99;
-  --rule: #2B3644;
-  --mono-bg: #222D3B;
-  --brand-blue-ink: #8FB0FF;
-  --ok: #4CC49A;
-  --ok-wash: #163327;
-  --warn: #E0A24A;
-  --warn-wash: #33270F;
-  --fail: #E27A6C;
-  --fail-wash: #3A1C18;
+  --brand-sky: #112648;
+  --paper: #12161E;
+  --surface: #252930;
+  --ink: #F3F4F5;
+  --ink-2: #D6D9DD;
+  --ink-3: #B2BAC3;
+  --rule: #383B42;
+  --mono-bg: #2E3239;
+  --brand-blue-ink: #7BA7EC;
+  --ok: #75B798;
+  --ok-wash: #142F2A;
+  --warn: #EFA064;
+  --warn-wash: #412B1F;
+  --fail: #E77681;
+  --fail-wash: #3E1D27;
 }
