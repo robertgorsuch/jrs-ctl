@@ -29,6 +29,14 @@
   --radius: 4px;
   --nav-width: 216px;
   --topbar-height: 56px;
+
+  /* Text and rules on the navy ground (nav rail, log pane). Same in both themes. */
+  --on-navy: #FFFFFF;
+  --on-navy-2: #C9D2DB;
+  --on-navy-3: #7F8B98;
+  --navy-rule: #2C3743;
+  --log-bg: #0F1418;
+  --log-accent: #8FB0FF;   /* provisional */
 }
 
 @media (prefers-color-scheme: dark) {
