@@ -323,14 +323,30 @@ public final class InitOperation {
     return pickServiceName(names);
   }
 
-  /** Prefers a name mentioning jasper; falls back to one mentioning tomcat. */
+  /**
+   * Prefers the application-server service: a name mentioning both jasper and tomcat (the bundled
+   * installer registers {@code jasperreportsTomcat} next to {@code jasperreportsPostgreSQL}), then
+   * any tomcat, then any jasper name that is not the database service.
+   */
   static Optional<String> pickServiceName(List<String> names) {
-    Optional<String> jasper =
-        names.stream().filter(n -> n.toLowerCase(Locale.ROOT).contains("jasper")).findFirst();
-    if (jasper.isPresent()) {
-      return jasper;
+    List<String> lower = names.stream().map(n -> n.toLowerCase(Locale.ROOT)).toList();
+    for (int i = 0; i < names.size(); i++) {
+      if (lower.get(i).contains("jasper") && lower.get(i).contains("tomcat")) {
+        return Optional.of(names.get(i));
+      }
     }
-    return names.stream().filter(n -> n.toLowerCase(Locale.ROOT).contains("tomcat")).findFirst();
+    for (int i = 0; i < names.size(); i++) {
+      if (lower.get(i).contains("tomcat")) {
+        return Optional.of(names.get(i));
+      }
+    }
+    for (int i = 0; i < names.size(); i++) {
+      String n = lower.get(i);
+      if (n.contains("jasper") && !n.contains("postgres") && !n.contains("sql")) {
+        return Optional.of(names.get(i));
+      }
+    }
+    return Optional.empty();
   }
 
   private static void run(

@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.jrs.rest;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 
@@ -87,7 +88,7 @@ final class AdapterFixture {
   }
 
   void probe(String path, int status) {
-    wm.stubFor(get(urlPathEqualTo(CONTEXT + path)).willReturn(aResponse().withStatus(status)));
+    wm.stubFor(any(urlPathEqualTo(CONTEXT + path)).willReturn(aResponse().withStatus(status)));
   }
 
   String path(String rel) {

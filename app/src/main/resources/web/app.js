@@ -539,7 +539,7 @@ function serverPanel(server) {
     h('div', { class: 'lines' },
       h('div', { class: 'line' }, (svc.kind || 'Service') + ' service ', h('span', { class: 'mono' }, svc.name || ''), ' ',
         svc.state === 'running' ? chip('pass', 'running') : svc.state ? chip('warn', svc.state) : null),
-      h('div', { class: 'line' }, ks.present ? 'Keystore present for ' : 'No keystore found for ', h('span', { class: 'mono' }, ks.user || 'runAsUser')),
+      h('div', { class: 'line' }, ks.present ? 'Keystore present for ' : 'No keystore found for ', h('span', { class: 'mono' }, ks.user || 'the current user')),
       server.installDir ? h('div', { class: 'line mono' }, server.installDir) : null)));
 }
 

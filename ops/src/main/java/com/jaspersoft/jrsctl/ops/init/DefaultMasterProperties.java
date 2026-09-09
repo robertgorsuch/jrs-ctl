@@ -122,12 +122,13 @@ public record DefaultMasterProperties(Map<String, String> values) {
   public Optional<String> jdbcUrl() {
     Optional<Config.DatabaseType> type = databaseType();
     Optional<String> host = dbHost();
-    Optional<String> name = dbName();
-    if (type.isEmpty() || host.isEmpty() || name.isEmpty()) {
+    // buildomatic's own default when js.dbName is not set is "jasperserver".
+    String name = dbName().orElse("jasperserver");
+    if (type.isEmpty() || host.isEmpty()) {
       return Optional.empty();
     }
     String port = dbPort().orElse(defaultPort(type.get()));
-    return Optional.of(jdbcUrl(type.get(), host.get(), port, name.get()));
+    return Optional.of(jdbcUrl(type.get(), host.get(), port, name));
   }
 
   static String jdbcUrl(Config.DatabaseType type, String host, String port, String name) {

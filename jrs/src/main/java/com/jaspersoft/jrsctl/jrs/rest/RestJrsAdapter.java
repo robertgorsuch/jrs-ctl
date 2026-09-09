@@ -180,7 +180,7 @@ public final class RestJrsAdapter implements JrsAdapter {
     decide(Capability.ORGS, s == 200 || s == 204, "GET " + orgs, s, found, details);
 
     boolean restLogin = restLoginExists();
-    decide(Capability.REST_LOGIN, restLogin, "GET " + REST_LOGIN, restLoginStatus, found, details);
+    decide(Capability.REST_LOGIN, restLogin, "POST " + REST_LOGIN, restLoginStatus, found, details);
 
     for (Capability c :
         List.of(Capability.KEYSTORE_ENCRYPTION, Capability.TOKEN_AUTH, Capability.PREAUTH)) {
@@ -227,9 +227,11 @@ public final class RestJrsAdapter implements JrsAdapter {
     if (known.isPresent()) {
       return known.get();
     }
-    int s = client.get(REST_LOGIN).status();
+    // POST with no credentials: an existing endpoint answers 401/400/403 (or 200 on odd builds),
+    // a server without it answers 404. A GET is unreliable because 10.x answers 404 to GET as well.
+    int s = client.post(REST_LOGIN, "application/x-www-form-urlencoded", "").status();
     restLoginStatus = s;
-    boolean exists = s == 405 || s == 200;
+    boolean exists = s != 404 && s < 500;
     restLoginExists = Optional.of(exists);
     return exists;
   }

@@ -378,12 +378,8 @@ class ConsoleServerTest {
   }
 
   @Test
-  void should_return_501_when_operation_not_available_and_400_when_unknown() throws Exception {
+  void should_return_400_when_operation_unknown() throws Exception {
     startDefault();
-    HttpResponse<String> export = post("/api/plan", "{\"op\":\"upgrade\",\"args\":{}}");
-    assertThat(export.statusCode()).isEqualTo(501);
-    assertThat(json(export).get("error").asText())
-        .isEqualTo("operation not available in this build");
     HttpResponse<String> unknown = post("/api/plan", "{\"op\":\"format-disk\",\"args\":{}}");
     assertThat(unknown.statusCode()).isEqualTo(400);
   }

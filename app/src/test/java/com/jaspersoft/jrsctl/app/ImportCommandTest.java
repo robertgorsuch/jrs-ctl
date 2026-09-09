@@ -205,7 +205,13 @@ class ImportCommandTest {
             Optional.of(keystore),
             Optional.of(new SecretRef.Env("KS")),
             Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
-    PlanRegistry registry = new PlanRegistry(() -> new FakeHotfixOperations(), () -> fake);
+    PlanRegistry registry =
+        new PlanRegistry(
+            () -> new FakeHotfixOperations(),
+            () -> fake,
+            () -> {
+              throw new UnsupportedOperationException("upgrade not used");
+            });
 
     Plan plan = registry.rebuild(PlanRegistry.IMPORT, PlanRegistry.importArgs(options));
 

@@ -199,7 +199,13 @@ class ExportCommandTest {
             false,
             out,
             Optional.of(ExportImportStrategy.Kind.REST));
-    PlanRegistry registry = new PlanRegistry(() -> new FakeHotfixOperations(), () -> fake);
+    PlanRegistry registry =
+        new PlanRegistry(
+            () -> new FakeHotfixOperations(),
+            () -> fake,
+            () -> {
+              throw new UnsupportedOperationException("upgrade not used");
+            });
 
     Plan plan = registry.rebuild(PlanRegistry.EXPORT, PlanRegistry.exportArgs(options));
 

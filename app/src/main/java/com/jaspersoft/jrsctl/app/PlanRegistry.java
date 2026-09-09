@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -37,11 +38,38 @@ final class PlanRegistry {
   static final String EXPORT = "export";
   static final String IMPORT = "import";
 
+  static final String UPGRADE = UpgradeOperations.UPGRADE_OPERATION;
+  static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
+
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
-  PlanRegistry(Supplier<HotfixOperations> hotfix, Supplier<ExportImportOperations> exim) {
+  PlanRegistry(
+      Supplier<HotfixOperations> hotfix,
+      Supplier<ExportImportOperations> exim,
+      Supplier<UpgradeOperations> upgrade) {
     Objects.requireNonNull(hotfix, "hotfix");
     Objects.requireNonNull(exim, "exim");
+    Objects.requireNonNull(upgrade, "upgrade");
+    builders.put(
+        UPGRADE,
+        args ->
+            upgrade
+                .get()
+                .planUpgrade(
+                    new UpgradeOperations.UpgradeOptions(
+                        required(args, "to"),
+                        Path.of(required(args, "package")),
+                        UpgradeOperations.Mode.valueOf(required(args, "mode")),
+                        args.path("dbBackupConfirmed").asBoolean(false),
+                        args.path("reapplyHotfixes").asBoolean(false))));
+    builders.put(
+        UPGRADE_ROLLBACK,
+        args ->
+            upgrade
+                .get()
+                .planRollback(
+                    required(args, "runId"),
+                    UpgradeOperations.RollbackPoint.valueOf(required(args, "point"))));
     builders.put(
         HOTFIX_APPLY,
         args ->
@@ -178,6 +206,23 @@ final class PlanRegistry {
 
   private static Optional<ExportImportStrategy.Kind> strategy(JsonNode args) {
     return text(args, "strategy").flatMap(StrategyFlag::parse);
+  }
+
+  static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    node.put("to", options.toVersion());
+    node.put("package", options.packageDir().toString());
+    node.put("mode", options.mode().name());
+    node.put("dbBackupConfirmed", options.dbBackupConfirmed());
+    node.put("reapplyHotfixes", options.reapplyHotfixes());
+    return Json.write(node);
+  }
+
+  static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    node.put("runId", runId);
+    node.put("point", point.name());
+    return Json.write(node);
   }
 
   private static Optional<String> text(JsonNode args, String field) {

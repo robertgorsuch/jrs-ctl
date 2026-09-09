@@ -27,6 +27,8 @@ import picocli.CommandLine.IVersionProvider;
       HotfixCommand.class,
       ExportCommand.class,
       ImportCommand.class,
+      UpgradeCommand.class,
+      CustomizationsCommand.class,
       RunsCommand.class,
       KeysCommand.class,
       SecretsCommand.class,

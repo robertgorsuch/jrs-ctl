@@ -120,7 +120,10 @@ public final class ConsoleCommand implements Callable<Integer> {
   /** The console's plan builders: the CLI registry plus the hotfix operations for verify. */
   static OperationCatalog catalog(Services services) {
     PlanRegistry registry =
-        new PlanRegistry(() -> HotfixOps.open(services), () -> EximOps.open(services));
+        new PlanRegistry(
+            () -> HotfixOps.open(services),
+            () -> EximOps.open(services),
+            () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services));
     PlanBuilder builder =
         (operation, argsJson) -> {
           try {

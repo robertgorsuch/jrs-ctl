@@ -254,9 +254,13 @@ class RestJrsAdapterRepositoryTest {
     wm.verify(
         getRequestedFor(urlPathEqualTo(f.path("/rest_v2/jobs")))
             .withHeader("Cookie", containing("JSESSIONID=F0RM")));
-    // second call reuses the session, no second login
+    // second call reuses the session, no second login (the credential-less capability probe also
+    // POSTs to /rest_v2/login, so count only real logins)
     f.adapter.schedulerReachable();
-    wm.verify(1, postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login"))));
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login")))
+            .withRequestBody(containing("j_username=")));
   }
 
   @Test
