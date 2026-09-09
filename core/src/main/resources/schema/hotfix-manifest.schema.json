@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/hotfix-manifest.schema.json",
+  "title": "jrsctl hotfix bundle manifest (spec §8.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "title", "applies", "files", "restart", "rollback"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}$" },
+    "version": { "type": "string", "enum": ["1"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "description": { "type": "string" },
+    "applies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versions"],
+      "properties": {
+        "versions": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "editions": { "type": "array", "items": { "type": "string", "enum": ["CE", "PRO"] } },
+        "tenancy": { "type": "array", "items": { "type": "string", "enum": ["SINGLE", "MULTI"] } }
+      }
+    },
+    "requires": { "type": "array", "items": { "$ref": "#/$defs/hotfixId" } },
+    "conflicts": { "type": "array", "items": { "$ref": "#/$defs/hotfixId" } },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "path"],
+        "properties": {
+          "action": { "type": "string", "enum": ["add", "replace", "delete"] },
+          "path": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)(?!.*:).+$" },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "replaces": { "type": "array", "items": { "type": "string" } }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "action": { "enum": ["add", "replace"] } } },
+            "then": { "required": ["sha256"] }
+          }
+        ]
+      }
+    },
+    "sql": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["db", "file", "sha256", "idempotent"],
+        "properties": {
+          "db": { "type": "string", "enum": ["postgresql", "mysql", "oracle", "mssql", "db2"] },
+          "file": { "type": "string", "pattern": "^sql/.+\\.sql$" },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "idempotent": { "type": "boolean", "const": true },
+          "rollbackFile": { "type": "string", "pattern": "^sql/.+\\.sql$" },
+          "rollbackSha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "sha256"],
+        "properties": {
+          "file": { "type": "string", "pattern": "^checks/.+\\.json$" },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "restart": { "type": "string", "enum": ["required", "none"] },
+    "prechecks": { "type": "array", "items": { "$ref": "#/$defs/check" } },
+    "postchecks": { "type": "array", "items": { "$ref": "#/$defs/check" } },
+    "rollback": { "type": "string", "enum": ["snapshot", "irreversible"] },
+    "rollbackNote": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "rollback": { "const": "irreversible" } } },
+      "then": { "required": ["rollbackNote"] }
+    }
+  ],
+  "$defs": {
+    "hotfixId": { "type": "string", "pattern": "^JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["fileExists", "fileAbsent", "http", "sha256"] },
+        "path": { "type": "string" },
+        "url": { "type": "string" },
+        "expect": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

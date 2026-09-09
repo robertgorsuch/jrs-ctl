@@ -1,0 +1,61 @@
+package com.jaspersoft.jrsctl.core.keys;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.crypto.Ed25519;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.security.KeyPair;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class KeyRingTest {
+
+  @TempDir Path tmp;
+
+  @Test
+  void should_verify_with_an_added_customer_key_when_signature_matches() {
+    KeyRing ring = new KeyRing(new JrsctlHome(tmp));
+    KeyPair pair = Ed25519.generate();
+    ring.add("acme-internal", pair.getPublic());
+    byte[] data = "manifest".getBytes(StandardCharsets.UTF_8);
+    byte[] sig = Ed25519.sign(pair.getPrivate(), data);
+
+    assertThat(ring.verify(data, sig)).map(KeyRing.TrustedKey::name).contains("acme-internal");
+    assertThat(ring.verify("other".getBytes(StandardCharsets.UTF_8), sig)).isEmpty();
+  }
+
+  @Test
+  void should_round_trip_keys_through_base64_encodings() {
+    KeyPair pair = Ed25519.generate();
+    var pub = Ed25519.decodePublic(Ed25519.encodePublic(pair.getPublic()));
+    var priv = Ed25519.decodePrivate(Ed25519.encodePrivate(pair.getPrivate()));
+    byte[] data = {1, 2, 3};
+    assertThat(Ed25519.verify(pub, data, Ed25519.sign(priv, data))).isTrue();
+    assertThat(Ed25519.fingerprint(pub)).hasSize(16);
+  }
+
+  @Test
+  void should_refuse_to_add_or_remove_the_publisher_key() {
+    KeyRing ring = new KeyRing(new JrsctlHome(tmp));
+    KeyPair pair = Ed25519.generate();
+    assertThatThrownBy(() -> ring.add(KeyRing.PUBLISHER, pair.getPublic()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> ring.remove(KeyRing.PUBLISHER))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void should_list_and_remove_customer_keys_when_present() {
+    KeyRing ring = new KeyRing(new JrsctlHome(tmp));
+    ring.add("k1", Ed25519.generate().getPublic());
+    ring.add("k2", Ed25519.generate().getPublic());
+    assertThat(ring.list()).extracting(KeyRing.TrustedKey::name).contains("k1", "k2");
+    assertThat(ring.remove("k1")).isTrue();
+    assertThat(ring.find("k1")).isEmpty();
+    assertThatThrownBy(() -> ring.add("bad name!", Ed25519.generate().getPublic()))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+}
