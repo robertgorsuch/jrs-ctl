@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>jrsctl console</title>
+<!-- No external resources: the console runs in isolated (air-gapped) mode. Fonts come from the
+     fallback stacks in brand.css; icons are inline SVG. -->
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+<div id="sample-banner" class="sample-banner" role="status" hidden>
+  <strong>Sample data.</strong> This console is showing built-in sample responses, not a real server. Nothing you do here touches a JasperReports Server.
+</div>
+
+<div class="shell">
+  <nav class="rail" aria-label="Console navigation">
+    <div class="wordmark">
+      <span class="wordmark-name">jrsctl</span>
+      <span class="wordmark-version" id="tool-version" aria-label="Tool version"></span>
+      <span class="wordmark-vendor">Actian Jaspersoft</span>
+    </div>
+
+    <ul class="rail-nav" id="rail-nav">
+      <li>
+        <a href="#/dashboard" data-route="dashboard">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li>
+        <a href="#/new" data-route="new">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg>
+          <span>New operation</span>
+        </a>
+      </li>
+      <li>
+        <a href="#/runs" data-route="runs">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h7"/></svg>
+          <span>Runs</span>
+        </a>
+      </li>
+      <li>
+        <a href="#/doctor" data-route="doctor">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h3l1.5-4 2.5 8 1.5-4h4.5"/></svg>
+          <span>Doctor</span>
+        </a>
+      </li>
+      <li>
+        <a href="#/hotfixes" data-route="hotfixes">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5l6-3 6 3v6l-6 3-6-3z"/><path d="M2 5l6 3 6-3M8 8v6"/></svg>
+          <span>Hotfixes</span>
+        </a>
+      </li>
+    </ul>
+
+    <div class="rail-foot">
+      <span id="bind-address">Bound to (waiting for health)</span>
+      <span id="token-state">Session token active</span>
+    </div>
+  </nav>
+
+  <div class="content">
+    <header class="topbar">
+      <h1 id="page-title" class="topbar-title">Dashboard</h1>
+      <nav id="topbar-crumb" class="topbar-crumb" aria-label="Breadcrumb"></nav>
+      <div class="topbar-right">
+        <span id="server-url" class="mono topbar-url" title="Server base URL"></span>
+        <span id="network-pill" class="pill" hidden></span>
+      </div>
+    </header>
+    <main id="view" class="view" tabindex="-1" aria-live="polite"></main>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="assertive" aria-atomic="false"></div>
+<div id="modal-root"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
