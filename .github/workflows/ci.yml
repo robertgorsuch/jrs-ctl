@@ -68,5 +68,107 @@ jobs:
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
-  # Phase 7 adds: package (jlink + portable archives), SBOM, sign (CI secrets only), release on tag.
+  package:
+    name: package (jlink image, archive, SBOM, portable smoke) (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            ext: tar.gz
+          - os: windows-latest
+            platform: windows-x64
+            ext: zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build image, archive, checksum, SBOM (ADR-0003, ADR-0008)
+        run: mvn -B -Pdist -DskipTests package
+      - name: Portable smoke on Linux (no JAVA_HOME, minimal PATH; ADR-0003 "clean VM" check)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=$(ls dist/target/jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }})
+          (cd dist/target && sha256sum -c "$(basename "$archive").sha256")
+          rm -rf /tmp/portable && mkdir -p /tmp/portable && tar -xzf "$archive" -C /tmp/portable
+          root=$(ls -d /tmp/portable/jrsctl-*)
+          (cd "$root" && sha256sum --quiet -c MANIFEST.sha256)
+          env -i PATH=/usr/bin:/bin HOME=/tmp/portable JRSCTL_HOME=/tmp/portable/home "$root/bin/jrsctl" --version
+          env -i PATH=/usr/bin:/bin HOME=/tmp/portable JRSCTL_HOME=/tmp/portable/home "$root/bin/jrsctl" selfcheck
+      - name: Portable smoke on Windows (no JAVA_HOME, minimal PATH; ADR-0003 "clean VM" check)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = (Get-ChildItem dist/target -Filter "jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }}").FullName
+          $expected = (Get-Content "$archive.sha256").Split(' ')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower()
+          if ($expected -ne $actual) { throw "checksum mismatch for $archive" }
+          $dest = Join-Path $env:RUNNER_TEMP portable
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          Expand-Archive -Path $archive -DestinationPath $dest
+          $root = (Get-ChildItem $dest -Directory | Select-Object -First 1).FullName
+          $env:JAVA_HOME = ''
+          $env:JRSCTL_HOME = Join-Path $dest home
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & "$root\bin\jrsctl.cmd" --version
+          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
+          & "$root\bin\jrsctl.cmd" selfcheck
+          if ($LASTEXITCODE -ne 0) { throw "selfcheck exited $LASTEXITCODE" }
+      - name: Phase 7 acceptance against the built image (reactor up to acceptance, only the phase7 class)
+        run: mvn -B -pl acceptance -am verify -Dphase=7 -Pdist -Dtest=Phase7DistributionTest -Dsurefire.failIfNoSpecifiedTests=false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jrsctl-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            dist/target/jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }}
+            dist/target/jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }}.sha256
+            dist/target/jrsctl-*-sbom.json
+
+  release:
+    name: sign (CI secret) and publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [package, integration, dependency-audit]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jrsctl-*
+          path: release
+          merge-multiple: true
+      - name: Sign archives, checksums and SBOM (spec §0 rule 11: the key exists only here)
+        env:
+          JRSCTL_SIGNING_KEY: ${{ secrets.JRSCTL_SIGNING_KEY }}
+        run: sh scripts/sign-artifacts.sh release
+      - name: Fail the release when nothing was signed
+        run: |
+          ls -l release
+          test -n "$(ls release/*.sig 2>/dev/null)" || { echo "no signatures produced; JRSCTL_SIGNING_KEY secret missing"; exit 1; }
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: jrsctl ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/*.zip
+            release/*.tar.gz
+            release/*.sha256
+            release/*-sbom.json
+            release/*.sig
+
   # The nightly needs-jrs adapter contract suite lives in nightly.yml once a JRS image is named (spec §19 Q6).

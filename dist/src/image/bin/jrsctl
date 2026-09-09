@@ -1,0 +1,14 @@
+#!/bin/sh
+# jrsctl launcher (Linux). Uses the bundled runtime; no JDK or JAVA_HOME needed.
+# JRSCTL_JAVA_OPTS: extra JVM options (optional).
+self="$0"
+while [ -h "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+home=$(cd "$(dirname "$self")/.." && pwd -P)
+# shellcheck disable=SC2086
+exec "$home/runtime/bin/java" $JRSCTL_JAVA_OPTS -jar "$home/lib/jrsctl.jar" "$@"
