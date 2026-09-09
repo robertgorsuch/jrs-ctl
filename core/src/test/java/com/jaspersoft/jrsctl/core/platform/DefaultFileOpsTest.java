@@ -15,6 +15,7 @@ import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
 import java.security.MessageDigest;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HexFormat;
@@ -146,7 +147,9 @@ class DefaultFileOpsTest {
 
     assertThat(Files.readString(target, StandardCharsets.UTF_8)).isEqualTo("a=b");
     assertThat(files.capturePermissions(target).owner()).isEqualTo(before.owner());
-    assertThat(Files.getLastModifiedTime(target)).isEqualTo(Files.getLastModifiedTime(source));
+    // Linux copies the timestamp through utimes(2), which keeps microseconds, not nanoseconds.
+    assertThat(Files.getLastModifiedTime(target).toInstant().truncatedTo(ChronoUnit.MICROS))
+        .isEqualTo(Files.getLastModifiedTime(source).toInstant().truncatedTo(ChronoUnit.MICROS));
   }
 
   @Test
