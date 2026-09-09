@@ -22,6 +22,11 @@ public interface Step {
 
   String phase();
 
+  /** One muted line shown under the title in plans, e.g. "timeout 180s"; empty when none. */
+  default String detail() {
+    return "";
+  }
+
   /** Must be false unless justified in a comment where the step is declared. */
   default boolean irreversible() {
     return false;
