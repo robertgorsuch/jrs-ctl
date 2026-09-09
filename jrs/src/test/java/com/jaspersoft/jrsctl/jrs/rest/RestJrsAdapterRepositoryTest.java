@@ -1,0 +1,309 @@
+package com.jaspersoft.jrsctl.jrs.rest;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
+import static com.github.tomakehurst.wiremock.client.WireMock.delete;
+import static com.github.tomakehurst.wiremock.client.WireMock.deleteRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.jrs.api.HealthReport;
+import com.jaspersoft.jrsctl.jrs.api.Session;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
+
+class RestJrsAdapterRepositoryTest {
+
+  @RegisterExtension
+  WireMockExtension wm =
+      WireMockExtension.newInstance().options(wireMockConfig().dynamicPort()).build();
+
+  @TempDir Path tmp;
+
+  @Test
+  void should_list_child_uris_when_folder_has_resources() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody(
+                        "{\"resourceLookup\":[{\"uri\":\"/public\",\"label\":\"Public\","
+                            + "\"resourceType\":\"folder\"},{\"uri\":\"/temp\",\"label\":\"Temp\","
+                            + "\"resourceType\":\"folder\"}]}")));
+
+    assertThat(f.adapter.listFolder("/")).containsExactly("/public", "/temp");
+    wm.verify(
+        getRequestedFor(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .withQueryParam("folderUri", equalTo("/"))
+            .withQueryParam("recursive", equalTo("false"))
+            .withQueryParam("limit", equalTo("100"))
+            .withHeader("Accept", equalTo("application/json")));
+  }
+
+  @Test
+  void should_return_empty_list_when_folder_answers_204() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources"))).willReturn(aResponse().withStatus(204)));
+
+    assertThat(f.adapter.listFolder("/empty")).isEmpty();
+  }
+
+  @Test
+  void should_report_scheduler_when_jobs_endpoint_answers_200() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs"))).willReturn(aResponse().withStatus(200)));
+
+    assertThat(f.adapter.schedulerReachable()).isTrue();
+
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs"))).willReturn(aResponse().withStatus(500)));
+    assertThat(f.adapter.schedulerReachable()).isFalse();
+  }
+
+  @Test
+  void should_stream_pdf_to_target_when_report_runs() throws IOException {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    byte[] pdf = "%PDF-1.4 fake body".getBytes(StandardCharsets.US_ASCII);
+    wm.stubFor(
+        get(urlEqualTo(f.path("/rest_v2/reports/public/Samples/Reports/All%20Accounts.pdf")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/pdf")
+                    .withBody(pdf)));
+
+    Path out =
+        f.adapter.runReportToPdf("/public/Samples/Reports/All Accounts", tmp.resolve("r.pdf"));
+
+    assertThat(Files.readAllBytes(out)).isEqualTo(pdf);
+    wm.verify(
+        getRequestedFor(
+                urlPathEqualTo(
+                    f.path("/rest_v2/reports/public/Samples/Reports/All%20Accounts.pdf")))
+            .withHeader("Accept", equalTo("application/pdf")));
+  }
+
+  @Test
+  void should_not_write_target_when_report_answers_404() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/reports/public/missing.pdf")))
+            .willReturn(aResponse().withStatus(404).withBody("{\"message\":\"not found\"}")));
+    Path out = tmp.resolve("missing.pdf");
+
+    assertThatThrownBy(() -> f.adapter.runReportToPdf("/public/missing", out))
+        .isInstanceOf(RestException.class)
+        .hasMessageContaining("HTTP 404");
+    assertThat(out).doesNotExist();
+  }
+
+  @Test
+  void should_post_folder_descriptor_to_parent_when_creating_folder() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/resources/temp")))
+            .willReturn(aResponse().withStatus(201)));
+
+    f.adapter.createFolder("/temp/jrsctl", "jrsctl");
+
+    wm.verify(
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/resources/temp")))
+            .withHeader("Content-Type", equalTo("application/repository.folder+json"))
+            .withRequestBody(matchingJsonPath("$.label", equalTo("jrsctl")))
+            .withRequestBody(matchingJsonPath("$.description")));
+  }
+
+  @Test
+  void should_put_report_unit_with_base64_jrxml_when_uploading() throws IOException {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    String jrxml = "<jasperReport name=\"smoke\"><title/></jasperReport>";
+    Path file = tmp.resolve("smoke.jrxml");
+    Files.writeString(file, jrxml, StandardCharsets.UTF_8);
+    wm.stubFor(
+        put(urlPathEqualTo(f.path("/rest_v2/resources/temp/jrsctl/Smoke_Report")))
+            .willReturn(aResponse().withStatus(201)));
+
+    f.adapter.uploadJrxmlReport("/temp/jrsctl", "Smoke Report", file);
+
+    String b64 = Base64.getEncoder().encodeToString(jrxml.getBytes(StandardCharsets.UTF_8));
+    wm.verify(
+        putRequestedFor(urlPathEqualTo(f.path("/rest_v2/resources/temp/jrsctl/Smoke_Report")))
+            .withHeader("Content-Type", equalTo("application/repository.reportUnit+json"))
+            .withRequestBody(matchingJsonPath("$.label", equalTo("Smoke Report")))
+            .withRequestBody(matchingJsonPath("$.jrxml.jrxmlFile.type", equalTo("jrxml")))
+            .withRequestBody(matchingJsonPath("$.jrxml.jrxmlFile.content", equalTo(b64))));
+  }
+
+  @Test
+  void should_delete_resource_when_asked() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        delete(urlPathEqualTo(f.path("/rest_v2/resources/temp/jrsctl")))
+            .willReturn(aResponse().withStatus(204)));
+
+    f.adapter.deleteResource("/temp/jrsctl");
+
+    wm.verify(deleteRequestedFor(urlPathEqualTo(f.path("/rest_v2/resources/temp/jrsctl"))));
+  }
+
+  @Test
+  void should_pass_every_health_item_when_server_is_healthy() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"resourceLookup\":[{\"uri\":\"/public\"}]}")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs"))).willReturn(aResponse().withStatus(200)));
+
+    HealthReport report = f.adapter.health();
+
+    assertThat(report.reachable()).isTrue();
+    assertThat(report.ok()).isTrue();
+    assertThat(report.items())
+        .extracting(HealthReport.Item::name)
+        .containsExactly("serverInfo", "login", "repository", "scheduler");
+    assertThat(report.items()).allMatch(i -> i.status() == HealthReport.Status.PASS);
+    assertThat(report.latency().isNegative()).isFalse();
+  }
+
+  @Test
+  void should_fail_login_item_without_leaking_password_when_credentials_rejected() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .willReturn(
+                aResponse()
+                    .withStatus(401)
+                    .withBody("bad credentials " + AdapterFixture.PASSWORD)));
+
+    HealthReport report = f.adapter.health();
+
+    assertThat(report.reachable()).isTrue();
+    assertThat(report.ok()).isFalse();
+    HealthReport.Item login = report.items().get(1);
+    assertThat(login.name()).isEqualTo("login");
+    assertThat(login.status()).isEqualTo(HealthReport.Status.FAIL);
+    assertThat(login.detail()).contains("401").doesNotContain(AdapterFixture.PASSWORD);
+    assertThat(login.remediation()).contains("passwordRef");
+  }
+
+  @Test
+  void should_report_unreachable_when_server_is_down() throws IOException {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/serverInfo"))).willReturn(aResponse().withStatus(502)));
+
+    HealthReport report = f.adapter.health();
+
+    assertThat(report.reachable()).isFalse();
+    assertThat(report.ok()).isFalse();
+    assertThat(report.items()).hasSize(1);
+    assertThat(report.items().get(0).status()).isEqualTo(HealthReport.Status.FAIL);
+  }
+
+  @Test
+  void should_login_through_rest_endpoint_and_reuse_cookie_when_form_mode_has_rest_login() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/login"))).willReturn(aResponse().withStatus(405)));
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/login")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Set-Cookie", "JSESSIONID=F0RM; Path=/jasperserver-pro")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs"))).willReturn(aResponse().withStatus(200)));
+
+    boolean scheduler = f.adapter.schedulerReachable();
+
+    assertThat(scheduler).isTrue();
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login")))
+            .withRequestBody(containing("j_username=jasperadmin"))
+            .withRequestBody(containing("j_password=" + AdapterFixture.PASSWORD)));
+    wm.verify(
+        getRequestedFor(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .withHeader("Cookie", containing("JSESSIONID=F0RM")));
+    // second call reuses the session, no second login
+    f.adapter.schedulerReachable();
+    wm.verify(1, postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login"))));
+  }
+
+  @Test
+  void should_login_through_spring_form_when_rest_login_is_absent() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/login"))).willReturn(aResponse().withStatus(404)));
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/j_spring_security_check")))
+            .willReturn(
+                aResponse()
+                    .withStatus(302)
+                    .withHeader("Location", f.path("/"))
+                    .withHeader("Set-Cookie", "JSESSIONID=SPR1NG; Path=/jasperserver-pro")));
+
+    Session s =
+        f.adapter.login(
+            new com.jaspersoft.jrsctl.jrs.api.Credentials(
+                "jasperadmin", f.password, java.util.Optional.of("org_1")));
+
+    assertThat(s.mode()).isEqualTo(Session.AuthMode.FORM);
+    assertThat(s.cookie()).contains("SPR1NG");
+    wm.verify(
+        postRequestedFor(urlPathEqualTo(f.path("/j_spring_security_check")))
+            .withRequestBody(containing("j_username=jasperadmin%7Corg_1")));
+  }
+
+  @Test
+  void should_reject_form_login_when_spring_redirects_to_error_page() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/login"))).willReturn(aResponse().withStatus(404)));
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/j_spring_security_check")))
+            .willReturn(
+                aResponse()
+                    .withStatus(302)
+                    .withHeader("Location", f.path("/login.html?error=1"))
+                    .withHeader("Set-Cookie", "JSESSIONID=ANON; Path=/jasperserver-pro")));
+
+    assertThatThrownBy(
+            () ->
+                f.adapter.login(
+                    new com.jaspersoft.jrsctl.jrs.api.Credentials(
+                        "jasperadmin", f.password, java.util.Optional.empty())))
+        .isInstanceOf(RestException.class)
+        .hasMessageContaining("login rejected")
+        .hasMessageNotContaining(AdapterFixture.PASSWORD);
+  }
+}
