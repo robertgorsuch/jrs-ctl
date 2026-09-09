@@ -1,0 +1,392 @@
+package com.jaspersoft.jrsctl.core.secrets;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Writer;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import javax.crypto.AEADBadTagException;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
+
+/**
+ * The {@code $JRSCTL_HOME/secrets.enc} store (spec §5.2): a JSON file {@code {version:1,
+ * kdf:"PBKDF2WithHmacSHA256", iterations:600000, salt:base64, verifier:{iv,ct},
+ * entries:{name:{iv:base64, ct:base64}}}} whose entries are AES-256/GCM ciphertexts under a key
+ * derived from the operator passphrase. The KDF salt is <em>machine-bound</em>: the 16 random bytes
+ * stored in the file are concatenated with the host name (the {@code machineId}) before being fed
+ * to PBKDF2, so a copied file cannot be unlocked on another machine even with the passphrase, and a
+ * host rename requires re-creating the store. Each entry uses a fresh 96-bit IV and the entry name
+ * as GCM associated data, so a ciphertext cannot be re-labelled. Invariants: the passphrase is
+ * requested lazily and only for operations that need the key ({@code init}, {@code set}, {@code
+ * get}); a wrong passphrase is detected by the verifier before anything is written; every write is
+ * atomic (temp file + rename) and, on POSIX, owner-only; no secret value or passphrase ever appears
+ * in an exception message. Only JDK cryptography is used.
+ */
+public final class EncryptedSecretStore {
+
+  public static final int VERSION = 1;
+  public static final String KDF = "PBKDF2WithHmacSHA256";
+  public static final int ITERATIONS = 600_000;
+
+  private static final int MIN_ITERATIONS = 100_000;
+  private static final int SALT_BYTES = 16;
+  private static final int IV_BYTES = 12;
+  private static final int TAG_BITS = 128;
+  private static final int KEY_BITS = 256;
+  private static final String VERIFIER_AAD = "jrsctl-secrets-verifier";
+  private static final byte[] VERIFIER_PLAINTEXT = "jrsctl".getBytes(StandardCharsets.UTF_8);
+
+  private final Path file;
+  private final PassphraseSource passphrase;
+  private final String machineId;
+  private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+  private final SecureRandom random = new SecureRandom();
+
+  private byte[] cachedSalt;
+  private SecretKey cachedKey;
+
+  public EncryptedSecretStore(Path file, PassphraseSource passphrase) {
+    this(file, passphrase, hostName());
+  }
+
+  /** As above with an explicit machine identity (tests, or a deliberately portable store). */
+  public EncryptedSecretStore(Path file, PassphraseSource passphrase, String machineId) {
+    this.file = Objects.requireNonNull(file, "file");
+    this.passphrase = Objects.requireNonNull(passphrase, "passphrase");
+    this.machineId = Objects.requireNonNull(machineId, "machineId");
+  }
+
+  public Path file() {
+    return file;
+  }
+
+  public boolean exists() {
+    return Files.isRegularFile(file);
+  }
+
+  /** Creates an empty store with a fresh salt; refuses to overwrite an existing file. */
+  public void init() {
+    if (exists()) {
+      throw new SecretException(
+          "secrets store already exists at " + file + "; remove it first to re-initialise");
+    }
+    byte[] salt = new byte[SALT_BYTES];
+    random.nextBytes(salt);
+    SecretKey key = deriveKey(salt);
+    ObjectNode root = json.createObjectNode();
+    root.put("version", VERSION);
+    root.put("kdf", KDF);
+    root.put("iterations", ITERATIONS);
+    root.put("salt", Base64.getEncoder().encodeToString(salt));
+    root.set("verifier", encrypt(key, VERIFIER_AAD, VERIFIER_PLAINTEXT));
+    root.set("entries", json.createObjectNode());
+    write(root);
+  }
+
+  /** Adds or replaces {@code name}; the secret is read once and not retained. */
+  public void set(String name, Secret secret) {
+    checkName(name);
+    Objects.requireNonNull(secret, "secret");
+    ObjectNode root = read();
+    SecretKey key = unlock(root);
+    char[] chars = secret.chars();
+    byte[] plain = null;
+    try {
+      // UTF-8 needs at most 3 bytes per UTF-16 code unit; allocate() so the array can be zeroed
+      ByteBuffer bb = ByteBuffer.allocate(chars.length * 3);
+      CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
+      encoder.encode(CharBuffer.wrap(chars), bb, true);
+      encoder.flush(bb);
+      bb.flip();
+      plain = new byte[bb.remaining()];
+      bb.get(plain);
+      Arrays.fill(bb.array(), (byte) 0);
+      entries(root).set(name, encrypt(key, name, plain));
+    } finally {
+      Arrays.fill(chars, '\0');
+      if (plain != null) {
+        Arrays.fill(plain, (byte) 0);
+      }
+    }
+    write(root);
+  }
+
+  /** Removes {@code name}; false when it was not present. No passphrase is needed. */
+  public boolean remove(String name) {
+    checkName(name);
+    ObjectNode root = read();
+    ObjectNode entries = entries(root);
+    if (!entries.has(name)) {
+      return false;
+    }
+    entries.remove(name);
+    write(root);
+    return true;
+  }
+
+  /** Entry names in sorted order. No passphrase is needed. */
+  public List<String> list() {
+    ObjectNode entries = entries(read());
+    List<String> names = new ArrayList<>();
+    for (Iterator<String> it = entries.fieldNames(); it.hasNext(); ) {
+      names.add(it.next());
+    }
+    Collections.sort(names);
+    return List.copyOf(names);
+  }
+
+  /** The decrypted entry, or empty when no such entry exists. */
+  public Optional<Secret> get(String name) {
+    checkName(name);
+    ObjectNode root = read();
+    SecretKey key = unlock(root); // a wrong passphrase is reported even for an unknown entry
+    JsonNode entry = entries(root).get(name);
+    if (entry == null || !entry.isObject()) {
+      return Optional.empty();
+    }
+    byte[] plain = decrypt(key, name, entry, "entry " + name);
+    try {
+      CharBuffer cb = StandardCharsets.UTF_8.decode(ByteBuffer.wrap(plain));
+      char[] chars = new char[cb.remaining()];
+      cb.get(chars);
+      if (cb.hasArray()) {
+        Arrays.fill(cb.array(), '\0');
+      }
+      try {
+        return Optional.of(Secret.of(chars));
+      } finally {
+        Arrays.fill(chars, '\0');
+      }
+    } finally {
+      Arrays.fill(plain, (byte) 0);
+    }
+  }
+
+  // ---- crypto -----------------------------------------------------------------------------------
+
+  private SecretKey unlock(ObjectNode root) {
+    byte[] salt = base64(root, "salt");
+    int iterations = root.path("iterations").asInt(0);
+    if (iterations < MIN_ITERATIONS) {
+      throw new SecretException(
+          "secrets store "
+              + file
+              + " declares "
+              + iterations
+              + " KDF iterations; refusing to use it");
+    }
+    SecretKey key = deriveKey(salt, iterations);
+    JsonNode verifier = root.get("verifier");
+    if (verifier == null || !verifier.isObject()) {
+      throw new SecretException("secrets store " + file + " has no verifier; re-initialise it");
+    }
+    byte[] check = decrypt(key, VERIFIER_AAD, verifier, "verifier");
+    boolean ok = Arrays.equals(check, VERIFIER_PLAINTEXT);
+    Arrays.fill(check, (byte) 0);
+    if (!ok) {
+      throw wrongPassphrase();
+    }
+    return key;
+  }
+
+  private SecretKey deriveKey(byte[] salt) {
+    return deriveKey(salt, ITERATIONS);
+  }
+
+  private synchronized SecretKey deriveKey(byte[] salt, int iterations) {
+    if (cachedKey != null && Arrays.equals(cachedSalt, salt)) {
+      return cachedKey;
+    }
+    byte[] machine = machineId.getBytes(StandardCharsets.UTF_8);
+    byte[] boundSalt = new byte[salt.length + machine.length];
+    System.arraycopy(salt, 0, boundSalt, 0, salt.length);
+    System.arraycopy(machine, 0, boundSalt, salt.length, machine.length);
+    try (Secret pass = passphrase.require()) {
+      char[] chars = pass.chars();
+      PBEKeySpec spec = new PBEKeySpec(chars, boundSalt, iterations, KEY_BITS);
+      try {
+        byte[] raw = SecretKeyFactory.getInstance(KDF).generateSecret(spec).getEncoded();
+        SecretKey key = new SecretKeySpec(raw, "AES");
+        Arrays.fill(raw, (byte) 0);
+        cachedSalt = salt.clone();
+        cachedKey = key;
+        return key;
+      } catch (GeneralSecurityException e) {
+        throw new SecretException("key derivation failed: " + e.getClass().getSimpleName(), e);
+      } finally {
+        spec.clearPassword();
+        Arrays.fill(chars, '\0');
+      }
+    }
+  }
+
+  private ObjectNode encrypt(SecretKey key, String aad, byte[] plain) {
+    byte[] iv = new byte[IV_BYTES];
+    random.nextBytes(iv);
+    try {
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+      cipher.updateAAD(aad.getBytes(StandardCharsets.UTF_8));
+      byte[] ct = cipher.doFinal(plain);
+      ObjectNode node = json.createObjectNode();
+      node.put("iv", Base64.getEncoder().encodeToString(iv));
+      node.put("ct", Base64.getEncoder().encodeToString(ct));
+      return node;
+    } catch (GeneralSecurityException e) {
+      throw new SecretException("encryption failed: " + e.getClass().getSimpleName(), e);
+    }
+  }
+
+  private byte[] decrypt(SecretKey key, String aad, JsonNode entry, String what) {
+    byte[] iv = base64(entry, "iv");
+    byte[] ct = base64(entry, "ct");
+    try {
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+      cipher.updateAAD(aad.getBytes(StandardCharsets.UTF_8));
+      return cipher.doFinal(ct);
+    } catch (AEADBadTagException e) {
+      throw what.equals("verifier")
+          ? wrongPassphrase()
+          : new SecretException(
+              "secrets store " + file + ": " + what + " is corrupt or was re-labelled", e);
+    } catch (GeneralSecurityException e) {
+      throw new SecretException("decryption failed: " + e.getClass().getSimpleName(), e);
+    }
+  }
+
+  private SecretException wrongPassphrase() {
+    return new SecretException(
+        "passphrase does not unlock "
+            + file
+            + " on this machine (wrong passphrase, or the store"
+            + " was created on another host); "
+            + PassphraseUnavailableException.REMEDIATION);
+  }
+
+  // ---- file -------------------------------------------------------------------------------------
+
+  private ObjectNode read() {
+    if (!exists()) {
+      throw new SecretException("secrets store not found at " + file + "; run jrsctl secrets init");
+    }
+    JsonNode root;
+    try (InputStream in = Files.newInputStream(file)) {
+      root = json.readTree(in);
+    } catch (IOException e) {
+      throw new SecretException("cannot read secrets store " + file + ": " + e.getMessage(), e);
+    }
+    if (!(root instanceof ObjectNode obj)) {
+      throw new SecretException("secrets store " + file + " is not a JSON object");
+    }
+    int version = obj.path("version").asInt(-1);
+    if (version != VERSION) {
+      throw new SecretException(
+          "secrets store " + file + " has version " + version + "; this build supports " + VERSION);
+    }
+    if (!KDF.equals(obj.path("kdf").asText())) {
+      throw new SecretException("secrets store " + file + " uses an unsupported kdf");
+    }
+    return obj;
+  }
+
+  private void write(ObjectNode root) {
+    Path dir = file.toAbsolutePath().getParent();
+    Path tmp = null;
+    try {
+      if (dir != null) {
+        Files.createDirectories(dir);
+      }
+      tmp = Files.createTempFile(dir, "secrets", ".tmp");
+      restrictToOwner(tmp);
+      try (Writer out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
+        json.writeValue(out, root);
+      }
+      Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      tmp = null;
+    } catch (IOException e) {
+      throw new SecretException("cannot write secrets store " + file + ": " + e.getMessage(), e);
+    } finally {
+      if (tmp != null) {
+        try {
+          Files.deleteIfExists(tmp);
+        } catch (IOException ignored) {
+          // best effort; the temp file holds only ciphertext
+        }
+      }
+    }
+  }
+
+  private static void restrictToOwner(Path path) throws IOException {
+    if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+      Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
+    }
+  }
+
+  private static ObjectNode entries(ObjectNode root) {
+    JsonNode entries = root.get("entries");
+    if (entries instanceof ObjectNode obj) {
+      return obj;
+    }
+    throw new SecretException("secrets store has no entries object; re-initialise it");
+  }
+
+  private static byte[] base64(JsonNode node, String field) {
+    JsonNode v = node.get(field);
+    if (v == null || !v.isTextual()) {
+      throw new SecretException("secrets store is missing field '" + field + "'");
+    }
+    try {
+      return Base64.getDecoder().decode(v.asText());
+    } catch (IllegalArgumentException e) {
+      throw new SecretException("secrets store field '" + field + "' is not valid base64", e);
+    }
+  }
+
+  private static void checkName(String name) {
+    Objects.requireNonNull(name, "name");
+    if (!SecretRef.ENC_NAME.matcher(name).matches()) {
+      throw new SecretException(
+          "invalid secret name '" + name + "': use letters, digits, '_', '.', '-'");
+    }
+  }
+
+  private static String hostName() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      Map<String, String> env = System.getenv();
+      String h = env.getOrDefault("COMPUTERNAME", env.getOrDefault("HOSTNAME", "localhost"));
+      return h;
+    }
+  }
+}

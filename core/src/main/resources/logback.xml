@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jrsctl logging (spec 5.8). Every appender renders the message through %redact and stack traces
+  through %redactEx, both backed by Redactor.global(), so no secret registered with the redactor
+  and none of the well-known patterns (password=, Authorization:, JSESSIONID, Bearer ...) can reach
+  a console or file. Override the JSON log location with -Djrsctl.log.file=<path>.
+-->
+<configuration>
+  <conversionRule conversionWord="redact"
+                  converterClass="com.jaspersoft.jrsctl.core.redact.RedactingConverter"/>
+  <conversionRule conversionWord="redactEx"
+                  converterClass="com.jaspersoft.jrsctl.core.redact.RedactingThrowableConverter"/>
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{24} - %redact%n%redactEx</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="JSON" class="ch.qos.logback.core.FileAppender">
+    <file>${jrsctl.log.file:-${java.io.tmpdir}/jrsctl.log}</file>
+    <append>true</append>
+    <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+      <providers>
+        <timestamp><fieldName>ts</fieldName></timestamp>
+        <logLevel><fieldName>level</fieldName></logLevel>
+        <loggerName><fieldName>logger</fieldName></loggerName>
+        <threadName><fieldName>thread</fieldName></threadName>
+        <pattern>
+          <omitEmptyFields>true</omitEmptyFields>
+          <pattern>{"message":"%redact","stack_trace":"%redactEx"}</pattern>
+        </pattern>
+      </providers>
+    </encoder>
+  </appender>
+
+  <root level="${jrsctl.log.level:-INFO}">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="JSON"/>
+  </root>
+</configuration>
