@@ -1,6 +1,6 @@
 # jrsctl operator guide
 
-`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command shipped so far (Phases 0–3): tool self-checks, detection and diagnostics, configuration, signed hotfixes, run history and recovery, trusted keys and the encrypted secret store. Export/import, upgrade and the web console arrive in later phases.
+`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command shipped so far (Phases 0–4): tool self-checks, detection and diagnostics, configuration, signed hotfixes, repository export and import, run history and recovery, trusted keys and the encrypted secret store. Upgrade and the web console arrive in later phases.
 
 Everything the tool stores lives under one directory, the **jrsctl home** (`--home`, else `$JRSCTL_HOME`, else `%ProgramData%\jrsctl` on Windows or `/var/lib/jrsctl` on Linux, falling back to `~/.jrsctl` when that is not writable):
 
@@ -36,7 +36,7 @@ Environment variables: `JRSCTL_HOME` (home directory), `JRSCTL_PASSPHRASE` (pass
 
 ## How a mutating command runs
 
-`hotfix apply`, `hotfix rollback` and `runs recover` change the server. They all follow the same path (spec §6):
+`hotfix apply`, `hotfix rollback`, `export`, `import` and `runs recover` change the server or write archives. They all follow the same path (spec §6):
 
 1. **Pending runs block everything.** If a previous run did not reach a terminal state (crash, kill, power loss), every mutating command exits **8** and prints the exact `jrsctl runs recover <id> --resume|--rollback` command to run first.
 2. **The plan is shown first.** You see the operation and target, a summary (files touched, service restart or not, strategy, backups, rollback points, warnings marked `!`), the steps grouped by phase and numbered, the plan fingerprint, and the line `nothing has changed`. The plan is stored for 30 minutes. `--plan` stops here with exit 0.
@@ -91,6 +91,58 @@ Restores the files an installed hotfix replaced (verifying hashes before and aft
 ### `jrsctl hotfix list [--json]`
 
 Every hotfix recorded in the state store: id, title, installed timestamp, number of files, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED`).
+
+### `jrsctl export [--uri <uri>]... [--users-roles] [--access-events] [--audit-events] [--monitoring] [--settings] [--full-server] [--strategy rest|vendor] --out <file> [--plan] [--yes] [--json]`
+
+Exports repository content to a ZIP archive and writes a sidecar `<file>.jrsctl.json` next to it (when it was taken, from which server and version, the request flags, the SHA-256 of the archive and the server keystore fingerprint an import must match). Runs as a plan with one phase, `export`.
+
+| Flag | Meaning |
+|---|---|
+| `--uri <uri>` | repository folder or resource to export; repeatable; without it the whole repository (`/`) |
+| `--users-roles` | include users and roles |
+| `--access-events`, `--audit-events`, `--monitoring` | include access, audit or monitoring events |
+| `--settings` | include server settings |
+| `--full-server` | export everything (repository, users, roles, settings) with the vendor `js-export` tool; the service is stopped meanwhile |
+| `--strategy rest\|vendor` | force a strategy instead of letting the rules below choose |
+| `--out <file>` | the archive to write (required); an existing file is replaced |
+| `--plan`, `--yes`, `--json` | as for every mutating command |
+
+**Strategy rules** (spec §9.2). The plan summary's `strategy` line names the strategy and why it was chosen:
+
+- `rest` — the server stays up; used when the server answers the async export/import probe (`EXPORT_ASYNC` / `IMPORT_ASYNC` capability) and the request is not `--full-server`.
+- `vendor` — `js-export` / `js-import` from `<server.installDir>/buildomatic` with `vendor.javaHome` as its JDK; the service is stopped first and started (and waited for, up to 10 minutes) afterwards; used for `--full-server`, when the probe fails or the server is unreachable, or when `--strategy vendor` is given. `server.installDir`, `vendor.javaHome` and a working `service` block are prechecked before the service is touched.
+
+Exit 0, **2** when planning fails (unreachable server, bad configuration, vendor tools not found), **3** when a step fails (a partial archive and sidecar are deleted, the service is started again).
+
+### `jrsctl import <archive> [--update] [--skip-user-update] [--access-events] [--audit-events] [--monitoring] [--settings] [--skip-themes] [--source-keystore <path>] [--source-keystore-password-ref <ref>] [--strategy rest|vendor] [--plan] [--yes] [--json]`
+
+Imports an export archive. The plan has three phases:
+
+1. `precheck` — the archive's sidecar is read and its keystore fingerprint compared with this server's (see below); with the vendor strategy the tools are located. A failure here exits **2** and nothing has been touched.
+2. `backup` — **pre-import snapshot**: the affected subtree (the uris recorded in the sidecar, else the whole repository; a full-server export when `--update` targets the root) is exported with the *same strategy as the import* to `<home>/snapshots/pre-import/pre-import-<archive>-<hash>.zip`, sidecar included. The path is listed under `backups` in the plan summary.
+3. `import` — the import itself (`POST /rest_v2/import` and polling, or `js-import` with the service stopped and restarted).
+
+| Flag | Meaning |
+|---|---|
+| `--update` | overwrite resources that already exist (otherwise existing resources are kept) |
+| `--skip-user-update` | with `--update`, do not overwrite users that already exist |
+| `--access-events`, `--audit-events`, `--monitoring` | import the corresponding events from the archive |
+| `--settings` | import server settings from the archive |
+| `--skip-themes` | do not import themes |
+| `--source-keystore <path>` | the source server's `.jrsks`, imported first when its fingerprint differs from this server's (vendor-documented keystore import via `js-import`; needs buildomatic) |
+| `--source-keystore-password-ref <ref>` | `env:NAME`, `file:/path` or `enc:NAME` holding that keystore's password; never given in clear on the command line |
+| `--strategy rest\|vendor` | force a strategy (same rules as `export`) |
+| `--plan`, `--yes`, `--json` | as for every mutating command |
+
+**Keystore mismatch.** Repository passwords inside an archive are encrypted with the keystore (`~/.jrsks`) of the server that exported it (JasperReports Server 7.5 and later). The sidecar records that keystore's fingerprint; `import` compares it with the keystore in the home directory of `server.runAsUser` (the current user's home when `runAsUser` is unset). A mismatch is refused with exit **2** before anything is snapshotted or imported:
+
+> `keystore fingerprint mismatch: archive was exported with keystore <a> but this server uses <b>`
+
+Remediation: copy the source server's `.jrsks` and `.jrsksp` to this host and run the import again with `--source-keystore <path> --source-keystore-password-ref <ref>` (the plan then imports that keystore first and backs up the current one, restoring it on rollback), or export the data again from a server that shares this keystore. No sidecar, a sidecar without a fingerprint, or a server whose keystore cannot be found produce a warning and the import continues.
+
+**Rollback is best effort.** If the import phase fails, jrsctl re-imports the pre-import snapshot with `update`. The plan summary states this in so many words: *Rollback re-imports the pre-import snapshot; it restores overwritten resources but cannot delete resources the failed import created.* Check the repository after a rolled-back import (exit **3**) and remove any resources the failed archive added; the snapshot stays under `snapshots/pre-import/` and can be re-imported by hand with `jrsctl import <snapshot> --update`. If the restore itself fails the run exits **4** and the outcome block names the snapshot to re-import.
+
+`runs recover <id>` rebuilds export and import plans from their stored arguments (the archive must still be where it was; the snapshot path is derived from the archive's hash, so a resumed import finds the same snapshot).
 
 ### `jrsctl runs list [--json] [--limit <n>]`
 
@@ -158,6 +210,9 @@ The store is bound to the host name: a copied `secrets.enc` cannot be unlocked o
 | `compat` FAIL (exit 6) | the server version/edition is outside the compatibility matrix | use a supported version, or `--allow-unsupported` for diagnostics only |
 | `bundle signature is missing or not made by a trusted key` (exit 7) | the bundle is unsigned or signed by a key you have not added | `jrsctl keys add <name> <publicKeyFile>` for the signer's key; `--allow-unsigned` only for bundles you built yourself |
 | `bundle rejected, file hashes do not match the manifest` (exit 7) | the ZIP was altered or corrupted after signing | obtain the bundle again from its publisher |
+| `keystore fingerprint mismatch: archive was exported with keystore ...` (exit 2) | the archive comes from a server with a different `.jrsks`; its encrypted passwords cannot be decrypted here | copy the source server's `.jrsks` and `.jrsksp` here and import again with `--source-keystore <path> --source-keystore-password-ref <ref>`, or export again from a server that shares this keystore |
+| `server reported import ... failed` followed by `rolled back to phase import` (exit 3) | the server rejected the archive; the pre-import snapshot was re-imported | check the jasperserver log; the snapshot restores overwritten resources only, so remove anything the failed import created |
+| `restore of the pre-import snapshot failed` (exit 4) | the import failed and the snapshot could not be re-imported | run `jrsctl import <snapshot> --update` with the path from the outcome block, then verify the repository |
 | `applicability` FAIL in `hotfix verify` (exit 7) | the bundle targets another version, edition or tenancy | check `jrsctl doctor` and the manifest's `applies` section |
 | `N runs need recovery before anything else can run` (exit 8) | a previous run was interrupted | `jrsctl runs show <id>` to see where it stopped, then `jrsctl runs recover <id> --resume` or `--rollback` |
 | `run lock is held by run <id> (pid <n>)` (exit 9) | another jrsctl process is mutating this home | wait for it to finish (`jrsctl runs list`); if the pid is dead the OS has released the lock and a retry succeeds |
