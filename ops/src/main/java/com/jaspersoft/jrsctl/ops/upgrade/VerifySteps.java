@@ -21,18 +21,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Phase E of spec §10.2: the non-mutating smoke test and the final record. Invariants: a smoke FAIL
  * is a {@code Recoverable} failure whose next action names the point-B rollback command;
  * record-upgrade marks every hotfix that was installed before this run and not re-applied by it as
  * {@code SUPERSEDED}, writes {@code upgrade.json} next to the backups and registers the snapshot
- * set as retention-protected ({@code referenced_by = 'upgrade'}); its compensation puts the hotfix
- * states back and is therefore complete.
+ * set as retention-protected ({@code referenced_by = 'upgrade'}); the marker that lists the
+ * superseded ids is merged, never overwritten, so a re-execution after a crash keeps them and the
+ * compensation that puts the hotfix states back stays complete.
  */
 final class VerifySteps {
 
@@ -190,7 +193,18 @@ final class VerifySteps {
       SnapshotSet set = in.snapshots(ctx);
       try {
         Files.createDirectories(marker(ctx).getParent());
-        Files.writeString(marker(ctx), String.join("\n", superseded), StandardCharsets.UTF_8);
+        // A re-execution after a crash finds the hotfixes already SUPERSEDED and would otherwise
+        // overwrite the marker with an empty list, leaving compensation nothing to put back.
+        Set<String> recorded = new LinkedHashSet<>();
+        if (Files.isRegularFile(marker(ctx))) {
+          for (String id : Files.readAllLines(marker(ctx), StandardCharsets.UTF_8)) {
+            if (!id.isBlank()) {
+              recorded.add(id.strip());
+            }
+          }
+        }
+        recorded.addAll(superseded);
+        Files.writeString(marker(ctx), String.join("\n", recorded), StandardCharsets.UTF_8);
         Files.createDirectories(set.dir());
         Files.writeString(
             set.manifest(), Json.writePretty(manifest(ctx, set)), StandardCharsets.UTF_8);

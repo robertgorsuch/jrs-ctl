@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Stream;
 
 /**
  * Stages property overrides into {@code default_master.properties} of the buildomatic directory
@@ -22,7 +23,7 @@ import java.util.Properties;
  * original content in {@link Properties} syntax (last key wins) so vendor comments and every
  * existing key, including passwords, survive untouched; jrsctl itself never adds a key whose name
  * contains {@code pass}, only keys the caller passed explicitly; {@link #restore} puts the backup
- * back or deletes the file when there was none; all copies stream.
+ * back or deletes the staged file when there was none, and is idempotent; all copies stream.
  */
 public final class MasterProperties {
 
@@ -83,7 +84,12 @@ public final class MasterProperties {
     return new Staged(file, original, overrides);
   }
 
-  /** Puts the original back (or removes the file when there was none) and drops the backup. */
+  /**
+   * Puts the original back (or removes the staged file when there was none) and drops the backup.
+   * Idempotent: once the backup is consumed, only a file that still carries the {@link
+   * #OVERRIDE_HEADER} is touched, so a second call after a complete first one changes nothing
+   * instead of deleting the restored original.
+   */
   public static void restore(Path buildomaticDir, Path runDir) throws IOException {
     Objects.requireNonNull(buildomaticDir, "buildomaticDir");
     Objects.requireNonNull(runDir, "runDir");
@@ -93,8 +99,18 @@ public final class MasterProperties {
       Files.copy(
           backup, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
       Files.delete(backup);
-    } else {
+    } else if (isStaged(file)) {
       Files.deleteIfExists(file);
+    }
+  }
+
+  /** True when {@code file} exists and carries the override header {@link #stage} writes. */
+  public static boolean isStaged(Path file) throws IOException {
+    if (!Files.isRegularFile(file)) {
+      return false;
+    }
+    try (Stream<String> lines = Files.lines(file, StandardCharsets.ISO_8859_1)) {
+      return lines.anyMatch(line -> line.startsWith("#" + OVERRIDE_HEADER));
     }
   }
 

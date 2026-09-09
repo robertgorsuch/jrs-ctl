@@ -88,6 +88,29 @@ class MasterPropertiesTest {
   }
 
   @Test
+  void should_leave_the_restored_original_alone_when_restored_twice() throws IOException {
+    Files.writeString(file, ORIGINAL, StandardCharsets.ISO_8859_1);
+    MasterProperties.stage(buildomatic, Map.of("dbHost", "h"), runDir);
+
+    MasterProperties.restore(buildomatic, runDir);
+    MasterProperties.restore(buildomatic, runDir);
+
+    assertThat(Files.readString(file, StandardCharsets.ISO_8859_1)).isEqualTo(ORIGINAL);
+    assertThat(MasterProperties.isStaged(file)).isFalse();
+  }
+
+  @Test
+  void should_stay_absent_when_restored_twice_without_a_previous_file() throws IOException {
+    MasterProperties.stage(buildomatic, Map.of("dbHost", "h"), runDir);
+    assertThat(MasterProperties.isStaged(file)).isTrue();
+
+    MasterProperties.restore(buildomatic, runDir);
+    MasterProperties.restore(buildomatic, runDir);
+
+    assertThat(Files.exists(file)).isFalse();
+  }
+
+  @Test
   void should_only_write_password_keys_when_caller_passes_them() throws IOException {
     MasterProperties.stage(buildomatic, Map.of("dbHost", "h"), runDir);
     String withoutPass = Files.readString(file, StandardCharsets.ISO_8859_1);
