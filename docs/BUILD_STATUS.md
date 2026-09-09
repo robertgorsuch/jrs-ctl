@@ -4,9 +4,9 @@ Maintained by the build agent. Updated at the end of every phase.
 
 | Phase | Name | Status | Acceptance |
 |---|---|---|---|
-| 0 | Skeleton | in progress | `Phase0SkeletonTest` |
-| 1 | Core + Engine | not started | |
-| 2 | Adapter + Init + Doctor | not started | |
+| 0 | Skeleton | done | `Phase0SkeletonTest` |
+| 1 | Core + Engine | done | `Phase1CoreEngineTest` + 213 core unit tests |
+| 2 | Adapter + Init + Doctor | in progress | |
 | 3 | Hotfix | not started | |
 | 4 | Export/Import | not started | |
 | 5 | Upgrade | not started | |
@@ -26,4 +26,6 @@ Maintained by the build agent. Updated at the end of every phase.
 
 ## Known gaps
 
-- None recorded yet.
+- Work is committed on `main` rather than a branch per phase because this repository has no remote yet; the phase boundary is the commit, and the PR checklist in spec §15 applies once a remote exists.
+- Cross-process run-lock contention is verified in Phase 3 (needs a mutating CLI command); Phase 1 verifies it in-process.
+- The JSON log file defaults to the temp dir until the app wires `-Djrsctl.log.file` from `$JRSCTL_HOME` (Phase 2).
