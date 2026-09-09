@@ -24,14 +24,24 @@ public final class FakePlatform implements Platform {
 
   private final OsFamily os;
   private final ProcessRunner runner;
+  private final Optional<ServiceController> services;
 
   public FakePlatform(OsFamily os) {
     this(os, new FakeRunner());
   }
 
   public FakePlatform(OsFamily os, ProcessRunner runner) {
+    this(os, runner, Optional.empty());
+  }
+
+  public FakePlatform(OsFamily os, ProcessRunner runner, ServiceController services) {
+    this(os, runner, Optional.of(services));
+  }
+
+  private FakePlatform(OsFamily os, ProcessRunner runner, Optional<ServiceController> services) {
     this.os = os;
     this.runner = runner;
+    this.services = services;
   }
 
   @Override
@@ -46,7 +56,8 @@ public final class FakePlatform implements Platform {
 
   @Override
   public ServiceController services(ServiceConfig cfg) {
-    throw new UnsupportedOperationException("no services in FakePlatform");
+    return services.orElseThrow(
+        () -> new UnsupportedOperationException("no services in FakePlatform"));
   }
 
   @Override
