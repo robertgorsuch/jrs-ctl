@@ -36,7 +36,7 @@ final class SmokeCommand implements Callable<Integer> {
   public Integer call() {
     PrintWriter out = spec.commandLine().getOut();
     Redactor redactor = Redactor.global();
-    try (Bootstrap boot = Bootstrap.open(global, System.getenv(), Clock.systemUTC())) {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       SmokeReport report = new SmokeOperation(boot.services()).run(new SmokeOptions(mutating));
       if (global.json()) {
         out.println(redactor.redact(JsonOut.write(report)));
@@ -46,7 +46,7 @@ final class SmokeCommand implements Callable<Integer> {
             out,
             report.items(),
             report.counts(),
-            Ansi.forStdout(global.noColor(), System.getenv()),
+            Ansi.forStdout(global.noColor(), Env.vars()),
             redactor);
       }
       return report.exitCode();

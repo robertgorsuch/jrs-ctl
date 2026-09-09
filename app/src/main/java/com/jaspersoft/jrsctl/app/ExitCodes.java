@@ -27,6 +27,19 @@ public final class ExitCodes {
   private ExitCodes() {}
 
   /**
+   * Reports a failure raised while planning or verifying, before anything was mutated: the message
+   * is redacted and printed to {@code err}, and the code is {@link Handler#codeFor} except that the
+   * catch-all 4 becomes 2 because nothing has changed yet.
+   */
+  static int reportPlanningFailure(java.io.PrintWriter err, RuntimeException e) {
+    String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    err.println(Redactor.global().redact("error: " + message));
+    err.flush();
+    int code = Handler.codeFor(e);
+    return code == FAILED_ROLLBACK_INCOMPLETE ? PRECHECK_FAILED : code;
+  }
+
+  /**
    * Maps uncaught exceptions to an exit code: configuration, secret and reachability problems are
    * precheck failures (2, nothing mutated), a held run lock is 9, an unsupported version 6, and
    * every other unexpected exception is reported as rollback-incomplete (4) so nothing is silently

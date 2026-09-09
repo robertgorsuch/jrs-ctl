@@ -37,7 +37,7 @@ final class DoctorCommand implements Callable<Integer> {
   public Integer call() {
     PrintWriter out = spec.commandLine().getOut();
     Redactor redactor = Redactor.global();
-    try (Bootstrap boot = Bootstrap.open(global, System.getenv(), Clock.systemUTC())) {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       DoctorReport report =
           new DoctorOperation(boot.services()).run(new DoctorOptions(allowUnsupported));
       if (global.json()) {
@@ -48,7 +48,7 @@ final class DoctorCommand implements Callable<Integer> {
             out,
             report.items(),
             report.counts(),
-            Ansi.forStdout(global.noColor(), System.getenv()),
+            Ansi.forStdout(global.noColor(), Env.vars()),
             redactor);
       }
       return report.exitCode();
