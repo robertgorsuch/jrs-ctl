@@ -146,6 +146,41 @@ class RestStrategyImportTest {
   }
 
   @Test
+  void should_pass_verify_when_server_purges_task_after_poll_observed_ready() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-1\",\"phase\":\"inprogress\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-1/state")))
+            .inScenario("purge")
+            .whenScenarioStateIs(com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED)
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"ready\"}"))
+            .willSetStateTo("purged"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-1/state")))
+            .inScenario("purge")
+            .whenScenarioStateIs("purged")
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withBody(
+                        "{\"message\":\"No export task with id imp-1.\","
+                            + "\"errorCode\":\"no.such.export.process\"}")));
+    List<Step> steps = new RestStrategy(fx.polling).importSteps(request(Optional.empty()));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(fx.journal())
+        .contains("import.start:SUCCEEDED", "import.poll:SUCCEEDED", "import.verify:SUCCEEDED");
+  }
+
+  @Test
   void should_include_source_keystore_step_only_when_request_names_one() throws IOException {
     Path source = tmp.resolve("source.jrsks");
     Files.writeString(source, "ks");

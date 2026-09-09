@@ -78,6 +78,11 @@ final class VerifyImport implements Step {
     } catch (JrsUnreachableException e) {
       return CheckResult.fail("server unreachable: " + e.getMessage(), e.remediation());
     } catch (RestException e) {
+      if (e.status() == 404) {
+        // import.poll already observed READY; the server has since purged the finished task,
+        // which answers the same question a fresh READY would (spec §7.3).
+        return CheckResult.pass();
+      }
       return CheckResult.fail(
           "cannot query import " + id.get() + ": " + e.getMessage(),
           "check the server log and verify the repository by hand");
