@@ -1,0 +1,70 @@
+/* jrsctl console brand tokens — Actian Jaspersoft.
+   Replacing this file rebrands the console; nothing else references colour literals.
+   Values marked provisional await the official brand guide (docs/branding.md). */
+
+:root {
+  --brand-navy: #0B1F3A;      /* provisional */
+  --brand-blue: #1F5EFF;      /* provisional */
+  --brand-blue-ink: #143FB0;  /* provisional */
+  --brand-sky: #DCE6FF;       /* provisional */
+
+  --paper: #F4F6F9;
+  --surface: #FFFFFF;
+  --ink: #16202C;
+  --ink-2: #4B5A6B;
+  --ink-3: #7D8A99;
+  --rule: #D6DDE6;
+  --mono-bg: #EAEEF3;
+
+  --ok: #177A5B;
+  --ok-wash: #E1F2EA;
+  --warn: #A05E0A;
+  --warn-wash: #F8EEDD;
+  --fail: #B23A2E;
+  --fail-wash: #F8E4E1;
+
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+
+  --radius: 4px;
+  --nav-width: 216px;
+  --topbar-height: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand-sky: #1A2A4A;
+    --paper: #121924;
+    --surface: #1A2330;
+    --ink: #E6EBF1;
+    --ink-2: #B3BECB;
+    --ink-3: #7F8B99;
+    --rule: #2B3644;
+    --mono-bg: #222D3B;
+    --brand-blue-ink: #8FB0FF;
+    --ok: #4CC49A;
+    --ok-wash: #163327;
+    --warn: #E0A24A;
+    --warn-wash: #33270F;
+    --fail: #E27A6C;
+    --fail-wash: #3A1C18;
+  }
+}
+
+:root[data-theme="dark"] {
+  --brand-sky: #1A2A4A;
+  --paper: #121924;
+  --surface: #1A2330;
+  --ink: #E6EBF1;
+  --ink-2: #B3BECB;
+  --ink-3: #7F8B99;
+  --rule: #2B3644;
+  --mono-bg: #222D3B;
+  --brand-blue-ink: #8FB0FF;
+  --ok: #4CC49A;
+  --ok-wash: #163327;
+  --warn: #E0A24A;
+  --warn-wash: #33270F;
+  --fail: #E27A6C;
+  --fail-wash: #3A1C18;
+}
