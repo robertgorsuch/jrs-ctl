@@ -2,14 +2,19 @@ package com.jaspersoft.jrsctl.app;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.RunIds;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.state.LockHeldException;
+import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.core.state.Transition;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,19 +36,25 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 
 /**
- * {@code jrsctl runs list|show|recover} (spec §5.5, §6.6). Invariants: {@code list} and {@code
- * show} read the journal only; {@code recover} rebuilds the pending run's plan from its stored
- * arguments through {@link PlanRegistry} (never from the serialised plan, which cannot carry step
- * code) and then resumes or rolls back through {@link PlanExecutor}, so it holds the run lock and
- * journals every transition; a run that is not pending, has no stored plan, or whose plan cannot be
- * rebuilt exits 2 without touching anything.
+ * {@code jrsctl runs list|show|recover|prune} (spec §5.5, §5.6, §6.6). Invariants: {@code list} and
+ * {@code show} read the journal only; {@code recover} rebuilds the pending run's plan from its
+ * stored arguments through {@link PlanRegistry} (never from the serialised plan, which cannot carry
+ * step code) and then resumes or rolls back through {@link PlanExecutor}, so it holds the run lock
+ * and journals every transition; a run that is not pending, has no stored plan, or whose plan
+ * cannot be rebuilt exits 2 without touching anything; {@code prune} holds the run lock while it
+ * removes snapshots (exit 9 when a run holds it) and {@code --dry-run} changes nothing.
  */
 @Command(
     name = "runs",
     mixinStandardHelpOptions = true,
     exitCodeOnInvalidInput = ExitCodes.USAGE,
     description = "Inspect past runs and recover interrupted ones.",
-    subcommands = {RunsCommand.ListRuns.class, RunsCommand.Show.class, RunsCommand.Recover.class})
+    subcommands = {
+      RunsCommand.ListRuns.class,
+      RunsCommand.Show.class,
+      RunsCommand.Recover.class,
+      RunsCommand.Prune.class
+    })
 final class RunsCommand implements Runnable {
 
   @Spec CommandSpec spec;
@@ -334,6 +345,109 @@ final class RunsCommand implements Runnable {
         PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
         return executor.recover(runId, plan, mode.resume);
       }
+    }
+  }
+
+  /**
+   * {@code jrsctl runs prune [--dry-run] [--json]} (spec §5.6): retention pruning per {@code
+   * backups.retentionDays} and {@code backups.maxSnapshots}; snapshots of an installed hotfix, a
+   * registered customization, the most recent successful upgrade or a pending run are never
+   * removed. JSON shape: {@code {"dryRun":bool,"removed":[{"id","runId","stepId","path"}],"kept":n,
+   * "protected":n}}.
+   */
+  @Command(
+      name = "prune",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "Remove snapshots beyond backups.retentionDays / backups.maxSnapshots;"
+              + " referenced snapshots are always kept.")
+  static final class Prune implements Callable<Integer> {
+
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Option(names = "--dry-run", description = "List what would be removed and change nothing.")
+    boolean dryRun;
+
+    @Override
+    public Integer call() throws IOException {
+      PrintWriter out = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      Redactor redactor = Redactor.global();
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        Services services = boot.services();
+        RetentionPruner pruner = RetentionPruner.of(services);
+        RetentionPruner.Result result;
+        if (dryRun) {
+          result = pruner.prune(true);
+        } else {
+          String lockId = "prune-" + RunIds.next(services.clock());
+          try (RunLock unusedLock =
+              new RunLock(services.home(), lockId, services.clock().instant())) {
+            result = pruner.prune(false);
+          } catch (LockHeldException held) {
+            err.println(
+                redactor.redact(
+                    "error: run lock is held by run "
+                        + held.holderRunId()
+                        + " (pid "
+                        + held.holderPid()
+                        + "); wait for it to finish or check `jrsctl runs list`"));
+            err.flush();
+            return ExitCodes.LOCK_HELD;
+          }
+        }
+        if (global.json()) {
+          out.println(redactor.redact(JsonOut.write(tree(result))));
+          out.flush();
+          return ExitCodes.SUCCESS;
+        }
+        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        List<String> lines = new ArrayList<>();
+        if (!result.removed().isEmpty()) {
+          TextTable table = new TextTable();
+          table.row(ansi.dim("SNAPSHOT"), ansi.dim("RUN"), ansi.dim("STEP"), ansi.dim("PATH"));
+          for (RetentionPruner.Removed r : result.removed()) {
+            table.row(r.id(), r.runId(), r.stepId(), r.path().toString());
+          }
+          lines.addAll(table.lines());
+        }
+        String verb = result.dryRun() ? "would remove " : "removed ";
+        lines.add(
+            (result.removed().isEmpty() ? "nothing to prune" : verb + result.removed().size())
+                + (result.removed().isEmpty() ? "" : " snapshot(s)")
+                + "; "
+                + (result.dryRun() ? "keeping " : "kept ")
+                + result.kept()
+                + " ("
+                + result.protectedCount()
+                + " protected)"
+                + (result.dryRun() ? "  [dry run, nothing has changed]" : ""));
+        for (String line : lines) {
+          out.println(redactor.redact(line));
+        }
+        out.flush();
+        return ExitCodes.SUCCESS;
+      }
+    }
+
+    static Map<String, Object> tree(RetentionPruner.Result result) {
+      Map<String, Object> root = new LinkedHashMap<>();
+      root.put("dryRun", result.dryRun());
+      List<Map<String, Object>> removed = new ArrayList<>();
+      for (RetentionPruner.Removed r : result.removed()) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", r.id());
+        m.put("runId", r.runId());
+        m.put("stepId", r.stepId());
+        m.put("path", r.path().toString());
+        removed.add(m);
+      }
+      root.put("removed", removed);
+      root.put("kept", result.kept());
+      root.put("protected", result.protectedCount());
+      return root;
     }
   }
 }

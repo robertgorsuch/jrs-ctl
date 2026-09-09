@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.PrintWriter;
 import java.time.Duration;
 import java.util.List;
@@ -219,6 +220,10 @@ final class PlanExecutor {
       return ExitCodes.CANCELLED;
     }
     renderer.outcome(ctx.runId(), outcome);
+    if (outcome instanceof RunOutcome.Succeeded) {
+      // best effort, never changes the exit code; the run's own snapshots are protected explicitly
+      RetentionPruner.of(services).afterSuccessfulRun(ctx.runId());
+    }
     return outcome.exitCode();
   }
 
