@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Portable archive of the finished image directory (ADR-0003, ADR-0008).
+  Format and id come from the OS profiles in dist/pom.xml: zip / windows-x64 on Windows,
+  tar.gz / linux-x64 elsewhere. The archive unpacks into one directory, jrsctl-<version>/.
+  File modes matter only for tar.gz: the POSIX launcher and the runtime's executables get 0755,
+  everything else 0644, so `tar xzf` yields a runnable tree without a chmod.
+-->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+  <id>${dist.platform}</id>
+  <formats>
+    <format>${dist.archive.ext}</format>
+  </formats>
+  <includeBaseDirectory>true</includeBaseDirectory>
+  <baseDirectory>jrsctl-${project.version}</baseDirectory>
+  <fileSets>
+    <fileSet>
+      <directory>${dist.image.dir}</directory>
+      <outputDirectory>/</outputDirectory>
+      <fileMode>0755</fileMode>
+      <directoryMode>0755</directoryMode>
+      <includes>
+        <include>bin/jrsctl</include>
+        <include>runtime/bin/*</include>
+        <include>runtime/lib/jspawnhelper</include>
+        <include>runtime/lib/jexec</include>
+      </includes>
+    </fileSet>
+    <fileSet>
+      <directory>${dist.image.dir}</directory>
+      <outputDirectory>/</outputDirectory>
+      <fileMode>0644</fileMode>
+      <directoryMode>0755</directoryMode>
+      <excludes>
+        <exclude>bin/jrsctl</exclude>
+        <exclude>runtime/bin/*</exclude>
+        <exclude>runtime/lib/jspawnhelper</exclude>
+        <exclude>runtime/lib/jexec</exclude>
+      </excludes>
+    </fileSet>
+  </fileSets>
+</assembly>

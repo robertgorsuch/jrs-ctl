@@ -1,0 +1,2 @@
+# The POSIX launcher must stay LF whatever core.autocrlf says (ImageLayout normalises it again at build time).
+src/image/bin/jrsctl text eol=lf

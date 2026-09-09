@@ -16,6 +16,33 @@ Everything the tool stores lives under one directory, the **jrsctl home** (`--ho
 | `secrets.enc` | AES-GCM encrypted secrets referenced as `enc:NAME` |
 | `logs/jrsctl.log` | JSON log of every invocation |
 
+## Installing (portable archive, Phase 7)
+
+jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-<version>-windows-x64.zip` and `jrsctl-<version>-linux-x64.tar.gz`, each with a `.sha256` sidecar, an SBOM (`jrsctl-<version>-sbom.json`) and, on releases, `.sig` signatures. The archive contains the application and its own trimmed Java 21 runtime; **no JDK, no `JAVA_HOME` and no PATH change are needed on the host**, and nothing is written outside the unpack directory and the jrsctl home.
+
+1. **Verify the download** against the sidecar before unpacking:
+   - Windows: `certutil -hashfile jrsctl-<version>-windows-x64.zip SHA256` and compare with the first field of `jrsctl-<version>-windows-x64.zip.sha256`, or in PowerShell `(Get-FileHash jrsctl-<version>-windows-x64.zip).Hash`.
+   - Linux: `sha256sum -c jrsctl-<version>-linux-x64.tar.gz.sha256`.
+   - Releases also carry `<file>.sig`: a Base64 Ed25519 signature by the Jaspersoft publisher key (the key bundled with the tool and shown by `jrsctl keys list`), verifiable with the JDK's `Ed25519` provider or any Ed25519 tool.
+2. **Unpack anywhere** the operating user may read, on the JasperReports Server host (jrsctl does not run remotely):
+   - Windows: right-click → Extract All, or `tar -xf jrsctl-<version>-windows-x64.zip` (Windows 10+ ships `tar`). For example into `C:\Jaspersoft\jrsctl-<version>\`.
+   - Linux: `tar -xzf jrsctl-<version>-linux-x64.tar.gz -C /opt`. The launcher and the runtime binaries come out executable; no `chmod` is needed.
+   The archive unpacks into a single directory `jrsctl-<version>/`:
+
+   | Path | Purpose |
+   |---|---|
+   | `bin\jrsctl.cmd` / `bin/jrsctl` | the launcher; every command in this guide is `bin\jrsctl.cmd <command>` (Windows) or `bin/jrsctl <command>` (Linux) |
+   | `lib/jrsctl.jar` | the application |
+   | `runtime/` | the bundled Java runtime, used only by jrsctl (it is not a JDK and has no `javac`) |
+   | `README.txt`, `LICENSE-THIRD-PARTY.txt` | quick start and the licences of the bundled components |
+   | `MANIFEST.sha256` | SHA-256 of every file in the directory; `sha256sum -c MANIFEST.sha256` (Linux) verifies the unpacked tree, and `selfcheck` will do the same from Phase 8 on |
+
+3. **Run it**: `bin\jrsctl.cmd --version`, then `bin\jrsctl.cmd selfcheck`, then `bin\jrsctl.cmd init --install-dir <JRS install dir>` and `bin\jrsctl.cmd doctor`. Run as a user that may stop and start the server service (see "Least privilege" in `docs/security.md`). Adding `bin\` to `PATH` is optional; the launcher locates its own runtime and jar relative to itself and works through symlinks on Linux.
+4. **Choose the jrsctl home.** Everything jrsctl stores (configuration, run journal, snapshots, keys, secrets, logs) lives under the home directory described below: `--home <dir>`, else `$JRSCTL_HOME` / `%JRSCTL_HOME%`, else the platform default. Set `JRSCTL_HOME` system-wide (or in the service account's profile) when several operators share one installation, so they share one journal and one run lock. The unpack directory itself is never written to; you can place it on a read-only share.
+5. **Upgrading jrsctl**: unpack the new version next to the old one and point at it; the home directory (and its `state.db`) is version-independent, and `selfcheck` reports the state schema version. Remove the old directory once the new one passes `selfcheck` and `doctor`.
+
+`JRSCTL_JAVA_OPTS` passes extra options to the bundled JVM when needed (proxy settings such as `-Dhttps.proxyHost=...`, an extra truststore with `-Djavax.net.ssl.trustStore=...`, or a heap limit). The runtime has no `jdk.localedata`, so output uses English formatting whatever the OS locale.
+
 ## Global flags
 
 Every command accepts these flags, before or after the command name.
