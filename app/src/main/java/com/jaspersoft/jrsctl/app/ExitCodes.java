@@ -1,5 +1,11 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
+import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.state.LockHeldException;
+import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import picocli.CommandLine;
 import picocli.CommandLine.IExecutionExceptionHandler;
 import picocli.CommandLine.ParseResult;
@@ -21,13 +27,36 @@ public final class ExitCodes {
   private ExitCodes() {}
 
   /**
-   * Maps uncaught exceptions to an exit code. Until the engine lands (Phase 1) every unexpected
-   * exception is a rollback-incomplete failure so that nothing is silently reported as success.
+   * Maps uncaught exceptions to an exit code: configuration, secret and reachability problems are
+   * precheck failures (2, nothing mutated), a held run lock is 9, an unsupported version 6, and
+   * every other unexpected exception is reported as rollback-incomplete (4) so nothing is silently
+   * reported as success. The message is redacted before it is printed.
    */
   static final class Handler implements IExecutionExceptionHandler {
     @Override
     public int handleExecutionException(Exception ex, CommandLine cmd, ParseResult parseResult) {
-      cmd.getErr().println(cmd.getColorScheme().errorText("error: " + ex.getMessage()));
+      String message = Redactor.global().redact("error: " + ex.getMessage());
+      cmd.getErr().println(cmd.getColorScheme().errorText(message));
+      cmd.getErr().flush();
+      return codeFor(ex);
+    }
+
+    static int codeFor(Throwable ex) {
+      if (ex instanceof ConfigException) {
+        return PRECHECK_FAILED;
+      }
+      if (ex instanceof JrsUnreachableException) {
+        return PRECHECK_FAILED;
+      }
+      if (ex instanceof SecretException) {
+        return PRECHECK_FAILED;
+      }
+      if (ex instanceof LockHeldException) {
+        return LOCK_HELD;
+      }
+      if (ex instanceof UnsupportedVersionException) {
+        return UNSUPPORTED;
+      }
       return FAILED_ROLLBACK_INCOMPLETE;
     }
   }
