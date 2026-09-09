@@ -14,3 +14,12 @@ hs_err_pid*
 
 # agent worktrees live inside the repo dir
 .claude/worktrees/
+
+# live-server scratch home: config.yaml and state.db are tracked, run artifacts are not
+/tmp-real-home/runs/
+/tmp-real-home/runs.lock
+/tmp-real-home/keys/
+/tmp-real-home/logs/
+/tmp-real-home/snapshots/
+/tmp-real-home/state.db-wal
+/tmp-real-home/state.db-shm
