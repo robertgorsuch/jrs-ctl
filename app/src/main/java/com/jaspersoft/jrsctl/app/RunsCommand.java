@@ -174,9 +174,13 @@ final class RunsCommand implements Runnable {
         StateStore store = services.stateStore().get();
         Optional<RunRecord> found = store.run(runId);
         if (found.isEmpty()) {
-          err.println("error: unknown run " + runId + "; see `jrsctl runs list`");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "unknown run " + runId,
+              Optional.of("see `jrsctl runs list`"));
         }
         RunRecord run = found.get();
         Optional<StoredPlan> plan = run.planId().flatMap(store::loadPlan);
@@ -292,31 +296,37 @@ final class RunsCommand implements Runnable {
         StateStore store = services.stateStore().get();
         Optional<RunRecord> found = store.run(runId);
         if (found.isEmpty()) {
-          err.println("error: unknown run " + runId + "; see `jrsctl runs list`");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "unknown run " + runId,
+              Optional.of("see `jrsctl runs list`"));
         }
         RunRecord run = found.get();
         if (!run.pending()) {
-          err.println(
-              "error: run "
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "run "
                   + runId
                   + " already ended with state "
-                  + run.terminalState().map(Enum::name).orElse("?")
-                  + "; nothing to recover");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+                  + run.terminalState().map(Enum::name).orElse("?"),
+              Optional.of("nothing to recover"));
         }
         Optional<StoredPlan> stored = run.planId().flatMap(store::loadPlan);
         if (stored.isEmpty()) {
-          err.println(
-              "error: run "
-                  + runId
-                  + " has no stored plan; restore the backups listed by `jrsctl runs show "
-                  + runId
-                  + "` manually");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "run " + runId + " has no stored plan",
+              Optional.of(
+                  "restore the backups listed by `jrsctl runs show " + runId + "` manually"));
         }
         Plan plan;
         try {
@@ -327,7 +337,7 @@ final class RunsCommand implements Runnable {
                   () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services));
           plan = registry.rebuild(stored.get().operation(), stored.get().argsJson());
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         store.audit(
             "operator", "runs.recover", runId + (mode.resume ? " --resume" : " --rollback"));

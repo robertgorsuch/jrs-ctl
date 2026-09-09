@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/keys-generate.schema.json",
+  "title": "jrsctl keys generate --json (spec §11.1); the private key itself is never printed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "fingerprint", "privateKeyFile", "keyRef"],
+  "properties": {
+    "name": { "type": "string" },
+    "fingerprint": { "type": "string" },
+    "privateKeyFile": { "type": "string", "description": "Owner-only file holding the base64 PKCS#8 private key." },
+    "keyRef": { "type": "string", "pattern": "^file:", "description": "The --key reference for hotfix build." }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/hotfix-verify.schema.json",
+  "title": "jrsctl hotfix verify --json (spec §8.4, ops.hotfix.HotfixOperations.VerifyReport)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "signatureValid",
+    "signedBy",
+    "hashesValid",
+    "hashProblems",
+    "applicable",
+    "applicabilityProblems",
+    "manifestId",
+    "title"
+  ],
+  "properties": {
+    "signatureValid": { "type": "boolean" },
+    "signedBy": { "type": ["string", "null"] },
+    "hashesValid": { "type": "boolean" },
+    "hashProblems": { "type": "array", "items": { "type": "string" } },
+    "applicable": { "type": "boolean" },
+    "applicabilityProblems": { "type": "array", "items": { "type": "string" } },
+    "manifestId": { "type": "string" },
+    "title": { "type": "string" }
+  }
+}

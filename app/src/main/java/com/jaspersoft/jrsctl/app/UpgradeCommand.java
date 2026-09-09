@@ -9,6 +9,8 @@ import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -87,22 +89,22 @@ final class UpgradeCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     PrintWriter err = spec.commandLine().getErr();
     if (to == null || to.isBlank() || packageDir == null) {
-      err.println("error: --to <version> and --package <dir> are required");
-      err.flush();
-      return ExitCodes.USAGE;
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--to <version> and --package <dir> are required");
     }
     UpgradeOperations.Mode parsed;
     try {
       parsed = UpgradeOperations.Mode.valueOf(mode.strip().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
-      err.println("error: --mode must be newdb or samedb");
-      err.flush();
-      return ExitCodes.USAGE;
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.USAGE, "--mode must be newdb or samedb");
     }
     if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed) {
-      err.println("error: " + gateMessage());
-      err.flush();
-      return ExitCodes.PRECHECK_FAILED;
+      return ExitCodes.fail(out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage());
     }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
@@ -113,9 +115,9 @@ final class UpgradeCommand implements Callable<Integer> {
       try {
         planned = new DefaultUpgradeOperations(services).planUpgrade(options);
       } catch (UpgradeException e) {
-        return report(err, e);
+        return report(out, err, global.json(), e);
       } catch (RuntimeException e) {
-        return ExitCodes.reportPlanningFailure(err, e);
+        return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
       }
       PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
       return executor.execute(
@@ -129,12 +131,16 @@ final class UpgradeCommand implements Callable<Integer> {
         + " back up the database yourself and pass --db-backup-confirmed";
   }
 
-  static int report(PrintWriter err, UpgradeException e) {
-    err.println(
-        com.jaspersoft.jrsctl.core.redact.Redactor.global()
-            .redact("error: " + e.getMessage() + "; " + e.remediation()));
-    err.flush();
-    return e.exitCode();
+  static int report(PrintWriter out, PrintWriter err, boolean json, UpgradeException e) {
+    return ExitCodes.fail(
+        out,
+        err,
+        json,
+        e.exitCode(),
+        e.getClass().getSimpleName(),
+        e.getMessage(),
+        Optional.of(e.remediation()),
+        Map.of());
   }
 
   @Command(
@@ -169,9 +175,8 @@ final class UpgradeCommand implements Callable<Integer> {
       try {
         parsed = UpgradeOperations.RollbackPoint.valueOf(point.strip().toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException e) {
-        err.println("error: --to-point must be B or C");
-        err.flush();
-        return ExitCodes.USAGE;
+        return ExitCodes.fail(
+            out, err, global.json(), ExitCodes.USAGE, "--to-point must be B or C");
       }
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Services services = boot.services();
@@ -179,9 +184,9 @@ final class UpgradeCommand implements Callable<Integer> {
         try {
           planned = new DefaultUpgradeOperations(services).planRollback(runId, parsed);
         } catch (UpgradeException e) {
-          return report(err, e);
+          return report(out, err, global.json(), e);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
         return executor.execute(

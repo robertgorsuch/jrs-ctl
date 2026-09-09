@@ -50,8 +50,7 @@ class InitCommandTest {
   static Run run(String... args) {
     StringWriter out = new StringWriter();
     StringWriter err = new StringWriter();
-    CommandLine cmd =
-        new CommandLine(new JrsctlCommand()).setExecutionExceptionHandler(new ExitCodes.Handler());
+    CommandLine cmd = Main.commandLine();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
     int code = cmd.execute(args);

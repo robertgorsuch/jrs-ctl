@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -51,10 +52,16 @@ final class CustomizationsCommand implements Runnable {
     return new DefaultCustomizationOperations(services);
   }
 
-  static int refused(PrintWriter err, CustomizationException e) {
-    err.println(Redactor.global().redact("error: " + e.getMessage() + "; " + e.remediation()));
-    err.flush();
-    return ExitCodes.PRECHECK_FAILED;
+  static int refused(PrintWriter out, PrintWriter err, boolean json, CustomizationException e) {
+    return ExitCodes.fail(
+        out,
+        err,
+        json,
+        ExitCodes.PRECHECK_FAILED,
+        e.getClass().getSimpleName(),
+        e.getMessage(),
+        Optional.of(e.remediation()),
+        Map.of());
   }
 
   @Command(
@@ -85,14 +92,14 @@ final class CustomizationsCommand implements Runnable {
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Customization c;
         try {
-          c = open(boot.services()).register(path, java.util.Optional.ofNullable(original));
+          c = open(boot.services()).register(path, Optional.ofNullable(original));
         } catch (CustomizationException e) {
-          return refused(err, e);
+          return refused(out, err, global.json(), e);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (global.json()) {
-          out.println(Redactor.global().redact(JsonOut.write(row(c))));
+          JsonOut.print(out, row(c));
         } else {
           out.println(
               Redactor.global()
@@ -126,17 +133,23 @@ final class CustomizationsCommand implements Runnable {
         try {
           removed = open(boot.services()).unregister(path);
         } catch (CustomizationException e) {
-          return refused(err, e);
+          return refused(out, err, global.json(), e);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (!removed) {
-          err.println(Redactor.global().redact("error: " + path + " is not registered"));
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out, err, global.json(), ExitCodes.PRECHECK_FAILED, path + " is not registered");
         }
-        out.println(Redactor.global().redact("unregistered " + path));
-        out.flush();
+        if (global.json()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("path", path.toString());
+          row.put("unregistered", true);
+          JsonOut.print(out, row);
+        } else {
+          out.println(Redactor.global().redact("unregistered " + path));
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -160,7 +173,8 @@ final class CustomizationsCommand implements Runnable {
         try {
           all = open(boot.services()).list();
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(spec.commandLine().getErr(), e);
+          return ExitCodes.reportPlanningFailure(
+              out, spec.commandLine().getErr(), global.json(), e);
         }
         if (global.json()) {
           List<Map<String, Object>> rows = new ArrayList<>();
@@ -217,9 +231,9 @@ final class CustomizationsCommand implements Runnable {
         try {
           diff = open(boot.services()).diff(path);
         } catch (CustomizationException e) {
-          return refused(err, e);
+          return refused(out, err, global.json(), e);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (global.json()) {
           Map<String, Object> tree = new LinkedHashMap<>();

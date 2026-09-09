@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -78,8 +79,7 @@ final class KeysCommand implements Runnable {
             row.put("publicKey", Ed25519.encodePublic(k.key()));
             rows.add(row);
           }
-          out.println(JsonOut.write(rows));
-          out.flush();
+          JsonOut.print(out, rows);
           return ExitCodes.SUCCESS;
         }
         if (keys.isEmpty()) {
@@ -127,22 +127,30 @@ final class KeysCommand implements Runnable {
         try {
           key = Ed25519.decodePublic(Files.readString(file, StandardCharsets.US_ASCII));
         } catch (IllegalArgumentException e) {
-          err.println("error: " + file + " is not an Ed25519 public key (" + e.getMessage() + ")");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              file + " is not an Ed25519 public key (" + e.getMessage() + ")");
         }
         KeyRing ring = new KeyRing(services.home());
         KeyRing.TrustedKey added;
         try {
           added = ring.add(name, key);
         } catch (IllegalArgumentException e) {
-          err.println("error: " + e.getMessage());
-          err.flush();
-          return ExitCodes.USAGE;
+          return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, e.getMessage());
         }
         services.stateStore().get().audit("operator", "keys.add", name + " " + added.fingerprint());
-        out.println("added key " + name + " (fingerprint " + added.fingerprint() + ")");
-        out.flush();
+        if (global.json()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("name", name);
+          row.put("fingerprint", added.fingerprint());
+          JsonOut.print(out, row);
+        } else {
+          out.println("added key " + name + " (fingerprint " + added.fingerprint() + ")");
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -172,18 +180,27 @@ final class KeysCommand implements Runnable {
         try {
           removed = new KeyRing(services.home()).remove(name);
         } catch (IllegalArgumentException e) {
-          err.println("error: " + e.getMessage());
-          err.flush();
-          return ExitCodes.USAGE;
+          return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, e.getMessage());
         }
         if (!removed) {
-          err.println("error: no trusted key named " + name + "; see `jrsctl keys list`");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "no trusted key named " + name,
+              Optional.of("see `jrsctl keys list`"));
         }
         services.stateStore().get().audit("operator", "keys.remove", name);
-        out.println("removed key " + name);
-        out.flush();
+        if (global.json()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("name", name);
+          row.put("removed", true);
+          JsonOut.print(out, row);
+        } else {
+          out.println("removed key " + name);
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -219,9 +236,13 @@ final class KeysCommand implements Runnable {
         Services services = boot.services();
         KeyRing ring = new KeyRing(services.home());
         if (ring.find(name).isPresent()) {
-          err.println("error: a trusted key named " + name + " already exists; remove it first");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "a trusted key named " + name + " already exists",
+              Optional.of("remove it first"));
         }
         KeyPair pair = Ed25519.generate();
         Path target = privateOut.toAbsolutePath().normalize();
@@ -229,15 +250,27 @@ final class KeysCommand implements Runnable {
           OwnerOnlyFiles.write(
               services.platform(), target, Ed25519.encodePrivate(pair.getPrivate()) + "\n");
         } catch (FileAlreadyExistsException e) {
-          err.println("error: " + target + " already exists; refusing to overwrite a private key");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              target + " already exists; refusing to overwrite a private key");
         }
         KeyRing.TrustedKey added = ring.add(name, pair.getPublic());
         services
             .stateStore()
             .get()
             .audit("operator", "keys.generate", name + " " + added.fingerprint());
+        if (global.json()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("name", name);
+          row.put("fingerprint", added.fingerprint());
+          row.put("privateKeyFile", target.toString());
+          row.put("keyRef", "file:" + target);
+          JsonOut.print(out, row);
+          return ExitCodes.SUCCESS;
+        }
         out.println(
             Redactor.global()
                 .redact("generated key " + name + " (fingerprint " + added.fingerprint() + ")"));

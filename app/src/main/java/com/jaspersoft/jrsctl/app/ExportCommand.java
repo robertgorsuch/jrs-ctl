@@ -88,9 +88,7 @@ final class ExportCommand implements Callable<Integer> {
     try {
       kind = StrategyFlag.parse(strategy);
     } catch (IllegalArgumentException e) {
-      err.println("error: " + e.getMessage());
-      err.flush();
-      return ExitCodes.USAGE;
+      return ExitCodes.fail(outWriter, err, global.json(), ExitCodes.USAGE, e.getMessage());
     }
     ExportImportOperations.ExportOptions options =
         new ExportImportOperations.ExportOptions(
@@ -109,7 +107,7 @@ final class ExportCommand implements Callable<Integer> {
       try {
         planned = EximOps.open(services).planExport(options);
       } catch (RuntimeException e) {
-        return ExitCodes.reportPlanningFailure(err, e);
+        return ExitCodes.reportPlanningFailure(outWriter, err, global.json(), e);
       }
       PlanExecutor executor = new PlanExecutor(services, global, outWriter, err, Env.vars());
       return executor.execute(

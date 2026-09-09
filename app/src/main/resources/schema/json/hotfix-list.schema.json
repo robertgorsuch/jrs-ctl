@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/hotfix-list.schema.json",
+  "title": "jrsctl hotfix list --json (spec §8.4)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "title", "version", "installedAt", "installedRunId", "files", "state", "snapshotRef"],
+    "properties": {
+      "id": { "type": "string" },
+      "title": { "type": "string" },
+      "version": { "type": "string" },
+      "installedAt": { "type": "string", "format": "date-time" },
+      "installedRunId": { "type": "string" },
+      "files": { "type": "integer", "minimum": 0 },
+      "state": { "type": "string", "enum": ["INSTALLED", "ROLLED_BACK", "SUPERSEDED"] },
+      "snapshotRef": { "type": ["string", "null"] }
+    }
+  }
+}
