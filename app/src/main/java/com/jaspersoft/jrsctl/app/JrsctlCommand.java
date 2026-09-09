@@ -7,7 +7,7 @@ import picocli.CommandLine.IVersionProvider;
 /**
  * Root command. Subcommands are added phase by phase; each one is a thin adapter from flags to an
  * operation in {@code ops}. Invariant: no subcommand mutates the server or filesystem outside a
- * {@code Plan} (spec §0 rule 4).
+ * {@code Plan} (spec §0 rule 4); {@code init} writes only {@code config.yaml} after confirmation.
  */
 @Command(
     name = "jrsctl",
@@ -18,7 +18,13 @@ import picocli.CommandLine.IVersionProvider;
     exitCodeOnExecutionException = ExitCodes.FAILED_ROLLBACK_INCOMPLETE,
     description =
         "Apply hotfixes, export and import repository content, and upgrade JasperReports Server safely.",
-    subcommands = {SelfCheckCommand.class})
+    subcommands = {
+      SelfCheckCommand.class,
+      InitCommand.class,
+      DoctorCommand.class,
+      SmokeCommand.class,
+      ConfigCommand.class
+    })
 public final class JrsctlCommand implements Runnable {
 
   @Override
