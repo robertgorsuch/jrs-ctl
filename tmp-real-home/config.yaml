@@ -10,10 +10,11 @@ server:
     passwordRef: env:JRS_PASSWORD
 service:
   kind: windows-service
-  name: jasperreportsPostgreSQL
+  name: jasperreportsTomcat
   stopTimeoutSeconds: 180
 database:
   type: postgresql
+  url: jdbc:postgresql://127.0.0.1:5433/jasperserver
   username: postgres
   passwordRef: env:JRS_DB_PASSWORD
 vendor:
