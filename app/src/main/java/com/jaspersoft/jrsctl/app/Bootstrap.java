@@ -47,10 +47,12 @@ final class Bootstrap implements AutoCloseable {
 
   private final Services services;
   private final Lazy<StateStore> store;
+  private final EncryptedSecretStore secretStore;
 
-  private Bootstrap(Services services, Lazy<StateStore> store) {
+  private Bootstrap(Services services, Lazy<StateStore> store, EncryptedSecretStore secretStore) {
     this.services = services;
     this.store = store;
+    this.secretStore = secretStore;
   }
 
   static Bootstrap open(GlobalOptions options, Map<String, String> env, Clock clock) {
@@ -95,11 +97,18 @@ final class Bootstrap implements AutoCloseable {
             adapter,
             clock,
             interactive);
-    return new Bootstrap(services, store);
+    return new Bootstrap(services, store, secretStore);
   }
 
   Services services() {
     return services;
+  }
+
+  /**
+   * The {@code secrets.enc} store behind every {@code enc:} reference, with the passphrase chain.
+   */
+  EncryptedSecretStore secretStore() {
+    return secretStore;
   }
 
   @Override

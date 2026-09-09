@@ -50,7 +50,7 @@ final class InitCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     PrintWriter err = spec.commandLine().getErr();
     Redactor redactor = Redactor.global();
-    try (Bootstrap boot = Bootstrap.open(global, System.getenv(), Clock.systemUTC())) {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       InitOperation op = new InitOperation(boot.services());
       InitReport report = op.detect(Optional.ofNullable(installDir));
       Config config = op.toConfig(report);
@@ -66,9 +66,7 @@ final class InitCommand implements Callable<Integer> {
         TextTable table = new TextTable();
         for (InitReport.Detected d : report.values()) {
           table.row(
-              d.key(),
-              d.value(),
-              Ansi.forStdout(global.noColor(), System.getenv()).dim(d.source()));
+              d.key(), d.value(), Ansi.forStdout(global.noColor(), Env.vars()).dim(d.source()));
         }
         for (String line : table.lines()) {
           out.println(redactor.redact(line));

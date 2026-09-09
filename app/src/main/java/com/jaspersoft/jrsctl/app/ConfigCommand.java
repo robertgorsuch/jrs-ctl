@@ -47,7 +47,7 @@ final class ConfigCommand implements Runnable {
     public Integer call() {
       PrintWriter out = spec.commandLine().getOut();
       Redactor redactor = Redactor.global();
-      try (Bootstrap boot = Bootstrap.open(global, System.getenv(), Clock.systemUTC())) {
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Config config = boot.services().config();
         String text =
             global.json() ? JsonOut.write(ConfigWriter.toTree(config)) : ConfigShow.render(config);
