@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -17,6 +18,8 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Restores rollback point B (spec §10.1): the webapp and buildomatic directories from their
@@ -28,6 +31,10 @@ import java.util.Optional;
  * touched.
  */
 final class PointB {
+
+  private static final Logger LOG = LoggerFactory.getLogger(PointB.class);
+  private static final int MOVE_RETRY_ATTEMPTS = 20;
+  private static final long MOVE_RETRY_DELAY_MS = 50;
 
   static final String ASIDE_DIR = "aside";
 
@@ -104,19 +111,59 @@ final class PointB {
   /** Renames a tree; falls back to a streaming copy plus delete across file stores. */
   static void moveTree(Path source, Path target) throws IOException {
     try {
-      Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+      moveRetrying(source, target, StandardCopyOption.ATOMIC_MOVE);
       return;
     } catch (AtomicMoveNotSupportedException | DirectoryNotEmptyException e) {
       // cross-volume: copy then delete
     }
     try {
-      Files.move(source, target);
+      moveRetrying(source, target);
       return;
     } catch (DirectoryNotEmptyException | UnsupportedOperationException e) {
       // cross-volume: copy then delete
     }
     copyTree(source, target);
     Archives.deleteRecursively(source);
+  }
+
+  /**
+   * Renames {@code source} to {@code target}, retrying a rename that fails with a transient {@link
+   * IOException} (typically Windows denying access to a directory for a moment after it was last
+   * written). {@link AtomicMoveNotSupportedException} and {@link DirectoryNotEmptyException} are
+   * structural, not transient, and are rethrown on their first occurrence so the caller can fall
+   * back to a cross-volume copy.
+   */
+  private static void moveRetrying(Path source, Path target, CopyOption... options)
+      throws IOException {
+    for (int attempt = 1; ; attempt++) {
+      try {
+        Files.move(source, target, options);
+        return;
+      } catch (AtomicMoveNotSupportedException | DirectoryNotEmptyException structural) {
+        throw structural;
+      } catch (IOException e) {
+        if (attempt >= MOVE_RETRY_ATTEMPTS || !sleepBeforeRetry()) {
+          throw e;
+        }
+        LOG.debug(
+            "rename {} -> {} failed (attempt {}); retrying: {}",
+            source,
+            target,
+            attempt,
+            e.toString());
+      }
+    }
+  }
+
+  /** Returns false (having restored the interrupt flag) if the wait was interrupted. */
+  private static boolean sleepBeforeRetry() {
+    try {
+      Thread.sleep(MOVE_RETRY_DELAY_MS);
+      return true;
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 
   static void copyTree(Path source, Path target) throws IOException {

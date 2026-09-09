@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -28,13 +29,19 @@ import org.slf4j.LoggerFactory;
  * the temporary file used by the cross-volume fallback is always created in the target's directory
  * so the final step is still a same-volume rename. Lock detection and permission capture are
  * OS-specific and refined by {@link WindowsFileOps} and {@link LinuxFileOps}; this base treats
- * every file as unlocked and records only the owner.
+ * every file as unlocked and records only the owner. Every rename is retried a bounded number of
+ * times with a short pause, since Windows occasionally denies a same-directory rename for a moment
+ * after a file is closed (antivirus or indexer holding a transient handle); a rename that is
+ * refused for a structural reason ({@link AtomicMoveNotSupportedException}) is never retried, only
+ * ones that fail with some other {@link IOException}.
  */
 public class DefaultFileOps implements FileOps {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultFileOps.class);
   static final int BUFFER_SIZE = 64 * 1024;
   static final String TEMP_SUFFIX = ".jrsctl-tmp";
+  private static final int MOVE_RETRY_ATTEMPTS = 20;
+  private static final long MOVE_RETRY_DELAY_MS = 50;
 
   @Override
   public String sha256(Path file) throws IOException {
@@ -54,14 +61,14 @@ public class DefaultFileOps implements FileOps {
     Optional<Permissions> kept =
         Files.exists(target) ? Optional.of(capturePermissions(target)) : Optional.empty();
     try {
-      Files.move(
+      moveRetrying(
           source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (AtomicMoveNotSupportedException crossVolume) {
       LOG.debug("atomic move refused for {} -> {}; staging beside target", source, target);
       Path staged = tempSibling(target);
       try {
         copyStreaming(source, staged);
-        Files.move(
+        moveRetrying(
             staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       } catch (IOException e) {
         Files.deleteIfExists(staged);
@@ -72,6 +79,45 @@ public class DefaultFileOps implements FileOps {
     }
     if (kept.isPresent()) {
       applyPermissions(target, kept.get());
+    }
+  }
+
+  /**
+   * Renames {@code source} to {@code target}, retrying a same-directory rename that fails with a
+   * transient {@link IOException} (typically Windows denying access for a moment after the file was
+   * closed). {@link AtomicMoveNotSupportedException} is structural, not transient, and is rethrown
+   * on its first occurrence so the caller can fall back to a cross-volume copy.
+   */
+  private static void moveRetrying(Path source, Path target, CopyOption... options)
+      throws IOException {
+    for (int attempt = 1; ; attempt++) {
+      try {
+        Files.move(source, target, options);
+        return;
+      } catch (AtomicMoveNotSupportedException notSupported) {
+        throw notSupported;
+      } catch (IOException e) {
+        if (attempt >= MOVE_RETRY_ATTEMPTS || !sleepBeforeRetry()) {
+          throw e;
+        }
+        LOG.debug(
+            "rename {} -> {} failed (attempt {}); retrying: {}",
+            source,
+            target,
+            attempt,
+            e.toString());
+      }
+    }
+  }
+
+  /** Returns false (having restored the interrupt flag) if the wait was interrupted. */
+  private static boolean sleepBeforeRetry() {
+    try {
+      Thread.sleep(MOVE_RETRY_DELAY_MS);
+      return true;
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return false;
     }
   }
 
