@@ -32,7 +32,9 @@ import picocli.CommandLine.IVersionProvider;
       RunsCommand.class,
       KeysCommand.class,
       SecretsCommand.class,
-      ConsoleCommand.class
+      ConsoleCommand.class,
+      DocsCommand.class,
+      picocli.CommandLine.HelpCommand.class
     })
 public final class JrsctlCommand implements Runnable {
 

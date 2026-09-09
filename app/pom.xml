@@ -23,6 +23,37 @@
   <build>
     <plugins>
       <plugin>
+        <!-- Offline documentation (spec §14 Phase 8, §17): the repository's Markdown deliverables are
+             copied into the jar under docs/ at build time and served by `jrsctl docs` and the explain
+             option. The copy lives under target/ only; nothing is committed twice. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>embed-docs</id>
+            <phase>generate-resources</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/docs</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/..</directory>
+                  <includes><include>README.md</include></includes>
+                </resource>
+                <resource>
+                  <directory>${project.basedir}/../docs</directory>
+                  <includes>
+                    <include>operator-guide.md</include>
+                    <include>security.md</include>
+                    <include>hotfix-authoring.md</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
