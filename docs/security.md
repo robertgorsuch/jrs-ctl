@@ -97,3 +97,37 @@ Every entry passes through the redactor as it is written, so configured secrets,
 session cookies and bearer tokens appear as `[redacted]` in any encoding the redactor knows. The
 bundle never contains `secrets.enc`, private keys, keystore files, snapshots or exported archives.
 Review `config-redacted.yaml` for host names and paths you consider sensitive before sharing.
+
+## Key management
+
+- Bundle signatures are Ed25519 over `manifest.json` only; the manifest carries the SHA-256 of
+  every other file, so the signature transitively covers the whole bundle and any unlisted file
+  fails verification.
+- The trusted key ring is `$JRSCTL_HOME/keys/trusted/<name>.pub`, managed with `jrsctl keys
+  add|remove|generate`; every change is audited. The Jaspersoft publisher key is a resource in the
+  jar, cannot be removed, and is what `.sig` files on release archives are checked against.
+- `keys generate` writes the private key once, owner-only, and never again; it is not kept in the
+  home, not in the state store and not in any log. Store it outside version control, or in
+  `secrets.enc` via `secrets set <name> --from-file`.
+- `hotfix apply --allow-unsigned` bypasses the signature check for one run and writes an audit row
+  naming the bundle and the actor. It exists for bundles an operator built themselves; a support
+  process should never require it.
+- `secrets.enc` is AES-256-GCM with a PBKDF2-HMAC-SHA256 key derived from the passphrase and a
+  machine-bound salt; copying the file to another host does not move the secrets.
+
+## Hardening (Phase 8)
+
+Controls that hold for every command, and what the two offline help features deliberately do not
+expose:
+
+| Control | What it guarantees |
+|---|---|
+| Console token | One 32-byte `SecureRandom` token per launch, shown once on the launch line, owner-only on disk, registered with the redactor before it is printed, compared in constant time, deleted on exit. A non-loopback bind is refused unless TLS and local authentication are both configured. |
+| Redaction | One process-wide `Redactor` knows every configured secret (raw, Base64, URL-encoded) plus the well-known patterns (`password=`, `Authorization:`, `JSESSIONID`, `Bearer`, the console token) and filters **every** stream that leaves the process: terminal text, `--json`, the JSON log, SSE payloads, vendor tool output and support bundles. `config show` and the bundle's `config-redacted.yaml` print references (`env:`, `file:`, `enc:`), never values. |
+| Run lock | `runs.lock` in the home, held for the whole mutating run with the run id and pid inside; a second jrsctl process exits 9 and names the holder. A run that never reached a terminal state blocks every other mutating command (exit 8) until `runs recover` finishes it, so two processes can never interleave steps on the same installation. |
+| Journal before effect | Every step transition is written to `state.db` (WAL, `synchronous=FULL`, append-only) before the step's effect is reported; a crash mid-step is recoverable because the interrupted step is known and every step is idempotent. |
+| Plans are inert | `--plan` and the console's `POST /api/plan` build the plan and stop; a plan is stored 30 minutes, runs at most once, and is refused when its fingerprint (server identity, input artifact, target files, configuration) has changed. |
+| Overrides are audited, never silent | `--allow-unsigned`, `--allow-unsupported`, `--db-backup-confirmed` and `--force` change behaviour but never the exit code, and each writes an audit row. |
+| Retention never removes what rollback needs | Automatic and manual pruning (`runs prune`) skip every snapshot of an installed hotfix, a registered customization, the most recent successful upgrade and any run pending recovery; manual pruning takes the run lock and is audited (`runs.prune`). |
+| Offline help is static | `jrsctl <command> --explain`, `jrsctl help` and `jrsctl docs` print text fixed at build time and exit. They open no `Bootstrap`: they read neither `config.yaml`, `secrets.enc`, the key ring, the state store nor the server, so they expose no value from the operator's environment, need no passphrase, and can be run by anyone who can execute the jar without learning anything about a particular installation. The embedded documents are the same Markdown files as in the repository, so a reader can diff them against the published version. |
+| Least privilege | Nothing in the jar needs administrator rights except what the operation itself needs (stopping the service, writing under the installation); `init`, `doctor`, `smoke`, `selfcheck`, `docs`, `--explain` and every `list` run as any user who can read the installation. |
