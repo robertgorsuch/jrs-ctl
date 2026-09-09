@@ -19,14 +19,14 @@ import java.util.stream.Collectors;
  * captures and restores, which is what {@link FileOps#isOwnerOnly} later checks when the file is
  * used as a {@code file:} secret reference; the content is never logged.
  */
-final class OwnerOnlyFiles {
+public final class OwnerOnlyFiles {
 
   private static final String WINDOWS_FULL_CONTROL =
       Arrays.stream(AclEntryPermission.values()).map(Enum::name).collect(Collectors.joining(","));
 
   private OwnerOnlyFiles() {}
 
-  static void write(Platform platform, Path file, String content) throws IOException {
+  public static void write(Platform platform, Path file, String content) throws IOException {
     Path abs = file.toAbsolutePath().normalize();
     Path parent = abs.getParent();
     if (parent != null) {
@@ -41,7 +41,7 @@ final class OwnerOnlyFiles {
     restrictToOwner(platform, abs);
   }
 
-  static void restrictToOwner(Platform platform, Path file) throws IOException {
+  public static void restrictToOwner(Platform platform, Path file) throws IOException {
     FileOps files = platform.files();
     String owner = files.capturePermissions(file).owner();
     List<String> entries =

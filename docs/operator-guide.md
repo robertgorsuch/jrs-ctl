@@ -183,6 +183,24 @@ The encrypted store behind `enc:NAME` references (`secrets.enc`, AES-256-GCM, ke
 
 The store is bound to the host name: a copied `secrets.enc` cannot be unlocked on another machine even with the passphrase; recreate it after a host rename.
 
+### `jrsctl console [--bind <addr>] [--port <n>] [--open|--no-open]`
+
+Serves the local web console (dashboard, new operation, runs with live progress, doctor, hotfixes) until Ctrl-C, or until you type `stop` and Enter. On start it prints one line:
+
+```
+Console: http://127.0.0.1:7420/#token=<token>
+```
+
+Open that URL: the token in the fragment is the per-launch key to the API and is never shown again (it is redacted from every log, response and support bundle). When a terminal is present the default browser is opened for you; pass `--no-open` to skip that, for example from a service or a script. Runs started from the console go through the same plan, confirmation, fingerprint, run lock and journal as the CLI; they are non-interactive, so a step that would need a terminal prompt fails instead of waiting.
+
+- `--bind` / `--port` override `console.bind` (default `127.0.0.1`) and `console.port` (default `7420`); `--port 0` picks a free port.
+- A non-loopback bind is refused with exit 2 unless `console.tls.enabled: true` (`certPath` PEM chain, `keyPath` unencrypted PKCS#8 PEM) and `console.auth.mode: local` (`passwordRef` for the operator password) are both configured; see `docs/security.md` for the rules and the `Authorization: Basic` form used in `local` mode.
+- The token is written to `$JRSCTL_HOME/console.token` (owner-only) for tooling on the same machine and deleted when the console stops.
+- `GET /api/runs/<id>/support-bundle` (the "Support bundle" button on a run) downloads a redacted zip of the plan, journal, events, server identity, doctor report, effective configuration and the last 2000 log lines to attach to a ticket.
+- A run that needs recovery blocks new runs in the console exactly as it does on the CLI; its run page offers Resume and Roll back.
+
+Exit 2 when the bind or TLS material is refused or the port is busy; 0 after a clean stop.
+
 ## Exit codes
 
 | Code | Meaning | Typical cause |

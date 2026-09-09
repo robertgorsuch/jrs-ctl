@@ -1,30 +1,18 @@
 package com.jaspersoft.jrsctl.app;
 
-import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
-import com.jaspersoft.jrsctl.core.engine.RunIds;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Runner;
-import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.event.EventBus;
-import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
-import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
-import com.jaspersoft.jrsctl.core.state.Recovery;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
-import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.StoredPlan;
-import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.ops.Services;
-import com.jaspersoft.jrsctl.ops.exim.DeferredJrsAdapter;
 import java.io.PrintWriter;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,14 +29,12 @@ import java.util.function.Function;
  * its run id before the first step so it can never execute twice and survives plan expiry while the
  * run is pending; Ctrl-C cancels through the run's single {@link CancellationToken} and waits up to
  * 30 s for the in-flight step to finish or compensate; the exit code is {@link
- * RunOutcome#exitCode()}, or 9 when the run lock is held. The run context registers {@link
- * Services}, {@link StateStore}, {@link Config}, {@link SnapshotStore}, {@link KeyRing}, {@link
- * Redactor}, {@link SecretResolver} and a {@link JrsAdapter} that connects on first use, for the
- * steps.
+ * RunOutcome#exitCode()}, or 9 when the run lock is held. The pending-run gate, plan storage, claim
+ * and run context come from {@link RunService}, which the console shares.
  */
 final class PlanExecutor {
 
-  static final Duration PLAN_TTL = Duration.ofMinutes(30);
+  static final Duration PLAN_TTL = RunService.PLAN_TTL;
   static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(30);
 
   /** What a command asks the executor to do with a plan. */
@@ -62,6 +48,7 @@ final class PlanExecutor {
   }
 
   private final Services services;
+  private final RunService runs;
   private final GlobalOptions global;
   private final PrintWriter out;
   private final PrintWriter err;
@@ -75,6 +62,7 @@ final class PlanExecutor {
       PrintWriter err,
       Map<String, String> env) {
     this.services = Objects.requireNonNull(services, "services");
+    this.runs = new RunService(services);
     this.global = Objects.requireNonNull(global, "global");
     this.out = Objects.requireNonNull(out, "out");
     this.err = Objects.requireNonNull(err, "err");
@@ -84,25 +72,12 @@ final class PlanExecutor {
 
   /** Shows, confirms and runs a fresh plan; returns the process exit code. */
   int execute(Request request) {
-    StateStore store = services.stateStore().get();
-    List<RunRecord> pending = Recovery.pendingRuns(store);
+    List<RunRecord> pending = runs.pendingRuns();
     if (!pending.isEmpty()) {
       return pendingRuns(pending);
     }
     Plan plan = request.plan();
-    Instant now = services.clock().instant();
-    store.expirePlans(now);
-    String planJson = PlanPrinter.toJson(plan);
-    store.savePlan(
-        new StoredPlan(
-            plan.planId(),
-            request.operation(),
-            request.argsJson(),
-            planJson,
-            plan.fingerprint().value(),
-            now,
-            now.plus(PLAN_TTL),
-            Optional.empty()));
+    String planJson = runs.storePlan(plan, request.operation(), request.argsJson()).planJson();
     if (global.json()) {
       out.println(redactor.redact(planJson));
       out.flush();
@@ -126,29 +101,29 @@ final class PlanExecutor {
         return ExitCodes.SUCCESS;
       }
     }
-    String runId = RunIds.next(services.clock());
-    if (!store.consumePlan(plan.planId(), runId, services.clock().instant())) {
+    Optional<String> claimed = runs.claim(plan.planId());
+    if (claimed.isEmpty()) {
       fail("plan " + plan.planId() + " has expired or was already run; plan again");
       return ExitCodes.PRECHECK_FAILED;
     }
-    Context ctx = context(runId, store);
+    Context ctx = runs.context(claimed.get());
     RunOptions opts = request.rollbackAll() ? RunOptions.withRollbackAll() : RunOptions.DEFAULT;
-    return run(plan, ctx, runner -> runner.run(plan, ctx, plan.fingerprint(), opts));
+    return run(plan, ctx, runner -> runs.run(runner, plan, ctx, opts));
   }
 
-  /** Resumes or rolls back a pending run through {@link Recovery}; bypasses the pending check. */
+  /**
+   * Resumes or rolls back a pending run through {@link com.jaspersoft.jrsctl.core.state.Recovery};
+   * bypasses the pending check.
+   */
   int recover(String runId, Plan plan, boolean resume) {
-    StateStore store = services.stateStore().get();
-    Context ctx = context(runId, store);
+    Context ctx = runs.context(runId);
     return run(
         plan,
         ctx,
-        runner -> {
-          Recovery recovery = new Recovery(store, runner);
-          return resume
-              ? recovery.resume(plan, runId, ctx, RunOptions.DEFAULT)
-              : recovery.rollback(plan, runId, ctx);
-        });
+        runner ->
+            resume
+                ? runs.resume(runner, plan, runId, ctx)
+                : runs.rollback(runner, plan, runId, ctx));
   }
 
   private int pendingRuns(List<RunRecord> pending) {
@@ -173,37 +148,11 @@ final class PlanExecutor {
     return ExitCodes.RECOVERY_REQUIRED;
   }
 
-  private Context context(String runId, StateStore store) {
-    return new Context(
-        runId,
-        services.home(),
-        services.platform(),
-        new CancellationToken(),
-        Map.of(
-            Services.class,
-            services,
-            StateStore.class,
-            store,
-            Config.class,
-            services.config(),
-            SnapshotStore.class,
-            new SnapshotStore(services.home(), services.platform().files(), services.clock()),
-            KeyRing.class,
-            new KeyRing(services.home()),
-            JrsAdapter.class,
-            new DeferredJrsAdapter(services.adapter()),
-            Redactor.class,
-            services.redactor(),
-            SecretResolver.class,
-            services.secrets()));
-  }
-
   private int run(Plan plan, Context ctx, Function<Runner, RunOutcome> body) {
-    StateStore store = services.stateStore().get();
     EventBus bus = new EventBus();
     ProgressRenderer renderer = new ProgressRenderer(plan, out, ansi, redactor, global.json());
     bus.subscribe(renderer);
-    Runner runner = new Runner(store, bus, services.clock(), Sleeper.system());
+    Runner runner = runs.runner(bus);
     if (!global.json()) {
       out.println();
       out.println("run " + ctx.runId());
