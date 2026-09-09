@@ -12,13 +12,16 @@ import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.core.state.Recovery;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
+import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.exim.DeferredJrsAdapter;
 import java.io.PrintWriter;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,7 +42,8 @@ import java.util.function.Function;
  * run is pending; Ctrl-C cancels through the run's single {@link CancellationToken} and waits up to
  * 30 s for the in-flight step to finish or compensate; the exit code is {@link
  * RunOutcome#exitCode()}, or 9 when the run lock is held. The run context registers {@link
- * Services}, {@link StateStore}, {@link Config}, {@link SnapshotStore} and {@link KeyRing} for the
+ * Services}, {@link StateStore}, {@link Config}, {@link SnapshotStore}, {@link KeyRing}, {@link
+ * Redactor}, {@link SecretResolver} and a {@link JrsAdapter} that connects on first use, for the
  * steps.
  */
 final class PlanExecutor {
@@ -185,7 +189,13 @@ final class PlanExecutor {
             SnapshotStore.class,
             new SnapshotStore(services.home(), services.platform().files(), services.clock()),
             KeyRing.class,
-            new KeyRing(services.home())));
+            new KeyRing(services.home()),
+            JrsAdapter.class,
+            new DeferredJrsAdapter(services.adapter()),
+            Redactor.class,
+            services.redactor(),
+            SecretResolver.class,
+            services.secrets()));
   }
 
   private int run(Plan plan, Context ctx, Function<Runner, RunOutcome> body) {
