@@ -41,7 +41,41 @@ final class Cli {
     this(Map.of());
   }
 
-  Result run(String... args) throws IOException, InterruptedException {
+  /**
+   * A jrsctl process that was started without waiting for it, so a test can observe it, kill it
+   * mid-step with the operating system's own command, or collect its {@link Result} later.
+   */
+  record Running(Process process, Path out, Path err, List<String> cmd) {
+
+    long pid() {
+      return process.pid();
+    }
+
+    boolean alive() {
+      return process.isAlive();
+    }
+
+    /** Waits for the process to exit (or forcibly ends it after {@code seconds}) and collects. */
+    Result result(long seconds) throws IOException, InterruptedException {
+      if (!process.waitFor(seconds, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        throw new IllegalStateException("jrsctl did not exit within " + seconds + "s: " + cmd);
+      }
+      return collect();
+    }
+
+    /** Reads what the (already exited) process wrote and removes the capture files. */
+    Result collect() throws IOException {
+      String o = Files.readString(out, StandardCharsets.UTF_8);
+      String e = Files.readString(err, StandardCharsets.UTF_8);
+      Files.deleteIfExists(out);
+      Files.deleteIfExists(err);
+      return new Result(process.exitValue(), o, e);
+    }
+  }
+
+  /** Starts jrsctl and returns at once; the caller decides when and how it ends. */
+  Running start(String... args) throws IOException {
     List<String> cmd = new ArrayList<>();
     cmd.add(java);
     cmd.add("-jar");
@@ -53,15 +87,10 @@ final class Cli {
     Path err = Files.createTempFile("jrsctl-err", ".txt");
     pb.redirectOutput(out.toFile());
     pb.redirectError(err.toFile());
-    Process p = pb.start();
-    if (!p.waitFor(120, TimeUnit.SECONDS)) {
-      p.destroyForcibly();
-      throw new IllegalStateException("jrsctl did not exit within 120s: " + cmd);
-    }
-    String o = Files.readString(out, StandardCharsets.UTF_8);
-    String e = Files.readString(err, StandardCharsets.UTF_8);
-    Files.deleteIfExists(out);
-    Files.deleteIfExists(err);
-    return new Result(p.exitValue(), o, e);
+    return new Running(pb.start(), out, err, List.copyOf(cmd));
+  }
+
+  Result run(String... args) throws IOException, InterruptedException {
+    return start(args).result(120);
   }
 }
