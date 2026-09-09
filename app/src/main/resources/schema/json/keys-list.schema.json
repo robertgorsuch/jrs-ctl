@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/keys-list.schema.json",
+  "title": "jrsctl keys list --json (spec §11.1)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "fingerprint", "bundled", "publicKey"],
+    "properties": {
+      "name": { "type": "string" },
+      "fingerprint": { "type": "string" },
+      "bundled": { "type": "boolean" },
+      "publicKey": { "type": "string", "description": "Base64 X.509 SubjectPublicKeyInfo (Ed25519)." }
+    }
+  }
+}

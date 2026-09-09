@@ -33,10 +33,11 @@ import picocli.CommandLine.Spec;
  * {@code jrsctl console [--bind <addr>] [--port <n>] [--open|--no-open]} (spec §13, §11.2): starts
  * the local web console and serves it until Ctrl-C or {@code stop} on standard input. Invariants:
  * the per-launch token URL is printed exactly once, unredacted, to the command's own output and
- * nowhere else; the browser is opened only when a terminal is present and {@code --no-open} was not
- * given, through the platform's process runner (no shell); a refused bind exits 2 before anything
- * listens; the shutdown hook stops the listener, cancels live runs and deletes the token file;
- * console-started runs are non-interactive, so no step ever waits for a terminal prompt.
+ * nowhere else (as {@code {"url": ...}} with {@code --json}); the browser is opened only when a
+ * terminal is present and {@code --no-open} was not given, through the platform's process runner
+ * (no shell); a refused bind exits 2 before anything listens; the shutdown hook stops the listener,
+ * cancels live runs and deletes the token file; console-started runs are non-interactive, so no
+ * step ever waits for a terminal prompt.
  */
 @Command(
     name = "console",
@@ -83,18 +84,33 @@ public final class ConsoleCommand implements Callable<Integer> {
         try {
           server.start();
         } catch (ConsoleRefusedException e) {
-          err.println(services.redactor().redact("error: " + e.getMessage()));
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              e.getClass().getSimpleName(),
+              e.getMessage(),
+              Optional.empty(),
+              Map.of());
         } catch (IOException e) {
-          err.println(
-              services.redactor().redact("error: cannot start the console: " + e.getMessage()));
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "cannot start the console: " + e.getMessage());
         }
-        out.println("Console: " + server.url());
-        out.println("Press Ctrl-C to stop, or type 'stop' and Enter.");
-        out.flush();
+        if (global.json()) {
+          // the token is registered with the redactor, so this one legible copy must bypass
+          // JsonOut.print (exactly as the text line below prints server.url() directly)
+          out.println(JsonOut.write(Map.of("url", server.url())));
+          out.flush();
+        } else {
+          out.println("Console: " + server.url());
+          out.println("Press Ctrl-C to stop, or type 'stop' and Enter.");
+          out.flush();
+        }
         boolean shouldOpen = open != null ? open : Terminal.present();
         if (shouldOpen) {
           openBrowser(services.platform(), server.url());
@@ -110,8 +126,10 @@ public final class ConsoleCommand implements Callable<Integer> {
             // the JVM is already going down; the hook is doing the closing
           }
         }
-        out.println("stopping the console");
-        out.flush();
+        if (!global.json()) {
+          out.println("stopping the console");
+          out.flush();
+        }
       }
       return ExitCodes.SUCCESS;
     }

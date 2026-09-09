@@ -6,9 +6,10 @@ import picocli.CommandLine;
  * Process entry point. Invariants: the JSON log location is fixed from the arguments and
  * environment before any class that owns a logger is loaded, so the very first log line lands under
  * {@code $JRSCTL_HOME/logs}; the fully configured command line (case-insensitive enums, the exit
- * code handler and {@code --explain} on every command) is built by exactly one factory, {@link
- * #commandLine()}, so tests exercise the same tree an operator gets; apart from that the class only
- * translates a picocli exit code into the process exit code.
+ * code and usage-error handlers that honour {@code --json}, and {@code --explain} on every command)
+ * is built by exactly one factory, {@link #commandLine()}, so tests exercise the same tree an
+ * operator gets; apart from that the class only translates a picocli exit code into the process
+ * exit code.
  */
 public final class Main {
 
@@ -29,6 +30,7 @@ public final class Main {
     return Explain.install(
         new CommandLine(new JrsctlCommand())
             .setCaseInsensitiveEnumValuesAllowed(true)
-            .setExecutionExceptionHandler(new ExitCodes.Handler()));
+            .setExecutionExceptionHandler(new ExitCodes.Handler())
+            .setParameterExceptionHandler(new ExitCodes.ParameterHandler()));
   }
 }

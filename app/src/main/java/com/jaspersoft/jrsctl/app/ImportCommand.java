@@ -98,9 +98,7 @@ final class ImportCommand implements Callable<Integer> {
               ? Optional.empty()
               : Optional.of(SecretRef.parse(sourceKeystorePasswordRef));
     } catch (IllegalArgumentException e) {
-      err.println("error: " + e.getMessage());
-      err.flush();
-      return ExitCodes.USAGE;
+      return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, e.getMessage());
     }
     ExportImportOperations.ImportOptions options =
         new ExportImportOperations.ImportOptions(
@@ -121,7 +119,7 @@ final class ImportCommand implements Callable<Integer> {
       try {
         planned = EximOps.open(services).planImport(options);
       } catch (RuntimeException e) {
-        return ExitCodes.reportPlanningFailure(err, e);
+        return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
       }
       PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
       return executor.execute(

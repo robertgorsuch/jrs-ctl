@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/keys-add.schema.json",
+  "title": "jrsctl keys add --json (spec §11.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "fingerprint"],
+  "properties": {
+    "name": { "type": "string" },
+    "fingerprint": { "type": "string" }
+  }
+}

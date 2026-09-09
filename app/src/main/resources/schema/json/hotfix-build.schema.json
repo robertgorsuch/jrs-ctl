@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/hotfix-build.schema.json",
+  "title": "jrsctl hotfix build --json (spec §8.4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle"],
+  "properties": {
+    "bundle": { "type": "string", "description": "Path of the signed bundle ZIP that was written." }
+  }
+}

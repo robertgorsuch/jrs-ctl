@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
@@ -7,6 +8,7 @@ import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.event.EventBus;
+import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
@@ -14,6 +16,8 @@ import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.PrintWriter;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -80,7 +84,9 @@ final class PlanExecutor {
     Plan plan = request.plan();
     String planJson = runs.storePlan(plan, request.operation(), request.argsJson()).planJson();
     if (global.json()) {
-      out.println(redactor.redact(planJson));
+      // the stored (pretty) document re-emitted as one line so the whole run is JSONL:
+      // plan, one event per line, then {"outcome": ...} or {"error": ...}
+      out.println(redactor.redact(Json.write(Json.read(planJson, JsonNode.class))));
       out.flush();
     } else {
       PlanPrinter.print(out, plan, ansi, redactor);
@@ -90,10 +96,11 @@ final class PlanExecutor {
     }
     if (!global.yes()) {
       if (global.json() || !services.interactive()) {
-        fail(
-            "confirmation required: pass --yes to run this plan without asking,"
-                + " or --plan to only show it");
-        return ExitCodes.PRECHECK_FAILED;
+        return fail(
+            ExitCodes.PRECHECK_FAILED,
+            "confirmation required",
+            Optional.of("pass --yes to run this plan without asking, or --plan to only show it"),
+            Map.of());
       }
       out.println();
       if (!Confirm.ask(out, "Run this plan? [y/N] ")) {
@@ -104,8 +111,11 @@ final class PlanExecutor {
     }
     Optional<String> claimed = runs.claim(plan.planId());
     if (claimed.isEmpty()) {
-      fail("plan " + plan.planId() + " has expired or was already run; plan again");
-      return ExitCodes.PRECHECK_FAILED;
+      return fail(
+          ExitCodes.PRECHECK_FAILED,
+          "plan " + plan.planId() + " has expired or was already run",
+          Optional.of("plan again"),
+          Map.of());
     }
     Context ctx = runs.context(claimed.get());
     RunOptions opts = request.rollbackAll() ? RunOptions.withRollbackAll() : RunOptions.DEFAULT;
@@ -128,6 +138,30 @@ final class PlanExecutor {
   }
 
   private int pendingRuns(List<RunRecord> pending) {
+    String first = pending.get(0).runId();
+    String remediation =
+        "run `jrsctl runs recover "
+            + first
+            + " --resume` to continue it, or `jrsctl runs recover "
+            + first
+            + " --rollback` to undo it";
+    if (global.json()) {
+      List<Map<String, Object>> rows = new ArrayList<>();
+      for (RunRecord run : pending) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("runId", run.runId());
+        row.put("operation", run.operation());
+        row.put("startedAt", run.startedAt());
+        rows.add(row);
+      }
+      return fail(
+          ExitCodes.RECOVERY_REQUIRED,
+          pending.size()
+              + (pending.size() == 1 ? " run needs" : " runs need")
+              + " recovery before anything else can run",
+          Optional.of(remediation),
+          Map.of("pendingRuns", rows));
+    }
     err.println(
         redactor.redact(
             "error: "
@@ -139,12 +173,7 @@ final class PlanExecutor {
           redactor.redact(
               "  " + run.runId() + "  " + run.operation() + "  started " + run.startedAt()));
     }
-    err.println(
-        "run `jrsctl runs recover "
-            + pending.get(0).runId()
-            + " --resume` to continue it, or `jrsctl runs recover "
-            + pending.get(0).runId()
-            + " --rollback` to undo it");
+    err.println(remediation);
     err.flush();
     return ExitCodes.RECOVERY_REQUIRED;
   }
@@ -204,20 +233,21 @@ final class PlanExecutor {
     RuntimeException thrown = failure.get();
     if (thrown != null) {
       if (thrown instanceof LockHeldException held) {
-        fail(
-            "run lock is held by run "
-                + held.holderRunId()
-                + " (pid "
-                + held.holderPid()
-                + "); wait for it to finish or check `jrsctl runs list`");
-        return ExitCodes.LOCK_HELD;
+        return fail(
+            ExitCodes.LOCK_HELD,
+            "run lock is held by run " + held.holderRunId() + " (pid " + held.holderPid() + ")",
+            Optional.of("wait for it to finish or check `jrsctl runs list`"),
+            Map.of("holderRunId", held.holderRunId(), "holderPid", held.holderPid()));
       }
       throw thrown;
     }
     RunOutcome outcome = result.get();
     if (outcome == null) {
-      fail("run " + ctx.runId() + " was interrupted before it reported an outcome");
-      return ExitCodes.CANCELLED;
+      return fail(
+          ExitCodes.CANCELLED,
+          "run " + ctx.runId() + " was interrupted before it reported an outcome",
+          Optional.empty(),
+          Map.of());
     }
     renderer.outcome(ctx.runId(), outcome);
     if (outcome instanceof RunOutcome.Succeeded) {
@@ -227,8 +257,10 @@ final class PlanExecutor {
     return outcome.exitCode();
   }
 
-  private void fail(String message) {
-    err.println(redactor.redact("error: " + message));
-    err.flush();
+  /** Text: {@code error: message; remediation} on stderr. JSON: the error document on stdout. */
+  private int fail(
+      int code, String message, Optional<String> remediation, Map<String, Object> details) {
+    return ExitCodes.fail(
+        out, err, global.json(), code, ExitCodes.className(code), message, remediation, details);
   }
 }

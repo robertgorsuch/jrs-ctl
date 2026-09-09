@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -91,19 +92,21 @@ final class HotfixCommand implements Runnable {
       try {
         ref = SecretRef.parse(key);
       } catch (IllegalArgumentException e) {
-        err.println("error: --key " + e.getMessage());
-        err.flush();
-        return ExitCodes.USAGE;
+        return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, "--key " + e.getMessage());
       }
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Path written;
         try {
           written = HotfixOps.open(boot.services()).build(dir, ref, outFile);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
-        out.println(Redactor.global().redact("wrote " + written));
-        out.flush();
+        if (global.json()) {
+          JsonOut.print(out, Map.of("bundle", written.toString()));
+        } else {
+          out.println(Redactor.global().redact("wrote " + written));
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -133,7 +136,7 @@ final class HotfixCommand implements Runnable {
         try {
           report = HotfixOps.open(boot.services()).verify(bundle);
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (global.json()) {
           out.println(redactor.redact(JsonOut.write(report)));
@@ -220,21 +223,24 @@ final class HotfixCommand implements Runnable {
           HotfixOperations ops = HotfixOps.open(services);
           HotfixOperations.VerifyReport report = ops.verify(bundle);
           if (!report.hashesValid()) {
-            err.println(
-                Redactor.global()
-                    .redact(
-                        "error: bundle rejected, file hashes do not match the manifest: "
-                            + String.join("; ", report.hashProblems())));
-            err.flush();
-            return ExitCodes.SIGNATURE_FAILED;
+            return ExitCodes.fail(
+                out,
+                err,
+                global.json(),
+                ExitCodes.SIGNATURE_FAILED,
+                "bundle rejected, file hashes do not match the manifest: "
+                    + String.join("; ", report.hashProblems()));
           }
           if (!report.signatureValid()) {
             if (!allowUnsigned) {
-              err.println(
-                  "error: bundle signature is missing or not made by a trusted key;"
-                      + " add the key with `jrsctl keys add` or pass --allow-unsigned (audited)");
-              err.flush();
-              return ExitCodes.SIGNATURE_FAILED;
+              return ExitCodes.fail(
+                  out,
+                  err,
+                  global.json(),
+                  ExitCodes.SIGNATURE_FAILED,
+                  "bundle signature is missing or not made by a trusted key",
+                  Optional.of(
+                      "add the key with `jrsctl keys add` or pass --allow-unsigned (audited)"));
             }
             services
                 .stateStore()
@@ -246,7 +252,7 @@ final class HotfixCommand implements Runnable {
           }
           planned = ops.planApply(bundle, new HotfixOperations.ApplyOptions(allowUnsigned));
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
         return executor.execute(
@@ -297,7 +303,7 @@ final class HotfixCommand implements Runnable {
               HotfixOps.open(services)
                   .planRollback(id, new HotfixOperations.RollbackOptions(cascade));
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(err, e);
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
         return executor.execute(
@@ -332,7 +338,8 @@ final class HotfixCommand implements Runnable {
         try {
           hotfixes = HotfixOps.open(services).list();
         } catch (RuntimeException e) {
-          return ExitCodes.reportPlanningFailure(spec.commandLine().getErr(), e);
+          return ExitCodes.reportPlanningFailure(
+              out, spec.commandLine().getErr(), global.json(), e);
         }
         StateStore store = services.stateStore().get();
         if (global.json()) {

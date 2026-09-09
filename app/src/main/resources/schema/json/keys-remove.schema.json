@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/keys-remove.schema.json",
+  "title": "jrsctl keys remove --json (spec §11.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "removed"],
+  "properties": {
+    "name": { "type": "string" },
+    "removed": { "const": true }
+  }
+}

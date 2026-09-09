@@ -13,7 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.ArgGroup;
@@ -74,8 +76,12 @@ final class SecretsCommand implements Runnable {
             .stateStore()
             .get()
             .audit("operator", "secrets.init", store.file().toString());
-        out.println("initialised " + store.file());
-        out.flush();
+        if (global.json()) {
+          JsonOut.print(out, Map.of("file", store.file().toString()));
+        } else {
+          out.println("initialised " + store.file());
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -118,9 +124,12 @@ final class SecretsCommand implements Runnable {
       if (source != null && source.fromEnv != null) {
         String v = Env.vars().get(source.fromEnv);
         if (v == null || v.isEmpty()) {
-          err.println("error: environment variable " + source.fromEnv + " is not set");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "environment variable " + source.fromEnv + " is not set");
         }
         value = v.toCharArray();
       } else if (source != null && source.fromFile != null) {
@@ -132,16 +141,22 @@ final class SecretsCommand implements Runnable {
       }
       try {
         if (value.length == 0) {
-          err.println("error: empty value for " + name);
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out, err, global.json(), ExitCodes.PRECHECK_FAILED, "empty value for " + name);
         }
         try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC());
             Secret secret = Secret.of(value)) {
           boot.secretStore().set(name, secret);
           boot.services().stateStore().get().audit("operator", "secrets.set", name);
-          out.println("stored " + name + "; reference it as enc:" + name);
-          out.flush();
+          if (global.json()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", name);
+            row.put("ref", "enc:" + name);
+            JsonOut.print(out, row);
+          } else {
+            out.println("stored " + name + "; reference it as enc:" + name);
+            out.flush();
+          }
           return ExitCodes.SUCCESS;
         }
       } finally {
@@ -219,13 +234,24 @@ final class SecretsCommand implements Runnable {
       PrintWriter err = spec.commandLine().getErr();
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         if (!boot.secretStore().remove(name)) {
-          err.println("error: no entry named " + name + "; see `jrsctl secrets list`");
-          err.flush();
-          return ExitCodes.PRECHECK_FAILED;
+          return ExitCodes.fail(
+              out,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "no entry named " + name,
+              Optional.of("see `jrsctl secrets list`"));
         }
         boot.services().stateStore().get().audit("operator", "secrets.remove", name);
-        out.println("removed " + name);
-        out.flush();
+        if (global.json()) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("name", name);
+          row.put("removed", true);
+          JsonOut.print(out, row);
+        } else {
+          out.println("removed " + name);
+          out.flush();
+        }
         return ExitCodes.SUCCESS;
       }
     }
@@ -249,7 +275,8 @@ final class SecretsCommand implements Runnable {
         EncryptedSecretStore store = boot.secretStore();
         List<String> names = store.exists() ? store.list() : List.of();
         if (global.json()) {
-          out.println(JsonOut.write(names));
+          JsonOut.print(out, names);
+          return ExitCodes.SUCCESS;
         } else if (!store.exists()) {
           out.println("no secrets store at " + store.file() + "; run `jrsctl secrets init`");
         } else if (names.isEmpty()) {

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/init.schema.json",
+  "title": "jrsctl init --json (spec §12.0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["detectedInstall", "values", "config", "configFile", "written"],
+  "properties": {
+    "detectedInstall": { "type": "boolean" },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "value", "source"],
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "type": "string" },
+          "source": { "type": "string" }
+        }
+      }
+    },
+    "config": { "$ref": "https://jaspersoft.com/jrsctl/config.schema.json" },
+    "configFile": { "type": "string" },
+    "written": { "type": "boolean", "description": "True only with --yes; JSON mode never prompts." },
+    "writtenTo": { "type": "string" }
+  },
+  "if": { "properties": { "written": { "const": true } } },
+  "then": { "required": ["writtenTo"] }
+}

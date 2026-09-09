@@ -56,27 +56,39 @@ final class InitCommand implements Callable<Integer> {
       Config config = op.toConfig(report);
       Path target = boot.services().home().configFile();
       if (global.json()) {
+        // one document: the detection report plus whether config.yaml was written (only --yes
+        // writes in JSON mode, there is no prompt)
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("detectedInstall", report.detectedInstall());
         json.put("values", report.values());
         json.put("config", ConfigWriter.toTree(config));
         json.put("configFile", target.toString());
-        out.println(redactor.redact(JsonOut.write(json)));
-      } else {
-        TextTable table = new TextTable();
-        for (InitReport.Detected d : report.values()) {
-          table.row(
-              d.key(), d.value(), Ansi.forStdout(global.noColor(), Env.vars()).dim(d.source()));
+        if (global.yes()) {
+          try {
+            Path written = op.write(config, force);
+            json.put("written", true);
+            json.put("writtenTo", written.toString());
+          } catch (FileAlreadyExistsException e) {
+            return alreadyExists(out, err, e);
+          }
+        } else {
+          json.put("written", false);
         }
-        for (String line : table.lines()) {
-          out.println(redactor.redact(line));
-        }
-        if (!report.detectedInstall()) {
-          out.println("no installation detected; pass --install-dir <root> to point at one");
-        }
+        JsonOut.print(out, json);
+        return ExitCodes.SUCCESS;
+      }
+      TextTable table = new TextTable();
+      for (InitReport.Detected d : report.values()) {
+        table.row(d.key(), d.value(), Ansi.forStdout(global.noColor(), Env.vars()).dim(d.source()));
+      }
+      for (String line : table.lines()) {
+        out.println(redactor.redact(line));
+      }
+      if (!report.detectedInstall()) {
+        out.println("no installation detected; pass --install-dir <root> to point at one");
       }
       if (!global.yes()) {
-        if (global.json() || !Confirm.ask(out, "Write config to " + target + "? [y/N] ")) {
+        if (!Confirm.ask(out, "Write config to " + target + "? [y/N] ")) {
           out.println("config not written (pass --yes to write without asking)");
           out.flush();
           return ExitCodes.SUCCESS;
@@ -88,10 +100,18 @@ final class InitCommand implements Callable<Integer> {
         out.flush();
         return ExitCodes.SUCCESS;
       } catch (FileAlreadyExistsException e) {
-        err.println("error: " + e.getFile() + " already exists; pass --force to overwrite it");
-        err.flush();
-        return ExitCodes.PRECHECK_FAILED;
+        return alreadyExists(out, err, e);
       }
     }
+  }
+
+  private int alreadyExists(PrintWriter out, PrintWriter err, FileAlreadyExistsException e) {
+    return ExitCodes.fail(
+        out,
+        err,
+        global.json(),
+        ExitCodes.PRECHECK_FAILED,
+        e.getFile() + " already exists",
+        Optional.of("pass --force to overwrite it"));
   }
 }
