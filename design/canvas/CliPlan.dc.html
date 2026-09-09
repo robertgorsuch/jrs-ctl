@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #F2F4F6; }
+    a { color: #7ED2CD; } a:hover { color: #4FB8B3; }
+    .term { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 13px; line-height: 1.55; color: #D8DEE4; white-space: pre; }
+    .p { color: #7ED2CD; }
+    .dim { color: #7F8B98; }
+    .h { color: #FFFFFF; font-weight: 500; }
+    .ok { color: #4FB8B3; }
+    .warn { color: #E0A24A; }
+  </style>
+</helmet>
+<div style="box-sizing: border-box; width: 920px; height: 760px; background: #0F1418; border: 1px solid #2C3743; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="height: 34px; background: #1B232C; border-bottom: 1px solid #2C3743; display: flex; align-items: center; padding: 0 12px; gap: 8px; font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 12px; color: #B4BEC9;">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#7F8B98" stroke-width="1.4"><rect x="1.5" y="2.5" width="11" height="9" rx="1"></rect><path d="M4 6l2 1.5L4 9M7.5 9h2.5"></path></svg>
+    <span>Administrator: PowerShell — jrsctl</span>
+  </div>
+  <div class="term" style="padding: 14px 18px;"><span class="p">PS C:\&gt;</span> jrsctl hotfix apply C:\hotfixes\JRS-8.2.0-HF-0004.zip --plan
+
+<span class="h">Plan  hotfix apply JRS-8.2.0-HF-0004</span>  <span class="dim">Fix scheduler NPE on quartz misfire</span>
+<span class="dim">Server   JasperReports Server 8.2.0 PRO, multi-tenant, http://localhost:8080/jasperserver-pro</span>
+<span class="dim">Signed   Jaspersoft publisher key jaspersoft-2026</span>
+<span class="dim">Requires JRS-8.2.0-HF-0003</span>  <span class="ok">present</span>
+
+<span class="h">Summary</span>
+  files      3 under webapps\jasperserver-pro\WEB-INF\  (2 replace, 1 add)
+  service    stop and start jasperreportsTomcat  <span class="dim">WEB-INF\lib changes require it</span>
+  database   none
+  backups    C:\ProgramData\jrsctl\snapshots\&lt;runId&gt;\
+  rollback   after verify, after backup; later via  jrsctl hotfix rollback JRS-8.2.0-HF-0004
+
+<span class="h">Steps</span>
+  <span class="dim">verify</span>
+   1  Verify signature
+   2  Validate manifest           <span class="dim">schema, applicability, dependencies, file overlap</span>
+   3  Preflight                   <span class="dim">disk 41 GB free, write access ok</span>
+   4  Run prechecks               <span class="dim">1 file, 1 http</span>
+  <span class="dim">backup</span>
+   5  Snapshot                    <span class="dim">jasperserver-api-impl-8.2.0.jar, quartz-2.3.2-jrs3.jar</span>
+  <span class="dim">apply</span>
+   6  Stop service                <span class="dim">timeout 180s</span>
+   7  Stage files
+   8  Atomic swap                 <span class="dim">per-file rename, ACLs preserved</span>
+   9  Start service, wait         <span class="dim">up to 10 min</span>
+  10  Run postchecks              <span class="dim">GET /login.html expects 200</span>
+  <span class="dim">record</span>
+  11  Record installed
+
+<span class="dim">fingerprint sha256:9f3c1a…e07b   valid 30 min   nothing has changed</span>
+<span class="warn">Run with --yes to execute, or omit --plan to be prompted.</span>
+<span class="p">PS C:\&gt;</span> <span style="color: #4FB8B3;">▍</span></div>
+</div>
+</x-dc>
+</body>
+</html>

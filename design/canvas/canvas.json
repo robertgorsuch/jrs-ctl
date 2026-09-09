@@ -1,0 +1,27 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Screenshots" },
+    { "id": "page-2", "name": "Wireframes" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",             "title": "Console · Dashboard",            "x": 0,    "y": 0,    "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "ConsolePlan.dc.html",      "title": "Console · New operation, plan review", "x": 1400, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "ConsoleRun.dc.html",       "title": "Console · Run in progress",      "x": 2800, "y": 0,    "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "CliPlan.dc.html",          "title": "CLI · hotfix apply --plan",      "x": 0,    "y": 960,  "w": 920,  "h": 760, "page": "page-1" },
+    { "file": "CliRun.dc.html",           "title": "CLI · failed run, rolled back",  "x": 1040, "y": 960,  "w": 920,  "h": 760, "page": "page-1" },
+    { "file": "CliDoctor.dc.html",        "title": "CLI · doctor",                   "x": 2080, "y": 960,  "w": 920,  "h": 760, "page": "page-1" },
+
+    { "file": "WireDashboard.dc.html",    "title": "Wire · Dashboard",               "x": 0,    "y": 0,    "w": 1000, "h": 640, "page": "page-2" },
+    { "file": "WireNewOperation.dc.html", "title": "Wire · New operation",           "x": 1120, "y": 0,    "w": 1000, "h": 640, "page": "page-2" },
+    { "file": "WireRun.dc.html",          "title": "Wire · Run view",                "x": 2240, "y": 0,    "w": 1000, "h": 640, "page": "page-2" },
+    { "file": "WireHistory.dc.html",      "title": "Wire · Runs history",            "x": 0,    "y": 800,  "w": 1000, "h": 640, "page": "page-2" },
+    { "file": "WireDoctor.dc.html",       "title": "Wire · Doctor",                  "x": 1120, "y": 800,  "w": 1000, "h": 640, "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "shots-intro", "x": 0, "y": -170, "w": 520, "page": "page-1", "text": "Hi-fi screens for the local web console (top row) and the CLI (bottom row). Same engine, same event stream: the run view and the terminal show the identical step tree.\nData is a sample 8.2.0 PRO server; hotfix ids and paths are examples." },
+    { "id": "shots-flow", "x": 1400, "y": -120, "w": 420, "page": "page-1", "text": "Console flow: Dashboard → New operation (form builds a plan) → Run this plan → Run view. Nothing mutates before the plan is confirmed." },
+    { "id": "wire-intro", "x": 0, "y": -150, "w": 520, "page": "page-2", "text": "Structure-only wireframes for the five console views in the spec (§13.2). Green notes are behaviour rules the layout must support." },
+    { "id": "wire-a11y", "x": 2240, "y": 700, "w": 380, "page": "page-2", "text": "Every status is icon + word. Colour is never the only signal (§13.2)." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

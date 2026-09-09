@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; color: #1A2230; background: #F2F4F6; font-size: 14px; line-height: 1.45; }
+    a { color: #0A4F4D; } a:hover { color: #0E6B68; }
+    .mono { font-family: "IBM Plex Mono", Consolas, monospace; }
+    table { border-collapse: collapse; width: 100%; }
+    th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8794; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #D5DBE2; }
+    td { padding: 10px 12px; border-bottom: 1px solid #E6EAEE; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; background: #F2F4F6; overflow: hidden;">
+
+  <!-- Nav rail -->
+  <div style="width: 216px; background: #1A2230; color: #C9D2DB; display: flex; flex-direction: column; padding: 20px 0;">
+    <div style="padding: 0 20px 22px; display: flex; align-items: baseline; gap: 8px;">
+      <span class="mono" style="font-size: 18px; font-weight: 500; color: #FFFFFF;">jrsctl</span>
+      <span style="font-size: 11px; color: #7F8B98;">1.0.0</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px; background: #0E6B68; color: #FFFFFF; font-weight: 500;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5"></rect><rect x="9" y="2" width="5" height="5"></rect><rect x="2" y="9" width="5" height="5"></rect><rect x="9" y="9" width="5" height="5"></rect></svg>
+        <span>Dashboard</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"></path></svg>
+        <span>New operation</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h10M3 8h10M3 12h7"></path></svg>
+        <span>Runs</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5.5v3l2 1.5"></path></svg>
+        <span>Doctor</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6l5-3 5 3v5l-5 3-5-3z"></path></svg>
+        <span>Hotfixes</span>
+      </div>
+    </div>
+    <div style="margin-top: auto; padding: 16px 20px; border-top: 1px solid #2C3743; font-size: 12px; color: #7F8B98; display: flex; flex-direction: column; gap: 4px;">
+      <span>Bound to 127.0.0.1:7420</span>
+      <span>Session token active</span>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <!-- Top bar -->
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #D5DBE2; display: flex; align-items: center; padding: 0 28px; gap: 16px;">
+      <span style="font-size: 16px; font-weight: 600;">Dashboard</span>
+      <span style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4A5563;">
+        <span class="mono">http://localhost:8080/jasperserver-pro</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border: 1px solid #D5DBE2; border-radius: 999px; color: #4A5563;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#0E6B68" stroke-width="1.8"><rect x="2" y="5" width="8" height="5.5" rx="1"></rect><path d="M4 5V3.5a2 2 0 0 1 4 0V5"></path></svg>
+        Isolated network
+      </span>
+    </div>
+
+    <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+
+      <!-- Summary row -->
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+        <div style="background: #FFFFFF; border: 1px solid #D5DBE2; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8794; font-weight: 600;">Server</div>
+          <div style="font-size: 18px; font-weight: 600;">JasperReports Server 8.2.0</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <span style="font-size: 12px; padding: 2px 8px; background: #E3F0EF; color: #0A4F4D; border-radius: 3px; font-weight: 500;">PRO</span>
+            <span style="font-size: 12px; padding: 2px 8px; background: #E9EDF0; color: #4A5563; border-radius: 3px;">Multi-tenant</span>
+            <span style="font-size: 12px; padding: 2px 8px; background: #E9EDF0; color: #4A5563; border-radius: 3px;">PostgreSQL</span>
+          </div>
+          <div style="font-size: 13px; color: #4A5563; display: flex; flex-direction: column; gap: 3px;">
+            <span>Tomcat service <span class="mono">jasperreportsTomcat</span> running</span>
+            <span>Keystore present for <span class="mono">jasperserver</span></span>
+          </div>
+        </div>
+
+        <div style="background: #FFFFFF; border: 1px solid #D5DBE2; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8794; font-weight: 600;">Health</div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9.5" stroke="#9A5A0C" stroke-width="1.8"></circle><path d="M11 6.5v5.5M11 15v.5" stroke="#9A5A0C" stroke-width="2" stroke-linecap="round"></path></svg>
+            <span style="font-size: 18px; font-weight: 600;">Doctor: 2 warnings</span>
+          </div>
+          <div style="font-size: 13px; color: #4A5563; display: flex; flex-direction: column; gap: 3px;">
+            <span>Proxy configured while in isolated mode</span>
+            <span>Smoke report URI not found</span>
+          </div>
+          <a href="#" style="font-size: 13px; font-weight: 500; text-decoration: none; margin-top: auto;">Run doctor again</a>
+        </div>
+
+        <div style="background: #FFFFFF; border: 1px solid #D5DBE2; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8794; font-weight: 600;">Run state</div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9.5" stroke="#0E6B68" stroke-width="1.8"></circle><path d="M6.5 11.5l3 3 6-6.5" stroke="#0E6B68" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <span style="font-size: 18px; font-weight: 600;">No pending runs</span>
+          </div>
+          <div style="font-size: 13px; color: #4A5563; display: flex; flex-direction: column; gap: 3px;">
+            <span>Run lock is free</span>
+            <span>14 snapshots, 1.8 GB, retention 30 days</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent runs -->
+      <div style="background: #FFFFFF; border: 1px solid #D5DBE2;">
+        <div style="padding: 12px 16px; border-bottom: 1px solid #D5DBE2; display: flex; align-items: center;">
+          <span style="font-weight: 600;">Recent runs</span>
+          <a href="#" style="margin-left: auto; font-size: 13px; text-decoration: none;">All runs</a>
+        </div>
+        <table>
+          <thead><tr><th>Run</th><th>Operation</th><th>Started</th><th>Duration</th><th>Outcome</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="font-size: 13px;">r-20260908-1417</td>
+              <td>hotfix apply <span class="mono">JRS-8.2.0-HF-0004</span></td>
+              <td style="color: #4A5563;">Today 14:18</td>
+              <td class="mono" style="font-size: 13px;">2m 07s</td>
+              <td><span style="display: inline-flex; align-items: center; gap: 6px; color: #0A4F4D; font-weight: 500;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#0E6B68" stroke-width="1.5"></circle><path d="M4 7.3l2 2 4-4.3" stroke="#0E6B68" stroke-width="1.6" stroke-linecap="round"></path></svg>Succeeded</span></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size: 13px;">r-20260907-0902</td>
+              <td>export <span class="mono">/organizations/acme</span></td>
+              <td style="color: #4A5563;">Yesterday 09:02</td>
+              <td class="mono" style="font-size: 13px;">6m 05s</td>
+              <td><span style="display: inline-flex; align-items: center; gap: 6px; color: #0A4F4D; font-weight: 500;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#0E6B68" stroke-width="1.5"></circle><path d="M4 7.3l2 2 4-4.3" stroke="#0E6B68" stroke-width="1.6" stroke-linecap="round"></path></svg>Succeeded</span></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size: 13px;">r-20260905-1633</td>
+              <td>hotfix apply <span class="mono">JRS-8.2.0-HF-0002</span></td>
+              <td style="color: #4A5563;">5 Sep 16:33</td>
+              <td class="mono" style="font-size: 13px;">1m 12s</td>
+              <td><span style="display: inline-flex; align-items: center; gap: 6px; color: #7A3A2E; font-weight: 500;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#A63A2E" stroke-width="1.5"></circle><path d="M7 4v3.5M7 10v.3" stroke="#A63A2E" stroke-width="1.8" stroke-linecap="round"></path></svg>Failed, rolled back</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Installed hotfixes -->
+      <div style="background: #FFFFFF; border: 1px solid #D5DBE2;">
+        <div style="padding: 12px 16px; border-bottom: 1px solid #D5DBE2; display: flex; align-items: center;">
+          <span style="font-weight: 600;">Installed hotfixes</span>
+          <span style="margin-left: 10px; font-size: 12px; color: #7B8794;">3 installed</span>
+        </div>
+        <table>
+          <thead><tr><th>Id</th><th>Title</th><th>Installed</th><th>Files</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="font-size: 13px;">JRS-8.2.0-HF-0004</td>
+              <td>Fix scheduler NPE on quartz misfire</td>
+              <td style="color: #4A5563;">Today 14:20</td>
+              <td class="mono" style="font-size: 13px;">3</td>
+              <td style="text-align: right;"><a href="#" style="font-size: 13px; text-decoration: none;">Roll back</a></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size: 13px;">JRS-8.2.0-HF-0003</td>
+              <td>Quartz thread-pool sizing</td>
+              <td style="color: #4A5563;">2 Sep 10:15</td>
+              <td class="mono" style="font-size: 13px;">2</td>
+              <td style="text-align: right;"><span style="font-size: 13px; color: #7B8794;">Blocked by HF-0004</span></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size: 13px;">JRS-8.2.0-HF-0001</td>
+              <td>Login page CSP header</td>
+              <td style="color: #4A5563;">28 Aug 11:04</td>
+              <td class="mono" style="font-size: 13px;">1</td>
+              <td style="text-align: right;"><a href="#" style="font-size: 13px; text-decoration: none;">Roll back</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

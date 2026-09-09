@@ -1,0 +1,13 @@
+target/
+*.class
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+design/canvas/jrsctl-screens.html
+/dist/build/
+/dist/out/
+*.jfr
+hs_err_pid*
+.flattened-pom.xml

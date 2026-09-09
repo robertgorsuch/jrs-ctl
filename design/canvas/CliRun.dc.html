@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #F2F4F6; }
+    a { color: #7ED2CD; } a:hover { color: #4FB8B3; }
+    .term { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 13px; line-height: 1.55; color: #D8DEE4; white-space: pre; }
+    .p { color: #7ED2CD; }
+    .dim { color: #7F8B98; }
+    .h { color: #FFFFFF; font-weight: 500; }
+    .ok { color: #4FB8B3; }
+    .warn { color: #E0A24A; }
+    .fail { color: #E27A6C; }
+  </style>
+</helmet>
+<div style="box-sizing: border-box; width: 920px; height: 760px; background: #0F1418; border: 1px solid #2C3743; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="height: 34px; background: #1B232C; border-bottom: 1px solid #2C3743; display: flex; align-items: center; padding: 0 12px; gap: 8px; font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 12px; color: #B4BEC9;">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#7F8B98" stroke-width="1.4"><rect x="1.5" y="2.5" width="11" height="9" rx="1"></rect><path d="M4 6l2 1.5L4 9M7.5 9h2.5"></path></svg>
+    <span>Administrator: PowerShell — jrsctl</span>
+  </div>
+  <div class="term" style="padding: 14px 18px;"><span class="p">PS C:\&gt;</span> jrsctl hotfix apply C:\hotfixes\JRS-8.2.0-HF-0002.zip --yes
+
+<span class="h">Run r-20260905-1633</span>  hotfix apply JRS-8.2.0-HF-0002  <span class="dim">Repository search escaping</span>
+
+  <span class="dim">verify</span>
+  <span class="ok">✔</span>  1  Verify signature                 0.4s
+  <span class="ok">✔</span>  2  Validate manifest                0.2s
+  <span class="ok">✔</span>  3  Preflight                        1.0s
+  <span class="ok">✔</span>  4  Run prechecks                    0.7s
+  <span class="dim">backup</span>
+  <span class="ok">✔</span>  5  Snapshot 1 file                  0.9s   <span class="dim">snapshots\r-20260905-1633\5\</span>
+  <span class="dim">apply</span>
+  <span class="ok">✔</span>  6  Stop service                    13.8s
+  <span class="ok">✔</span>  7  Stage files                      0.3s
+  <span class="ok">✔</span>  8  Atomic swap                      0.2s
+  <span class="ok">✔</span>  9  Start service, wait for server  48.1s
+  <span class="fail">✖</span> 10  Run postchecks                   2.0s
+       <span class="fail">GET /login.html returned 500, expected 200</span>
+
+<span class="warn">Rolling back to phase boundary  backup</span>  <span class="dim">undoing steps 9, 8, 6 in reverse</span>
+  <span class="ok">↩</span>  9  Stop service                     12.9s
+  <span class="ok">↩</span>  8  Restore from snapshot             0.2s   <span class="dim">sha256 verified: jasperserver-search-8.2.0.jar</span>
+  <span class="ok">↩</span>  6  Start service, wait for server  41.5s
+
+<span class="h">Run failed, rolled back cleanly</span>                       <span class="dim">exit 3</span>
+  step        10  run-postchecks
+  cause       postcheck http GET /login.html expected 200, got 500
+  affected    webapps\jasperserver-pro\WEB-INF\lib\jasperserver-search-8.2.0.jar  <span class="ok">restored</span>
+  backup      C:\ProgramData\jrsctl\snapshots\r-20260905-1633\
+  next        inspect apache-tomcat\logs\jasperserver.log around 16:34:40
+              or run  jrsctl runs show r-20260905-1633 --support-bundle
+<span class="p">PS C:\&gt;</span> <span style="color: #4FB8B3;">▍</span></div>
+</div>
+</x-dc>
+</body>
+</html>

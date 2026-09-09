@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "phase/**"]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build+unit+acceptance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build, unit tests, acceptance (all phases, needs-jrs/needs-docker excluded)
+        run: mvn -B verify
+
+  integration:
+    name: integration (Testcontainers, Linux only)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Docker-backed tests
+        run: mvn -B verify -Dexcluded.groups=needs-jrs -Dgroups=needs-docker
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: dependency audit (OWASP)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: OWASP dependency check (fails at CVSS >= 7)
+        run: mvn -B -DskipTests org.owasp:dependency-check-maven:9.2.0:aggregate -DfailBuildOnCVSS=7
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+  # Phase 7 adds: package (jlink + portable archives), SBOM, sign (CI secrets only), release on tag.
+  # The nightly needs-jrs adapter contract suite lives in nightly.yml once a JRS image is named (spec §19 Q6).

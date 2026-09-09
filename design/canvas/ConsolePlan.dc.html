@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; color: #1A2230; background: #F2F4F6; font-size: 14px; line-height: 1.45; }
+    a { color: #0A4F4D; } a:hover { color: #0E6B68; }
+    .mono { font-family: "IBM Plex Mono", Consolas, monospace; }
+    .lbl { font-size: 12px; font-weight: 500; color: #4A5563; }
+    .field { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 13px; padding: 9px 12px; border: 1px solid #C9D2DB; border-radius: 4px; background: #FFFFFF; }
+    .chk { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .box { width: 16px; height: 16px; border: 1.5px solid #7B8794; border-radius: 3px; background: #FFFFFF; flex-shrink: 0; }
+    .kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; font-size: 13px; }
+    .kv .k { color: #7B8794; }
+    .phase { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8794; font-weight: 600; padding: 6px 0 1px; }
+    .st { display: flex; align-items: baseline; gap: 10px; padding: 2px 0; font-size: 13px; }
+    .st .n { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 12px; color: #7B8794; width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+    .st .why { color: #7B8794; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; background: #F2F4F6; overflow: hidden;">
+
+  <div style="width: 216px; background: #1A2230; color: #C9D2DB; display: flex; flex-direction: column; padding: 20px 0;">
+    <div style="padding: 0 20px 22px; display: flex; align-items: baseline; gap: 8px;">
+      <span class="mono" style="font-size: 18px; font-weight: 500; color: #FFFFFF;">jrsctl</span>
+      <span style="font-size: 11px; color: #7F8B98;">1.0.0</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5"></rect><rect x="9" y="2" width="5" height="5"></rect><rect x="2" y="9" width="5" height="5"></rect><rect x="9" y="9" width="5" height="5"></rect></svg>
+        <span>Dashboard</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px; background: #0E6B68; color: #FFFFFF; font-weight: 500;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"></path></svg>
+        <span>New operation</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h10M3 8h10M3 12h7"></path></svg>
+        <span>Runs</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5.5v3l2 1.5"></path></svg>
+        <span>Doctor</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6l5-3 5 3v5l-5 3-5-3z"></path></svg>
+        <span>Hotfixes</span>
+      </div>
+    </div>
+    <div style="margin-top: auto; padding: 16px 20px; border-top: 1px solid #2C3743; font-size: 12px; color: #7F8B98; display: flex; flex-direction: column; gap: 4px;">
+      <span>Bound to 127.0.0.1:7420</span>
+      <span>Session token active</span>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #D5DBE2; display: flex; align-items: center; padding: 0 28px; gap: 16px;">
+      <span style="font-size: 16px; font-weight: 600;">New operation</span>
+      <span style="font-size: 13px; color: #7B8794;">Step 2 of 3 · review the plan</span>
+    </div>
+
+    <div style="flex-grow: 1; display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; padding: 20px 28px 24px; min-height: 0;">
+
+      <!-- Form -->
+      <div style="background: #FFFFFF; border: 1px solid #D5DBE2; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="lbl">Operation</span>
+          <div class="field" style="font-family: 'IBM Plex Sans', sans-serif; display: flex; align-items: center;">Hotfix apply<svg style="margin-left: auto;" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#7B8794" stroke-width="1.6"><path d="M3 4.5l3 3 3-3"></path></svg></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="lbl">Bundle</span>
+          <div class="field">C:\hotfixes\JRS-8.2.0-HF-0004.zip</div>
+          <span style="font-size: 12px; color: #0A4F4D; display: flex; align-items: center; gap: 6px;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#0E6B68" stroke-width="1.4"></circle><path d="M3.5 6.3l1.7 1.7 3.3-3.6" stroke="#0E6B68" stroke-width="1.5" stroke-linecap="round"></path></svg>Signed by Jaspersoft publisher key</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span class="lbl">Options</span>
+          <div class="chk"><span class="box"></span><span>Allow unsigned bundle <span style="color: #7B8794;">(audited)</span></span></div>
+          <div class="chk"><span class="box" style="background: #0E6B68; border-color: #0E6B68;"></span><span>Take snapshot before every mutation</span></div>
+          <div class="chk"><span class="box" style="background: #0E6B68; border-color: #0E6B68;"></span><span>Roll back to phase boundary on failure</span></div>
+        </div>
+        <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #E6EAEE; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #7B8794;">
+          <span>Plan fingerprint</span>
+          <span class="mono" style="color: #1A2230; font-size: 12px;">sha256:9f3c1a…e07b · valid for 29 min</span>
+        </div>
+      </div>
+
+      <!-- Plan -->
+      <div style="background: #FFFFFF; border: 1px solid #D5DBE2; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 14px 20px; border-bottom: 1px solid #D5DBE2; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 17px; font-weight: 600;">Plan: apply <span class="mono" style="font-weight: 500;">JRS-8.2.0-HF-0004</span> to JasperReports Server 8.2.0 PRO</div>
+          <div class="kv">
+            <span class="k">Files touched</span><span>3 under <span class="mono">webapps\jasperserver-pro\WEB-INF\</span> (2 replace, 1 add)</span>
+            <span class="k">Service</span><span>Stop and start <span class="mono">jasperreportsTomcat</span>, WEB-INF\lib changes require it</span>
+            <span class="k">Database</span><span>No SQL in this bundle</span>
+            <span class="k">Backups</span><span class="mono">C:\ProgramData\jrsctl\snapshots\&lt;runId&gt;\</span>
+            <span class="k">Rollback points</span><span>After <span class="mono">verify</span>, after <span class="mono">backup</span>; full rollback via <span class="mono">hotfix rollback</span> once recorded</span>
+            <span class="k">Requires</span><span><span class="mono">JRS-8.2.0-HF-0003</span> installed <span style="color: #0A4F4D;">(present)</span></span>
+          </div>
+        </div>
+
+        <div style="padding: 4px 20px 8px; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="phase">verify</div>
+          <div class="st"><span class="n">1</span><span>Verify signature</span><span class="why">publisher key jaspersoft-2026</span></div>
+          <div class="st"><span class="n">2</span><span>Validate manifest</span><span class="why">schema, applicability, dependencies, file overlap</span></div>
+          <div class="st"><span class="n">3</span><span>Preflight</span><span class="why">disk 41 GB free, write access ok, no locks while running</span></div>
+          <div class="st"><span class="n">4</span><span>Run prechecks</span><span class="why">1 file check, 1 HTTP check</span></div>
+          <div class="phase">backup</div>
+          <div class="st"><span class="n">5</span><span>Snapshot</span><span class="why">jasperserver-api-impl-8.2.0.jar, quartz-2.3.2-jrs3.jar</span></div>
+          <div class="phase">apply</div>
+          <div class="st"><span class="n">6</span><span>Stop service</span><span class="why">timeout 180s</span></div>
+          <div class="st"><span class="n">7</span><span>Stage files</span><span class="why">hash-verified copies in run staging dir</span></div>
+          <div class="st"><span class="n">8</span><span>Atomic swap</span><span class="why">per-file rename, ACLs preserved</span></div>
+          <div class="st"><span class="n">9</span><span>Start service and wait for server</span><span class="why">up to 10 min</span></div>
+          <div class="st"><span class="n">10</span><span>Run postchecks</span><span class="why">GET /login.html expects 200</span></div>
+          <div class="phase">record</div>
+          <div class="st"><span class="n">11</span><span>Record installed</span><span class="why">state store and audit</span></div>
+        </div>
+
+        <div style="margin-top: auto; padding: 14px 20px; border-top: 1px solid #D5DBE2; display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 13px; color: #4A5563;">Nothing has changed yet. Running stops the server for about 2 minutes.</span>
+          <button style="margin-left: auto; font-family: inherit; font-size: 13px; padding: 8px 14px; border: 1px solid #C9D2DB; background: #FFFFFF; color: #1A2230; border-radius: 4px; cursor: pointer;">Back</button>
+          <button style="font-family: inherit; font-size: 13px; font-weight: 500; padding: 8px 16px; border: none; background: #0E6B68; color: #FFFFFF; border-radius: 4px; cursor: pointer;">Run this plan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

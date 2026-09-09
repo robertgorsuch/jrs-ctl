@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #F2F4F6; }
+    a { color: #7ED2CD; } a:hover { color: #4FB8B3; }
+    .term { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 13px; line-height: 1.55; color: #D8DEE4; white-space: pre; }
+    .p { color: #7ED2CD; }
+    .dim { color: #7F8B98; }
+    .h { color: #FFFFFF; font-weight: 500; }
+    .ok { color: #4FB8B3; }
+    .warn { color: #E0A24A; }
+    .fail { color: #E27A6C; }
+  </style>
+</helmet>
+<div style="box-sizing: border-box; width: 920px; height: 760px; background: #0F1418; border: 1px solid #2C3743; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="height: 34px; background: #1B232C; border-bottom: 1px solid #2C3743; display: flex; align-items: center; padding: 0 12px; gap: 8px; font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 12px; color: #B4BEC9;">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#7F8B98" stroke-width="1.4"><rect x="1.5" y="2.5" width="11" height="9" rx="1"></rect><path d="M4 6l2 1.5L4 9M7.5 9h2.5"></path></svg>
+    <span>Administrator: PowerShell — jrsctl</span>
+  </div>
+  <div class="term" style="padding: 14px 18px;"><span class="p">PS C:\&gt;</span> jrsctl doctor
+
+<span class="h">jrsctl doctor</span>  <span class="dim">JasperReports Server 8.2.0 PRO · C:\Jaspersoft\jasperreports-server-8.2 · 2026-09-08 14:02</span>
+
+  <span class="ok">PASS</span>  runtime          bundled runtime image intact, Java 21.0.4
+  <span class="ok">PASS</span>  config           C:\ProgramData\jrsctl\config.yaml valid against schema
+  <span class="ok">PASS</span>  secrets          env:JRS_PASSWORD resolves; db.pass ACL is owner and Administrators only
+  <span class="ok">PASS</span>  server           http://localhost:8080/jasperserver-pro reachable in 38 ms
+  <span class="ok">PASS</span>  auth             basic auth as jasperadmin accepted
+  <span class="ok">PASS</span>  identity         8.2.0 PRO, multi-tenant, features AHD ANA AUD DB EXP MT
+  <span class="ok">PASS</span>  compat           8.2.0 PRO on Tomcat 9 / PostgreSQL 14 is supported
+  <span class="ok">PASS</span>  capabilities     EXPORT_ASYNC IMPORT_ASYNC KEYSTORE_ENCRYPTION ORGS REST_LOGIN
+  <span class="ok">PASS</span>  layout           webapps\jasperserver-pro, buildomatic\, apache-tomcat\ found
+  <span class="ok">PASS</span>  service          Windows service jasperreportsTomcat is RUNNING
+  <span class="ok">PASS</span>  permissions      write access to WEB-INF\lib, WEB-INF\classes, buildomatic
+  <span class="ok">PASS</span>  disk             41.2 GB free on C:; snapshots use 1.8 GB
+  <span class="ok">PASS</span>  keystore         C:\Users\jasperserver\.jrsks readable, fingerprint 3a91…c4f0
+  <span class="ok">PASS</span>  vendor           js-export.bat, js-import.bat, js-ant.bat present for 8.2.0
+  <span class="ok">PASS</span>  vendor-java      C:\Jaspersoft\jasperreports-server-8.2\java is 11.0.24, matrix requires 11 for 8.x
+  <span class="ok">PASS</span>  database         jdbc:postgresql://localhost:5432/jasperserver connected, driver from buildomatic
+  <span class="ok">PASS</span>  runs             no pending runs, lock free
+  <span class="ok">PASS</span>  snapshots        14 snapshots verified
+  <span class="warn">WARN</span>  network          isolated mode with a proxy configured
+                         <span class="dim">remove network.proxy or switch network.mode to public</span>
+  <span class="warn">WARN</span>  smoke            report /public/Samples/Reports/AllAccounts not found
+                         <span class="dim">set smoke.reportUri to an existing report, or install the samples</span>
+
+<span class="h">18 pass  2 warn  0 fail</span>   <span class="dim">exit 0</span>
+<span class="p">PS C:\&gt;</span> <span style="color: #4FB8B3;">▍</span></div>
+</div>
+</x-dc>
+</body>
+</html>

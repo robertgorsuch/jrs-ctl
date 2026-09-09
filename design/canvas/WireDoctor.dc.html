@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap">
+  <style>
+    body { margin: 0; font-family: "Patrick Hand", "Segoe Print", "Comic Sans MS", cursive; color: #2B3440; background: #FFFFFF; font-size: 16px; line-height: 1.3; }
+    a { color: #2B3440; } a:hover { color: #0E6B68; }
+    .bx { border: 2px solid #2B3440; border-radius: 3px; background: #FFFFFF; }
+    .lbl { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #7B8794; }
+    .line { height: 10px; background: #D5DBE2; border-radius: 5px; }
+    .note { color: #0E6B68; font-size: 15px; }
+    .chk { display: grid; grid-template-columns: 64px 150px 1fr; gap: 10px; padding: 7px 12px; border-bottom: 1px solid #D5DBE2; align-items: center; }
+    .tag { font-size: 13px; border: 2px solid #2B3440; padding: 0 6px; text-align: center; }
+  </style>
+</helmet>
+<div style="box-sizing: border-box; width: 1000px; height: 640px; background: #FFFFFF; display: flex; overflow: hidden; border: 2px solid #2B3440;">
+  <div class="bx" style="width: 170px; border-width: 0 2px 0 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 12px;">
+    <div style="font-size: 20px; padding-bottom: 8px;">jrsctl</div>
+    <div style="padding: 6px 10px;">Dashboard</div>
+    <div style="padding: 6px 10px;">New operation</div>
+    <div style="padding: 6px 10px;">Runs</div>
+    <div class="bx" style="padding: 6px 10px; background: #2B3440; color: #FFFFFF;">Doctor</div>
+    <div style="padding: 6px 10px;">Hotfixes</div>
+  </div>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div class="bx" style="border-width: 0 0 2px 0; height: 48px; display: flex; align-items: center; padding: 0 20px; gap: 14px;">
+      <span style="font-size: 20px;">Doctor</span>
+      <span style="font-size: 14px; color: #7B8794;">last run: timestamp</span>
+      <div class="bx" style="margin-left: auto; padding: 4px 12px; background: #2B3440; color: #FFFFFF;">Run doctor</div>
+    </div>
+    <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; flex-grow: 1; min-height: 0;">
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span class="bx" style="padding: 4px 14px; font-size: 18px;">18 pass</span>
+        <span class="bx" style="padding: 4px 14px; font-size: 18px; border-style: dashed;">2 warn</span>
+        <span class="bx" style="padding: 4px 14px; font-size: 18px; color: #7B8794;">0 fail</span>
+        <span class="note">fails first, then warns, then passes collapsed</span>
+      </div>
+      <div class="bx" style="display: flex; flex-direction: column; overflow: hidden;">
+        <div class="chk" style="background: #E9EDF0;"><span class="tag" style="border-style: dashed;">WARN</span><span>network</span><div style="display: flex; flex-direction: column; gap: 4px;"><div class="line" style="width: 70%;"></div><span style="font-size: 14px; color: #7B8794;">remediation text, one sentence, copyable</span></div></div>
+        <div class="chk" style="background: #E9EDF0;"><span class="tag" style="border-style: dashed;">WARN</span><span>smoke</span><div style="display: flex; flex-direction: column; gap: 4px;"><div class="line" style="width: 60%;"></div><span style="font-size: 14px; color: #7B8794;">remediation text</span></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>runtime</span><div class="line" style="width: 55%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>config</span><div class="line" style="width: 45%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>server</span><div class="line" style="width: 65%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>auth</span><div class="line" style="width: 40%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>identity</span><div class="line" style="width: 70%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>compat</span><div class="line" style="width: 60%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>capabilities</span><div class="line" style="width: 75%;"></div></div>
+        <div class="chk"><span class="tag">PASS</span><span>service</span><div class="line" style="width: 50%;"></div></div>
+        <div class="chk" style="border-bottom: none;"><span style="grid-column: 1 / -1; font-size: 14px; color: #7B8794; text-align: center;">… 10 more passes ▾</span></div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; font-size: 14px;">
+        <span class="bx" style="padding: 3px 10px;">Download report (JSON)</span>
+        <span class="bx" style="padding: 3px 10px;">Support bundle</span>
+        <span class="note">same content as `jrsctl doctor --json`</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
