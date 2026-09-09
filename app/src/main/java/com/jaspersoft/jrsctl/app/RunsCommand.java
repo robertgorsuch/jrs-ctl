@@ -320,7 +320,10 @@ final class RunsCommand implements Runnable {
         }
         Plan plan;
         try {
-          PlanRegistry registry = new PlanRegistry(() -> HotfixOps.open(services));
+          PlanRegistry registry =
+              new PlanRegistry(
+                  () -> HotfixOps.open(services),
+                  () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services));
           plan = registry.rebuild(stored.get().operation(), stored.get().argsJson());
         } catch (RuntimeException e) {
           return ExitCodes.reportPlanningFailure(err, e);

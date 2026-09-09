@@ -25,6 +25,8 @@ import picocli.CommandLine.IVersionProvider;
       SmokeCommand.class,
       ConfigCommand.class,
       HotfixCommand.class,
+      UpgradeCommand.class,
+      CustomizationsCommand.class,
       RunsCommand.class,
       KeysCommand.class,
       SecretsCommand.class

@@ -1,6 +1,6 @@
 # jrsctl operator guide
 
-`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command shipped so far (Phases 0–3): tool self-checks, detection and diagnostics, configuration, signed hotfixes, run history and recovery, trusted keys and the encrypted secret store. Export/import, upgrade and the web console arrive in later phases.
+`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command shipped so far (Phases 0–5): tool self-checks, detection and diagnostics, configuration, signed hotfixes, vendor upgrades with rollback and registered customizations, run history and recovery, trusted keys and the encrypted secret store. Export/import commands and the web console arrive in their own phases.
 
 Everything the tool stores lives under one directory, the **jrsctl home** (`--home`, else `$JRSCTL_HOME`, else `%ProgramData%\jrsctl` on Windows or `/var/lib/jrsctl` on Linux, falling back to `~/.jrsctl` when that is not writable):
 
@@ -36,7 +36,7 @@ Environment variables: `JRSCTL_HOME` (home directory), `JRSCTL_PASSPHRASE` (pass
 
 ## How a mutating command runs
 
-`hotfix apply`, `hotfix rollback` and `runs recover` change the server. They all follow the same path (spec §6):
+`hotfix apply`, `hotfix rollback`, `upgrade`, `upgrade rollback` and `runs recover` change the server. They all follow the same path (spec §6):
 
 1. **Pending runs block everything.** If a previous run did not reach a terminal state (crash, kill, power loss), every mutating command exits **8** and prints the exact `jrsctl runs recover <id> --resume|--rollback` command to run first.
 2. **The plan is shown first.** You see the operation and target, a summary (files touched, service restart or not, strategy, backups, rollback points, warnings marked `!`), the steps grouped by phase and numbered, the plan fingerprint, and the line `nothing has changed`. The plan is stored for 30 minutes. `--plan` stops here with exit 0.
@@ -91,6 +91,36 @@ Restores the files an installed hotfix replaced (verifying hashes before and aft
 ### `jrsctl hotfix list [--json]`
 
 Every hotfix recorded in the state store: id, title, installed timestamp, number of files, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED`).
+
+### `jrsctl upgrade --to <version> --package <dir> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--plan] [--yes] [--rollback-all] [--json]`
+
+Upgrades the server with the vendor's own scripts from an unpacked target distribution (`--package` must hold `buildomatic/` with `js-ant` for this operating system and the `jasperserver[-pro]` webapp or a `.war`). The plan has the five phases of spec §10.2; every phase boundary is a rollback point:
+
+| Phase | Steps | Rollback point |
+|---|---|---|
+| `preflight` | `doctor`, `verify-target-package`, `confirm-db-backup` (samedb only) | nothing mutated |
+| `backup` | `full-export-stop-service`, `full-export` (`js-export --everything`), `full-export-start-service`, `full-export-wait-for-server`, `backup-keystore`, `backup-webapp`, `backup-config` | **B**: `snapshots/<runId>/` holds the export, the webapp and buildomatic archives (`zip` on Windows, `tar.gz` on Linux), the keystore and the configuration files |
+| `vendor-upgrade` | `write-master-properties`, `stop-service`, `run-vendor-upgrade`, `start-service`, `wait-for-server` | **C** = restore B |
+| `reconcile` | `plan-hotfix-reapply`, `plan-customization-reapply` (plus the apply steps of each re-applied hotfix with `--reapply-hotfixes`) | restore B |
+| `verify` | `smoke`, `record-upgrade` | a smoke failure offers `jrsctl upgrade rollback <runId> --to-point B` |
+
+- `doctor` must pass. Two of its findings are judged against the *target* instead: `compat` and `vendor-java` (an 8.x server needs Java 11 for its own buildomatic, a 9.x target needs Java 17, so the vendor JDK matches only one of them). `verify-target-package` checks the package, that the compat matrix lists the path from the running version to `--to`, and that `vendor.javaHome` is exactly the Java major the target needs; an unlisted path exits **6** before anything is planned.
+- **`--mode newdb` is the default.** The vendor script creates a new repository database and the old one is never touched, so rollback to point B is a complete file and connection restore: webapp, keystore, configuration and the connection back to the old database.
+- **`--mode samedb` migrates the existing database in place and jrsctl cannot undo that.** The command refuses to plan (exit **2**) unless `--db-backup-confirmed` says you have your own database backup; the confirmation is audited and the plan states in plain text: *Rollback restores files only. Restore the database from your own backup before running rollback.*
+- `write-master-properties` copies the installed `buildomatic/default_master.properties` into the target package's buildomatic directory **without any password key** (spec §7.4) and adds `appServerType=tomcat` and `appServerDir`; a file already there is kept and restored on rollback. Add `dbPassword` (and any other password the vendor scripts need) to that file yourself before running.
+- `run-vendor-upgrade` runs `js-upgrade-newdb`/`js-upgrade-samedb` from the target buildomatic when the package ships that script, else `js-ant upgrade-newdb`/`upgrade-samedb`, with `JAVA_HOME=vendor.javaHome`, output streamed and redacted, two-hour timeout. Its compensation is the point-B restore.
+- `plan-hotfix-reapply` lists every installed hotfix as `REAPPLICABLE` (its `applies` matches the new server and every `replaces` target exists in the new webapp) or `SUPERSEDED`. Nothing is re-applied unless `--reapply-hotfixes` was given, in which case the normal apply plan of each re-applicable hotfix (re-packed from `runs/<installRunId>/bundle/`; "bundle no longer available, re-apply manually" otherwise) runs inside the reconcile phase under the run id `<runId>-hf-<hotfix>`. `record-upgrade` marks every hotfix not re-applied `SUPERSEDED`.
+- `plan-customization-reapply` compares, per registered customization, the original hash, the registered copy and the upgraded file: when the upgraded file still equals the original the registered copy is put back (the upgraded file is snapshotted first); otherwise a `CONFLICT` with a unified diff is logged and the file is left alone. Nothing is ever blind-copied.
+- `record-upgrade` writes `snapshots/<runId>/upgrade.json`, registers the snapshot set with `referenced_by = upgrade` so retention never prunes it, and audits `upgrade.completed`.
+- A failure compensates back to the start of the failing phase; pass `--rollback-all` to go back to point B in the same run, or run `upgrade rollback` afterwards.
+
+### `jrsctl upgrade rollback <runId> --to-point B|C [--plan] [--yes]`
+
+Restores the point-B backups of an earlier upgrade run: `stop-service`, `restore-webapp`, `restore-buildomatic`, `restore-config`, `restore-keystore`, `start-service`, `wait-for-server`, `record-rollback`. Point C restores the same artefacts as point B (spec §10.2: "rollback point C = restore B"); the letter only records where the upgrade got to. Archives are hash-verified before extraction; the replaced webapp and buildomatic trees are moved to `runs/<rollbackRunId>/aside/` and put back if the rollback itself has to be compensated; the configuration and keystore files being overwritten are snapshotted under the rollback run first. Files only: after a `samedb` upgrade restore the database from your own backup before running this.
+
+### `jrsctl customizations register <path> [--original <file>] | unregister <path> | list | diff <path> [--json]`
+
+Registers operator-customised files under `server.installDir` or `server.tomcatDir` so an upgrade can reconcile them (spec §10.3). `register` snapshots the file under `snapshots/cust-<hash>/file` (retention-protected) and records its current hash as the "original"; pass `--original <file>` pointing at the vendor's unmodified copy so the upgrade can tell "the vendor did not change this file" (re-apply automatically) from "the vendor changed it" (report a conflict). `diff` prints a unified diff between the registered copy and the file on disk and exits 0 when they match, 1 when they differ. `unregister` removes the row and the snapshot. Files outside the installation are refused with exit 2.
 
 ### `jrsctl runs list [--json] [--limit <n>]`
 
