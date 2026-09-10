@@ -14,13 +14,33 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.AnnotatedElementContext;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.io.TempDirFactory;
 
 class KeystoreInspectorTest {
 
   private static final URI BASE = URI.create("http://localhost:8080/jasperserver-pro");
 
-  @TempDir Path root;
+  /**
+   * Creates the fixture under this module's {@code target} directory rather than {@code
+   * java.io.tmpdir}. A passwd home field is colon-separated, so the passwd test writes a drive-less
+   * path that Java resolves against the current drive; on a Windows CI runner the temp directory
+   * sits on a different drive from the checkout, so a fixture there is never found.
+   */
+  static final class CurrentDriveTempDir implements TempDirFactory {
+    @Override
+    public Path createTempDirectory(AnnotatedElementContext element, ExtensionContext context)
+        throws IOException {
+      Path base = Path.of("target", "tmp").toAbsolutePath();
+      Files.createDirectories(base);
+      return Files.createTempDirectory(base, "keystore-");
+    }
+  }
+
+  @TempDir(factory = CurrentDriveTempDir.class)
+  Path root;
 
   private KeystoreInspector.Homes homes(Path current) {
     return new KeystoreInspector.Homes(
