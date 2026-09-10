@@ -14,6 +14,7 @@
   <description>Phase acceptance suites. Run one phase with: mvn -pl acceptance verify -Dphase=N (tests tagged phaseN)</description>
 
   <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
     <!-- When -Dphase=N is given, only tests tagged "phaseN" run; otherwise every phase runs. -->
     <acceptance.groups/>
   </properties>

@@ -60,6 +60,19 @@
     <excluded.groups>needs-jrs,needs-docker</excluded.groups>
   </properties>
 
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <url>https://maven.pkg.github.com/robertgorsuch/jrs-ctl</url>
+    </repository>
+    <snapshotRepository>
+      <id>github</id>
+      <name>GitHub Packages Snapshots</name>
+      <url>https://maven.pkg.github.com/robertgorsuch/jrs-ctl</url>
+    </snapshotRepository>
+  </distributionManagement>
+
   <dependencyManagement>
     <dependencies>
       <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-core</artifactId><version>${project.version}</version></dependency>
