@@ -31,6 +31,8 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
+          <forkCount>1</forkCount>
+          <reuseForks>true</reuseForks>
           <groups>${acceptance.groups}</groups>
           <excludedGroups>${excluded.groups}</excludedGroups>
           <systemPropertyVariables>

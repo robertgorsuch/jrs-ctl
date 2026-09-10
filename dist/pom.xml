@@ -208,6 +208,7 @@
                     <argument>--no-man-pages</argument>
                     <argument>--compress</argument>
                     <argument>zip-6</argument>
+                    <argument>--dedup-legal-notices=error-if-not-same-content</argument>
                     <argument>--output</argument>
                     <argument>${dist.image.dir}/runtime</argument>
                   </arguments>

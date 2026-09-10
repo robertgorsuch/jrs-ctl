@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+# Pre-commit hook to verify Google Java Format compliance via Spotless before committing.
+
+echo "Running pre-commit spotless check..."
+
+# Resolve repository root
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT="."
+fi
+
+cd "$REPO_ROOT" || exit 1
+
+if [ -f "scripts/mvn.sh" ]; then
+  MVN_CMD="scripts/mvn.sh"
+elif [ -f "./mvnw" ]; then
+  MVN_CMD="./mvnw"
+elif command -v mvn >/dev/null 2>&1; then
+  MVN_CMD="mvn"
+else
+  echo "Warning: Maven or mvnw not found in PATH; skipping pre-commit formatting check."
+  exit 0
+fi
+
+$MVN_CMD spotless:check
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "Error: Spotless formatting check failed."
+  echo "To automatically format Java source files, run:"
+  echo "  ./mvnw spotless:apply"
+  echo "  (or 'scripts\\mvn.cmd spotless:apply' on Windows)"
+  echo ""
+  exit $EXIT_CODE
+fi
+
+exit 0

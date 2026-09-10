@@ -8,6 +8,9 @@ if not exist "%JRSCTL_JDK%\bin\java.exe" (
 )
 set "JAVA_HOME=%JRSCTL_JDK%"
 set "PATH=%JAVA_HOME%\bin;%PATH%"
-if "%JRSCTL_MAVEN%"=="" set "JRSCTL_MAVEN=C:\apache-maven-3.9.9"
-call "%JRSCTL_MAVEN%\bin\mvn.cmd" -B %*
+if "%JRSCTL_MAVEN%"=="" (
+  call "%~dp0..\mvnw.cmd" -B %*
+) else (
+  call "%JRSCTL_MAVEN%\bin\mvn.cmd" -B %*
+)
 exit /b %ERRORLEVEL%

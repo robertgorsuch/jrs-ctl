@@ -100,7 +100,10 @@ final class Archives {
                 (file, rel, attrs) -> {
                   TarArchiveEntry entry = tarEntry(file, rel, attrs);
                   tar.putArchiveEntry(entry);
-                  if (entry.isFile()) {
+                  // Content follows only for a real file. TarArchiveEntry.isFile() is true for a
+                  // symbolic link too, since it only asks whether the name ends in "/", and
+                  // copying then writes the link target's bytes into a zero-length header.
+                  if (attrs.isRegularFile()) {
                     copy(file, tar);
                   }
                   tar.closeArchiveEntry();

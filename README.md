@@ -243,23 +243,27 @@ Every command supports the following global options:
 
 ### Prerequisites
 * **Java**: OpenJDK 21 or higher (`JAVA_HOME` targeting JDK 21+).
-* **Maven**: Maven 3.9+ (or use the provided wrapper scripts).
+* **Maven**: Maven 3.9+ (or use the included Maven Wrapper `./mvnw` / `mvnw.cmd` / `scripts/mvn.*`).
 
 ### Build Commands
 ```bash
+# Configure Git pre-commit hook (enforces Google Java Format on commit)
+git config core.hooksPath .githooks
+
 # Run compilation, unit tests, and code formatting checks
-scripts/mvn.sh test        # Linux / macOS
-scripts\mvn.cmd test       # Windows
+./mvnw test                # or scripts/mvn.sh test / scripts\mvn.cmd test
 
 # Apply Google Java Format styling
-scripts/mvn.sh spotless:apply
+./mvnw spotless:apply
 
-# Package shaded executable JAR and verify acceptance tests
-scripts/mvn.sh verify
+# Package shaded executable JAR, verify acceptance tests, and generate JaCoCo reports
+./mvnw verify
 
 # Run optional OWASP dependency vulnerability audit
-scripts/mvn.sh verify -Pdependency-check
+./mvnw verify -Pdependency-check
 ```
+
+JaCoCo HTML coverage reports are generated during `verify` in `<module>/target/site/jacoco/index.html`.
 
 ---
 

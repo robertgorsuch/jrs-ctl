@@ -14,4 +14,8 @@ if [ -z "$JRSCTL_JDK" ] || [ ! -x "$JRSCTL_JDK/bin/java" ]; then
 fi
 export JAVA_HOME="$JRSCTL_JDK"
 export PATH="$JAVA_HOME/bin:$PATH"
-exec mvn -B "$@"
+if [ -f "$(dirname "$0")/../mvnw" ]; then
+  exec "$(dirname "$0")/../mvnw" -B "$@"
+else
+  exec mvn -B "$@"
+fi

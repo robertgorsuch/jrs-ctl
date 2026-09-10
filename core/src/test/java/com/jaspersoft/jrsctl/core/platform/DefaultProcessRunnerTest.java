@@ -41,7 +41,7 @@ class DefaultProcessRunnerTest {
     List<ProcessRunner.OutputLine> lines = new CopyOnWriteArrayList<>();
     long start = System.nanoTime();
 
-    ProcessRunner.Result result = runner.run(helper("sleep", Duration.ofSeconds(1)), lines::add);
+    ProcessRunner.Result result = runner.run(helper("sleep", Duration.ofSeconds(3)), lines::add);
 
     Duration wall = Duration.ofNanos(System.nanoTime() - start);
     assertThat(result.timedOut()).isTrue();

@@ -51,6 +51,9 @@
     <google-java-format.version>1.22.0</google-java-format.version>
     <spotless.version>2.43.0</spotless.version>
     <surefire.version>3.2.5</surefire.version>
+    <surefire.forkCount>1C</surefire.forkCount>
+    <surefire.reuseForks>true</surefire.reuseForks>
+    <jacoco.version>0.8.12</jacoco.version>
     <dependency-check.version>9.2.0</dependency-check.version>
 
     <!-- Tests tagged with these JUnit tags are release gates, not phase gates (spec §0 rule 10) -->
@@ -128,6 +131,8 @@
           <configuration>
             <excludedGroups>${excluded.groups}</excludedGroups>
             <trimStackTrace>false</trimStackTrace>
+            <forkCount>${surefire.forkCount}</forkCount>
+            <reuseForks>${surefire.reuseForks}</reuseForks>
           </configuration>
         </plugin>
         <plugin>
@@ -136,6 +141,9 @@
           <version>${surefire.version}</version>
           <configuration>
             <excludedGroups>${excluded.groups}</excludedGroups>
+            <trimStackTrace>false</trimStackTrace>
+            <forkCount>${surefire.forkCount}</forkCount>
+            <reuseForks>${surefire.reuseForks}</reuseForks>
           </configuration>
         </plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.1</version></plugin>
@@ -161,6 +169,22 @@
               <id>spotless-check</id>
               <phase>verify</phase>
               <goals><goal>check</goal></goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco.version}</version>
+          <executions>
+            <execution>
+              <id>prepare-agent</id>
+              <goals><goal>prepare-agent</goal></goals>
+            </execution>
+            <execution>
+              <id>report</id>
+              <phase>verify</phase>
+              <goals><goal>report</goal></goals>
             </execution>
           </executions>
         </plugin>
@@ -199,6 +223,10 @@
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
       </plugin>
     </plugins>
   </build>
