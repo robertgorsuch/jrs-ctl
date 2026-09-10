@@ -21,6 +21,7 @@
 
   <dependencies>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-app</artifactId></dependency>
+    <dependency><groupId>com.fasterxml.jackson.dataformat</groupId><artifactId>jackson-dataformat-yaml</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.wiremock</groupId><artifactId>wiremock</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>

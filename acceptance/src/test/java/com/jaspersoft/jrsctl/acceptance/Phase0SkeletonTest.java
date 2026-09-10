@@ -2,8 +2,13 @@ package com.jaspersoft.jrsctl.acceptance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -34,11 +39,46 @@ class Phase0SkeletonTest {
 
   @Test
   void repo_carries_claude_md_and_spec_and_ci_workflow() {
-    Path root = Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent();
+    Path root = repoRoot();
     assertThat(root.resolve("CLAUDE.md")).exists();
     assertThat(root.resolve("docs/spec.md")).exists();
     assertThat(root.resolve("docs/BUILD_STATUS.md")).exists();
     assertThat(root.resolve(".github/workflows/ci.yml")).exists();
     assertThat(Files.isDirectory(root.resolve("docs/decisions"))).isTrue();
+  }
+
+  /**
+   * A workflow file that GitHub cannot parse fails every run in zero seconds with no jobs, which
+   * looks like a red build but is really a silent gate. Every file under {@code .github/workflows}
+   * must parse as YAML and declare at least one job.
+   */
+  @Test
+  void every_workflow_file_parses_as_yaml_and_declares_jobs() throws Exception {
+    Path workflows = repoRoot().resolve(".github/workflows");
+    List<Path> files;
+    try (Stream<Path> listing = Files.list(workflows)) {
+      files =
+          listing.filter(p -> p.getFileName().toString().matches(".*\\.ya?ml")).sorted().toList();
+    }
+    assertThat(files).as("workflow files under %s", workflows).isNotEmpty();
+    YAMLMapper yaml = new YAMLMapper();
+    for (Path file : files) {
+      JsonNode tree;
+      try (InputStream in = Files.newInputStream(file)) {
+        tree = yaml.readTree(in);
+      } catch (Exception e) {
+        throw new AssertionError("workflow " + file.getFileName() + " is not valid YAML: " + e, e);
+      }
+      assertThat(tree.path("jobs").isObject())
+          .as("workflow %s must declare a jobs mapping", file.getFileName())
+          .isTrue();
+      assertThat(tree.path("jobs").size())
+          .as("workflow %s must declare at least one job", file.getFileName())
+          .isPositive();
+    }
+  }
+
+  private static Path repoRoot() {
+    return Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent();
   }
 }

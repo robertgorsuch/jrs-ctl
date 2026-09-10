@@ -159,7 +159,7 @@ jobs:
           pattern: jrsctl-*
           path: release
           merge-multiple: true
-      - name: Sign archives, checksums and SBOM (spec §0 rule 11: the key exists only here)
+      - name: "Sign archives, checksums and SBOM (spec §0 rule 11: the key exists only here)"
         env:
           JRSCTL_SIGNING_KEY: ${{ secrets.JRSCTL_SIGNING_KEY }}
         run: sh scripts/sign-artifacts.sh release
