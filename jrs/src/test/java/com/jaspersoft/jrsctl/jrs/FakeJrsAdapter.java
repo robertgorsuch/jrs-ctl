@@ -67,6 +67,11 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public ServerIdentity refreshIdentity() {
+    return identity();
+  }
+
+  @Override
   public Session login(Credentials credentials) {
     throw new UnsupportedOperationException("fake");
   }

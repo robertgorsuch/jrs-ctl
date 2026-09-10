@@ -70,6 +70,10 @@ record HotfixRuntime(
     return services.adapter().get().identity();
   }
 
+  ServerIdentity refreshIdentity() {
+    return services.adapter().get().refreshIdentity();
+  }
+
   String actor() {
     return System.getProperty("user.name", "unknown");
   }

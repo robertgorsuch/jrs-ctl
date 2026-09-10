@@ -237,6 +237,20 @@ class HotfixApplyTest {
   }
 
   @Test
+  void should_probe_the_server_uncached_when_waiting_for_a_restart() throws IOException {
+    // Regression: WaitForServer used to call identity(), which RestJrsAdapter memoises. After a
+    // service stop it returned the pre-stop value, so the step passed without reaching the server
+    // and the next command ran against a server that was still starting.
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      f.fake.adapter.calls.clear();
+      RunOutcome outcome = f.run(f.ops().planApply(f.buildWebInf(), SIGNED), "r-wait");
+      assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.fake.platform.controller.events).containsExactly("stop", "start");
+      assertThat(f.fake.adapter.calls).contains("refreshIdentity");
+    }
+  }
+
+  @Test
   void should_never_touch_service_when_restart_none() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
       RunOutcome outcome = f.run(f.ops().planApply(f.buildNone(), SIGNED), "r-none");

@@ -15,6 +15,13 @@ public interface JrsAdapter {
 
   ServerIdentity identity();
 
+  /**
+   * Re-reads the server identity from the server, ignoring and replacing any value cached by {@link
+   * #identity()}. Callers that must observe the server's <em>current</em> reachability, such as the
+   * step that waits for a service restart to finish, use this rather than {@link #identity()}.
+   */
+  ServerIdentity refreshIdentity();
+
   Session login(Credentials credentials);
 
   Handles.ExportHandle startExport(ExportRequest request);

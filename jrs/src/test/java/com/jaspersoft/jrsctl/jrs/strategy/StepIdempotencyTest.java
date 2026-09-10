@@ -511,6 +511,11 @@ class StepIdempotencyTest {
     }
 
     @Override
+    public ServerIdentity refreshIdentity() {
+      return identity();
+    }
+
+    @Override
     public Session login(Credentials credentials) {
       return new Session(Session.AuthMode.BASIC, Optional.empty(), Instant.EPOCH);
     }

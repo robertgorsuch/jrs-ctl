@@ -96,6 +96,12 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public ServerIdentity refreshIdentity() {
+    calls.add("refreshIdentity");
+    return identity;
+  }
+
+  @Override
   public Session login(Credentials credentials) {
     calls.add("login " + credentials.username());
     loginFailure.ifPresent(

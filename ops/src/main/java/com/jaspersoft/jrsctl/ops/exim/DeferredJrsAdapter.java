@@ -43,6 +43,11 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public ServerIdentity refreshIdentity() {
+    return adapter().refreshIdentity();
+  }
+
+  @Override
   public Session login(Credentials credentials) {
     return adapter().login(credentials);
   }

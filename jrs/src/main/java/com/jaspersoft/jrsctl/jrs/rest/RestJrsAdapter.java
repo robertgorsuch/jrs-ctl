@@ -41,7 +41,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * The one {@link JrsAdapter} (spec §7.2, ADR-0004), driven by probed {@link Capability}s rather
  * than the version string. Invariants: {@link #identity()} and {@link #capabilities()} hit the
- * server at most once each and are cached; every probe is a non-mutating {@code GET}; the only
+ * server at most once each and are cached, while {@link #refreshIdentity()} always re-reads and
+ * replaces the cached identity; every probe is a non-mutating {@code GET}; the only
  * repository-mutating calls are {@link #startImport}, {@link #createFolder}, {@link
  * #uploadJrxmlReport} and {@link #deleteResource}; downloads and uploads stream through the client;
  * in {@code form} auth mode a session is established lazily before the first authenticated call
@@ -115,6 +116,15 @@ public final class RestJrsAdapter implements JrsAdapter {
       }
       return identity;
     }
+  }
+
+  @Override
+  public ServerIdentity refreshIdentity() {
+    ServerIdentity fresh = fetchIdentity();
+    synchronized (lock) {
+      identity = fresh;
+    }
+    return fresh;
   }
 
   private ServerIdentity fetchIdentity() {
