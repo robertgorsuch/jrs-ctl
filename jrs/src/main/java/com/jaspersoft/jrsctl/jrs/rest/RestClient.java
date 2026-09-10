@@ -57,6 +57,7 @@ public final class RestClient {
   public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(60);
   public static final Duration DEFAULT_DOWNLOAD_TIMEOUT = Duration.ofHours(2);
   public static final String CORRELATION_HEADER = "X-Jrsctl-Correlation";
+  public static final String REMOTE_DOMAIN_HEADER = "X-REMOTE-DOMAIN";
   public static final String SESSION_COOKIE = "JSESSIONID";
   public static final String JSON = "application/json";
 
@@ -537,6 +538,7 @@ public final class RestClient {
         HttpRequest.newBuilder(uri)
             .timeout(timeout)
             .header("Accept", accept)
+            .header(REMOTE_DOMAIN_HEADER, "1")
             .header(CORRELATION_HEADER, correlationId.isEmpty() ? "none" : correlationId)
             .method(method, body);
     contentType.ifPresent(ct -> rb.header("Content-Type", ct));

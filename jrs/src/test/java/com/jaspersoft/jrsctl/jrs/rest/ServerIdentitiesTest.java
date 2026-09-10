@@ -28,10 +28,15 @@ class ServerIdentitiesTest {
   @ParameterizedTest(name = "{0}")
   @CsvSource({
     "7.1.0-CE,   7.1.0,  CE,  SINGLE, 20180406_1140",
+    "7.1.0-PRO,  7.1.0,  PRO, MULTI,  20180406_1140",
+    "7.5.0-CE,   7.5.0,  CE,  SINGLE, 20200115_1200",
     "7.9.1-PRO,  7.9.1,  PRO, SINGLE, 20210113_1017",
+    "8.2.0-CE,   8.2.0,  CE,  SINGLE, 20230210_0923",
     "8.2.0-PRO,  8.2.0,  PRO, MULTI,  20230210_0923",
+    "9.0.0-CE,   9.0.0,  CE,  SINGLE, 20240315_1421",
     "9.0.0-PRO,  9.0.0,  PRO, MULTI,  20240315_1421",
-    "10.0.0-CE,  10.0.0, CE,  SINGLE, 20250601_0800"
+    "10.0.0-CE,  10.0.0, CE,  SINGLE, 20250601_0800",
+    "10.0.0-PRO, 10.0.0, PRO, MULTI,  20250601_0800"
   })
   void should_parse_identity_when_fixture_is_realistic(
       String fixture, String version, String edition, String tenancy, String build)

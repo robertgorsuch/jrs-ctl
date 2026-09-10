@@ -248,6 +248,12 @@ final class RestoreSteps {
       return rt.snapshots().find(in.upgradeRunId(), stepId());
     }
 
+    /** True when the upgrade run journalled a snapshot for this step, whatever is on disk now. */
+    boolean wasRecorded() {
+      return rt.store().snapshots(in.upgradeRunId()).stream()
+          .anyMatch(row -> row.stepId().equals(stepId()));
+    }
+
     @Override
     public String detail() {
       return in.set().dir().resolve(stepId()).toString();
@@ -258,12 +264,25 @@ final class RestoreSteps {
       try {
         Optional<Snapshot> snapshot = source();
         if (snapshot.isEmpty()) {
-          Logs.warn(
+          if (wasRecorded()) {
+            // Between the plan's point-B check and now, something removed it. Carrying on would
+            // leave the restored webapp beside files belonging to the version it replaced.
+            return Failures.recoverable(
+                stepId()
+                    + " snapshot of run "
+                    + in.upgradeRunId()
+                    + " was recorded but is no longer under "
+                    + in.set().dir(),
+                "restore " + in.set().dir() + " from a backup before rolling back again",
+                List.of(),
+                List.of(in.set().dir()));
+          }
+          Logs.info(
               rt,
               ctx,
               out,
               this,
-              "no " + stepId() + " snapshot in run " + in.upgradeRunId() + "; skipped");
+              "run " + in.upgradeRunId() + " saved no " + stepId() + "; nothing to restore");
           return StepResult.ok();
         }
         List<Path> current = new ArrayList<>();

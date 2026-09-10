@@ -686,6 +686,46 @@ class ConsoleServerTest {
   }
 
   @Test
+  void should_issue_and_exchange_single_use_launch_code() throws Exception {
+    startDefault();
+    String launchUrl = server.launchUrl();
+    assertThat(launchUrl).startsWith(server.baseUrl() + "/#launch=");
+    String code = launchUrl.substring(launchUrl.indexOf("#launch=") + 8);
+    assertThat(code).isNotBlank();
+
+    // Exchange with invalid code fails
+    HttpResponse<String> bad =
+        http.send(
+            HttpRequest.newBuilder(URI.create(server.baseUrl() + "/api/auth/launch"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"code\":\"bad-code\"}"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(bad.statusCode()).isEqualTo(401);
+
+    // Exchange with valid code returns token
+    HttpResponse<String> ok =
+        http.send(
+            HttpRequest.newBuilder(URI.create(server.baseUrl() + "/api/auth/launch"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"code\":\"" + code + "\"}"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(ok.statusCode()).isEqualTo(200);
+    assertThat(json(ok).get("token").asText()).isEqualTo(token);
+
+    // Replay / reuse fails (single use)
+    HttpResponse<String> replay =
+        http.send(
+            HttpRequest.newBuilder(URI.create(server.baseUrl() + "/api/auth/launch"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"code\":\"" + code + "\"}"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(replay.statusCode()).isEqualTo(401);
+  }
+
+  @Test
   void should_serve_over_tls_when_pem_material_configured() throws Exception {
     Path keystore = tmp.resolve("console.p12");
     boolean windows =

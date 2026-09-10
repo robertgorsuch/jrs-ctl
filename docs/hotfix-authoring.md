@@ -132,10 +132,21 @@ Library jars with the version in their name are the common case: ship the new ja
 | `db` | `postgresql`, `mysql`, `oracle`, `mssql` or `db2`. Only the entries matching the configured `database.type` run, in manifest order; a bundle may ship scripts for several databases. |
 | `file` | `sql/<...>.sql` inside the bundle. |
 | `sha256` | Filled by the build. |
-| `idempotent` | Must be `true`, and the script must actually be so: running it twice leaves the database as after running it once (`CREATE TABLE IF NOT EXISTS`, `INSERT ... WHERE NOT EXISTS`, guarded `ALTER`). `runs recover --resume` re-executes an interrupted SQL step. |
-| `rollbackFile`, `rollbackSha256` | The script that undoes `file`, also idempotent. Required unless the manifest declares `"rollback": "irreversible"` with a `rollbackNote`. The build fills `rollbackSha256` in. |
+| `idempotent` | Must be `true`, and both scripts must actually be so: running either twice leaves the database as after running it once (`CREATE TABLE IF NOT EXISTS`, `INSERT ... WHERE NOT EXISTS`, guarded `ALTER`). `runs recover --resume` re-executes an interrupted SQL step, and a compensation is re-run until it succeeds, so the claim covers `rollbackFile` too. |
+| `rollbackFile`, `rollbackSha256` | The script that undoes `file`. Required unless the manifest declares `"rollback": "irreversible"` with a `rollbackNote`. The build fills `rollbackSha256` in. Only the rollback scripts of scripts that actually started are run, newest first, so a run that failed on the first script never touches the others' rollbacks. |
 
-There is no transactional promise across scripts: DDL auto-commits on several supported databases, so write every script to be safe to re-run from any point. SQL in a bundle requires the operator's configuration to have a `database` section; `hotfix apply` refuses with a remediation when it is absent. Scripts run with the configured repository credentials; do not assume superuser rights.
+There is no transactional promise across scripts: DDL auto-commits on several supported databases, so write every script to be safe to re-run from any point.
+
+Statements are separated at each `;` that is not inside a string, a quoted identifier, a comment or a PostgreSQL `$$ ... $$` body. A statement whose own terminator cannot be told from the ones inside it, a PL/SQL `BEGIN ... END;` block above all, needs a directive that names a different terminator for as long as it is in force:
+
+```sql
+-- jrsctl:delimiter //
+CREATE PROCEDURE p AS BEGIN UPDATE t SET a = 1; UPDATE t SET b = 2; END;
+//
+-- jrsctl:delimiter ;
+```
+
+The same directive is the way out of the two constructs the reader does not recognise: backslash escapes inside string literals, and SQL Server `[bracketed]` identifiers containing a `;`. SQL in a bundle requires the operator's configuration to have a `database` section; `hotfix apply` refuses with a remediation when it is absent. Scripts run with the configured repository credentials; do not assume superuser rights.
 
 ### Checks
 

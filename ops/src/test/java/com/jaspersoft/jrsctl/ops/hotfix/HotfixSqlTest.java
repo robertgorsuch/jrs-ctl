@@ -2,8 +2,12 @@ package com.jaspersoft.jrsctl.ops.hotfix;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.core.engine.StepResult;
+import com.jaspersoft.jrsctl.ops.Idempotency;
 import com.jaspersoft.jrsctl.ops.db.JdbcException;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations.ApplyOptions;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations.RollbackOptions;
@@ -56,6 +60,105 @@ class HotfixSqlTest {
       files.put("sql/postgresql/001-rollback.sql", ROLLBACK);
     }
     return files;
+  }
+
+  private static final String TWO_SCRIPT_MANIFEST =
+      """
+      {
+        "id": "%s",
+        "version": "1",
+        "title": "Two-step schema fix",
+        "applies": { "versions": [">=8.0.0 <9.0.0"] },
+        "files": [ { "action": "add", "path": "%s" } ],
+        "sql": [
+          { "db": "postgresql", "file": "sql/postgresql/001.sql", "idempotent": true,
+            "rollbackFile": "sql/postgresql/001-rollback.sql" },
+          { "db": "postgresql", "file": "sql/postgresql/002.sql", "idempotent": true,
+            "rollbackFile": "sql/postgresql/002-rollback.sql" }
+        ],
+        "restart": "none",
+        "rollback": "snapshot"
+      }
+      """
+          .formatted(HotfixFixture.ID, HotfixFixture.SCRIPT);
+
+  private static Map<String, String> twoScriptFiles() {
+    Map<String, String> files = new HashMap<>();
+    files.put("payload/" + HotfixFixture.SCRIPT, HotfixFixture.SCRIPT_BYTES);
+    files.put("sql/postgresql/001.sql", "CREATE TABLE first_marker (id int);\n");
+    files.put("sql/postgresql/001-rollback.sql", "DROP TABLE first_marker;\n");
+    files.put("sql/postgresql/002.sql", "CREATE TABLE second_marker (id int);\n");
+    files.put("sql/postgresql/002-rollback.sql", "DROP TABLE second_marker;\n");
+    return files;
+  }
+
+  @Test
+  void should_undo_only_the_sql_scripts_that_started_when_a_later_one_never_ran()
+      throws IOException {
+    try (HotfixFixture f = withDatabase(tmp)) {
+      Path zip = f.build(f.bundleDir("two-sql", TWO_SCRIPT_MANIFEST, twoScriptFiles()));
+      Plan plan = f.ops().planApply(zip, SIGNED);
+      Context ctx = f.ctx("r-partial-sql");
+      Idempotency.runUpTo(plan, ctx, "atomic-swap");
+      Step sql = HotfixFixture.step(plan, "apply-sql");
+      f.jdbc.failOnStatementContaining = Optional.of("first_marker");
+
+      StepResult failed = sql.execute(ctx, f.events::add);
+
+      assertThat(failed).isInstanceOf(StepResult.Failed.class);
+      assertThat(f.jdbc.executed)
+          .as("the run stopped inside 001, so 002 was never sent")
+          .doesNotContain("CREATE TABLE second_marker (id int)");
+
+      f.jdbc.failOnStatementContaining = Optional.empty();
+      f.jdbc.executed.clear();
+      StepResult undone = sql.compensate(ctx, f.events::add);
+
+      assertThat(undone).isInstanceOf(StepResult.Ok.class);
+      assertThat(f.jdbc.executed)
+          .as("dropping second_marker would undo a table this run never created")
+          .containsExactly("DROP TABLE first_marker");
+    }
+  }
+
+  @Test
+  void should_undo_a_script_that_started_and_then_failed_part_way() throws IOException {
+    try (HotfixFixture f = withDatabase(tmp)) {
+      Path zip = f.build(f.bundleDir("two-sql", TWO_SCRIPT_MANIFEST, twoScriptFiles()));
+      Plan plan = f.ops().planApply(zip, SIGNED);
+      Context ctx = f.ctx("r-failed-sql");
+      Idempotency.runUpTo(plan, ctx, "atomic-swap");
+      Step sql = HotfixFixture.step(plan, "apply-sql");
+      f.jdbc.failOnStatementContaining = Optional.of("second_marker");
+
+      assertThat(sql.execute(ctx, f.events::add)).isInstanceOf(StepResult.Failed.class);
+
+      f.jdbc.failOnStatementContaining = Optional.empty();
+      f.jdbc.executed.clear();
+      StepResult undone = sql.compensate(ctx, f.events::add);
+
+      assertThat(undone).isInstanceOf(StepResult.Ok.class);
+      assertThat(f.jdbc.executed)
+          .as("002 was sent and may have changed something before it failed")
+          .containsExactly("DROP TABLE second_marker", "DROP TABLE first_marker");
+    }
+  }
+
+  @Test
+  void should_undo_nothing_when_no_sql_script_started() throws IOException {
+    try (HotfixFixture f = withDatabase(tmp)) {
+      Path zip = f.build(f.bundleDir("two-sql", TWO_SCRIPT_MANIFEST, twoScriptFiles()));
+      Plan plan = f.ops().planApply(zip, SIGNED);
+      Context ctx = f.ctx("r-no-sql");
+      Idempotency.runUpTo(plan, ctx, "atomic-swap");
+      Step sql = HotfixFixture.step(plan, "apply-sql");
+      f.jdbc.executed.clear();
+
+      StepResult undone = sql.compensate(ctx, f.events::add);
+
+      assertThat(undone).isInstanceOf(StepResult.Ok.class);
+      assertThat(f.jdbc.executed).isEmpty();
+    }
   }
 
   @Test

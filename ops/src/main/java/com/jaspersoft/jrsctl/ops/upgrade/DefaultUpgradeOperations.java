@@ -274,15 +274,19 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           "pass the id of an upgrade run");
     }
     SnapshotSet set = SnapshotSet.of(rt.home(), runId, rt.services().platform().os());
-    if (!Files.isRegularFile(set.webappArchive())) {
+    PointBIntegrity.Report pointB =
+        PointBIntegrity.check(rt.store(), rt.snapshots(), rt.files(), set, runId);
+    if (!pointB.whole()) {
       throw new UpgradeException(
           UpgradeException.PRECHECK,
-          "run "
+          "rollback point B of run "
               + runId
-              + " has no webapp archive under "
+              + " is incomplete: "
+              + String.join("; ", pointB.problems()),
+          "restore "
               + set.dir()
-              + "; it did not reach point B",
-          "nothing to restore from this run");
+              + " from a backup, or roll this installation back by hand;"
+              + " a partial restore would leave the old webapp against the new database");
     }
     Config config = rt.config();
     HotfixPaths paths = paths(config);

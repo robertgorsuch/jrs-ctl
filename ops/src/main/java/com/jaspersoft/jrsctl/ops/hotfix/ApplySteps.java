@@ -28,7 +28,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -37,7 +39,9 @@ import java.util.Set;
  * steps do all their work in {@code precheck} and mutate nothing, so a refusal ends the run with
  * exit code 2; every mutating step re-checks the current state before acting, so re-execution
  * converges; {@code AtomicSwap} restores from the snapshot and {@code ApplySql} runs the rollback
- * scripts in reverse when compensated.
+ * scripts in reverse when compensated. What each touched file looked like beforehand comes from
+ * {@link PriorState}, that is from the run's own snapshot rather than from the plan, because {@code
+ * upgrade --reapply-hotfixes} plans before the upgrade and applies after it.
  */
 final class ApplySteps {
 
@@ -503,7 +507,8 @@ final class ApplySteps {
 
     @Override
     public String detail() {
-      return in.snapshotPaths().size()
+      return "up to "
+          + in.touched().size()
           + " file(s) -> "
           + rt.home().snapshots().resolve("{runId}").resolve(SNAPSHOT);
     }
@@ -513,9 +518,15 @@ final class ApplySteps {
       return CheckResult.pass();
     }
 
+    /**
+     * Snapshots every path the plan touches that exists right now, not only those the plan expected
+     * to find. The difference matters when the plan was built against a webapp that has since been
+     * replaced: a target the plan saw as absent may now exist, and without this it would be
+     * overwritten with nothing kept to put back.
+     */
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      List<Path> paths = in.snapshotPaths().stream().filter(Files::isRegularFile).toList();
+      List<Path> paths = in.touched().stream().filter(Files::isRegularFile).distinct().toList();
       try {
         Snapshot snapshot =
             rt.snapshots().create(ctx.runId(), SNAPSHOT, paths, in.paths().commonBase());
@@ -704,12 +715,24 @@ final class ApplySteps {
       return StepResult.ok();
     }
 
+    /**
+     * Puts the swapped files back: whatever the snapshot holds is restored, and anything this run
+     * created that the snapshot does not hold is removed. "Created" is decided by the snapshot too,
+     * so a file the plan believed absent but which existed at swap time is restored rather than
+     * deleted.
+     */
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
       List<Path> affected = new ArrayList<>();
       try {
+        PriorState before = PriorState.of(rt.snapshots(), ctx, SNAPSHOT);
         for (FileTarget t : in.targets()) {
-          if (t.action() != Manifest.Action.DELETE && !t.existedBefore()) {
+          if (t.action() == Manifest.Action.DELETE) {
+            continue;
+          }
+          boolean existed =
+              before.known() ? before.before(t.target()).isPresent() : t.existedBefore();
+          if (!existed) {
             affected.add(t.target());
             Files.deleteIfExists(t.target());
           }
@@ -733,7 +756,10 @@ final class ApplySteps {
     }
   }
 
-  /** Step 9: run the manifest's SQL scripts; compensation runs the rollback scripts in reverse. */
+  /**
+   * Step 9: run the manifest's SQL scripts; compensation runs, in reverse, the rollback script of
+   * every script that actually started.
+   */
   static final class ApplySql implements Step {
     private final HotfixRuntime rt;
     private final ApplyInput in;
@@ -791,23 +817,64 @@ final class ApplySteps {
       for (Manifest.SqlEntry s : in.sqlScripts()) {
         files.add(s.file());
       }
-      return run(ctx, out, files);
+      return SqlRunner.run(
+          rt, ctx, out, id(), phase(), in.bundleDir(ctx), files, SqlProgress.of(ctx, id()));
     }
 
+    /**
+     * Undoes only what was done. A run that failed on its first script must not also run the
+     * rollback scripts of the ones after it: those reverse changes that were never made, and
+     * nothing in the manifest promises they are safe out of turn. Which scripts started is read
+     * from the run's own journal, so a crash mid-script still counts as started and is undone.
+     */
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
       if (irreversible()) {
         return StepResult.ok();
       }
-      List<String> files = new ArrayList<>();
-      for (int i = in.sqlScripts().size() - 1; i >= 0; i--) {
-        in.sqlScripts().get(i).rollbackFile().ifPresent(files::add);
+      List<String> started;
+      try {
+        started = SqlProgress.of(ctx, id()).started();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot read which SQL scripts ran in run " + ctx.runId() + ": " + e.getMessage(),
+            "check the run directory, then undo the SQL by hand from the bundle's rollback scripts");
       }
-      return run(ctx, out, files);
+      List<String> files = new ArrayList<>();
+      List<String> unrecoverable = new ArrayList<>();
+      for (int i = in.sqlScripts().size() - 1; i >= 0; i--) {
+        Manifest.SqlEntry s = in.sqlScripts().get(i);
+        if (!started.contains(s.file())) {
+          continue;
+        }
+        if (s.rollbackFile().isPresent()) {
+          files.add(s.rollbackFile().get());
+        } else {
+          unrecoverable.add(s.file());
+        }
+      }
+      if (!unrecoverable.isEmpty()) {
+        return Failures.recoverable(
+            "no rollback script for " + String.join(", ", unrecoverable) + ", which ran",
+            "undo those changes by hand before re-running");
+      }
+      if (files.isEmpty()) {
+        log(ctx, out, Event.Log.Level.INFO, "no SQL script started; nothing to undo");
+        return StepResult.ok();
+      }
+      log(
+          ctx,
+          out,
+          Event.Log.Level.INFO,
+          "undoing " + files.size() + " of " + in.sqlScripts().size() + " SQL script(s)");
+      return SqlRunner.run(
+          rt, ctx, out, id(), phase(), in.bundleDir(ctx), files, SqlProgress.none());
     }
 
-    private StepResult run(Context ctx, EventSink out, List<String> scripts) {
-      return SqlRunner.run(rt, ctx, out, id(), phase(), in.bundleDir(ctx), scripts);
+    private void log(Context ctx, EventSink out, Event.Log.Level level, String message) {
+      out.emit(
+          new Event.Log(
+              rt.clock().instant(), ctx.runId(), Optional.of(id()), phase(), level, message));
     }
   }
 
@@ -838,7 +905,9 @@ final class ApplySteps {
 
     @Override
     public String detail() {
-      return "hotfixes_installed, hotfix_files (" + rows(Optional.empty()).size() + " rows), audit";
+      return "hotfixes_installed, hotfix_files ("
+          + rows(in.manifest().id(), planState()).size()
+          + " rows), audit";
     }
 
     @Override
@@ -850,6 +919,15 @@ final class ApplySteps {
     public StepResult execute(Context ctx, EventSink out) {
       StateStore store = rt.store();
       String id = in.manifest().id();
+      PriorState before;
+      try {
+        PriorState fromSnapshot = PriorState.of(rt.snapshots(), ctx, SNAPSHOT);
+        before = fromSnapshot.known() ? fromSnapshot : planState();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot read the pre-swap snapshot of run " + ctx.runId() + ": " + e.getMessage(),
+            "without it the recorded before-hashes would not match what rollback restores");
+      }
       Optional<HotfixInstalled> existing = store.hotfix(id);
       if (existing.isPresent()) {
         HotfixInstalled h = existing.get();
@@ -874,7 +952,7 @@ final class ApplySteps {
               Optional.of(ctx.runId() + "/" + SNAPSHOT),
               HotfixState.INSTALLED,
               rt.clock().instant()),
-          rows(Optional.of(id)));
+          rows(id, before));
       store.audit(
           rt.actor(),
           AUDIT_APPLIED,
@@ -897,8 +975,12 @@ final class ApplySteps {
       return StepResult.ok();
     }
 
-    private List<HotfixFile> rows(Optional<String> id) {
-      String hotfixId = id.orElse(in.manifest().id());
+    /**
+     * The {@code hotfix_files} rows. Every before-hash comes from {@code before}, so what is
+     * written here is what {@code hotfix rollback} will find after it restores the snapshot; a
+     * sibling only gets a delete row when it actually existed to be deleted.
+     */
+    private List<HotfixFile> rows(String hotfixId, PriorState before) {
       List<HotfixFile> rows = new ArrayList<>();
       for (FileTarget t : in.targets()) {
         String action =
@@ -907,14 +989,28 @@ final class ApplySteps {
               case REPLACE -> "replace";
               case DELETE -> "delete";
             };
-        rows.add(new HotfixFile(hotfixId, t.target(), action, t.before(), t.after()));
+        rows.add(
+            new HotfixFile(hotfixId, t.target(), action, before.before(t.target()), t.after()));
         for (FileTarget.Sibling s : t.replaces()) {
-          if (s.before().isPresent()) {
-            rows.add(new HotfixFile(hotfixId, s.path(), "delete", s.before(), Optional.empty()));
+          Optional<String> was = before.before(s.path());
+          if (was.isPresent()) {
+            rows.add(new HotfixFile(hotfixId, s.path(), "delete", was, Optional.empty()));
           }
         }
       }
       return List.copyOf(rows);
+    }
+
+    /** The plan's own view, used for the summary line and when no snapshot was taken. */
+    private PriorState planState() {
+      Map<Path, String> hashes = new LinkedHashMap<>();
+      for (FileTarget t : in.targets()) {
+        t.before().ifPresent(h -> hashes.put(t.target().toAbsolutePath().normalize(), h));
+        for (FileTarget.Sibling s : t.replaces()) {
+          s.before().ifPresent(h -> hashes.put(s.path().toAbsolutePath().normalize(), h));
+        }
+      }
+      return new PriorState(hashes, true);
     }
   }
 }

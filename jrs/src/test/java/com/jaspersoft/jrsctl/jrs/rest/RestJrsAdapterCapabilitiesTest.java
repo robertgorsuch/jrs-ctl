@@ -13,8 +13,11 @@ import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class RestJrsAdapterCapabilitiesTest {
 
@@ -95,5 +98,43 @@ class RestJrsAdapterCapabilitiesTest {
         .hasMessageContaining("503")
         .satisfies(
             e -> assertThat(((JrsUnreachableException) e).remediation()).contains("starting"));
+  }
+
+  /**
+   * The compat matrix answers for every supported server without a single probe being sent, which
+   * is what {@code doctor} relies on when the server is unreachable. The identity is asserted
+   * because it is what selects the matrix row; {@link ServerIdentitiesTest} owns parsing the same
+   * fixtures in detail.
+   */
+  @ParameterizedTest(name = "{0}")
+  @CsvSource({
+    "7.1.0-CE,   7.1.0,  CE,  SINGLE",
+    "7.1.0-PRO,  7.1.0,  PRO, MULTI",
+    "7.5.0-CE,   7.5.0,  CE,  SINGLE",
+    "7.9.1-PRO,  7.9.1,  PRO, SINGLE",
+    "8.2.0-CE,   8.2.0,  CE,  SINGLE",
+    "8.2.0-PRO,  8.2.0,  PRO, MULTI",
+    "9.0.0-CE,   9.0.0,  CE,  SINGLE",
+    "9.0.0-PRO,  9.0.0,  PRO, MULTI",
+    "10.0.0-CE,  10.0.0, CE,  SINGLE",
+    "10.0.0-PRO, 10.0.0, PRO, MULTI"
+  })
+  void should_expect_the_matrix_capabilities_when_the_server_reports_a_supported_version(
+      String fixture, String version, String edition, ServerIdentity.Tenancy tenancy) {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo(fixture);
+
+    ServerIdentity id = f.adapter.identity();
+    Set<Capability> expected = f.adapter.expectedCapabilities();
+
+    assertThat(id.version()).isEqualTo(version);
+    assertThat(id.edition().name()).isEqualTo(edition);
+    assertThat(id.tenancy()).isEqualTo(tenancy);
+    assertThat(expected)
+        .contains(Capability.EXPORT_ASYNC, Capability.IMPORT_ASYNC, Capability.REST_LOGIN);
+    assertThat(expected.contains(Capability.ORGS))
+        .as("organizations are a PRO capability")
+        .isEqualTo(edition.equals("PRO"));
+    wm.verify(0, getRequestedFor(urlPathEqualTo(f.path("/rest_v2/organizations"))));
   }
 }

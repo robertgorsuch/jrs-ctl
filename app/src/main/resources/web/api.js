@@ -61,14 +61,34 @@ export function setToken(token) {
 }
 
 /**
- * On first load, accept "#token=<value>" from the URL, store it, and replace the fragment so
- * the token never stays in the address bar or browser history.
+ * On first load, accept "#token=<value>" or "#launch=<value>" from the URL, store it, and replace
+ * the fragment so credentials never stay in the address bar or browser history.
  */
-export function loadToken() {
+export async function loadToken() {
   const m = /^#token=([^&]+)/.exec(window.location.hash);
   if (m) {
     setToken(decodeURIComponent(m[1]));
     window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/dashboard');
+  }
+  const l = /^#launch=([^&]+)/.exec(window.location.hash);
+  if (l) {
+    const code = decodeURIComponent(l[1]);
+    window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/dashboard');
+    try {
+      const res = await fetch(API_BASE + '/auth/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      if (res.ok) {
+        const body = await res.json();
+        if (body && body.token) {
+          setToken(body.token);
+        }
+      }
+    } catch {
+      // ignore, fall back to getToken()
+    }
   }
   return getToken();
 }

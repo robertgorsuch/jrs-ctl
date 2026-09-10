@@ -7,9 +7,9 @@
 -->
 <configuration>
   <conversionRule conversionWord="redact"
-                  converterClass="com.jaspersoft.jrsctl.core.redact.RedactingConverter"/>
+                  class="com.jaspersoft.jrsctl.core.redact.RedactingConverter"/>
   <conversionRule conversionWord="redactEx"
-                  converterClass="com.jaspersoft.jrsctl.core.redact.RedactingThrowableConverter"/>
+                  class="com.jaspersoft.jrsctl.core.redact.RedactingThrowableConverter"/>
 
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <target>System.err</target>

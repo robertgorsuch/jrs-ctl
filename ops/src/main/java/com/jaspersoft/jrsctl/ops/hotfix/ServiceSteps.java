@@ -16,10 +16,10 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * Service lifecycle steps shared by the apply and rollback plans (spec Â§8.2 steps 6 and 10, Â§8.3).
- * Invariants: stop and start are idempotent because they consult the controller's state first; each
- * one's compensation is the opposite operation; {@code WaitForServer} polls {@code serverInfo} with
- * the HTTP retry cadence and gives up after ten minutes (spec Â§6.5).
+ * Service lifecycle steps shared by the apply and rollback plans (spec Â§8.2 steps 6 and 10,
+ * Â§8.3). Invariants: stop and start are idempotent because they consult the controller's state
+ * first; each one's compensation is the opposite operation; {@code WaitForServer} polls {@code
+ * serverInfo} with the HTTP retry cadence and gives up after ten minutes (spec Â§6.5).
  */
 final class ServiceSteps {
 

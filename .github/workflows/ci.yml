@@ -5,6 +5,9 @@ on:
     branches: [main, "phase/**"]
     tags: ["v*"]
   pull_request:
+  schedule:
+    # Run weekly on Monday at 04:00 UTC to catch emerging CVE disclosures
+    - cron: "0 4 * * 1"
 
 permissions:
   contents: read

@@ -115,7 +115,11 @@ public final class ManifestValidator {
     for (Manifest.SqlEntry s : m.sql()) {
       String where = "sql[" + s.file() + "]";
       if (!s.idempotent()) {
-        problems.add(where + ": idempotent must be true");
+        problems.add(
+            where
+                + ": idempotent must be true, for the rollback script as well as the script"
+                + " itself; an interrupted step is re-executed by runs recover --resume and a"
+                + " compensation is re-run until it succeeds");
       }
       if (s.sha256().isEmpty()) {
         problems.add(where + ": sha256 is required");

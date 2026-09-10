@@ -1,8 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
-import java.nio.file.Files;
+import com.jaspersoft.jrsctl.core.platform.DefaultHome;
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -10,7 +9,9 @@ import java.util.Map;
  * {@code $JRSCTL_HOME}). Invariants: the home is derived from {@code --home}, then {@code
  * JRSCTL_HOME}, then the platform default, using only the argument list and the environment so no
  * class that owns a logger is loaded first; an explicit {@code -Djrsctl.log.file} is never
- * overridden.
+ * overridden. The platform default comes from {@link DefaultHome}, the same class the running
+ * {@link com.jaspersoft.jrsctl.core.platform.Platform} uses, so the log and the state store cannot
+ * end up in different homes.
  */
 final class LogFile {
 
@@ -47,11 +48,6 @@ final class LogFile {
   }
 
   private static Path platformDefault(Map<String, String> env) {
-    boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-    Path base =
-        windows ? Path.of(env.getOrDefault("ProgramData", "C:\\ProgramData")) : Path.of("/var/lib");
-    Path home = base.resolve("jrsctl");
-    boolean writable = Files.isDirectory(home) ? Files.isWritable(home) : Files.isWritable(base);
-    return writable ? home : Path.of(System.getProperty("user.home")).resolve(".jrsctl");
+    return DefaultHome.choose(env).home();
   }
 }

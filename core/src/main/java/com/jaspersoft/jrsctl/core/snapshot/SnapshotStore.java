@@ -3,10 +3,9 @@ package com.jaspersoft.jrsctl.core.snapshot;
 import static java.util.Objects.requireNonNull;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.platform.Durability;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -14,18 +13,16 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.StreamSupport;
@@ -43,12 +40,13 @@ import org.slf4j.LoggerFactory;
  * {@code runId/stepId} (an existing, verified snapshot is returned unchanged so a retried step
  * keeps the pre-change state); {@link #prune} never removes a snapshot of a protected run. Payload
  * copies keep the permissions of the snapshots tree; the originals' permissions live in the
- * manifest.
+ * manifest. "Written last" is a durability claim as well as an ordering one: every payload and the
+ * manifest itself are forced to stable storage before the rename that publishes the manifest, so a
+ * power cut cannot leave a valid manifest describing payloads that were never written.
  */
 public final class SnapshotStore {
 
   private static final Logger LOG = LoggerFactory.getLogger(SnapshotStore.class);
-  private static final int BUFFER_SIZE = 64 * 1024;
   private static final String RESTORE_SUFFIX = ".jrsctl-restore";
 
   private final JrsctlHome home;
@@ -95,7 +93,7 @@ public final class SnapshotStore {
       Path copy = payload.resolve(relative);
       Files.createDirectories(copy.getParent());
       FileOps.Permissions permissions = files.capturePermissions(source);
-      String streamed = copyHashing(source, copy);
+      String streamed = Durability.copyHashing(source, copy);
       String sourceHash = files.sha256(source);
       if (!streamed.equals(sourceHash)) {
         throw new SnapshotCorruptException(
@@ -109,11 +107,14 @@ public final class SnapshotStore {
       entries.add(
           new SnapshotManifest.Entry(manifestPath, streamed, Files.size(copy), permissions));
     }
+    Durability.syncDirectory(payload);
     SnapshotManifest manifest = new SnapshotManifest(runId, stepId, clock.instant(), base, entries);
     Path manifestFile = dir.resolve(Snapshot.MANIFEST_FILE);
     Path staged = dir.resolve(Snapshot.MANIFEST_FILE + ".tmp");
     SnapshotJson.write(manifest, staged);
+    Durability.sync(staged);
     Files.move(staged, manifestFile, StandardCopyOption.ATOMIC_MOVE);
+    Durability.syncDirectory(dir);
     return new Snapshot(runId, stepId, dir, manifest);
   }
 
@@ -158,7 +159,7 @@ public final class SnapshotStore {
           target.resolveSibling(
               "." + target.getFileName() + "." + System.nanoTime() + RESTORE_SUFFIX);
       try {
-        copyStreaming(snapshot.payloadFile(entry), staged);
+        Durability.copy(snapshot.payloadFile(entry), staged);
         files.atomicReplace(staged, target);
       } catch (IOException e) {
         Files.deleteIfExists(staged);
@@ -218,9 +219,10 @@ public final class SnapshotStore {
   }
 
   /**
-   * Deletes unprotected snapshots older than {@code retention} (age pruning is disabled for a zero
-   * or negative duration), then the oldest unprotected ones until at most {@code maxSnapshots}
-   * remain in total ({@code 0} means no cap). Returns what was deleted.
+   * Deletes unprotected runs whose snapshots have all passed {@code retention} (age pruning is
+   * disabled for a zero or negative duration), then whole unprotected runs, oldest first, until at
+   * most {@code maxSnapshots} snapshots remain in total ({@code 0} means no cap). Returns what was
+   * deleted.
    */
   public List<Snapshot> prune(Duration retention, int maxSnapshots, Set<String> protectedRunIds)
       throws IOException {
@@ -235,41 +237,60 @@ public final class SnapshotStore {
 
   /**
    * What {@link #prune} with the same arguments would delete, oldest first, without touching the
-   * disk: every unprotected snapshot older than {@code retention}, then the oldest unprotected
-   * survivors beyond {@code maxSnapshots}. A snapshot whose run id is in {@code protectedRunIds} is
-   * never a candidate.
+   * disk: every unprotected run whose snapshots have all passed {@code retention}, then whole
+   * unprotected runs, oldest first, until at most {@code maxSnapshots} snapshots remain. A run
+   * whose id is in {@code protectedRunIds} is never a candidate.
+   *
+   * <p>A run is the unit, not a snapshot, because the snapshots of one run only mean anything
+   * together: an upgrade's rollback point is its configuration and its keystore and its archives,
+   * and restoring some of them is worse than restoring none. So a run keeps every snapshot until it
+   * can lose them all, and {@code maxSnapshots} may be undershot when the run that has to go holds
+   * several. Disk space is a budget; a half-restorable rollback point is a trap.
    */
   public List<Snapshot> pruneCandidates(
       Duration retention, int maxSnapshots, Set<String> protectedRunIds) throws IOException {
     if (maxSnapshots < 0) {
       throw new IllegalArgumentException("maxSnapshots must not be negative");
     }
-    List<Snapshot> survivors = new ArrayList<>();
-    List<Snapshot> removed = new ArrayList<>();
     Optional<Instant> cutoff =
         retention.isZero() || retention.isNegative()
             ? Optional.empty()
             : Optional.of(clock.instant().minus(retention));
+    Map<String, List<Snapshot>> runs = new LinkedHashMap<>();
     for (Snapshot snapshot : list()) {
-      boolean expired = cutoff.map(snapshot.manifest().createdAt()::isBefore).orElse(false);
-      if (expired && !protectedRunIds.contains(snapshot.runId())) {
-        removed.add(snapshot);
+      runs.computeIfAbsent(snapshot.runId(), id -> new ArrayList<>()).add(snapshot);
+    }
+    List<Snapshot> removed = new ArrayList<>();
+    int surviving = 0;
+    List<String> survivingRuns = new ArrayList<>();
+    for (Map.Entry<String, List<Snapshot>> run : runs.entrySet()) {
+      boolean expired =
+          cutoff.isPresent()
+              && run.getValue().stream()
+                  .allMatch(s -> s.manifest().createdAt().isBefore(cutoff.get()));
+      if (expired && !protectedRunIds.contains(run.getKey())) {
+        removed.addAll(run.getValue());
       } else {
-        survivors.add(snapshot);
+        surviving += run.getValue().size();
+        survivingRuns.add(run.getKey());
       }
     }
     if (maxSnapshots > 0) {
-      int excess = survivors.size() - maxSnapshots;
-      for (Snapshot snapshot : survivors) {
-        if (excess <= 0) {
+      for (String runId : survivingRuns) {
+        if (surviving <= maxSnapshots) {
           break;
         }
-        if (!protectedRunIds.contains(snapshot.runId())) {
-          removed.add(snapshot);
-          excess--;
+        if (protectedRunIds.contains(runId)) {
+          continue;
         }
+        removed.addAll(runs.get(runId));
+        surviving -= runs.get(runId).size();
       }
     }
+    removed.sort(
+        Comparator.comparing((Snapshot s) -> s.manifest().createdAt())
+            .thenComparing(Snapshot::runId)
+            .thenComparing(Snapshot::stepId));
     return List.copyOf(removed);
   }
 
@@ -324,43 +345,6 @@ public final class SnapshotStore {
       joined.append(element);
     }
     return joined.toString();
-  }
-
-  private static String copyHashing(Path source, Path target) throws IOException {
-    MessageDigest digest = sha256Digest();
-    byte[] buffer = new byte[BUFFER_SIZE];
-    try (InputStream in = Files.newInputStream(source);
-        OutputStream out =
-            Files.newOutputStream(
-                target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-      int read;
-      while ((read = in.read(buffer)) != -1) {
-        digest.update(buffer, 0, read);
-        out.write(buffer, 0, read);
-      }
-    }
-    return HexFormat.of().formatHex(digest.digest());
-  }
-
-  private static void copyStreaming(Path source, Path target) throws IOException {
-    byte[] buffer = new byte[BUFFER_SIZE];
-    try (InputStream in = Files.newInputStream(source);
-        OutputStream out =
-            Files.newOutputStream(
-                target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-      int read;
-      while ((read = in.read(buffer)) != -1) {
-        out.write(buffer, 0, read);
-      }
-    }
-  }
-
-  private static MessageDigest sha256Digest() {
-    try {
-      return MessageDigest.getInstance("SHA-256");
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is mandatory in every JRE", e);
-    }
   }
 
   private static void deleteRecursively(Path dir) throws IOException {

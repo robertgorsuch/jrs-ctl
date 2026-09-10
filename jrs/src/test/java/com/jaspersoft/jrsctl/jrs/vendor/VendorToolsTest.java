@@ -236,6 +236,46 @@ class VendorToolsTest {
   }
 
   @Test
+  void should_report_a_failure_when_ant_says_build_failed_but_the_wrapper_exits_zero() {
+    runner.exit(0, "some noise", "BUILD FAILED", "js-import.sh returns anyway");
+
+    VendorRun run =
+        tools()
+            .ant(buildomatic, "validate-keystore", List.of(), Optional.of(javaHome), sink, scope);
+
+    VendorRun.Completed c = (VendorRun.Completed) run;
+    assertThat(c.exitCode()).isZero();
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.FAILED);
+    assertThat(c.ok()).isFalse();
+  }
+
+  @Test
+  void should_report_success_when_buildomatic_prints_its_validation_banner() {
+    runner.exit(0, "VALIDATION COMPLETED", "Import finished");
+
+    VendorRun run =
+        tools()
+            .ant(buildomatic, "validate-keystore", List.of(), Optional.of(javaHome), sink, scope);
+
+    VendorRun.Completed c = (VendorRun.Completed) run;
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.SUCCEEDED);
+    assertThat(c.ok()).isTrue();
+  }
+
+  @Test
+  void should_report_silence_when_the_tool_prints_no_build_banner() {
+    runner.exit(0, "nothing to say");
+
+    VendorRun run =
+        tools()
+            .ant(buildomatic, "validate-keystore", List.of(), Optional.of(javaHome), sink, scope);
+
+    VendorRun.Completed c = (VendorRun.Completed) run;
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.SILENT);
+    assertThat(c.ok()).isTrue();
+  }
+
+  @Test
   void should_redact_streamed_lines_when_they_contain_registered_secret() {
     redactor.register("s3cretValue");
     runner.answer(

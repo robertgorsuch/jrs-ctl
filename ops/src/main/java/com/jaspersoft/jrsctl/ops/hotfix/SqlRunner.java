@@ -16,9 +16,10 @@ import java.util.Optional;
 
 /**
  * Runs bundle SQL scripts through the configured database in one session (spec §8.2 step 9).
- * Invariants: scripts run in the given order, statement by statement; the cancellation token is
- * checked between scripts; a failure names the script and the driver's message, never the
- * connection password.
+ * Invariants: scripts run in the given order, statement by statement; each is written to {@code
+ * progress} before it is sent, so a compensation can tell a script that ran from one that never
+ * started; the cancellation token is checked between scripts; a failure names the script and the
+ * driver's message, never the connection password.
  */
 final class SqlRunner {
 
@@ -31,7 +32,8 @@ final class SqlRunner {
       String stepId,
       String phase,
       Path bundleDir,
-      List<String> scripts) {
+      List<String> scripts,
+      SqlProgress progress) {
     if (scripts.isEmpty()) {
       return StepResult.ok();
     }
@@ -46,6 +48,7 @@ final class SqlRunner {
       for (String script : scripts) {
         ctx.cancel().checkpoint();
         current = script;
+        progress.start(script);
         int count = 0;
         for (String statement : SqlScript.read(bundleDir.resolve(script))) {
           count += session.execute(statement);

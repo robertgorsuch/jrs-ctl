@@ -234,7 +234,10 @@ final class RollbackSteps {
     }
   }
 
-  /** Runs the rollback scripts newest first; compensation re-applies the forward scripts. */
+  /**
+   * Runs the rollback scripts newest first; compensation re-applies the forward script of each
+   * rollback script that started, and only those.
+   */
   static final class RunSqlRollback implements Step {
     private final HotfixRuntime rt;
     private final Input in;
@@ -278,12 +281,43 @@ final class RollbackSteps {
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      return SqlRunner.run(rt, ctx, out, id(), phase(), in.bundleDir(), in.rollbackScripts());
+      return SqlRunner.run(
+          rt,
+          ctx,
+          out,
+          id(),
+          phase(),
+          in.bundleDir(),
+          in.rollbackScripts(),
+          SqlProgress.of(ctx, id()));
     }
 
+    /**
+     * Puts back what the rollback undid. Only the forward script of a rollback script that actually
+     * started is re-applied: re-applying the others would install changes this hotfix's rollback
+     * never removed, in a run whose whole purpose was to remove them.
+     */
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
-      return SqlRunner.run(rt, ctx, out, id(), phase(), in.bundleDir(), in.forwardScripts());
+      List<String> started;
+      try {
+        started = SqlProgress.of(ctx, id()).started();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot read which SQL rollback scripts ran in run "
+                + ctx.runId()
+                + ": "
+                + e.getMessage(),
+            "check the run directory, then re-apply the hotfix SQL by hand from the bundle");
+      }
+      List<String> forward = new ArrayList<>();
+      for (Manifest.SqlEntry entry : in.sqlScripts()) {
+        if (entry.rollbackFile().map(started::contains).orElse(false)) {
+          forward.add(entry.file());
+        }
+      }
+      return SqlRunner.run(
+          rt, ctx, out, id(), phase(), in.bundleDir(), forward, SqlProgress.none());
     }
   }
 

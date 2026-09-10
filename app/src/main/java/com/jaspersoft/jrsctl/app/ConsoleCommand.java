@@ -113,7 +113,7 @@ public final class ConsoleCommand implements Callable<Integer> {
         }
         boolean shouldOpen = open != null ? open : Terminal.present();
         if (shouldOpen) {
-          openBrowser(services.platform(), server.url());
+          openBrowser(services.platform(), server.launchUrl());
         }
         Thread hook = new Thread(server::close, "jrsctl-console-shutdown");
         Runtime.getRuntime().addShutdownHook(hook);

@@ -93,6 +93,7 @@ class RestClientTest {
     wm.verify(
         getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/serverInfo"))
             .withHeader("Authorization", equalTo(expected))
+            .withHeader(RestClient.REMOTE_DOMAIN_HEADER, equalTo("1"))
             .withHeader(RestClient.CORRELATION_HEADER, equalTo("run-42")));
   }
 

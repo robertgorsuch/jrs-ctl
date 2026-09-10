@@ -21,6 +21,7 @@ import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -258,6 +259,31 @@ class UpgradeStepIdempotencyTest {
       assertReexecutionConverges(f, f.ops().planUpgrade(newdb(f)), "r-vu", "run-vendor-upgrade");
       assertThat(UpgradeFixture.read(f.vendorLog).strip().lines()).hasSize(1);
       assertThat(f.logs()).anyMatch(m -> m.contains("already completed in this run"));
+    }
+  }
+
+  @Test
+  void should_refuse_to_rerun_the_vendor_script_when_the_previous_attempt_never_reported_back()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-vu-crash");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-upgrade", f.events::add);
+      Step step = Idempotency.step(plan, "run-vendor-upgrade");
+      Idempotency.executeOk(step, ctx, f.events::add);
+      // A power cut between the vendor script starting and its result being journalled leaves the
+      // attempt marker without the done marker; js-upgrade-samedb cannot be run again blindly.
+      Path runDir = f.fake.home.runDir("r-vu-crash");
+      Files.delete(runDir.resolve(VendorSteps.DONE_MARKER));
+      assertThat(runDir.resolve(VendorSteps.ATTEMPT_MARKER)).exists();
+
+      StepResult again = step.execute(ctx, f.events::add);
+
+      assertThat(again).isInstanceOf(StepResult.Failed.class);
+      assertThat(again.toString())
+          .contains("never reported back")
+          .contains(VendorSteps.ATTEMPT_MARKER);
+      assertThat(UpgradeFixture.read(f.vendorLog).strip().lines()).hasSize(1);
     }
   }
 

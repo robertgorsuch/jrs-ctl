@@ -1,10 +1,13 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
+import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
@@ -12,9 +15,12 @@ import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -115,6 +121,62 @@ class UpgradeRunTest {
       assertThat(UpgradeFixture.read(f.webappDir.resolve("version.txt"))).isEqualTo("9.0.0");
       assertThat(f.events)
           .anyMatch(e -> e.toString().contains("upgrade rollback r-up-3 --to-point B"));
+    }
+  }
+
+  @Test
+  void should_refuse_to_plan_a_rollback_when_the_config_snapshot_was_pruned() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan up = f.ops().planUpgrade(newdb(f));
+      assertThat(f.run(up, "r-up-pruned", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Path config = f.fake.home.snapshots().resolve("r-up-pruned").resolve(SnapshotSet.CONFIG_STEP);
+      assertThat(config).isDirectory();
+      Archives.deleteRecursively(config);
+
+      assertThatThrownBy(() -> f.ops().planRollback("r-up-pruned", RollbackPoint.B))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining(SnapshotSet.CONFIG_STEP)
+          .hasMessageContaining("point B")
+          .asInstanceOf(InstanceOfAssertFactories.type(UpgradeException.class))
+          .satisfies(e -> assertThat(e.exitCode()).isEqualTo(UpgradeException.PRECHECK))
+          .satisfies(
+              e -> assertThat(e.remediation()).contains("old webapp against the new database"));
+    }
+  }
+
+  @Test
+  void should_refuse_to_plan_a_rollback_when_the_webapp_archive_was_corrupted() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan up = f.ops().planUpgrade(newdb(f));
+      assertThat(f.run(up, "r-up-bad", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-up-bad", f.fake.platform.os());
+      UpgradeFixture.write(set.webappArchive(), "not the archive that was recorded");
+
+      assertThatThrownBy(() -> f.ops().planRollback("r-up-bad", RollbackPoint.B))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("point B")
+          .hasMessageContaining("was recorded");
+    }
+  }
+
+  @Test
+  void should_prune_every_snapshot_of_a_run_together_or_none_of_them() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan up = f.ops().planUpgrade(newdb(f));
+      assertThat(f.run(up, "r-up-unit", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      SnapshotStore snapshots = f.snapshots();
+      int total = snapshots.list().size();
+      assertThat(total).as("the upgrade keeps more than one snapshot").isGreaterThan(1);
+
+      // A cap that would cut the run in half must take the whole run or leave it whole.
+      List<Snapshot> candidates = snapshots.pruneCandidates(Duration.ZERO, total - 1, Set.of());
+
+      assertThat(candidates).isNotEmpty();
+      assertThat(candidates.stream().map(Snapshot::runId).distinct()).containsExactly("r-up-unit");
+      assertThat(candidates).hasSize(total);
     }
   }
 

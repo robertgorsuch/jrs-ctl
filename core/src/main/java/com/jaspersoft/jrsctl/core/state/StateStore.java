@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.core.state;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -550,6 +551,7 @@ public final class StateStore implements AutoCloseable {
       Optional<String> fromState,
       String toState,
       Optional<String> detail) {
+    Optional<String> sanitizedDetail = detail.map(Redactor.global()::redact);
     Instant ts = clock.instant();
     long seq =
         write(
@@ -564,7 +566,7 @@ public final class StateStore implements AutoCloseable {
                 ps.setString(4, phase);
                 ps.setString(5, fromState.orElse(null));
                 ps.setString(6, toState);
-                ps.setString(7, detail.orElse(null));
+                ps.setString(7, sanitizedDetail.orElse(null));
                 ps.executeUpdate();
               }
               try (Statement s = c.createStatement();
@@ -573,7 +575,7 @@ public final class StateStore implements AutoCloseable {
                 return rs.getLong(1);
               }
             });
-    return new Transition(seq, ts, runId, stepId, phase, fromState, toState, detail);
+    return new Transition(seq, ts, runId, stepId, phase, fromState, toState, sanitizedDetail);
   }
 
   /** The journal of one run in write order. */
@@ -699,6 +701,7 @@ public final class StateStore implements AutoCloseable {
   // ---- audit ---------------------------------------------------------------------------------
 
   public AuditEntry audit(String actor, String action, String detail) {
+    String sanitizedDetail = detail == null ? null : Redactor.global().redact(detail);
     Instant ts = clock.instant();
     long seq =
         write(
@@ -709,7 +712,7 @@ public final class StateStore implements AutoCloseable {
                 ps.setString(1, ts.toString());
                 ps.setString(2, actor);
                 ps.setString(3, action);
-                ps.setString(4, detail);
+                ps.setString(4, sanitizedDetail);
                 ps.executeUpdate();
               }
               try (Statement s = c.createStatement();
@@ -718,7 +721,7 @@ public final class StateStore implements AutoCloseable {
                 return rs.getLong(1);
               }
             });
-    return new AuditEntry(seq, ts, actor, action, Optional.ofNullable(detail));
+    return new AuditEntry(seq, ts, actor, action, Optional.ofNullable(sanitizedDetail));
   }
 
   /** Most recent audit rows first. */

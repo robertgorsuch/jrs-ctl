@@ -15,7 +15,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,6 +40,18 @@ public final class VendorTools {
 
   /** How many trailing output lines a {@link VendorRun} keeps for failure messages. */
   public static final int TAIL_LINES = 20;
+
+  /**
+   * Ant's own build banners, and the line the Windows wrappers print when they check Ant's return
+   * code. Buildomatic replaces the success banner with {@code VALIDATION COMPLETED} through its
+   * {@code ImportExportLogger}, so both spellings count. Matched case-insensitively anywhere in a
+   * line, because the wrappers pipe Ant's output through {@code tee} and prefix it.
+   */
+  private static final List<String> REPORTED_FAILURE =
+      List.of("build failed", "checking ant return code: bad");
+
+  private static final List<String> REPORTED_SUCCESS =
+      List.of("build successful", "validation completed");
 
   private final ProcessRunner runner;
   private final FileOps files;
@@ -283,6 +297,7 @@ public final class VendorTools {
     Map<String, String> env = Map.of(VendorFlags.JAVA_HOME, invocation.javaHome().get().toString());
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
+    EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);
     ProcessRunner.Result result =
         runner.run(
             new ProcessRunner.Request(
@@ -294,6 +309,7 @@ public final class VendorTools {
                   tail.removeFirst();
                 }
                 tail.addLast(text);
+                banner(text).ifPresent(banners::add);
               }
               Event.Log.Level level =
                   switch (line.stream()) {
@@ -303,8 +319,15 @@ public final class VendorTools {
               log(sink, scope, level, text);
             });
     List<String> lines;
+    VendorRun.Reported reported;
     synchronized (tail) {
       lines = List.copyOf(tail);
+      reported =
+          banners.contains(VendorRun.Reported.FAILED)
+              ? VendorRun.Reported.FAILED
+              : banners.contains(VendorRun.Reported.SUCCEEDED)
+                  ? VendorRun.Reported.SUCCEEDED
+                  : VendorRun.Reported.SILENT;
     }
     if (result.timedOut()) {
       log(
@@ -324,7 +347,26 @@ public final class VendorTools {
             + " after "
             + result.elapsed().toSeconds()
             + "s");
-    return new VendorRun.Completed(result.exitCode(), result.elapsed(), lines);
+    if (result.exitCode() == 0 && reported == VendorRun.Reported.FAILED) {
+      log(
+          sink,
+          scope,
+          Event.Log.Level.ERROR,
+          invocation.script() + " reported a failed build but exited 0; treating it as a failure");
+    }
+    return new VendorRun.Completed(result.exitCode(), result.elapsed(), lines, reported);
+  }
+
+  /** The build banner this line carries, if any; failure wins when a line somehow holds both. */
+  private static Optional<VendorRun.Reported> banner(String line) {
+    String lower = line.toLowerCase(Locale.ROOT);
+    if (REPORTED_FAILURE.stream().anyMatch(lower::contains)) {
+      return Optional.of(VendorRun.Reported.FAILED);
+    }
+    if (REPORTED_SUCCESS.stream().anyMatch(lower::contains)) {
+      return Optional.of(VendorRun.Reported.SUCCEEDED);
+    }
+    return Optional.empty();
   }
 
   private void log(EventSink sink, LogScope scope, Event.Log.Level level, String message) {

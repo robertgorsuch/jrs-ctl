@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jaspersoft.jrsctl.core.platform.Durability;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Writer;
@@ -331,7 +332,10 @@ public final class EncryptedSecretStore {
       try (Writer out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
         json.writeValue(out, root);
       }
-      Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      Durability.sync(tmp);
+      Durability.move(
+          tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      Durability.syncDirectory(dir);
       tmp = null;
     } catch (IOException e) {
       throw new SecretException("cannot write secrets store " + file + ": " + e.getMessage(), e);
@@ -381,12 +385,32 @@ public final class EncryptedSecretStore {
   }
 
   private static String hostName() {
+    for (String path : List.of("/etc/machine-id", "/var/lib/dbus/machine-id")) {
+      try {
+        Path p = Path.of(path);
+        if (Files.isRegularFile(p)) {
+          String id = Files.readString(p, StandardCharsets.UTF_8).trim();
+          if (!id.isEmpty()) {
+            return id;
+          }
+        }
+      } catch (Exception ignored) {
+        // Fall back to next identifier source
+      }
+    }
+    Map<String, String> env = System.getenv();
+    String computerName = env.get("COMPUTERNAME");
+    if (computerName != null && !computerName.isBlank()) {
+      return computerName.trim();
+    }
+    String hostEnv = env.get("HOSTNAME");
+    if (hostEnv != null && !hostEnv.isBlank()) {
+      return hostEnv.trim();
+    }
     try {
       return InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      Map<String, String> env = System.getenv();
-      String h = env.getOrDefault("COMPUTERNAME", env.getOrDefault("HOSTNAME", "localhost"));
-      return h;
+      return "localhost";
     }
   }
 }

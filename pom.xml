@@ -28,12 +28,12 @@
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.6</picocli.version>
-    <javalin.version>6.3.0</javalin.version>
+    <javalin.version>6.4.0</javalin.version>
     <jackson.version>2.17.2</jackson.version>
     <slf4j.version>2.0.13</slf4j.version>
-    <logback.version>1.5.6</logback.version>
+    <logback.version>1.5.17</logback.version>
     <logstash-logback.version>7.4</logstash-logback.version>
-    <sqlite-jdbc.version>3.46.0.0</sqlite-jdbc.version>
+    <sqlite-jdbc.version>3.48.0.0</sqlite-jdbc.version>
     <json-schema-validator.version>1.4.0</json-schema-validator.version>
     <commons-compress.version>1.26.2</commons-compress.version>
     <semver4j.version>5.3.0</semver4j.version>
@@ -51,6 +51,7 @@
     <google-java-format.version>1.22.0</google-java-format.version>
     <spotless.version>2.43.0</spotless.version>
     <surefire.version>3.2.5</surefire.version>
+    <dependency-check.version>9.2.0</dependency-check.version>
 
     <!-- Tests tagged with these JUnit tags are release gates, not phase gates (spec §0 rule 10) -->
     <excluded.groups>needs-jrs,needs-docker</excluded.groups>
@@ -163,6 +164,18 @@
             </execution>
           </executions>
         </plugin>
+        <plugin>
+          <groupId>org.owasp</groupId>
+          <artifactId>dependency-check-maven</artifactId>
+          <version>${dependency-check.version}</version>
+          <configuration>
+            <failBuildOnCVSS>7</failBuildOnCVSS>
+            <formats>
+              <format>HTML</format>
+              <format>JSON</format>
+            </formats>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
 
@@ -189,4 +202,25 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>dependency-check</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

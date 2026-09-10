@@ -4,10 +4,12 @@ import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,12 +34,23 @@ public final class OwnerOnlyFiles {
     if (parent != null) {
       Files.createDirectories(parent);
     }
-    Files.writeString(
-        abs,
-        content,
-        StandardCharsets.UTF_8,
-        StandardOpenOption.CREATE_NEW,
-        StandardOpenOption.WRITE);
+    if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+      Files.createFile(
+          abs, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+      Files.writeString(
+          abs,
+          content,
+          StandardCharsets.UTF_8,
+          StandardOpenOption.WRITE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+    } else {
+      Files.writeString(
+          abs,
+          content,
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE_NEW,
+          StandardOpenOption.WRITE);
+    }
     restrictToOwner(platform, abs);
   }
 

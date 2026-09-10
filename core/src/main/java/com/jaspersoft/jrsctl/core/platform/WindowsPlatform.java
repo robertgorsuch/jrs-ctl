@@ -59,7 +59,7 @@ public final class WindowsPlatform extends AbstractPlatform {
   public Path defaultHome() {
     Path programData =
         Path.of(Optional.ofNullable(System.getenv("ProgramData")).orElse("C:\\ProgramData"));
-    return homeOrFallback(programData, "jrsctl");
+    return homeOrFallback(programData);
   }
 
   @Override

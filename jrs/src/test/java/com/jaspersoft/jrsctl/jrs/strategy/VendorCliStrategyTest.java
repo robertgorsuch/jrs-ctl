@@ -177,7 +177,7 @@ class VendorCliStrategyTest {
   void should_run_js_import_between_stop_and_start_when_import_runs_through_runner()
       throws IOException {
     Files.writeString(tmp.resolve("in.zip"), "PK");
-    fx.processes.exit(0, "Import finished");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
     Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
     Context ctx = fx.context(config, new FakeJrsAdapter());
 
@@ -193,5 +193,34 @@ class VendorCliStrategyTest {
             "import.js-import:SUCCEEDED",
             "import.start-service:SUCCEEDED",
             "import.wait-for-server:SUCCEEDED");
+  }
+
+  @Test
+  void should_fail_the_import_when_js_import_exits_zero_after_a_failed_build() throws IOException {
+    Files.writeString(tmp.resolve("in.zip"), "PK");
+    // js-import.sh guards the import with `if [ $? -eq 0 ]` and has no else branch, so a failed
+    // validate-database/validate-keystore imports nothing and still exits 0.
+    fx.processes.exit(0, "BUILD FAILED", "keystore validation failed");
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.importSteps(importRequest(Optional.empty())), ctx);
+
+    assertThat(outcome).isNotInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(fx.journal()).contains("import.js-import:FAILED");
+  }
+
+  @Test
+  void should_fail_the_import_when_js_import_exits_zero_without_a_build_banner()
+      throws IOException {
+    Files.writeString(tmp.resolve("in.zip"), "PK");
+    fx.processes.exit(0);
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.importSteps(importRequest(Optional.empty())), ctx);
+
+    assertThat(outcome).isNotInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(fx.journal()).contains("import.js-import:FAILED");
   }
 }

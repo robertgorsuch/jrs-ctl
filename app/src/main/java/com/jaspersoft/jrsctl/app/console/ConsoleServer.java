@@ -11,11 +11,16 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.eclipse.jetty.http.HttpVersion;
@@ -55,6 +60,8 @@ public final class ConsoleServer implements AutoCloseable {
             t.setDaemon(true);
             return t;
           });
+
+  private final ConcurrentMap<String, Instant> launchCodes = new ConcurrentHashMap<>();
 
   private Optional<Javalin> app = Optional.empty();
   private Optional<ConsoleToken> token = Optional.empty();
@@ -143,7 +150,7 @@ public final class ConsoleServer implements AutoCloseable {
     ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, port);
     SupportBundle bundle = new SupportBundle(services, views, doctor);
     ConsoleApi api =
-        new ConsoleApi(services, runs, manager, catalog, views, doctor, bundle, heartbeats);
+        new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle, heartbeats);
     javalin.before(
         ctx -> {
           ctx.header("Cache-Control", "no-store");
@@ -152,7 +159,8 @@ public final class ConsoleServer implements AutoCloseable {
           ctx.header("Referrer-Policy", "no-referrer");
           ctx.header("X-Frame-Options", "DENY");
           String path = ctx.path();
-          if (path.equals("/api") || path.startsWith("/api/")) {
+          if ((path.equals("/api") || path.startsWith("/api/"))
+              && !path.equals("/api/auth/launch")) {
             auth.handle(ctx);
           }
         });
@@ -174,6 +182,32 @@ public final class ConsoleServer implements AutoCloseable {
     ConsoleToken t =
         token.orElseThrow(() -> new IllegalStateException("console has not been started"));
     return baseUrl() + "/#token=" + t.text();
+  }
+
+  /** Issues a single-use, short-TTL launch code to open the browser securely. */
+  public String issueLaunchCode() {
+    byte[] random = new byte[16];
+    new SecureRandom().nextBytes(random);
+    String code = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+    launchCodes.put(code, Instant.now().plusSeconds(30));
+    return code;
+  }
+
+  /** Exchanges a valid, unexpired launch code for the active console bearer token. */
+  public Optional<String> exchangeLaunchCode(String code) {
+    if (code == null || code.isBlank()) {
+      return Optional.empty();
+    }
+    Instant expires = launchCodes.remove(code);
+    if (expires == null || Instant.now().isAfter(expires)) {
+      return Optional.empty();
+    }
+    return token.map(ConsoleToken::text);
+  }
+
+  /** The launch URL with a single-use, short-TTL launch code in the fragment. */
+  public String launchUrl() {
+    return baseUrl() + "/#launch=" + issueLaunchCode();
   }
 
   /** {@code scheme://host:port} without the token. */

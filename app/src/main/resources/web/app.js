@@ -337,7 +337,7 @@ function renderOfflinePanel(e) {
 }
 
 async function boot() {
-  loadToken();
+  await loadToken();
   const params = new URLSearchParams(window.location.search);
   if (params.get('mock') === '1' && !isMock()) await enableMock();
   try {

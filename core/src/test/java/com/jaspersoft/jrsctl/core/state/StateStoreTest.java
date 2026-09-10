@@ -306,4 +306,26 @@ class StateStoreTest {
     store.audit("a", "b", null);
     assertThat(Files.exists(tmp.resolve("home").resolve("state.db-wal"))).isTrue();
   }
+
+  @Test
+  void should_redact_secrets_in_step_transitions_and_audit_details() {
+    store.recordRunStart("r1", "hotfix apply", Optional.empty(), NOW);
+    Transition t =
+        store.appendTransition(
+            "r1",
+            "s1",
+            "apply",
+            Optional.empty(),
+            "FAILED",
+            Optional.of(
+                "failed with password=superSecretPassword and Authorization: Bearer token123"));
+    assertThat(t.detail())
+        .contains("failed with password=[redacted] and Authorization: [redacted]");
+    assertThat(store.transitions("r1").get(0).detail())
+        .contains("failed with password=[redacted] and Authorization: [redacted]");
+
+    AuditEntry entry = store.audit("admin", "run", "auth: password=superSecretPassword");
+    assertThat(entry.detail()).contains("auth: password=[redacted]");
+    assertThat(store.auditRows(1).get(0).detail()).contains("auth: password=[redacted]");
+  }
 }

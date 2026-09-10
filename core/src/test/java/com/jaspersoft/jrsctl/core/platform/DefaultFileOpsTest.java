@@ -174,9 +174,30 @@ class DefaultFileOpsTest {
     try (RandomAccessFile held = new RandomAccessFile(jar.toFile(), "r")) {
       assertThat(held.getChannel().isOpen()).isTrue();
       assertThat(files.isLocked(jar)).isTrue();
+      assertThat(Files.readString(jar, StandardCharsets.UTF_8))
+          .as("a refused rename must leave the file exactly where it was")
+          .isEqualTo("jar bytes");
     }
 
     assertThat(files.isLocked(jar)).isFalse();
+    assertThat(Files.readString(jar, StandardCharsets.UTF_8)).isEqualTo("jar bytes");
+    try (var siblings = Files.list(dir)) {
+      assertThat(siblings).containsExactly(jar);
+    }
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_restore_the_file_when_an_earlier_lock_probe_was_interrupted(@TempDir Path dir)
+      throws IOException {
+    // What a power cut between the probe's two renames leaves behind.
+    Path jar = dir.resolve("held.jar");
+    Path leftover = dir.resolve("held.jar.jrsctl-lockprobe");
+    Files.writeString(leftover, "jar bytes", StandardCharsets.UTF_8);
+    Files.createLink(dir.resolve("held.jar.jrsctl-lockguard"), leftover);
+
+    assertThat(files.isLocked(jar)).isFalse();
+
     assertThat(Files.readString(jar, StandardCharsets.UTF_8)).isEqualTo("jar bytes");
     try (var siblings = Files.list(dir)) {
       assertThat(siblings).containsExactly(jar);

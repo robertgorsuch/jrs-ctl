@@ -52,7 +52,11 @@
           "db": { "type": "string", "enum": ["postgresql", "mysql", "oracle", "mssql", "db2"] },
           "file": { "type": "string", "pattern": "^sql/.+\\.sql$" },
           "sha256": { "$ref": "#/$defs/sha256" },
-          "idempotent": { "type": "boolean", "const": true },
+          "idempotent": {
+            "type": "boolean",
+            "const": true,
+            "description": "Both file and rollbackFile must be idempotent: an interrupted step is re-executed by 'runs recover --resume', and a compensation is re-run until it succeeds."
+          },
           "rollbackFile": { "type": "string", "pattern": "^sql/.+\\.sql$" },
           "rollbackSha256": { "$ref": "#/$defs/sha256" }
         }

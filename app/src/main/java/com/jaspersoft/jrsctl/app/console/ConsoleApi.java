@@ -50,6 +50,7 @@ final class ConsoleApi {
   private static final String JSON = "application/json";
   private static final String ACTOR = "console";
 
+  private final ConsoleServer server;
   private final Services services;
   private final RunService runs;
   private final RunManager manager;
@@ -61,6 +62,7 @@ final class ConsoleApi {
   private final Redactor redactor;
 
   ConsoleApi(
+      ConsoleServer server,
       Services services,
       RunService runs,
       RunManager manager,
@@ -69,6 +71,7 @@ final class ConsoleApi {
       DoctorCache doctor,
       SupportBundle bundle,
       ScheduledExecutorService heartbeats) {
+    this.server = Objects.requireNonNull(server, "server");
     this.services = Objects.requireNonNull(services, "services");
     this.runs = Objects.requireNonNull(runs, "runs");
     this.manager = Objects.requireNonNull(manager, "manager");
@@ -82,6 +85,7 @@ final class ConsoleApi {
 
   void register(Javalin app) {
     app.get("/", this::index);
+    app.post("/api/auth/launch", this::exchangeLaunchCode);
     app.get("/api/health", ctx -> json(ctx, 200, views.health()));
     app.get("/api/server", ctx -> json(ctx, 200, views.server()));
     app.post("/api/plan", this::plan);
@@ -116,6 +120,19 @@ final class ConsoleApi {
   }
 
   // ---- static entry point ---------------------------------------------------------------------
+
+  private void exchangeLaunchCode(Context ctx) {
+    JsonNode body = body(ctx);
+    String code = body.path("code").asText("");
+    if (code.isBlank()) {
+      throw ConsoleHttpException.badRequest("code is required");
+    }
+    String token =
+        server
+            .exchangeLaunchCode(code)
+            .orElseThrow(() -> new ConsoleHttpException(401, "invalid or expired launch code"));
+    ctx.status(200).contentType(JSON).result(Json.write(Map.of("token", token)));
+  }
 
   private void index(Context ctx) {
     InputStream in = ConsoleApi.class.getResourceAsStream("/web/index.html");

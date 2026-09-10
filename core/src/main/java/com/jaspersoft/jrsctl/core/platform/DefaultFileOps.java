@@ -2,15 +2,12 @@ package com.jaspersoft.jrsctl.core.platform;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.CopyOption;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.UserPrincipal;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -31,19 +28,19 @@ import org.slf4j.LoggerFactory;
  * used by the cross-volume fallback is always created in the target's directory so the final step
  * is still a same-volume rename. Lock detection and permission capture are OS-specific and refined
  * by {@link WindowsFileOps} and {@link LinuxFileOps}; this base treats every file as unlocked and
- * records only the owner. Every rename is retried a bounded number of times with a short pause,
- * since Windows occasionally denies a same-directory rename for a moment after a file is closed
- * (antivirus or indexer holding a transient handle); a rename that is refused for a structural
- * reason ({@link AtomicMoveNotSupportedException}) is never retried, only ones that fail with some
- * other {@link IOException}.
+ * records only the owner. Every rename goes through {@link Durability#move}, which retries a
+ * transient denial and lets {@link AtomicMoveNotSupportedException} through at once so the
+ * cross-volume fallback below can take over. Every file {@link #atomicReplace} lands is forced to
+ * stable storage through {@link Durability} before the rename that publishes it, and the
+ * destination directory is forced afterwards, so a power cut can never leave a valid name over
+ * unwritten bytes; {@link #copyPreserving} carries the source's attributes across and so cannot
+ * force a copy those attributes may have just made read-only.
  */
 public class DefaultFileOps implements FileOps {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultFileOps.class);
   static final int BUFFER_SIZE = 64 * 1024;
   static final String TEMP_SUFFIX = ".jrsctl-tmp";
-  private static final int MOVE_RETRY_ATTEMPTS = 20;
-  private static final long MOVE_RETRY_DELAY_MS = 50;
 
   @Override
   public String sha256(Path file) throws IOException {
@@ -65,15 +62,16 @@ public class DefaultFileOps implements FileOps {
       return;
     }
     Optional<Permissions> kept = Optional.of(capturePermissions(target));
+    Durability.sync(source);
     try {
-      moveRetrying(
+      Durability.move(
           source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (AtomicMoveNotSupportedException crossVolume) {
       LOG.debug("atomic move refused for {} -> {}; staging beside target", source, target);
       Path staged = tempSibling(target);
       try {
-        copyStreaming(source, staged);
-        moveRetrying(
+        Durability.copy(source, staged);
+        Durability.move(
             staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       } catch (IOException e) {
         Files.deleteIfExists(staged);
@@ -82,6 +80,7 @@ public class DefaultFileOps implements FileOps {
       }
       Files.delete(source);
     }
+    Durability.syncDirectory(target.toAbsolutePath().getParent());
     if (kept.isPresent()) {
       applyPermissions(target, kept.get());
     }
@@ -98,53 +97,15 @@ public class DefaultFileOps implements FileOps {
   private void landNewFile(Path source, Path target) throws IOException {
     Path staged = tempSibling(target);
     try {
-      copyStreaming(source, staged);
-      moveRetrying(
+      Durability.copy(source, staged);
+      Durability.move(
           staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (IOException e) {
       Files.deleteIfExists(staged);
       throw e;
     }
+    Durability.syncDirectory(target.toAbsolutePath().getParent());
     Files.delete(source);
-  }
-
-  /**
-   * Renames {@code source} to {@code target}, retrying a same-directory rename that fails with a
-   * transient {@link IOException} (typically Windows denying access for a moment after the file was
-   * closed). {@link AtomicMoveNotSupportedException} is structural, not transient, and is rethrown
-   * on its first occurrence so the caller can fall back to a cross-volume copy.
-   */
-  private static void moveRetrying(Path source, Path target, CopyOption... options)
-      throws IOException {
-    for (int attempt = 1; ; attempt++) {
-      try {
-        Files.move(source, target, options);
-        return;
-      } catch (AtomicMoveNotSupportedException notSupported) {
-        throw notSupported;
-      } catch (IOException e) {
-        if (attempt >= MOVE_RETRY_ATTEMPTS || !sleepBeforeRetry()) {
-          throw e;
-        }
-        LOG.debug(
-            "rename {} -> {} failed (attempt {}); retrying: {}",
-            source,
-            target,
-            attempt,
-            e.toString());
-      }
-    }
-  }
-
-  /** Returns false (having restored the interrupt flag) if the wait was interrupted. */
-  private static boolean sleepBeforeRetry() {
-    try {
-      Thread.sleep(MOVE_RETRY_DELAY_MS);
-      return true;
-    } catch (InterruptedException interrupted) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
   }
 
   @Override
@@ -245,19 +206,6 @@ public class DefaultFileOps implements FileOps {
     Path absolute = target.toAbsolutePath();
     String name = "." + absolute.getFileName() + "." + System.nanoTime() + TEMP_SUFFIX;
     return absolute.resolveSibling(name);
-  }
-
-  static void copyStreaming(Path source, Path target) throws IOException {
-    byte[] buffer = new byte[BUFFER_SIZE];
-    try (InputStream in = Files.newInputStream(source);
-        OutputStream out =
-            Files.newOutputStream(
-                target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-      int read;
-      while ((read = in.read(buffer)) != -1) {
-        out.write(buffer, 0, read);
-      }
-    }
   }
 
   static MessageDigest sha256Digest() {

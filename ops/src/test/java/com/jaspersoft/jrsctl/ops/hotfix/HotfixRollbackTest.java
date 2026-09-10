@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.state.HotfixFile;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations.ApplyOptions;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations.RollbackOptions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,6 +60,54 @@ class HotfixRollbackTest {
           .extracting(h -> h.state())
           .isEqualTo(HotfixState.ROLLED_BACK);
       assertThat(f.store().installedHotfixes()).isEmpty();
+    }
+  }
+
+  @Test
+  void should_record_the_hashes_at_swap_time_when_the_tree_changed_after_the_plan_was_built()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      // What upgrade --reapply-hotfixes does: the apply plan is built against the installed webapp,
+      // then the whole webapp is replaced, and only then are the embedded steps run.
+      Plan apply = f.ops().planApply(f.buildWebInf(), SIGNED);
+      HotfixFixture.write(f.target(HotfixFixture.FOO), "foo bytes from the upgraded webapp");
+      HotfixFixture.write(f.target(HotfixFixture.FIX), "fix shipped by the upgraded webapp");
+      String fooAfterUpgrade = f.sha(HotfixFixture.FOO);
+      String fixAfterUpgrade = f.sha(HotfixFixture.FIX);
+
+      assertThat(f.run(apply, "r-reapply")).isInstanceOf(RunOutcome.Succeeded.class);
+
+      Map<String, Optional<String>> before = new LinkedHashMap<>();
+      for (HotfixFile row : f.store().hotfixFiles(HotfixFixture.ID)) {
+        before.put(row.path().getFileName().toString(), row.beforeSha256());
+      }
+      assertThat(before.get("foo-1.2.3.jar"))
+          .as("the before-hash must be what the swap actually replaced")
+          .contains(fooAfterUpgrade);
+      assertThat(before.get("fix.properties"))
+          .as("the plan saw no fix.properties, but the upgraded webapp shipped one")
+          .contains(fixAfterUpgrade);
+    }
+  }
+
+  @Test
+  void should_roll_back_cleanly_when_the_tree_changed_after_the_plan_was_built()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan apply = f.ops().planApply(f.buildWebInf(), SIGNED);
+      HotfixFixture.write(f.target(HotfixFixture.FOO), "foo bytes from the upgraded webapp");
+      HotfixFixture.write(f.target(HotfixFixture.FIX), "fix shipped by the upgraded webapp");
+      String fooAfterUpgrade = f.sha(HotfixFixture.FOO);
+      String fixAfterUpgrade = f.sha(HotfixFixture.FIX);
+      assertThat(f.run(apply, "r-reapply2")).isInstanceOf(RunOutcome.Succeeded.class);
+
+      RunOutcome outcome = f.run(f.ops().planRollback(HotfixFixture.ID, PLAIN), "r-rollback2");
+
+      assertThat(outcome).as(f.events.toString()).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.sha(HotfixFixture.FOO)).isEqualTo(fooAfterUpgrade);
+      assertThat(f.sha(HotfixFixture.FIX))
+          .as("a file the upgraded webapp shipped must come back, not be deleted")
+          .isEqualTo(fixAfterUpgrade);
     }
   }
 

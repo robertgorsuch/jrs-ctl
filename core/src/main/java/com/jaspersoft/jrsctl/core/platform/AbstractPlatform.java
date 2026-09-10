@@ -221,13 +221,26 @@ abstract class AbstractPlatform implements Platform {
     return os() == OsFamily.WINDOWS ? key.toLowerCase(Locale.ROOT) : key;
   }
 
-  /** {@code base/name}, or {@code ~/.jrsctl} when the base cannot be written. */
-  final Path homeOrFallback(Path base, String name) {
-    Path home = base.resolve(name);
-    boolean writable = Files.isDirectory(home) ? files.isWritable(home) : files.isWritable(base);
-    if (writable) {
-      return home;
+  /**
+   * The default home under {@code base}, delegating the whole decision to {@link DefaultHome} so
+   * that the logging bootstrap and this platform can never disagree. A fallback to the operator's
+   * own directory is warned about every time, because it means state and the run lock are no longer
+   * shared between operators of the same installation.
+   */
+  final Path homeOrFallback(Path base) {
+    DefaultHome.Choice choice = DefaultHome.choose(base);
+    if (choice.systemHomeUnwritable()) {
+      LOG.warn(
+          "{} exists but is not writable by this user; {} would be used instead, with its own"
+              + " state.db and run lock",
+          choice.systemHome(),
+          choice.home());
+    } else if (choice.perUser()) {
+      LOG.warn(
+          "no writable {}; using the per-user home {}, which no other operator's runs share",
+          choice.systemHome(),
+          choice.home());
     }
-    return Path.of(System.getProperty("user.home")).resolve(".jrsctl");
+    return choice.home();
   }
 }

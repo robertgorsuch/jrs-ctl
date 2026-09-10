@@ -117,7 +117,11 @@ public record Manifest(
     }
   }
 
-  /** One SQL script for one database type. */
+  /**
+   * One SQL script for one database type. {@code idempotent} is a claim about {@code file} and
+   * {@code rollbackFile} alike: both are re-run, the first by {@code runs recover --resume} after
+   * an interrupted step, the second by a compensation that is retried until it succeeds.
+   */
   @JsonInclude(JsonInclude.Include.NON_ABSENT)
   public record SqlEntry(
       String db,

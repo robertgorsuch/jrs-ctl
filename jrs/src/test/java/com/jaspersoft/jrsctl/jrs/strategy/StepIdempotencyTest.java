@@ -305,7 +305,7 @@ class StepIdempotencyTest {
 
   @Test
   void should_invoke_js_import_identically_when_run_js_import_executes_twice() throws IOException {
-    fx.processes.exit(0, "Import finished");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
     Context ctx = ctx();
     Step importStep = new RunJsImport(importRequest(Optional.empty()), vendor);
 

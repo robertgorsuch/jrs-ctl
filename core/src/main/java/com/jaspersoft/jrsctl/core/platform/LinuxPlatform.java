@@ -41,7 +41,7 @@ public final class LinuxPlatform extends AbstractPlatform {
 
   @Override
   public Path defaultHome() {
-    return homeOrFallback(Path.of("/var/lib"), "jrsctl");
+    return homeOrFallback(Path.of("/var/lib"));
   }
 
   @Override

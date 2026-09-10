@@ -1,14 +1,19 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -42,6 +47,78 @@ class ArchivesTest {
     List<String> names = Archives.entries(os, archive);
     assertThat(names).contains("a.txt", "WEB-INF/lib/x.jar", "empty/");
     assertThat(names).allSatisfy(n -> assertThat(n).doesNotContain("\\"));
+  }
+
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void should_restore_a_symbolic_link_as_a_link_when_round_tripping_a_tree() throws Exception {
+    Platform.OsFamily os = Platform.OsFamily.LINUX;
+    Path source = tmp.resolve("src");
+    Files.createDirectories(source.resolve("WEB-INF").resolve("lib"));
+    Path real = source.resolve("WEB-INF").resolve("lib").resolve("real.jar");
+    Files.writeString(real, "jar", StandardCharsets.UTF_8);
+    Files.createSymbolicLink(
+        source.resolve("WEB-INF").resolve("lib").resolve("linked.jar"), Path.of("real.jar"));
+    Files.createSymbolicLink(source.resolve("shortcut"), Path.of("WEB-INF/lib"));
+    Path archive = tmp.resolve("webapp.tar.gz");
+
+    Archives.create(os, source, archive, new CancellationToken());
+    Path target = tmp.resolve("restored");
+    Archives.extract(os, archive, target, new CancellationToken());
+
+    Path linked = target.resolve("WEB-INF").resolve("lib").resolve("linked.jar");
+    assertThat(Files.isSymbolicLink(linked)).isTrue();
+    assertThat(Files.readSymbolicLink(linked)).isEqualTo(Path.of("real.jar"));
+    assertThat(linked).hasContent("jar");
+    Path shortcut = target.resolve("shortcut");
+    assertThat(Files.isSymbolicLink(shortcut)).isTrue();
+    assertThat(Files.readSymbolicLink(shortcut)).isEqualTo(Path.of("WEB-INF/lib"));
+  }
+
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void should_restore_permissions_of_files_and_directories_when_extracting() throws Exception {
+    Platform.OsFamily os = Platform.OsFamily.LINUX;
+    Path source = tmp.resolve("src");
+    Path locked = source.resolve("locked");
+    Files.createDirectories(locked);
+    Path script = source.resolve("run.sh");
+    Files.writeString(script, "#!/bin/sh\n", StandardCharsets.UTF_8);
+    Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-x---"));
+    Files.writeString(locked.resolve("inner.txt"), "inner", StandardCharsets.UTF_8);
+    Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-xr-xr-x"));
+    Path archive = tmp.resolve("webapp.tar.gz");
+
+    Archives.create(os, source, archive, new CancellationToken());
+    Path target = tmp.resolve("restored");
+    Archives.extract(os, archive, target, new CancellationToken());
+
+    assertThat(
+            PosixFilePermissions.toString(Files.getPosixFilePermissions(target.resolve("run.sh"))))
+        .isEqualTo("rwxr-x---");
+    assertThat(
+            PosixFilePermissions.toString(Files.getPosixFilePermissions(target.resolve("locked"))))
+        .as("a directory restored read-only first would have nowhere to put its children")
+        .isEqualTo("r-xr-xr-x");
+    assertThat(target.resolve("locked").resolve("inner.txt")).hasContent("inner");
+  }
+
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void should_refuse_to_create_a_zip_when_the_tree_holds_a_symbolic_link() throws Exception {
+    Path source = tmp.resolve("src");
+    Files.createDirectories(source);
+    Files.writeString(source.resolve("real.jar"), "jar", StandardCharsets.UTF_8);
+    Files.createSymbolicLink(source.resolve("linked.jar"), Path.of("real.jar"));
+    Path archive = tmp.resolve("webapp.zip");
+
+    assertThatThrownBy(
+            () ->
+                Archives.create(
+                    Platform.OsFamily.WINDOWS, source, archive, new CancellationToken()))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("linked.jar")
+        .hasMessageContaining("cannot carry a link");
   }
 
   @Test

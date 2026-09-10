@@ -1,17 +1,19 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.Durability;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.MasterProperties;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,9 +27,12 @@ import java.util.Optional;
  * Phase C of spec §10.2: stage {@code default_master.properties} into the target package's
  * buildomatic directory (spec §7.4) and run the vendor upgrade there. Invariants: the staged
  * properties never contain a password (spec §7.4, Q5); the vendor script runs with {@code
- * JAVA_HOME=vendor.javaHome}, its output streamed as redacted log events; a successful vendor run
- * leaves a marker in the run directory so that re-execution after a crash does not run the script
- * twice; the compensation of the vendor run is the point-B restore of spec §10.1.
+ * JAVA_HOME=vendor.javaHome}, its output streamed as redacted log events; the compensation of the
+ * vendor run is the point-B restore of spec §10.1. Two markers in the run directory keep the script
+ * from running twice: an attempt marker written and forced to disk <em>before</em> the script is
+ * launched, and a done marker written after it reports success. A resume that finds the attempt
+ * marker without the done marker cannot know whether {@code js-upgrade-samedb} already migrated the
+ * repository database, which jrsctl cannot undo (spec §10.1), so it refuses rather than guess.
  */
 final class VendorSteps {
 
@@ -37,6 +42,7 @@ final class VendorSteps {
   static final String START_SERVICE = "start-service";
   static final String WAIT_FOR_SERVER = "wait-for-server";
   static final String DONE_MARKER = RUN_VENDOR_UPGRADE + ".done";
+  static final String ATTEMPT_MARKER = RUN_VENDOR_UPGRADE + ".attempted";
   static final String APP_SERVER_DIR = "appServerDir";
   static final String APP_SERVER_TYPE = "appServerType";
   static final String TOMCAT = "tomcat";
@@ -183,6 +189,10 @@ final class VendorSteps {
       return ctx.home().runDir(ctx.runId()).resolve(DONE_MARKER);
     }
 
+    private Path attemptMarker(Context ctx) {
+      return ctx.home().runDir(ctx.runId()).resolve(ATTEMPT_MARKER);
+    }
+
     @Override
     public String id() {
       return RUN_VENDOR_UPGRADE;
@@ -239,6 +249,17 @@ final class VendorSteps {
         Logs.info(rt, ctx, out, this, "vendor upgrade already completed in this run; skipping");
         return StepResult.ok();
       }
+      if (Files.isRegularFile(attemptMarker(ctx))) {
+        return interrupted(ctx);
+      }
+      try {
+        recordAttempt(ctx);
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot write " + attemptMarker(ctx) + ": " + e.getMessage(),
+            "free space in the run directory and re-run; without this marker a crash during the"
+                + " vendor upgrade cannot be told apart from one before it");
+      }
       Buildomatic b = in.target().buildomatic().orElseThrow();
       Optional<Path> javaHome = rt.config().vendor().javaHome();
       String ext = rt.locator().scriptExtension();
@@ -272,14 +293,63 @@ final class VendorSteps {
                 "check for a hung buildomatic process; the run is rolled back to point B",
                 List.of(in.webappDir()),
                 List.of(in.snapshots(ctx).dir()));
-        case VendorRun.NotStarted n -> Failures.recoverable(n.reason(), n.remediation());
+        case VendorRun.NotStarted n -> notStarted(ctx, out, n);
       };
+    }
+
+    /**
+     * Writes and forces the marker that says the script is about to run. Forced, because the whole
+     * point is to survive the power cut that a resume has to reason about.
+     */
+    private void recordAttempt(Context ctx) throws IOException {
+      Path file = attemptMarker(ctx);
+      Files.createDirectories(file.getParent());
+      Files.writeString(
+          file,
+          scriptName() + " started at " + rt.clock().instant() + System.lineSeparator(),
+          UTF_8);
+      Durability.sync(file);
+      Durability.syncDirectory(file.getParent());
+    }
+
+    /**
+     * Refuses a resume that cannot tell whether the migration ran. For {@code --mode samedb} the
+     * script rewrites the repository schema in place, and running it twice is not idempotent, so
+     * the operator has to look at the buildomatic log and say which side of the crash they are on.
+     */
+    private StepResult interrupted(Context ctx) {
+      return Failures.recoverable(
+          scriptName()
+              + " was started in run "
+              + ctx.runId()
+              + " and never reported back; whether the repository database was already migrated is"
+              + " unknown",
+          "read the buildomatic log under "
+              + in.target().dir()
+              + "; if the upgrade did not run, delete "
+              + attemptMarker(ctx)
+              + " and resume; if it did, roll back with jrsctl upgrade rollback "
+              + ctx.runId()
+              + " --to-point B",
+          List.of(in.webappDir()),
+          List.of(in.snapshots(ctx).dir()));
+    }
+
+    /** The launch itself failed, so nothing ran and the attempt marker must not outlive it. */
+    private StepResult notStarted(Context ctx, EventSink out, VendorRun.NotStarted n) {
+      try {
+        Files.deleteIfExists(attemptMarker(ctx));
+      } catch (IOException e) {
+        Logs.warn(
+            rt, ctx, out, this, "cannot remove " + attemptMarker(ctx) + ": " + e.getMessage());
+      }
+      return Failures.recoverable(n.reason(), n.remediation());
     }
 
     private StepResult done(Context ctx, EventSink out) {
       try {
         Files.createDirectories(marker(ctx).getParent());
-        Files.writeString(marker(ctx), "done", StandardCharsets.UTF_8);
+        Files.writeString(marker(ctx), "done", UTF_8);
       } catch (IOException e) {
         Logs.warn(rt, ctx, out, this, "cannot write " + marker(ctx) + ": " + e.getMessage());
       }
@@ -338,10 +408,12 @@ final class VendorSteps {
           problems.add(stepId + ": " + Failures.describe(e));
         }
       }
-      try {
-        Files.deleteIfExists(marker(ctx));
-      } catch (IOException e) {
-        problems.add("marker: " + e.getMessage());
+      for (Path file : List.of(marker(ctx), attemptMarker(ctx))) {
+        try {
+          Files.deleteIfExists(file);
+        } catch (IOException e) {
+          problems.add(file.getFileName() + ": " + e.getMessage());
+        }
       }
       if (!problems.isEmpty()) {
         return Failures.recoverable(
