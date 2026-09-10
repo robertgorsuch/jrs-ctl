@@ -29,6 +29,8 @@ jobs:
           server-id: github
 
       - name: Publish to GitHub Packages
-        run: ./mvnw -B -DskipTests deploy
+        run: |
+          chmod +x ./mvnw
+          ./mvnw -B -DskipTests deploy
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
