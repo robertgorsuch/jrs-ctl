@@ -131,6 +131,8 @@ jobs:
           & "$root\bin\jrsctl.cmd" selfcheck
           if ($LASTEXITCODE -ne 0) { throw "selfcheck exited $LASTEXITCODE" }
       - name: Phase 7 acceptance against the built image (reactor up to acceptance, only the phase7 class)
+        # bash on both runners: pwsh splits a dotted -D property at the dot ("Unknown lifecycle phase")
+        shell: bash
         run: mvn -B -pl acceptance -am verify -Dphase=7 -Pdist -Dtest=Phase7DistributionTest -Dsurefire.failIfNoSpecifiedTests=false
       - uses: actions/upload-artifact@v4
         with:
