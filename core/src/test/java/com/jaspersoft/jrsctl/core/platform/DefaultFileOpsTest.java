@@ -93,6 +93,64 @@ class DefaultFileOpsTest {
   }
 
   @Test
+  @EnabledOnOs(OS.LINUX)
+  void should_inherit_destination_directory_permissions_when_landing_a_new_file(@TempDir Path root)
+      throws IOException {
+    // Regression: a new file used to be renamed in from the staging directory and kept that
+    // directory's rules. Under WEB-INF/lib that left a jar the service account could not open.
+    Path staging = Files.createDirectories(root.resolve("staging"));
+    Path destination = Files.createDirectories(root.resolve("webinf-lib"));
+    Path reference = destination.resolve("reference.jar");
+    Files.writeString(reference, "ref", StandardCharsets.UTF_8);
+    Path source = staging.resolve("new.jar");
+    Files.writeString(source, "new", StandardCharsets.UTF_8);
+    Files.setPosixFilePermissions(source, PosixFilePermissions.fromString("rw-------"));
+    Path target = destination.resolve("new.jar");
+
+    files.atomicReplace(source, target);
+
+    assertThat(Files.readString(target, StandardCharsets.UTF_8)).isEqualTo("new");
+    assertThat(source).doesNotExist();
+    assertThat(Files.getPosixFilePermissions(target))
+        .isEqualTo(Files.getPosixFilePermissions(reference));
+    assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(target)))
+        .isNotEqualTo("rw-------");
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_inherit_destination_directory_acl_when_landing_a_new_file(@TempDir Path root)
+      throws IOException {
+    // Regression: see the Linux twin. On Windows the staged file carried an explicit ACL that did
+    // not include the service account, so Tomcat could not open the jar and the context failed.
+    Path staging = Files.createDirectories(root.resolve("staging"));
+    Path destination = Files.createDirectories(root.resolve("webinf-lib"));
+    Path reference = destination.resolve("reference.jar");
+    Files.writeString(reference, "ref", StandardCharsets.UTF_8);
+    Path source = staging.resolve("new.jar");
+    Files.writeString(source, "new", StandardCharsets.UTF_8);
+    AclFileAttributeView sourceAcl = Files.getFileAttributeView(source, AclFileAttributeView.class);
+    assumeTrue(sourceAcl != null);
+    AclEntry ownerOnly =
+        AclEntry.newBuilder()
+            .setType(AclEntryType.ALLOW)
+            .setPrincipal(Files.getOwner(source))
+            .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+            .build();
+    sourceAcl.setAcl(List.of(ownerOnly));
+    List<String> restricted = files.capturePermissions(source).entries();
+    Path target = destination.resolve("new.jar");
+
+    files.atomicReplace(source, target);
+
+    assertThat(Files.readString(target, StandardCharsets.UTF_8)).isEqualTo("new");
+    assertThat(source).doesNotExist();
+    assertThat(files.capturePermissions(target).entries())
+        .isEqualTo(files.capturePermissions(reference).entries())
+        .isNotEqualTo(restricted);
+  }
+
+  @Test
   void should_create_target_when_atomically_replacing_a_missing_file(@TempDir Path dir)
       throws IOException {
     Path target = dir.resolve("missing.txt");

@@ -17,7 +17,9 @@ public interface FileOps {
 
   /**
    * Replaces {@code target} with {@code source} atomically (rename within the same volume), keeping
-   * the target's owner, permissions and ACLs. {@code source} is consumed.
+   * the target's owner, permissions and ACLs. When {@code target} does not exist there is nothing
+   * to keep, so the file is created inside the destination directory and inherits that directory's
+   * access rules rather than the staging directory's. {@code source} is consumed.
    */
   void atomicReplace(Path source, Path target) throws IOException;
 

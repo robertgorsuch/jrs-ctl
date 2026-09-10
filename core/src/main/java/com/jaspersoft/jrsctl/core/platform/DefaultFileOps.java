@@ -26,14 +26,16 @@ import org.slf4j.LoggerFactory;
  * writability. Invariants: no method reads a whole file into memory (the hash buffer is 64 KB);
  * {@link #atomicReplace} captures the target's permissions before the rename and re-applies them
  * afterwards, so the replaced file keeps the ownership and access rules of the file it replaced;
- * the temporary file used by the cross-volume fallback is always created in the target's directory
- * so the final step is still a same-volume rename. Lock detection and permission capture are
- * OS-specific and refined by {@link WindowsFileOps} and {@link LinuxFileOps}; this base treats
- * every file as unlocked and records only the owner. Every rename is retried a bounded number of
- * times with a short pause, since Windows occasionally denies a same-directory rename for a moment
- * after a file is closed (antivirus or indexer holding a transient handle); a rename that is
- * refused for a structural reason ({@link AtomicMoveNotSupportedException}) is never retried, only
- * ones that fail with some other {@link IOException}.
+ * when there is no target to copy from, the new file is created inside the destination directory so
+ * that it inherits that directory's rules rather than the staging directory's; the temporary file
+ * used by the cross-volume fallback is always created in the target's directory so the final step
+ * is still a same-volume rename. Lock detection and permission capture are OS-specific and refined
+ * by {@link WindowsFileOps} and {@link LinuxFileOps}; this base treats every file as unlocked and
+ * records only the owner. Every rename is retried a bounded number of times with a short pause,
+ * since Windows occasionally denies a same-directory rename for a moment after a file is closed
+ * (antivirus or indexer holding a transient handle); a rename that is refused for a structural
+ * reason ({@link AtomicMoveNotSupportedException}) is never retried, only ones that fail with some
+ * other {@link IOException}.
  */
 public class DefaultFileOps implements FileOps {
 
@@ -58,8 +60,11 @@ public class DefaultFileOps implements FileOps {
 
   @Override
   public void atomicReplace(Path source, Path target) throws IOException {
-    Optional<Permissions> kept =
-        Files.exists(target) ? Optional.of(capturePermissions(target)) : Optional.empty();
+    if (!Files.exists(target)) {
+      landNewFile(source, target);
+      return;
+    }
+    Optional<Permissions> kept = Optional.of(capturePermissions(target));
     try {
       moveRetrying(
           source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -80,6 +85,27 @@ public class DefaultFileOps implements FileOps {
     if (kept.isPresent()) {
       applyPermissions(target, kept.get());
     }
+  }
+
+  /**
+   * Lands a file that has no existing target to copy access rules from, by creating it inside the
+   * destination directory and renaming it into place there. Creating the file in that directory is
+   * what makes the platform apply the directory's rules to it: inheritable ACEs on Windows, the
+   * umask and any setgid bit on POSIX. Renaming it in from somewhere else instead would carry the
+   * staging directory's rules across, which on Windows leaves a file the service account cannot
+   * open at all. {@code source} is consumed either way.
+   */
+  private void landNewFile(Path source, Path target) throws IOException {
+    Path staged = tempSibling(target);
+    try {
+      copyStreaming(source, staged);
+      moveRetrying(
+          staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException e) {
+      Files.deleteIfExists(staged);
+      throw e;
+    }
+    Files.delete(source);
   }
 
   /**
