@@ -272,11 +272,34 @@ function applyChrome() {
   }
 }
 
+/* The sample backend lives only in the source tree: the build excludes mock.js from the jar, so a
+   console served by jrsctl cannot load it. Developers open index.html from disk (or serve the
+   web/ directory themselves) and add ?mock=1. */
+function mockAllowed() {
+  return window.location.protocol === 'file:';
+}
+
 async function enableMock() {
-  const mod = await import('./mock.js');
+  let mod;
+  try {
+    mod = await import('./mock.js');
+  } catch (e) {
+    throw new Error('Sample data is not part of this build. Open web/index.html from the source tree to use it.');
+  }
   useMock(mod.createMockBackend());
   byId('sample-banner').hidden = false;
   setText('token-state', 'Sample data, no token');
+}
+
+function renderMockUnavailable(e) {
+  const view = byId('view');
+  clear(view);
+  view.append(h('section', { class: 'panel token-panel' },
+    h('div', { class: 'panel-body' },
+      h('h2', { class: 'h2' }, 'Sample data unavailable'),
+      h('p', { class: 'secondary' }, errorMessage(e)),
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn primary', type: 'button', onclick: () => { window.location.search = ''; } }, 'Open the real console')))));
 }
 
 async function loadHealth() {
@@ -333,13 +356,25 @@ function renderOfflinePanel(e) {
         h('code', null, 'jrsctl console'), ' and open the address it prints.'),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn primary', type: 'button', onclick: () => boot() }, 'Retry'),
-        h('button', { class: 'btn', type: 'button', onclick: async () => { await enableMock(); boot(); } }, 'Use sample data')))));
+        ...(mockAllowed()
+          ? [h('button', { class: 'btn', type: 'button', onclick: async () => {
+              try { await enableMock(); } catch (err) { renderMockUnavailable(err); return; }
+              boot();
+            } }, 'Use sample data')]
+          : [])))));
 }
 
 async function boot() {
   await loadToken();
   const params = new URLSearchParams(window.location.search);
-  if (params.get('mock') === '1' && !isMock()) await enableMock();
+  if (params.get('mock') === '1' && !isMock()) {
+    try {
+      await enableMock();
+    } catch (e) {
+      renderMockUnavailable(e);
+      return;
+    }
+  }
   try {
     await loadHealth();
   } catch (e) {

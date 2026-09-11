@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.jar.JarFile;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,18 @@ class Phase0SkeletonTest {
   void selfcheck_json_is_machine_readable() throws Exception {
     Cli.Result r = cli.run("selfcheck", "--json").assertExit(0);
     assertThat(r.stdout().trim()).startsWith("{").contains("\"items\"");
+  }
+
+  @Test
+  void packaged_jar_carries_no_mock_backend() throws Exception {
+    Path jar = Path.of(System.getProperty("jrsctl.jar"));
+    try (JarFile packaged = new JarFile(jar.toFile())) {
+      assertThat(packaged.getEntry("web/app.js")).as("the console UI ships").isNotNull();
+      assertThat(packaged.getEntry("web/mock.js"))
+          .as("the sample backend must not be reachable from a real console")
+          .isNull();
+      assertThat(packaged.getEntry("web/README.md")).isNull();
+    }
   }
 
   @Test

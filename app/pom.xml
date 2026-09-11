@@ -21,6 +21,18 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <!-- The sample backend and the front-end's developer notes stay in the source tree: a real
+             console must never be able to show sample runs from its own URL, so neither file reaches
+             the classpath or the jar (WebAssetsTest and Phase0SkeletonTest assert this). -->
+        <excludes>
+          <exclude>web/mock.js</exclude>
+          <exclude>web/README.md</exclude>
+        </excludes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <!-- Offline documentation (spec §14 Phase 8, §17): the repository's Markdown deliverables are

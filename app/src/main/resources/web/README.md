@@ -14,10 +14,15 @@ serves this directory from the JAR at `/` and the API at `/api/*` (spec §13).
 
 ## Developing without a server
 
-Open `index.html?mock=1` and every endpoint is answered from `mock.js`, including a simulated
-live run (New operation, Hotfix apply, any bundle path, Build plan, Run this plan). A bundle
-path containing `HF-0002` simulates a failed run with rollback. A yellow "Sample data" banner
-marks mock mode. Nothing is sent over the network.
+Open `index.html?mock=1` from the source tree and every endpoint is answered from `mock.js`,
+including a simulated live run (New operation, Hotfix apply, any bundle path, Build plan, Run
+this plan). A bundle path containing `HF-0002` simulates a failed run with rollback. A yellow
+"Sample data" banner marks mock mode. Nothing is sent over the network.
+
+`mock.js` and this file are excluded from the build (`app/pom.xml`), so a console served by
+`jrsctl console` cannot load sample data: `?mock=1` there shows "Sample data unavailable", and the
+"Use sample data" offer on the offline panel appears only for a page opened from disk. Two tests
+guard this: `WebAssetsTest` (classpath) and `Phase0SkeletonTest` (packaged jar).
 
 - Firefox opens the page straight from disk: `file:///.../web/index.html?mock=1`.
 - Chromium blocks ES modules on `file://` origins, so serve the directory with any static

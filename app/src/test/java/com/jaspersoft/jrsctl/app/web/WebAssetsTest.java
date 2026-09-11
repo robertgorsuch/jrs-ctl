@@ -18,12 +18,21 @@ class WebAssetsTest {
 
   private static final List<String> ASSETS =
       List.of(
-          "/web/index.html",
-          "/web/console.css",
-          "/web/app.js",
-          "/web/api.js",
-          "/web/mock.js",
-          "/web/brand.css");
+          "/web/index.html", "/web/console.css", "/web/app.js", "/web/api.js", "/web/brand.css");
+
+  /** Development-only files that must never be served by a real console. */
+  private static final List<String> DEV_ONLY = List.of("/web/mock.js", "/web/README.md");
+
+  @Test
+  void should_not_ship_the_mock_backend_or_the_web_readme_on_the_classpath() {
+    for (String devOnly : DEV_ONLY) {
+      assertThat(WebAssetsTest.class.getResource(devOnly))
+          .as(
+              "%s is for developing from the source tree; a real console must not serve it",
+              devOnly)
+          .isNull();
+    }
+  }
 
   private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
   private static final Pattern HTML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
