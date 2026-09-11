@@ -58,7 +58,7 @@ final class Bootstrap implements AutoCloseable {
   static Bootstrap open(GlobalOptions options, Map<String, String> env, Clock clock) {
     Objects.requireNonNull(options, "options");
     Objects.requireNonNull(env, "env");
-    boolean interactive = !options.yes() && Terminal.present();
+    boolean interactive = !options.nonInteractive() && Terminal.present();
     OperatorPrompt prompt = interactive ? new ConsolePrompt() : OperatorPrompt.nonInteractive();
     Platform platform = Platforms.detect(prompt);
     JrsctlHome home =

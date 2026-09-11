@@ -11,6 +11,8 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.IExecutionExceptionHandler;
 import picocli.CommandLine.IParameterExceptionHandler;
@@ -26,6 +28,8 @@ import picocli.CommandLine.UnmatchedArgumentException;
  * silent; every message is redacted before it is written.
  */
 public final class ExitCodes {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ExitCodes.class);
 
   public static final int SUCCESS = 0;
   public static final int USAGE = 1;
@@ -144,16 +148,40 @@ public final class ExitCodes {
   static final class Handler implements IExecutionExceptionHandler {
     @Override
     public int handleExecutionException(Exception ex, CommandLine cmd, ParseResult parseResult) {
+      boolean unmapped = !mapped(ex);
       int code = codeFor(ex);
+      Optional<String> remediation = Optional.empty();
+      if (unmapped) {
+        // review 4.3: an exception nobody mapped is logged with its stack trace (the log is
+        // redacted by its appenders) and the operator is told where it is
+        LOG.error("unexpected {}: {}", ex.getClass().getName(), messageOf(ex), ex);
+        remediation = Optional.of("see " + logFile() + " for the stack trace");
+      }
       if (jsonRequested(parseResult)) {
         JsonOut.print(
-            cmd.getOut(), JsonOut.error(ex.getClass().getSimpleName(), messageOf(ex), code));
+            cmd.getOut(),
+            JsonOut.error(
+                ex.getClass().getSimpleName(), messageOf(ex), code, remediation, Map.of()));
         return code;
       }
-      String message = Redactor.global().redact("error: " + ex.getMessage());
+      String message = Redactor.global().redact("error: " + messageOf(ex));
       cmd.getErr().println(cmd.getColorScheme().errorText(message));
+      remediation.ifPresent(cmd.getErr()::println);
       cmd.getErr().flush();
       return code;
+    }
+
+    static boolean mapped(Throwable ex) {
+      return ex instanceof ConfigException
+          || ex instanceof JrsUnreachableException
+          || ex instanceof RestException
+          || ex instanceof SecretException
+          || ex instanceof LockHeldException
+          || ex instanceof UnsupportedVersionException;
+    }
+
+    static String logFile() {
+      return System.getProperty(LogFile.PROPERTY, "logs/jrsctl.log");
     }
 
     static int codeFor(Throwable ex) {
@@ -176,7 +204,8 @@ public final class ExitCodes {
       if (ex instanceof UnsupportedVersionException) {
         return UNSUPPORTED;
       }
-      return FAILED_ROLLBACK_INCOMPLETE;
+      // unmapped: nothing was mutated unless a run has started (review 4.3)
+      return RunState.started() ? FAILED_ROLLBACK_INCOMPLETE : PRECHECK_FAILED;
     }
   }
 

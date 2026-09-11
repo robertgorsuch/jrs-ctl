@@ -88,6 +88,13 @@ final class InitCommand implements Callable<Integer> {
         out.println("no installation detected; pass --install-dir <root> to point at one");
       }
       if (!global.yes()) {
+        if (global.nonInteractive()) {
+          err.println("error: confirmation required to write " + target);
+          err.println(
+              "pass --yes to write without asking (review 4.4: --non-interactive never confirms)");
+          err.flush();
+          return ExitCodes.PRECHECK_FAILED;
+        }
         if (!Confirm.ask(out, "Write config to " + target + "? [y/N] ")) {
           out.println("config not written (pass --yes to write without asking)");
           out.flush();

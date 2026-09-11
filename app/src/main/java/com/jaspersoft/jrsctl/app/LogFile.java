@@ -17,13 +17,35 @@ final class LogFile {
 
   static final String PROPERTY = "jrsctl.log.file";
 
+  /**
+   * Threshold of logback's console appender: {@code OFF} with {@code --json}, else {@code WARN}.
+   */
+  static final String CONSOLE_LEVEL_PROPERTY = "jrsctl.log.console";
+
   private LogFile() {}
 
   static void configure(String[] args, Map<String, String> env) {
+    if (System.getProperty(CONSOLE_LEVEL_PROPERTY) == null) {
+      System.setProperty(CONSOLE_LEVEL_PROPERTY, consoleLevel(args));
+    }
     if (System.getProperty(PROPERTY) != null) {
       return;
     }
     System.setProperty(PROPERTY, resolve(args, env).toString());
+  }
+
+  /**
+   * What may reach standard error from the loggers (review 4.5): nothing in {@code --json} mode,
+   * where standard output carries exactly the documents and standard error must stay silent;
+   * warnings and errors otherwise. INFO always goes to the JSON log file, never to the terminal.
+   */
+  static String consoleLevel(String[] args) {
+    for (String arg : args) {
+      if (arg.equals("--json")) {
+        return "OFF";
+      }
+    }
+    return "WARN";
   }
 
   static Path resolve(String[] args, Map<String, String> env) {

@@ -40,6 +40,49 @@ class MainTest {
     assertThat(out.toString()).contains("\"items\"").contains("\"status\" : \"PASS\"");
   }
 
+  /** Review finding 4.5: {@code jrsctl --json} with no command must not print usage to stdout. */
+  @Test
+  void should_emit_one_error_document_and_exit_1_when_json_given_without_a_command()
+      throws Exception {
+    StringWriter out = new StringWriter();
+    java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+    PrintStream saved = System.err;
+    System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+    int code;
+    try {
+      CommandLine cmd = Main.commandLine();
+      cmd.setOut(new java.io.PrintWriter(out));
+      cmd.setErr(
+          new java.io.PrintWriter(
+              new java.io.OutputStreamWriter(System.err, StandardCharsets.UTF_8), true));
+      code = cmd.execute("--json");
+    } finally {
+      System.setErr(saved);
+    }
+    assertThat(code).isEqualTo(ExitCodes.USAGE);
+    assertThat(err.toString(StandardCharsets.UTF_8)).isBlank();
+    com.fasterxml.jackson.databind.JsonNode doc =
+        com.jaspersoft.jrsctl.core.json.Json.read(
+            out.toString(), com.fasterxml.jackson.databind.JsonNode.class);
+    assertThat(doc.get("error").get("exitCode").asInt()).isEqualTo(ExitCodes.USAGE);
+    assertThat(doc.get("error").get("remediation").asText()).contains("--help");
+  }
+
+  @Test
+  void should_print_usage_and_exit_1_when_no_command_given() {
+    StringWriter out = new StringWriter();
+    StringWriter err = new StringWriter();
+    CommandLine cmd = Main.commandLine();
+    cmd.setOut(new java.io.PrintWriter(out));
+    cmd.setErr(new java.io.PrintWriter(err));
+
+    int code = cmd.execute();
+
+    assertThat(code).isEqualTo(ExitCodes.USAGE);
+    assertThat(err.toString()).contains("Usage:");
+    assertThat(out.toString()).isEmpty();
+  }
+
   @Test
   void should_exit_one_when_unknown_subcommand_given() {
     java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();

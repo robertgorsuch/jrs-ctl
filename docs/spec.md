@@ -252,7 +252,7 @@ Rules:
 ### 5.5 Run lock and recovery
 
 - `runs.lock` in `$JRSCTL_HOME` is taken (OS file lock) before any mutating Plan executes and held until the run reaches a terminal state. A second mutating run fails immediately with exit code 9 and the holder's run id and pid.
-- On startup, `jrsctl` queries `runs` for rows without a terminal state. In interactive mode it offers `resume` or `rollback` (§6.6). In non-interactive mode (`--yes`, or stdin not a TTY) any mutating command fails with exit code 8 and prints the exact `runs recover` command to run.
+- On startup, `jrsctl` queries `runs` for rows without a terminal state. In interactive mode it offers `resume` or `rollback` (§6.6). In non-interactive mode (`--yes`, `--non-interactive`, `--json`) any mutating command fails with exit code 8 and prints the exact `runs recover` command to run. `--non-interactive` never confirms anything: a plan that needs confirmation exits 2 unless `--yes` is also given; without either flag the confirmation is asked on the terminal, or on stdin when stdout is not a terminal, with end of input meaning no.
 
 ### 5.6 Snapshots
 
@@ -603,7 +603,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 12.0 `init`
 
-- `jrsctl init [--non-interactive]` detects the installation and writes `config.yaml`:
+- `jrsctl init [--yes] [--non-interactive]` detects the installation and, after confirmation or with `--yes`, writes `config.yaml` (`--non-interactive` alone reports and exits 2 rather than writing):
   - candidate install dirs from `Platform.candidateInstallDirs()` (common paths, the working directory of a running Tomcat process, the Windows registry/uninstall entries);
   - `webappName`, `tomcatDir`, `baseUrl` from the Tomcat layout and `server.xml` port;
   - `service.kind` and name by probing Windows services / systemd units / `ctlscript.sh`;

@@ -205,7 +205,7 @@ jrsctl console
 Every command supports the following global options:
 
 * `--plan`: Previews the complete execution step tree without applying any mutations.
-* `--yes` / `--non-interactive`: Bypasses confirmation prompts (ideal for CI/CD and scripts).
+* `--yes`: Answers every confirmation without asking (ideal for CI/CD and scripts). `--non-interactive` only guarantees that nothing prompts; it confirms nothing and exits 2 where a human would be needed, so unattended runs pass `--yes`.
 * `--json`: Emits machine-readable JSON output for integrations.
 * `--explain`: Prints detailed offline help explaining mutations, rollback behavior, flags, and exit codes.
 * `--home <dir>`: Overrides the default `JRSCTL_HOME` path.

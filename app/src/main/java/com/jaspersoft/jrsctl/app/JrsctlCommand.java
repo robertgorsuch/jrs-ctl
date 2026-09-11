@@ -1,8 +1,14 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.Version;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
+import picocli.CommandLine.Mixin;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Spec;
 
 /**
  * Root command. Subcommands are added phase by phase; each one is a thin adapter from flags to an
@@ -36,12 +42,32 @@ import picocli.CommandLine.IVersionProvider;
       DocsCommand.class,
       picocli.CommandLine.HelpCommand.class
     })
-public final class JrsctlCommand implements Runnable {
+public final class JrsctlCommand implements Callable<Integer> {
 
+  @Spec CommandSpec spec;
+  @Mixin GlobalOptions global;
+
+  /**
+   * No subcommand given: a usage error (exit 1). Text mode prints the usage on standard error;
+   * {@code --json} prints the error document on standard output and nothing else (review 4.5).
+   */
   @Override
-  public void run() {
-    // No subcommand given: picocli prints usage because of mixinStandardHelpOptions handling below.
-    new picocli.CommandLine(this).usage(System.out);
+  public Integer call() {
+    picocli.CommandLine cmd = spec.commandLine();
+    if (global.json()) {
+      JsonOut.print(
+          cmd.getOut(),
+          JsonOut.error(
+              "UsageException",
+              "no command given",
+              ExitCodes.USAGE,
+              Optional.of("see: jrsctl --help"),
+              Map.of()));
+      return ExitCodes.USAGE;
+    }
+    cmd.usage(cmd.getErr());
+    cmd.getErr().flush();
+    return ExitCodes.USAGE;
   }
 
   /** Supplies {@code --version} output from the build-time version resource. */

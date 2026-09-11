@@ -11,8 +11,13 @@
   <conversionRule conversionWord="redactEx"
                   class="com.jaspersoft.jrsctl.core.redact.RedactingThrowableConverter"/>
 
+  <!-- The console shows warnings and errors; INFO is for the file. Main sets jrsctl.log.console
+       to OFF for JSON output so standard error stays silent (spec §18, review 4.5). -->
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <target>System.err</target>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>${jrsctl.log.console:-WARN}</level>
+    </filter>
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} %-5level %logger{24} - %redact%n%redactEx</pattern>
     </encoder>

@@ -33,12 +33,16 @@ public final class GlobalOptions {
       description = "File holding the passphrase for secrets.enc (non-interactive unlock).")
   Path passphraseFile;
 
-  @Option(names = "--yes", description = "Answer yes to confirmations; implies --non-interactive.")
+  @Option(
+      names = "--yes",
+      description = "Answer yes to confirmations without asking; implies --non-interactive.")
   boolean yes;
 
   @Option(
       names = "--non-interactive",
-      description = "Never prompt; fail where a human is needed (same as --yes).")
+      description =
+          "Never prompt; exit 2 where a confirmation or a passphrase is needed. Does not confirm"
+              + " anything: pair it with --yes to run a plan unattended.")
   boolean nonInteractive;
 
   @Option(names = "--no-color", description = "Disable ANSI colour in text output.")
@@ -59,9 +63,14 @@ public final class GlobalOptions {
     return Optional.ofNullable(passphraseFile);
   }
 
-  /** True for {@code --yes} or {@code --non-interactive}; both may be given together. */
+  /** True only for {@code --yes}: the one flag that answers a confirmation (review 4.4). */
   public boolean yes() {
-    return yes || nonInteractive;
+    return yes;
+  }
+
+  /** True when no prompt may be shown: {@code --non-interactive}, or {@code --yes} implying it. */
+  public boolean nonInteractive() {
+    return nonInteractive || yes;
   }
 
   public boolean noColor() {

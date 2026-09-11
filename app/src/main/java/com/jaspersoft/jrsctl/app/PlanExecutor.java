@@ -95,7 +95,10 @@ final class PlanExecutor {
       return ExitCodes.SUCCESS;
     }
     if (!global.yes()) {
-      if (global.json() || !services.interactive()) {
+      // --non-interactive and --json never prompt (review 4.4); an operator whose stdout is piped
+      // still gets the question, on stdout, and answers on stdin (Confirm falls back from the
+      // console to stdin; end of input is "no").
+      if (global.json() || global.nonInteractive()) {
         return fail(
             ExitCodes.PRECHECK_FAILED,
             "confirmation required",
@@ -200,18 +203,18 @@ final class PlanExecutor {
               }
             },
             "jrsctl-run");
-    Thread hook =
-        new Thread(
-            () -> {
-              ctx.cancel().cancel("interrupted");
-              try {
-                worker.join(SHUTDOWN_GRACE.toMillis());
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              }
-            },
-            "jrsctl-shutdown");
+    // Ctrl-C (review 4.3): the hook cancels, waits for the worker and for the outcome block, then
+    // halts with the run's exit code; the JVM's own 130/143 never reaches the operator.
+    RunGuard guard =
+        new RunGuard(
+            ctx.cancel(),
+            worker,
+            SHUTDOWN_GRACE,
+            RunGuard.RENDER_GRACE,
+            Runtime.getRuntime()::halt);
+    Thread hook = new Thread(guard::onShutdown, "jrsctl-shutdown");
     Runtime.getRuntime().addShutdownHook(hook);
+    RunState.markStarted();
     worker.start();
     try {
       worker.join();
@@ -243,13 +246,18 @@ final class PlanExecutor {
     }
     RunOutcome outcome = result.get();
     if (outcome == null) {
-      return fail(
-          ExitCodes.CANCELLED,
-          "run " + ctx.runId() + " was interrupted before it reported an outcome",
-          Optional.empty(),
-          Map.of());
+      int code =
+          fail(
+              ExitCodes.CANCELLED,
+              "run " + ctx.runId() + " was interrupted before it reported an outcome",
+              Optional.empty(),
+              Map.of());
+      guard.rendered(code);
+      return code;
     }
     renderer.outcome(ctx.runId(), outcome);
+    out.flush();
+    guard.rendered(outcome.exitCode());
     if (outcome instanceof RunOutcome.Succeeded) {
       // best effort, never changes the exit code; the run's own snapshots are protected explicitly
       RetentionPruner.of(services).afterSuccessfulRun(ctx.runId());

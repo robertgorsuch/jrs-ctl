@@ -174,13 +174,55 @@ class HotfixCommandTest {
     }
   }
 
+  /** Review finding 4.4: {@code --non-interactive} never confirms; only {@code --yes} does. */
   @Test
-  void should_exit_2_without_running_when_not_interactive_and_yes_not_given() {
-    InitCommandTest.Run run = apply();
+  void should_exit_2_without_running_when_non_interactive_and_yes_not_given() {
+    InitCommandTest.Run run = apply("--non-interactive");
 
     assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
     assertThat(run.err()).contains("--yes");
     assertThat(fake.executed).isEmpty();
+  }
+
+  /**
+   * Review finding 4.4: with stdout piped there is no console, but the operator is still there; the
+   * question goes to stdout and the answer comes from stdin instead of a refusal with exit 2.
+   */
+  @Test
+  void should_ask_on_stdin_and_not_run_when_the_answer_is_no() {
+    InitCommandTest.Run run = withStdin("n\n", () -> apply());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(run.out()).contains("Run this plan?").contains("not run; nothing has changed");
+    assertThat(fake.executed).isEmpty();
+  }
+
+  @Test
+  void should_ask_on_stdin_and_run_when_the_answer_is_yes() {
+    InitCommandTest.Run run = withStdin("y\n", () -> apply());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(fake.executed).isNotEmpty();
+  }
+
+  @Test
+  void should_treat_end_of_stdin_as_no_and_not_run() {
+    InitCommandTest.Run run = withStdin("", () -> apply());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(fake.executed).isEmpty();
+  }
+
+  private static InitCommandTest.Run withStdin(
+      String text, java.util.function.Supplier<InitCommandTest.Run> body) {
+    java.io.InputStream saved = System.in;
+    System.setIn(
+        new java.io.ByteArrayInputStream(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    try {
+      return body.get();
+    } finally {
+      System.setIn(saved);
+    }
   }
 
   @Test

@@ -47,14 +47,31 @@ class InitCommandTest {
 
   record Run(int code, String out, String err) {}
 
+  /**
+   * Runs the real command tree. {@code err} is picocli's error writer plus everything written to
+   * {@code System.err} meanwhile (logback's console appender, stray prints), so an assertion that
+   * standard error stayed silent is about the process's standard error, not a private writer.
+   */
   static Run run(String... args) {
     StringWriter out = new StringWriter();
     StringWriter err = new StringWriter();
+    java.io.ByteArrayOutputStream systemErr = new java.io.ByteArrayOutputStream();
+    java.io.PrintStream savedErr = System.err;
     CommandLine cmd = Main.commandLine();
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
-    int code = cmd.execute(args);
-    return new Run(code, out.toString(), err.toString());
+    int code;
+    System.setErr(
+        new java.io.PrintStream(systemErr, true, java.nio.charset.StandardCharsets.UTF_8));
+    try {
+      code = cmd.execute(args);
+    } finally {
+      System.setErr(savedErr);
+    }
+    return new Run(
+        code,
+        out.toString(),
+        err.toString() + systemErr.toString(java.nio.charset.StandardCharsets.UTF_8));
   }
 
   @Test
