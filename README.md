@@ -1,6 +1,6 @@
 # jrsctl
 
-`jrsctl` is a dedicated lifecycle management and operations tool for **Actian JasperReports Server (JRS)**. It delivers safe, automated, and auditable server administration—including environmental diagnostics, cryptographic hotfix management, repository content migrations, version upgrades, and credential security.
+`jrsctl` is a dedicated lifecycle management and operations tool for **JasperReports Server (JRS)**. It delivers safe, automated, and auditable server administration—including environmental diagnostics, cryptographic hotfix management, repository content migrations, version upgrades, and credential security.
 
 Designed for operational safety in enterprise and air-gapped environments, `jrsctl` ships as a self-contained portable package with its own bundled Java runtime, requiring no pre-installed JDK, Python, or external scripting dependencies on the host server.
 
