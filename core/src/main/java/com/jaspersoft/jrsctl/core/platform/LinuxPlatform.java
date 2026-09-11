@@ -6,11 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@link Platform} for Linux. Invariants: the default home is {@code /var/lib/jrsctl} when that
- * tree can be written (root or a dedicated service account), otherwise {@code ~/.jrsctl}; install
- * candidates are the install dirs of running Tomcats (from {@code /proc/<pid>/cwd} and {@code
- * catalina.home}) followed by the well-known locations under {@code /opt}, {@code /usr/local} and
- * every home directory.
+ * {@link Platform} for Linux. Invariants: the default home is {@code /var/lib/jrsctl} when it
+ * exists or can be created (root or a dedicated service account) and {@code ~/.jrsctl} only when no
+ * system home exists; a system home this user cannot write to is refused by the resolver, never
+ * silently replaced by a per-user one; install candidates are the install dirs of running Tomcats
+ * (from {@code /proc/<pid>/cwd} and {@code catalina.home}) followed by the well-known locations
+ * under {@code /opt}, {@code /usr/local} and every home directory.
  */
 public final class LinuxPlatform extends AbstractPlatform {
 

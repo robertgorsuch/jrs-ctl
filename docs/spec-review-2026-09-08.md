@@ -1,5 +1,9 @@
 # jrsctl Technical Design Spec — Review and Recommendations
 
+Status: superseded. Every item below was applied to Draft 1.1 on 2026-09-08 or recorded as a
+non-goal in `docs/decisions/0001` to `0006`; `docs/spec-changelog.md` maps each item to its
+change. Kept for the history of the decisions; `docs/spec.md` is the contract.
+
 Reviewed: `jrsctl-technical-design-spec.md` (Draft 1.0, 2026-09-08)
 Purpose: changes to make before the build agent starts Phase 0.
 

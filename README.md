@@ -182,19 +182,19 @@ jrsctl console
 | `jrsctl hotfix apply` | Applies hotfix bundle with snapshots, service stop/start, and SQL | **Yes** |
 | `jrsctl hotfix rollback` | Reverts installed hotfix files and executes rollback SQL | **Yes** |
 | `jrsctl hotfix list` | Displays inventory of installed, superseded, and rolled-back hotfixes | No |
-| `jrsctl export` | Exports repository catalogs, organizations, users, or full server | No |
-| `jrsctl import` | Imports repository archive with pre-import subtree snapshot | **Yes** |
-| `jrsctl upgrade` | Orchestrates version upgrade with backup and validation | **Yes** |
-| `jrsctl upgrade rollback` | Restores pre-upgrade file snapshots and configuration | **Yes** |
+| `jrsctl export` | Exports repository catalogs, organizations, users, or full server (`--strategy rest\|vendor`, `--full-server`) | No |
+| `jrsctl import` | Imports repository archive with pre-import subtree snapshot (`--strategy`, `--source-keystore`, `--update`) | **Yes** |
+| `jrsctl upgrade` | Orchestrates version upgrade with backup and validation (`--mode newdb\|samedb`, `--reapply-hotfixes`, `--rollback-all`) | **Yes** |
+| `jrsctl upgrade rollback` | Restores pre-upgrade file snapshots and configuration (`--to-point B\|C`) | **Yes** |
 | `jrsctl customizations` | Registers, unregisters, lists, and diffs local file customizations | No |
 | `jrsctl runs list` | Displays execution history and run states | No |
 | `jrsctl runs show` | Inspects step-by-step execution details of a specific run | No |
-| `jrsctl runs recover` | Resumes or rolls back an interrupted or crashed run | **Yes** |
+| `jrsctl runs recover` | Resumes or rolls back an interrupted or crashed run (`--resume` or `--rollback`) | **Yes** |
 | `jrsctl runs prune` | Cleans up historical snapshots based on retention policies | No** |
 | `jrsctl secrets` | Manages encrypted credentials in `secrets.enc` (`init`, `set`, `remove`, `list`) | No |
 | `jrsctl keys` | Manages trusted signing public keys (`list`, `add`, `remove`, `generate`) | No |
 | `jrsctl console` | Launches local web monitoring dashboard and API | No |
-| `jrsctl docs` | Displays embedded operator, security, and authoring guides | No |
+| `jrsctl docs` | Displays the embedded operator guide, recovery runbook, security notes and authoring guide | No |
 | `jrsctl help` | Displays synopsis and usage help for any command | No |
 
 *\* `jrsctl smoke --mutating` uploads and executes a transient test report.*\

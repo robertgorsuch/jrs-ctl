@@ -31,12 +31,13 @@ final class EmbeddedDocs {
       Map.of(
           "readme", "/docs/README.md",
           "operator-guide", "/docs/operator-guide.md",
+          "recovery-runbook", "/docs/recovery-runbook.md",
           "security", "/docs/security.md",
           "hotfix-authoring", "/docs/hotfix-authoring.md");
 
   /** Display order of the listing; the operator guide first because it is the one to read. */
   static final List<String> NAMES =
-      List.of("operator-guide", "hotfix-authoring", "security", "readme");
+      List.of("operator-guide", "recovery-runbook", "hotfix-authoring", "security", "readme");
 
   private EmbeddedDocs() {}
 

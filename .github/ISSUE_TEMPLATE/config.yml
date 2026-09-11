@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/robertgorsuch/jrs-ctl/security/advisories/new
+    about: Private report to the maintainers; never open a public issue for a security problem (see docs/security.md).
+  - name: Operator guide and recovery runbook
+    url: https://github.com/robertgorsuch/jrs-ctl/blob/main/docs/operator-guide.md
+    about: Every command, flag and exit code; the runbook says what to do after a failed run.

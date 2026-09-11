@@ -118,6 +118,14 @@ Review `config-redacted.yaml` for host names and paths you consider sensitive be
   store, bound to the DNS host name by builds before 2026-09-10, is rebound in place the first
   time it is unlocked and a version 2 store is never retried with the old identity.
 
+## Reporting a vulnerability
+
+Do not open a public issue for a security problem. Use GitHub's private vulnerability reporting
+for this repository (the Security tab, "Report a vulnerability"), which reaches the maintainers
+without publishing the report. Include the jrsctl version (`jrsctl --version`), the operating
+system, and what an attacker can do; a support bundle is redacted and safe to attach. Expect an
+acknowledgement before a fix is discussed in public, and a fixed version before the report is.
+
 ## Hardening (Phase 8)
 
 Controls that hold for every command, and what the two offline help features deliberately do not

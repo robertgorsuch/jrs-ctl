@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (Phase 6).
+Deferred (2026-09-10). Accepted in principle in Phase 6, but the CI job it describes has not been
+written: the `integration` job in `ci.yml` selects tests tagged `needs-docker` and no test carries
+that tag, so the gate passes on zero tests (assessment item 5.2). Until the Playwright job exists,
+the console is covered only by `ConsoleServerTest`, `Phase6ConsoleTest` and manual use of the
+front-end's mock mode from the source tree. The decision below stands once the job is written.
 
 ## Context
 

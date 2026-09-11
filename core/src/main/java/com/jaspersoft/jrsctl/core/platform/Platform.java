@@ -23,7 +23,11 @@ public interface Platform {
   ProcessRunner processes();
 
   /**
-   * Default {@code $JRSCTL_HOME}: ProgramData or /var/lib, falling back to ~/.jrsctl if unwritable.
+   * Default {@code $JRSCTL_HOME}: the system location (ProgramData on Windows, /var/lib on Linux)
+   * when it exists or can be created, else the per-user {@code ~/.jrsctl}. Callers resolve the home
+   * through {@code JrsctlHomeResolver}, which refuses (exit 2) when the system home exists but this
+   * user cannot write to it, rather than quietly starting a second journal beside someone else's;
+   * this method alone does not make that check.
    */
   Path defaultHome();
 
