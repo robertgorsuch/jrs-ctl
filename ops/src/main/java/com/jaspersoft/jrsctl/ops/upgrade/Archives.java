@@ -98,6 +98,9 @@ final class Archives {
                 root,
                 cancel,
                 (file, rel, attrs) -> {
+                  if (attrs.isSymbolicLink()) {
+                    checkLinkTarget(root, file, Files.readSymbolicLink(file).toString());
+                  }
                   TarArchiveEntry entry = tarEntry(file, rel, attrs);
                   tar.putArchiveEntry(entry);
                   // Content follows only for a real file. TarArchiveEntry.isFile() is true for a
@@ -173,7 +176,9 @@ final class Archives {
             }
           }
           for (TarArchiveEntry link : links) {
-            createSymbolicLink(resolve(root, link), link.getLinkName());
+            Path at = resolve(root, link);
+            checkLinkTarget(root, at, link.getLinkName());
+            createSymbolicLink(at, link.getLinkName());
           }
           reapply(metadata);
         }
@@ -290,9 +295,15 @@ final class Archives {
     return root.relativize(path).toString().replace('\\', '/');
   }
 
+  /**
+   * Where an entry lands. Refused: a blank name, an absolute root (a leading slash or backslash, or
+   * a drive letter), and a {@code ..} segment. A {@code ..} or a {@code :} inside a segment is a
+   * legal Linux file name and is kept, since a backup that cannot be restored is no backup
+   * (assessment item O3); the create side refuses what the extract side would.
+   */
   private static Path resolve(Path root, ArchiveEntry entry) throws IOException {
     String name = entry.getName();
-    if (name.isBlank() || name.startsWith("/") || name.contains("..") || name.contains(":")) {
+    if (name.isBlank() || isAbsoluteName(name) || hasParentSegment(name)) {
       throw new IOException("refusing archive entry '" + name + "'");
     }
     Path target = root.resolve(name).normalize();
@@ -300,6 +311,45 @@ final class Archives {
       throw new IOException("archive entry '" + name + "' escapes " + root);
     }
     return target;
+  }
+
+  /**
+   * Where a link entry may point: never at an absolute path, never outside the tree once resolved
+   * from the link's own directory. Applied when archiving (the tree being backed up must not carry
+   * such a link) and when extracting (the archive must not either).
+   */
+  private static void checkLinkTarget(Path root, Path link, String linkTarget) throws IOException {
+    if (linkTarget.isBlank() || isAbsoluteName(linkTarget)) {
+      throw new IOException("refusing " + link + ": link target '" + linkTarget + "' is absolute");
+    }
+    Path parent = link.toAbsolutePath().normalize().getParent();
+    Path resolved = parent.resolve(linkTarget.replace('\\', '/')).normalize();
+    if (!resolved.startsWith(root.toAbsolutePath().normalize())) {
+      throw new IOException(
+          "refusing " + link + ": link target '" + linkTarget + "' leaves " + root);
+    }
+  }
+
+  static boolean isAbsoluteName(String name) {
+    return name.startsWith("/")
+        || name.startsWith("\\")
+        || (name.length() >= 2 && Character.isLetter(name.charAt(0)) && name.charAt(1) == ':');
+  }
+
+  static boolean hasParentSegment(String name) {
+    String slashed = name.replace('\\', '/');
+    int from = 0;
+    while (from <= slashed.length()) {
+      int to = slashed.indexOf('/', from);
+      if (to < 0) {
+        to = slashed.length();
+      }
+      if (slashed.substring(from, to).equals("..")) {
+        return true;
+      }
+      from = to + 1;
+    }
+    return false;
   }
 
   private static void copy(Path file, OutputStream out) throws IOException {

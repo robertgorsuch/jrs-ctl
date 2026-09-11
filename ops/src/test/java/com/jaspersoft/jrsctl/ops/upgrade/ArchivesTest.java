@@ -6,11 +6,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.zip.GZIPOutputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -47,6 +54,144 @@ class ArchivesTest {
     List<String> names = Archives.entries(os, archive);
     assertThat(names).contains("a.txt", "WEB-INF/lib/x.jar", "empty/");
     assertThat(names).allSatisfy(n -> assertThat(n).doesNotContain("\\"));
+  }
+
+  /**
+   * Assessment item O3: names holding ".." or ":" inside a segment are legal on Linux and were
+   * archived fine, then refused on extract by a substring check, so those backups could not be
+   * restored. Only a ".." segment or an absolute root is a reason to refuse.
+   */
+  @ParameterizedTest
+  @EnumSource(Platform.OsFamily.class)
+  void should_round_trip_a_name_holding_dots_inside_a_segment(Platform.OsFamily os)
+      throws Exception {
+    Path source = tmp.resolve("src");
+    Files.createDirectories(source.resolve("lib..old"));
+    Files.writeString(
+        source.resolve("lib..old").resolve("a..b.txt"), "dots", StandardCharsets.UTF_8);
+    Path archive = tmp.resolve("out").resolve("dots" + Archives.extension(os));
+
+    Archives.create(os, source, archive, new CancellationToken());
+    Path target = tmp.resolve("restored");
+    Archives.extract(os, archive, target, new CancellationToken());
+
+    assertThat(target.resolve("lib..old").resolve("a..b.txt")).hasContent("dots");
+  }
+
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void should_round_trip_a_name_holding_a_colon() throws Exception {
+    Platform.OsFamily os = Platform.OsFamily.LINUX;
+    Path source = tmp.resolve("src");
+    Files.createDirectories(source);
+    Files.writeString(source.resolve("report:2026.txt"), "colon", StandardCharsets.UTF_8);
+    Path archive = tmp.resolve("colon.tar.gz");
+
+    Archives.create(os, source, archive, new CancellationToken());
+    Path target = tmp.resolve("restored");
+    Archives.extract(os, archive, target, new CancellationToken());
+
+    assertThat(target.resolve("report:2026.txt")).hasContent("colon");
+  }
+
+  @Test
+  void should_refuse_an_entry_with_a_parent_segment_or_an_absolute_root_when_extracting()
+      throws Exception {
+    for (String name : List.of("../evil.txt", "a/../../evil.txt", "/etc/evil.txt", "C:/evil.txt")) {
+      Path archive = tmp.resolve("bad-" + Integer.toHexString(name.hashCode()) + ".tar.gz");
+      writeTar(archive, e -> e.file(name, "x"));
+      Path target = tmp.resolve("restored-" + Integer.toHexString(name.hashCode()));
+      assertThatThrownBy(
+              () ->
+                  Archives.extract(
+                      Platform.OsFamily.LINUX, archive, target, new CancellationToken()))
+          .as(name)
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining(name);
+    }
+  }
+
+  /** Assessment item O3: a link target must stay inside the tree, on extract as on create. */
+  @Test
+  void should_refuse_a_link_whose_target_is_absolute_or_leaves_the_tree_when_extracting()
+      throws Exception {
+    for (String linkTarget :
+        List.of("/etc/passwd", "../../outside.txt", "lib/../../../outside.txt")) {
+      Path archive = tmp.resolve("link-" + Integer.toHexString(linkTarget.hashCode()) + ".tar.gz");
+      writeTar(archive, e -> e.link("lib/evil", linkTarget));
+      Path target = tmp.resolve("restored-link-" + Integer.toHexString(linkTarget.hashCode()));
+      assertThatThrownBy(
+              () ->
+                  Archives.extract(
+                      Platform.OsFamily.LINUX, archive, target, new CancellationToken()))
+          .as(linkTarget)
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining("link target");
+      assertThat(target.resolve("lib").resolve("evil")).doesNotExist();
+    }
+  }
+
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void should_refuse_to_archive_a_link_whose_target_is_absolute_or_leaves_the_tree()
+      throws Exception {
+    Platform.OsFamily os = Platform.OsFamily.LINUX;
+    Path outside = Files.writeString(tmp.resolve("outside.txt"), "x", StandardCharsets.UTF_8);
+    for (Path linkTarget : List.of(outside.toAbsolutePath(), Path.of("../outside.txt"))) {
+      Path source = tmp.resolve("src-" + Integer.toHexString(linkTarget.toString().hashCode()));
+      Files.createDirectories(source);
+      Files.createSymbolicLink(source.resolve("evil"), linkTarget);
+      Path archive =
+          tmp.resolve("out-" + Integer.toHexString(linkTarget.toString().hashCode()) + ".tar.gz");
+      assertThatThrownBy(() -> Archives.create(os, source, archive, new CancellationToken()))
+          .as(linkTarget.toString())
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining("link target");
+      assertThat(archive).doesNotExist();
+    }
+  }
+
+  /** Writes a gzipped tar with whatever entries the writer adds; names are taken verbatim. */
+  private static void writeTar(Path archive, Consumer<TarWriter> entries) throws IOException {
+    try (OutputStream raw = Files.newOutputStream(archive);
+        GZIPOutputStream gz = new GZIPOutputStream(raw);
+        TarArchiveOutputStream tar = new TarArchiveOutputStream(gz)) {
+      tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+      entries.accept(
+          new TarWriter() {
+            @Override
+            public void file(String name, String content) {
+              try {
+                byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+                TarArchiveEntry entry = new TarArchiveEntry(name, true);
+                entry.setSize(bytes.length);
+                tar.putArchiveEntry(entry);
+                tar.write(bytes);
+                tar.closeArchiveEntry();
+              } catch (IOException e) {
+                throw new UncheckedIOException(e);
+              }
+            }
+
+            @Override
+            public void link(String name, String linkTarget) {
+              try {
+                TarArchiveEntry entry = new TarArchiveEntry(name, TarConstants.LF_SYMLINK, true);
+                entry.setLinkName(linkTarget);
+                tar.putArchiveEntry(entry);
+                tar.closeArchiveEntry();
+              } catch (IOException e) {
+                throw new UncheckedIOException(e);
+              }
+            }
+          });
+    }
+  }
+
+  interface TarWriter {
+    void file(String name, String content);
+
+    void link(String name, String linkTarget);
   }
 
   @Test
