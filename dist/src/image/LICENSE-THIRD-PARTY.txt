@@ -1,5 +1,10 @@
 jrsctl ${project.version} - third-party components
 
+jrsctl itself is licensed under the GNU General Public License, version 3
+only (GPL-3.0-only); its text is LICENSE in this directory (ADR-0010).
+Where a bundled library offers a choice of licences, jrsctl uses the one
+named first below, which is compatible with GPL-3.0.
+
 jrsctl bundles the following runtime dependencies (spec section 13.3,
 versions from the root pom.xml). Each is used under the licence named
 here; the licence texts are inside lib/jrsctl.jar under META-INF/ where
@@ -9,13 +14,13 @@ Library                          Version                       Licence
 -------------------------------- ----------------------------- ----------------------------------------
 picocli                          ${picocli.version}            Apache License 2.0
 Javalin                          ${javalin.version}            Apache License 2.0
-  Eclipse Jetty (via Javalin)                                  Apache License 2.0 / EPL 2.0
+  Eclipse Jetty (via Javalin)                                  Apache License 2.0 (dual with EPL 2.0)
   Kotlin stdlib (via Javalin)                                  Apache License 2.0
 Jackson (databind, dataformat-yaml,
   datatype-jsr310, datatype-jdk8) ${jackson.version}            Apache License 2.0
   SnakeYAML (via jackson-dataformat-yaml)                      Apache License 2.0
 SLF4J API                        ${slf4j.version}              MIT License
-Logback (classic, core)          ${logback.version}            EPL 1.0 / LGPL 2.1 (dual)
+Logback (classic, core)          ${logback.version}            LGPL 2.1 (dual with EPL 1.0)
 logstash-logback-encoder         ${logstash-logback.version}   Apache License 2.0
 sqlite-jdbc (Xerial)             ${sqlite-jdbc.version}        Apache License 2.0 (SQLite: public domain)
 json-schema-validator (networknt) ${json-schema-validator.version} Apache License 2.0

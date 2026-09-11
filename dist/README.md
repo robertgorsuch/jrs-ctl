@@ -13,7 +13,7 @@ scripts/mvn.sh verify -Dphase=7 -Pdist     acceptance (Phase7DistributionTest)
 
 | Path | What |
 |---|---|
-| `image/<platform>/` | the unpacked image: `bin/jrsctl.cmd`, `bin/jrsctl`, `lib/jrsctl.jar`, `runtime/` (jlink), `README.txt`, `LICENSE-THIRD-PARTY.txt`, `MANIFEST.sha256` |
+| `image/<platform>/` | the unpacked image: `bin/jrsctl.cmd`, `bin/jrsctl`, `lib/jrsctl.jar`, `runtime/` (jlink), `README.txt`, `LICENSE`, `LICENSE-THIRD-PARTY.txt`, `MANIFEST.sha256` |
 | `jrsctl-<version>-windows-x64.zip` / `jrsctl-<version>-linux-x64.tar.gz` | the image under one top-level directory `jrsctl-<version>/`; exec bits set in the tar |
 | `<archive>.sha256` | `sha256sum -c` compatible line: `<hex>  <archive file name>` |
 | `jrsctl-<version>-sbom.json` | CycloneDX 1.5 SBOM of the runtime dependency tree of `jrsctl-app` |

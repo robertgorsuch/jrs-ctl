@@ -128,6 +128,36 @@ class Phase0SkeletonTest {
     assertThat(problems).as("workflow hygiene").isEmpty();
   }
 
+  /**
+   * The repository once shipped a GPL-3.0 {@code LICENSE} beside a README that said "All rights
+   * reserved. Licensed under the Apache License, Version 2.0" (ADR-0010). Every place that names
+   * the licence must name the one in {@code LICENSE}, by its SPDX identifier, so a stray edit
+   * cannot reopen the contradiction.
+   */
+  @Test
+  void licence_is_gpl_3_and_every_document_says_so() throws Exception {
+    Path root = repoRoot();
+    String licence = Files.readString(root.resolve("LICENSE"));
+    assertThat(licence).startsWith("                    GNU GENERAL PUBLIC LICENSE");
+    assertThat(licence).contains("Version 3, 29 June 2007");
+    assertThat(root.resolve("docs/decisions/0010-gpl-3-licence.md")).exists();
+
+    for (String file :
+        List.of(
+            "README.md",
+            "CONTRIBUTING.md",
+            "pom.xml",
+            "dist/src/image/README.txt",
+            "dist/src/image/LICENSE-THIRD-PARTY.txt")) {
+      String text = Files.readString(root.resolve(file));
+      assertThat(text).as(file + " names the licence by SPDX id").contains("GPL-3.0-only");
+      assertThat(text)
+          .as(file + " does not contradict LICENSE")
+          .doesNotContainIgnoringCase("Apache License, Version 2.0")
+          .doesNotContainIgnoringCase("all rights reserved");
+    }
+  }
+
   private static Path repoRoot() {
     return Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent();
   }

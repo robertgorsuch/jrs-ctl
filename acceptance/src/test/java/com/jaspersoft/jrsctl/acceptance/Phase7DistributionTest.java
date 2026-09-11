@@ -41,8 +41,7 @@ class Phase7DistributionTest {
   private static final String ARCHIVE_EXT = WINDOWS ? "zip" : "tar.gz";
   private static final String VERSION = System.getProperty("jrsctl.version");
 
-  private final Path distTarget =
-      Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent().resolve("dist/target");
+  private final Path distTarget = repoRoot().resolve("dist/target");
   private final Path image = distTarget.resolve("image").resolve(PLATFORM);
   private final Path archive =
       distTarget.resolve("jrsctl-" + VERSION + "-" + PLATFORM + "." + ARCHIVE_EXT);
@@ -87,8 +86,11 @@ class Phase7DistributionTest {
     }
     assertThat(listed)
         .containsKeys("lib/jrsctl.jar", "bin/jrsctl", "bin/jrsctl.cmd", "README.txt")
-        .containsKey("LICENSE-THIRD-PARTY.txt");
+        .containsKeys("LICENSE", "LICENSE-THIRD-PARTY.txt");
     assertThat(Files.readString(image.resolve("README.txt"))).contains("Actian Jaspersoft");
+    assertThat(Files.readString(image.resolve("LICENSE")))
+        .as("the image carries the product's own licence text, byte for byte (ADR-0010)")
+        .isEqualTo(Files.readString(repoRoot().resolve("LICENSE")));
   }
 
   @Test
@@ -191,6 +193,10 @@ class Phase7DistributionTest {
     Files.deleteIfExists(out);
     Files.deleteIfExists(err);
     return l;
+  }
+
+  private static Path repoRoot() {
+    return Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent();
   }
 
   private static void unzip(Path zip, Path dest) throws IOException {

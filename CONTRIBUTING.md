@@ -125,6 +125,15 @@ Every action in the workflows is pinned to a commit and every job has a timeout;
 `Phase0SkeletonTest` fails when either slips, and Dependabot's github-actions updates keep the
 pins current.
 
+## Licence
+
+jrsctl is licensed under the GNU General Public License, version 3 only (`GPL-3.0-only`,
+ADR-0010; text in `LICENSE`). By submitting a change you agree that it is contributed under that
+licence and that you have the right to do so; there is no contributor licence agreement to sign.
+Do not add a dependency whose licence is incompatible with GPL-3.0 (EPL-only, for example): spec
+§13.3 lists the approved libraries and `dist/src/image/LICENSE-THIRD-PARTY.txt` names the arm of
+each dual licence in use. `Phase0SkeletonTest` fails when any document names a different licence.
+
 ## Reporting a problem
 
 - Bugs and feature requests: open a GitHub issue with the jrsctl version (`jrsctl --version`),
@@ -137,4 +146,6 @@ pins current.
 
 ## Code of conduct
 
-`CODE_OF_CONDUCT.md` applies to every issue, pull request and discussion.
+`CODE_OF_CONDUCT.md` (Contributor Covenant 2.0) applies to every issue, pull request and
+discussion. Reports of unacceptable behaviour go to the maintainer at gorsuchrobert@gmail.com, the
+address named in that file, never to a public issue.

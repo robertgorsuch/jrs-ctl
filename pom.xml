@@ -11,6 +11,16 @@
 
   <name>jrsctl</name>
   <description>JasperReports Server lifecycle tool (Actian Jaspersoft)</description>
+  <licenses>
+    <!-- ADR-0010: one licence, named the same way everywhere; the CycloneDX SBOM copies this onto
+         the root component and Phase0SkeletonTest checks the identifier. Text: LICENSE at the root. -->
+    <license>
+      <name>GPL-3.0-only</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>GNU General Public License, version 3 only</comments>
+    </license>
+  </licenses>
 
   <modules>
     <module>core</module>

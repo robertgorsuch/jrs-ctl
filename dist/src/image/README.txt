@@ -13,6 +13,7 @@ LAYOUT
   lib/jrsctl.jar            the application
   runtime/                  bundled Java runtime (used only by jrsctl)
   README.txt                this file
+  LICENSE                   the jrsctl licence (GPL-3.0-only)
   LICENSE-THIRD-PARTY.txt   licences of the bundled libraries and runtime
   MANIFEST.sha256           SHA-256 of every file above (integrity check)
 
@@ -44,3 +45,9 @@ VERIFYING THE DOWNLOAD
 
 DOCUMENTATION
   docs/operator-guide.md in the source repository, or `jrsctl help`.
+
+LICENCE
+  Copyright (c) 2026 Actian Corporation. jrsctl is free software under the
+  GNU General Public License, version 3 only (GPL-3.0-only); the full text
+  is LICENSE in this directory. The bundled libraries and the Java runtime
+  keep their own licences: see LICENSE-THIRD-PARTY.txt.

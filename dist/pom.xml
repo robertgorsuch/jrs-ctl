@@ -88,7 +88,8 @@
             </executions>
           </plugin>
 
-          <!-- 2. static image content: lib/jrsctl.jar, bin/, README.txt, LICENSE-THIRD-PARTY.txt -->
+          <!-- 2. static image content: lib/jrsctl.jar, bin/, README.txt, LICENSE (the root file,
+               byte for byte: ADR-0010), LICENSE-THIRD-PARTY.txt -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-resources-plugin</artifactId>
@@ -104,6 +105,11 @@
                     <resource>
                       <directory>${project.basedir}/src/image</directory>
                       <filtering>true</filtering>
+                    </resource>
+                    <resource>
+                      <directory>${project.basedir}/..</directory>
+                      <includes><include>LICENSE</include></includes>
+                      <filtering>false</filtering>
                     </resource>
                   </resources>
                 </configuration>

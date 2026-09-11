@@ -269,5 +269,10 @@ JaCoCo HTML coverage reports are generated during `verify` in `<module>/target/s
 
 ## License
 
-Copyright (c) 2026 Actian Corporation. All rights reserved.
-Licensed under the Apache License, Version 2.0.
+Copyright (c) 2026 Actian Corporation.
+
+jrsctl is free software, licensed under the GNU General Public License, version 3 only
+(SPDX `GPL-3.0-only`). The full text is [`LICENSE`](LICENSE); the decision and the reasoning are in
+[ADR-0010](docs/decisions/0010-gpl-3-licence.md). Contributions are accepted under the same
+licence (see `CONTRIBUTING.md`). The libraries bundled in the portable distribution keep their own
+licences, listed in `LICENSE-THIRD-PARTY.txt` inside every archive.

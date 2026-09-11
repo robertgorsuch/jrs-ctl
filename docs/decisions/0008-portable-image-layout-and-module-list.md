@@ -16,6 +16,7 @@ bin/jrsctl                POSIX sh, resolves symlinks, exec "$home/runtime/bin/j
 lib/jrsctl.jar            the shaded jar from app/target, byte-identical
 runtime/                  jlink output: --strip-debug --no-header-files --no-man-pages --compress zip-6
 README.txt                what it is, layout, quick start, checksum verification, "Actian Jaspersoft"
+LICENSE                   the product licence text, the root LICENSE byte for byte (GPL-3.0-only, ADR-0010)
 LICENSE-THIRD-PARTY.txt   the §13.3 runtime dependencies with versions from the root pom, plus OpenJDK GPLv2+CE
 MANIFEST.sha256           one line per file except itself: <sha256 hex>  <slashed relative path>, sorted, LF
 ```
