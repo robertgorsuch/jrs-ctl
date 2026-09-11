@@ -35,6 +35,20 @@
     </resources>
     <plugins>
       <plugin>
+        <!-- One test JVM for this module (assessment item B2): the root pom forks one JVM per core,
+             which was switched on without a timing record while BUILD_STATUS already noted
+             Windows file-system flakiness under concurrency. The app tests start real listeners,
+             spawn the shaded jar and swap System.in/err, so they run in one fork until the
+             measurement recorded in docs/BUILD_STATUS.md says parallel forks are worth their
+             risk here. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <forkCount>1</forkCount>
+          <reuseForks>true</reuseForks>
+        </configuration>
+      </plugin>
+      <plugin>
         <!-- Offline documentation (spec §14 Phase 8, §17): the repository's Markdown deliverables are
              copied into the jar under docs/ at build time and served by `jrsctl docs` and the explain
              option. The copy lives under target/ only; nothing is committed twice. -->
