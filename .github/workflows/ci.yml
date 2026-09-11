@@ -77,7 +77,7 @@ jobs:
   dependency-audit:
     name: dependency audit (OWASP)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: build
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -86,6 +86,14 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      # The vulnerability database (H2, about 500 MB) is kept between runs: every run restores the
+      # newest cache and saves its own, so only the "modified" feed is fetched. A full load from
+      # the NVD REST API took over two hours at the API's throttled rate and timed out this job.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: dependency-check-data-${{ github.run_id }}
+          restore-keys: dependency-check-data-
       - name: Require the NVD API key (the audit is a release gate, so it must not silently skip)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -94,10 +102,17 @@ jobs:
             echo "::error::the NVD_API_KEY repository secret is not set; the dependency audit cannot run (spec §20)"
             exit 1
           fi
+      # Bulk data comes from the project's daily-refreshed NVD mirror (JSON 2.0 feeds); the key is
+      # handed over by environment-variable name so it never appears on a command line, and stays
+      # required so the job can fall back to the REST API by dropping nvdDatafeedUrl.
       - name: OWASP dependency check (fails at CVSS >= 7)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate -DfailBuildOnCVSS=7 -DnvdApiDelay=6000 "-DnvdApiKey=$NVD_API_KEY"
+        run: >-
+          mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
+          -DfailBuildOnCVSS=7
+          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          "-DnvdDatafeedUrl=https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
 
   package:
     name: package (jlink image, archive, SBOM, portable smoke) (${{ matrix.platform }})
