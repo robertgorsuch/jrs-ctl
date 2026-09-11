@@ -37,6 +37,23 @@ class KeyRingTest {
     assertThat(Ed25519.fingerprint(pub)).hasSize(16);
   }
 
+  /**
+   * The publisher key is provisioned (core/src/main/resources/keys/jaspersoft-publisher.pub): the
+   * public half of the release signing key whose private half is the CI secret, fingerprint
+   * recorded in docs/security.md. A fresh home therefore trusts exactly that key.
+   */
+  @Test
+  void should_trust_the_bundled_publisher_key_in_a_fresh_home() {
+    KeyRing ring = new KeyRing(new JrsctlHome(tmp));
+
+    assertThat(ring.list()).hasSize(1);
+    KeyRing.TrustedKey publisher = ring.list().get(0);
+    assertThat(publisher.name()).isEqualTo(KeyRing.PUBLISHER);
+    assertThat(publisher.bundled()).isTrue();
+    assertThat(Ed25519.fingerprint(publisher.key())).isEqualTo("245731f29b662027");
+    assertThat(ring.find(KeyRing.PUBLISHER)).isPresent();
+  }
+
   @Test
   void should_refuse_to_add_or_remove_the_publisher_key() {
     KeyRing ring = new KeyRing(new JrsctlHome(tmp));

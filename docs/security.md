@@ -105,7 +105,9 @@ Review `config-redacted.yaml` for host names and paths you consider sensitive be
   fails verification.
 - The trusted key ring is `$JRSCTL_HOME/keys/trusted/<name>.pub`, managed with `jrsctl keys
   add|remove|generate`; every change is audited. The Jaspersoft publisher key is a resource in the
-  jar, cannot be removed, and is what `.sig` files on release archives are checked against.
+  jar, cannot be removed, and is what `.sig` files on release archives are checked against. Its
+  Ed25519 fingerprint is `245731f29b662027` (`jrsctl keys list` prints it); a release archive whose
+  `.sig` does not verify against it did not come from the release job.
 - `keys generate` writes the private key once, owner-only, and never again; it is not kept in the
   home, not in the state store and not in any log. Store it outside version control, or in
   `secrets.enc` via `secrets set <name> --from-file`.

@@ -1,4 +1,1 @@
-# Jaspersoft publisher public key (Ed25519, base64 X.509 SubjectPublicKeyInfo).
-# Injected by CI from the release key custody process (spec §0 rule 11, §19 Q4).
-# While this file holds only comments, KeyRing.list() contains no bundled key and
-# doctor/selfcheck report "publisher key not provisioned".
+MCowBQYDK2VwAyEAiPBtYEttuDMPxbmpVSl150OBzui/eUhXHNvYMgVEiDo=
