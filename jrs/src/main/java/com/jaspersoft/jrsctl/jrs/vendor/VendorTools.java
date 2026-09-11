@@ -252,8 +252,18 @@ public final class VendorTools {
    * arguments. Such a value is wrapped in double quotes, which cmd keeps as one token and strips
    * before the importer sees it. Java already quotes arguments holding spaces.
    */
+  /**
+   * What cmd splits a token at or treats as an operator: delimiters, and the redirection and
+   * chaining characters. A percent sign is left alone, since batch expansion happens inside quotes
+   * too; the operator guide names it as unsupported with the vendor strategy on Windows.
+   */
+  static final String CMD_METACHARACTERS = ",;=&|<>^";
+
   static String quoteForCmd(String arg) {
-    boolean splits = arg.indexOf(',') >= 0 || arg.indexOf(';') >= 0 || arg.indexOf('=') >= 0;
+    boolean splits = false;
+    for (char c : CMD_METACHARACTERS.toCharArray()) {
+      splits |= arg.indexOf(c) >= 0;
+    }
     boolean quoted = arg.length() >= 2 && arg.startsWith("\"") && arg.endsWith("\"");
     boolean spaced = arg.indexOf(' ') >= 0 || arg.indexOf('\t') >= 0;
     return splits && !quoted && !spaced ? "\"" + arg + "\"" : arg;

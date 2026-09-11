@@ -252,7 +252,7 @@ class VendorToolsTest {
       Files.writeString(dir.resolve(name), "@echo off\r\n");
     }
     Buildomatic bat = new BuildomaticLocator(windows).locate(tmp.resolve("win")).orElseThrow();
-    Path out = tmp.resolve("x.zip");
+    Path out = tmp.resolve("x&y.zip");
     ExportRequest r =
         export(
             ExportRequest.Scope.REPOSITORY,
@@ -271,6 +271,10 @@ class VendorToolsTest {
     List<String> command = windowsRunner.last().command();
     assertThat(command).containsSequence(VendorFlags.URIS, "\"/a,/b\"");
     assertThat(command).doesNotContain("/a,/b");
+    assertThat(command)
+        .as("an ampersand ends a cmd command unless quoted")
+        .containsSequence(VendorFlags.OUTPUT_ZIP, "\"" + out + "\"")
+        .doesNotContain(out.toString());
   }
 
   @Test
