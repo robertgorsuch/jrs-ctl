@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
@@ -95,7 +96,11 @@ final class VerifySteps {
     public StepResult execute(Context ctx, EventSink out) {
       SmokeReport report;
       try {
-        report = new SmokeOperation(rt.services(), out, rt.sleeper()).run(SmokeOptions.DEFAULT);
+        report =
+            new SmokeOperation(rt.services(), out, rt.sleeper())
+                .run(SmokeOptions.DEFAULT, ctx.cancel());
+      } catch (CancellationToken.CancelledException e) {
+        throw e;
       } catch (RuntimeException e) {
         return failure(ctx, "smoke could not run: " + Failures.describe(e));
       }

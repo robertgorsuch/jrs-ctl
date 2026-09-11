@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 /**
  * {@link ServiceController} for installs controlled by a script: the bundled {@code ctlscript}
@@ -67,22 +68,32 @@ public final class ScriptServiceController extends PollingServiceController {
 
   @Override
   public State stop(Duration timeout) {
+    return stop(timeout, () -> false);
+  }
+
+  @Override
+  public State stop(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.STOPPED) {
       return State.STOPPED;
     }
     invoke(command("stop"), timeout);
-    return await(State.STOPPED, remaining(start, timeout));
+    return await(State.STOPPED, remaining(start, timeout), cancelled);
   }
 
   @Override
   public State start(Duration timeout) {
+    return start(timeout, () -> false);
+  }
+
+  @Override
+  public State start(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
     invoke(command("start"), timeout);
-    return await(State.RUNNING, remaining(start, timeout));
+    return await(State.RUNNING, remaining(start, timeout), cancelled);
   }
 
   List<String> command(String operation) {

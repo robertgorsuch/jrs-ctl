@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 /**
  * {@link ServiceController} for {@code service.kind: manual}: the operator stops and starts Tomcat
@@ -44,6 +45,11 @@ public final class ManualServiceController extends PollingServiceController {
 
   @Override
   public State stop(Duration timeout) {
+    return stop(timeout, () -> false);
+  }
+
+  @Override
+  public State stop(Duration timeout, BooleanSupplier cancelled) {
     if (state() == State.STOPPED) {
       return State.STOPPED;
     }
@@ -56,11 +62,16 @@ public final class ManualServiceController extends PollingServiceController {
             + " now; jrsctl will continue once it is no longer running (waiting up to "
             + timeout.toSeconds()
             + " s).");
-    return await(State.STOPPED, timeout);
+    return await(State.STOPPED, timeout, cancelled);
   }
 
   @Override
   public State start(Duration timeout) {
+    return start(timeout, () -> false);
+  }
+
+  @Override
+  public State start(Duration timeout, BooleanSupplier cancelled) {
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
@@ -73,7 +84,7 @@ public final class ManualServiceController extends PollingServiceController {
             + " now; jrsctl will continue once it is running (waiting up to "
             + timeout.toSeconds()
             + " s).");
-    return await(State.RUNNING, timeout);
+    return await(State.RUNNING, timeout, cancelled);
   }
 
   @Override

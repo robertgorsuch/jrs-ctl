@@ -415,7 +415,7 @@ public final class ServiceSteps {
             this,
             Event.Log.Level.DEBUG,
             "not yet: " + problem + "; retry in " + delay.toSeconds() + "s");
-        rt.sleeper().sleep(delay);
+        rt.sleeper().sleep(delay, ctx.cancel());
       }
     }
 

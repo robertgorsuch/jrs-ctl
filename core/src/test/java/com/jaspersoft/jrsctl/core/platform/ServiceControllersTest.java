@@ -232,6 +232,52 @@ class ServiceControllersTest {
     assertThat(controller.state()).isEqualTo(State.STOPPED);
   }
 
+  /**
+   * Review finding 1.11, remainder: only the Windows and systemd controllers honoured the cancel
+   * signal; the script and manual controllers fell back to the plain overload and sat out the whole
+   * timeout after Ctrl-C.
+   */
+  @Test
+  void should_stop_waiting_when_cancelled_while_a_scripted_stop_is_pending(@TempDir Path install) {
+    Path script = install.resolve("ctlscript.sh");
+    List<TomcatProcessFinder.TomcatProcess> running =
+        List.of(FakeTomcatProcessFinder.tomcatUnder(install));
+    FakeProcessRunner runner = new FakeProcessRunner();
+    runner.on(
+        List.of(script.toAbsolutePath().normalize().toString(), "stop", "tomcat"), Response.ok());
+    ScriptServiceController controller =
+        new ScriptServiceController(
+            runner,
+            ServiceConfig.Kind.CTLSCRIPT,
+            script,
+            new FakeTomcatProcessFinder(List.of(running)),
+            POLL);
+
+    long started = System.nanoTime();
+    State result = controller.stop(Duration.ofSeconds(3), () -> true);
+
+    assertThat(result).isEqualTo(State.RUNNING);
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(1));
+  }
+
+  @Test
+  void should_stop_waiting_when_cancelled_while_the_operator_is_asked_to_start_tomcat(
+      @TempDir Path install) {
+    ManualServiceController controller =
+        new ManualServiceController(
+            new FakeProcessRunner(),
+            recordingPrompt(new ArrayList<>(), true),
+            Optional.of(install),
+            new FakeTomcatProcessFinder(List.of(List.of())),
+            POLL);
+
+    long started = System.nanoTime();
+    State result = controller.start(Duration.ofSeconds(3), () -> true);
+
+    assertThat(result).isEqualTo(State.STOPPED);
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(1));
+  }
+
   @Test
   void should_return_unknown_immediately_when_manual_kind_runs_non_interactively(
       @TempDir Path install) {

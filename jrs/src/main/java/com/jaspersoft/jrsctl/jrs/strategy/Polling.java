@@ -119,7 +119,9 @@ public record Polling(
                         + "s"
                         + (c.message().isBlank() ? "" : ": " + c.message())));
           }
-          sleeper.sleep(delay);
+          // Token-aware (review finding 1.11): a cancellation lands within one slice of the
+          // backoff, not at its end, which for a two-hour export can be a minute away.
+          sleeper.sleep(delay, ctx.cancel());
           delay = delay.multipliedBy(2).compareTo(cap) > 0 ? cap : delay.multipliedBy(2);
         }
       }

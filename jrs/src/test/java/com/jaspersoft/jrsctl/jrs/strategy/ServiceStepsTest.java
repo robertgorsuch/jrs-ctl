@@ -193,6 +193,61 @@ class ServiceStepsTest {
         .isInstanceOf(CancellationToken.CancelledException.class);
   }
 
+  /**
+   * Review finding 1.11, remainder: the poll backoff slept without the token, so Ctrl-C during a
+   * sixty-second backoff of a two-hour export was noticed only when the backoff ended. A sleeper
+   * that cancels after its first slice must end the wait within that slice.
+   */
+  @Test
+  void should_notice_cancellation_during_the_poll_backoff_rather_than_after_it() {
+    FakeJrsAdapter adapter = new FakeJrsAdapter();
+    adapter.listFolderBehaviour =
+        () -> {
+          throw new JrsUnreachableException(URI.create("http://x"), "refused", "wait", null);
+        };
+    CancellationToken token = new CancellationToken();
+    CancellingSleeper sleeper = new CancellingSleeper(token);
+    Polling polling =
+        new Polling(
+            Duration.ofSeconds(30),
+            Duration.ofSeconds(60),
+            Duration.ofHours(2),
+            Duration.ofSeconds(30),
+            Clock.fixed(StrategyFixture.NOW, ZoneOffset.UTC),
+            sleeper);
+    Context ctx =
+        new Context(
+            StrategyFixture.RUN,
+            fx.home,
+            fx.platform,
+            token,
+            java.util.Map.of(
+                Config.class, config, com.jaspersoft.jrsctl.jrs.api.JrsAdapter.class, adapter));
+
+    assertThatThrownBy(
+            () -> ServiceSteps.waitForServer("apply", polling).execute(ctx, EventSink.discard()))
+        .isInstanceOf(CancellationToken.CancelledException.class);
+    assertThat(sleeper.slept)
+        .as("the wait ends within one slice, not after the whole backoff")
+        .isLessThanOrEqualTo(Sleeper.SLICE);
+  }
+
+  /** Books every requested sleep and cancels the token on the first one, like Ctrl-C mid-wait. */
+  static final class CancellingSleeper implements Sleeper {
+    private final CancellationToken token;
+    Duration slept = Duration.ZERO;
+
+    CancellingSleeper(CancellationToken token) {
+      this.token = token;
+    }
+
+    @Override
+    public void sleep(Duration duration) {
+      slept = slept.plus(duration);
+      token.cancel("operator");
+    }
+  }
+
   /** Advances by a fixed step on every {@link #instant()} call. */
   static final class SteppingClock extends Clock {
     private Instant now;

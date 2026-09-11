@@ -1,7 +1,9 @@
 package com.jaspersoft.jrsctl.ops.smoke;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
@@ -10,6 +12,7 @@ import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.ReportItem.Status;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -95,6 +98,58 @@ class SmokeOperationTest {
       SmokeReport report = op(fake).run(SmokeOptions.DEFAULT);
 
       assertThat(byName(report).get("export").status()).isEqualTo(Status.FAIL);
+    }
+  }
+
+  /**
+   * Review finding 1.11, remainder: the export probe polled with a token-less sleep and caught
+   * every runtime exception, so a cancellation during an upgrade's verify smoke was slept out and
+   * then reported as a failed export instead of ending the run.
+   */
+  @Test
+  void should_stop_the_export_probe_at_the_cancellation_rather_than_after_the_poll_interval()
+      throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(YAML)) {
+      fake.adapter.exportPhase = Handles.Phase.INPROGRESS;
+      CancellationToken token = new CancellationToken();
+      CancellingSleeper sleeper = new CancellingSleeper(token);
+      SmokeOperation op = new SmokeOperation(fake.build(), EventSink.discard(), sleeper);
+
+      assertThatThrownBy(() -> op.run(SmokeOptions.DEFAULT, token))
+          .isInstanceOf(CancellationToken.CancelledException.class);
+      assertThat(sleeper.slept).isLessThanOrEqualTo(Sleeper.SLICE);
+      assertThat(fake.adapter.calls.stream().filter(c -> c.startsWith("pollExport")).count())
+          .isEqualTo(1);
+    }
+  }
+
+  @Test
+  void should_report_the_mutating_probe_cancelled_when_the_token_is_cancelled() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(YAML)) {
+      CancellationToken token = new CancellationToken();
+      token.cancel("operator");
+
+      SmokeReport report = op(fake).run(new SmokeOptions(true), token);
+
+      ReportItem mutating = byName(report).get("mutating");
+      assertThat(mutating.status()).isEqualTo(Status.FAIL);
+      assertThat(mutating.detail()).contains("cancelled");
+    }
+  }
+
+  /** Books every requested sleep and cancels the token on the first one, like Ctrl-C mid-wait. */
+  static final class CancellingSleeper implements Sleeper {
+    private final CancellationToken token;
+    Duration slept = Duration.ZERO;
+
+    CancellingSleeper(CancellationToken token) {
+      this.token = token;
+    }
+
+    @Override
+    public void sleep(Duration duration) {
+      slept = slept.plus(duration);
+      token.cancel("operator");
     }
   }
 

@@ -68,7 +68,12 @@ public final class SmokeOperation {
   }
 
   public SmokeReport run(SmokeOptions options) {
+    return run(options, new CancellationToken());
+  }
+
+  public SmokeReport run(SmokeOptions options, CancellationToken cancel) {
     Objects.requireNonNull(options, "options");
+    Objects.requireNonNull(cancel, "cancel");
     List<ReportItem> items = new ArrayList<>();
     JrsAdapter adapter;
     ServerIdentity identity;
@@ -92,12 +97,12 @@ public final class SmokeOperation {
     items.add(repository(adapter));
     items.add(report(adapter));
     items.add(scheduler(adapter));
-    items.add(export(adapter));
+    items.add(export(adapter, cancel));
     Optional<String> runId = Optional.empty();
     if (options.mutating()) {
       String id = RunIds.next(services.clock());
       runId = Optional.of(id);
-      items.add(mutating(adapter, identity, id));
+      items.add(mutating(adapter, identity, id, cancel));
     }
     return SmokeReport.of(items, runId);
   }
@@ -189,7 +194,12 @@ public final class SmokeOperation {
     }
   }
 
-  private ReportItem export(JrsAdapter adapter) {
+  /**
+   * Polls the export with the caller's token (review finding 1.11): a cancellation ends the probe
+   * within one sleep slice and propagates, so an upgrade's verify smoke ends the run instead of
+   * reporting a failed export after the poll interval.
+   */
+  private ReportItem export(JrsAdapter adapter, CancellationToken cancel) {
     Path target;
     try {
       target = tempFile("smoke-export", ".zip");
@@ -223,7 +233,7 @@ public final class SmokeOperation {
               "export " + handle.id() + " not finished after " + EXPORT_TIMEOUT.toSeconds() + " s",
               "check the server's export queue and log");
         }
-        sleeper.sleep(POLL_INTERVAL);
+        sleeper.sleep(POLL_INTERVAL, cancel);
         status = adapter.pollExport(handle);
         polls++;
       }
@@ -239,6 +249,8 @@ public final class SmokeOperation {
           ? ReportItem.pass("export", EXPORT_ROOT + " exported and downloaded (" + size + " bytes)")
           : ReportItem.fail(
               "export", "downloaded export is empty", "check the server log for the export");
+    } catch (CancellationToken.CancelledException e) {
+      throw e;
     } catch (RuntimeException e) {
       return ReportItem.fail(
           "export",
@@ -249,15 +261,12 @@ public final class SmokeOperation {
     }
   }
 
-  private ReportItem mutating(JrsAdapter adapter, ServerIdentity identity, String runId) {
+  private ReportItem mutating(
+      JrsAdapter adapter, ServerIdentity identity, String runId, CancellationToken cancel) {
     Plan plan = SmokePlan.build(runId, identity);
     Context ctx =
         new Context(
-            runId,
-            services.home(),
-            services.platform(),
-            new CancellationToken(),
-            Map.of(JrsAdapter.class, adapter));
+            runId, services.home(), services.platform(), cancel, Map.of(JrsAdapter.class, adapter));
     Runner runner = new Runner(services.stateStore().get(), events, services.clock(), sleeper);
     RunOutcome outcome = runner.run(plan, ctx, plan.fingerprint(), RunOptions.DEFAULT);
     String folder = SmokePlan.folderUri(runId);
