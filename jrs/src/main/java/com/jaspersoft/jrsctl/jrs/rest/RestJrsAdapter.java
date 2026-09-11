@@ -37,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * The one {@link JrsAdapter} (spec §7.2, ADR-0004), driven by probed {@link Capability}s rather
@@ -99,6 +100,26 @@ public final class RestJrsAdapter implements JrsAdapter {
     this.matrix = Objects.requireNonNull(matrix, "matrix");
     this.configured = Objects.requireNonNull(configured, "configured");
     this.keystoreInspector = Objects.requireNonNull(keystoreInspector, "keystoreInspector");
+    client.onUnauthorized(this::reauthenticate);
+  }
+
+  /**
+   * Review finding 2.3: a form session ends with a server restart or a timeout, after which every
+   * call answered 401 until the process was restarted. On a 401 in form mode the session is dropped
+   * and re-established once with the configured credentials; the client then replays the request.
+   * Basic and token modes carry their credential on every request and have nothing to re-establish.
+   */
+  private boolean reauthenticate() {
+    if (config.server().auth().mode() != Config.AuthMode.FORM || configured.isEmpty()) {
+      return false;
+    }
+    session = Optional.empty();
+    try {
+      login(configured.get());
+      return true;
+    } catch (RestException | JrsUnreachableException e) {
+      return false;
+    }
   }
 
   /** The underlying client, e.g. to set the correlation id for a run. */
@@ -192,30 +213,93 @@ public final class RestJrsAdapter implements JrsAdapter {
     boolean restLogin = restLoginExists();
     decide(Capability.REST_LOGIN, restLogin, "POST " + REST_LOGIN, restLoginStatus, found, details);
 
+    boolean known = matrix.find(id.version()).isPresent();
     for (Capability c :
         List.of(Capability.KEYSTORE_ENCRYPTION, Capability.TOKEN_AUTH, Capability.PREAUTH)) {
-      boolean present = expected.contains(c);
+      boolean present;
+      String how;
+      if (known) {
+        present = expected.contains(c);
+        how = "per compat matrix for JRS " + id.version() + " " + id.edition();
+      } else {
+        // Review finding 2.7: a version the matrix does not list is unknown, not incapable.
+        // Keystore encryption arrived in 7.5 and never left; the two auth modes need server
+        // configuration to tell and are assumed absent until probed by hand.
+        present = c == Capability.KEYSTORE_ENCRYPTION && atLeast(id.version(), 7, 5);
+        how =
+            "JRS "
+                + id.version()
+                + " is not in the compat matrix; "
+                + (present ? "assumed present (7.5 and later)" : "assumed absent, unknown")
+                + " for "
+                + id.edition();
+      }
       if (present) {
         found.add(c);
       }
       details.put(
           c,
           (present ? "present" : "absent")
-              + " per compat matrix for JRS "
-              + id.version()
               + " "
-              + id.edition()
+              + how
               + " (not probeable without server configuration)");
     }
     capabilities = Collections.unmodifiableSet(found);
     probeResults = Collections.unmodifiableMap(details);
   }
 
+  /**
+   * Review finding 2.7: a present task endpoint answers the probe id with 404 and the JSON error
+   * body every JRS returns for a missing task ({@code errorCode}); a server without the endpoint
+   * answers 404 too, but with the container's HTML or nothing. Only the former is presence.
+   */
   private void probeEndpoint(
       Capability c, String path, Set<Capability> found, Map<Capability, String> details) {
-    int s = refuseIfUnauthenticated(client.get(path).status(), path);
-    boolean present = s == 200 || s == 404;
+    RestClient.Response r = client.get(path);
+    int s = refuseIfUnauthenticated(r.status(), path);
+    boolean present = s == 200 || (s == 404 && namesMissingTask(r.body()));
     decide(c, present, "GET " + path, s, found, details);
+  }
+
+  static boolean namesMissingTask(String body) {
+    if (body == null || !body.strip().startsWith("{")) {
+      return false;
+    }
+    try {
+      Wire.ErrorBody error = Wire.parse(body, Wire.ErrorBody.class, "GET", "probe");
+      return error.errorCode() != null && !error.errorCode().isBlank();
+    } catch (RestException notJson) {
+      return false;
+    }
+  }
+
+  /** True when {@code version} (major.minor[.patch]) is at least {@code major.minor}. */
+  static boolean atLeast(String version, int major, int minor) {
+    int[] parsed = {0, 0};
+    int index = 0;
+    int value = -1;
+    for (int i = 0; i < version.length() && index < 2; i++) {
+      char c = version.charAt(i);
+      if (Character.isDigit(c)) {
+        value = (value < 0 ? 0 : value * 10) + (c - '0');
+      } else {
+        if (value < 0) {
+          break;
+        }
+        parsed[index++] = value;
+        value = -1;
+        if (c != '.') {
+          break;
+        }
+      }
+    }
+    if (index < 2 && value >= 0) {
+      parsed[index++] = value;
+    }
+    if (index == 0) {
+      return false;
+    }
+    return parsed[0] > major || (parsed[0] == major && parsed[1] >= minor);
   }
 
   /**
@@ -405,11 +489,16 @@ public final class RestJrsAdapter implements JrsAdapter {
 
   @Override
   public Path downloadExport(Handles.ExportHandle handle, Path target) {
+    return downloadExport(handle, target, () -> false);
+  }
+
+  @Override
+  public Path downloadExport(Handles.ExportHandle handle, Path target, BooleanSupplier cancelled) {
     Objects.requireNonNull(target, "target");
     String fileName = exportFileNames.getOrDefault(handle.id(), DEFAULT_EXPORT_FILE);
     String path =
         EXPORT + "/" + RestClient.encodeQuery(handle.id()) + "/" + RestClient.encodeQuery(fileName);
-    client.require2xx(client.getToFile(path, "application/zip", target), "GET", path);
+    client.require2xx(client.getToFile(path, "application/zip", target, cancelled), "GET", path);
     return target;
   }
 
@@ -417,6 +506,12 @@ public final class RestJrsAdapter implements JrsAdapter {
 
   @Override
   public Handles.ImportHandle startImport(ImportRequest request, Path archive) {
+    return startImport(request, archive, () -> false);
+  }
+
+  @Override
+  public Handles.ImportHandle startImport(
+      ImportRequest request, Path archive, BooleanSupplier cancelled) {
     Objects.requireNonNull(request, "request");
     Objects.requireNonNull(archive, "archive");
     ensureSession();
@@ -437,7 +532,8 @@ public final class RestJrsAdapter implements JrsAdapter {
             + "&skipThemes="
             + request.skipThemes();
     RestClient.Response r =
-        client.require2xx(client.postBytesFromFile(path, archive, "application/zip"), "POST", path);
+        client.require2xx(
+            client.postBytesFromFile(path, archive, "application/zip", cancelled), "POST", path);
     Wire.AsyncState state = Wire.parse(r.body(), Wire.AsyncState.class, "POST", IMPORT);
     if (state.id() == null || state.id().isBlank()) {
       throw new RestException(r.status(), "POST", IMPORT, "import started but no task id returned");
@@ -479,11 +575,13 @@ public final class RestJrsAdapter implements JrsAdapter {
       // server down: still worth inspecting the files, doctor reports reachability separately
     }
     if (!encrypted) {
+      boolean known = version.flatMap(matrix::find).isPresent();
       return KeystoreInfo.absent(
           "JRS "
               + version.orElse("?")
-              + " has no KEYSTORE_ENCRYPTION capability (pre 7.5); repository passwords are not"
-              + " keystore-encrypted, nothing to carry across");
+              + " has no KEYSTORE_ENCRYPTION capability ("
+              + (known ? "pre 7.5" : "not in the compat matrix and older than 7.5")
+              + "); repository passwords are not keystore-encrypted, nothing to carry across");
     }
     return keystoreInspector.inspect();
   }

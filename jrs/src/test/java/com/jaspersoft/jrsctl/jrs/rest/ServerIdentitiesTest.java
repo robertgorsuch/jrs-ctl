@@ -81,7 +81,9 @@ class ServerIdentitiesTest {
     "pro, Community, PRO",
     "'', Community Edition, CE",
     "'', Enterprise, PRO",
-    "unknown, '', PRO"
+    "'', Professional, PRO",
+    "unknown, '', UNKNOWN",
+    "'', '', UNKNOWN"
   })
   void should_fall_back_to_edition_name_when_code_is_missing(
       String code, String name, String expected) {

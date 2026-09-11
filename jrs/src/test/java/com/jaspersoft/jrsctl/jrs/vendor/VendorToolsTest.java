@@ -235,6 +235,44 @@ class VendorToolsTest {
             });
   }
 
+  /**
+   * Review finding 2.8: {@code js-export.bat} re-reads its arguments as {@code %1} tokens, where a
+   * comma, a semicolon or an equals sign splits, so {@code --uris /a,/b} arrived as three
+   * arguments. On a batch wrapper such a value is wrapped in double quotes, which cmd keeps as one
+   * token and strips before the importer sees it.
+   */
+  @Test
+  void should_quote_arguments_that_cmd_would_split_when_the_wrapper_is_a_batch_file()
+      throws IOException {
+    CapturingRunner windowsRunner = new CapturingRunner().exit(0, "Export finished");
+    Platform windows = new FakePlatform(Platform.OsFamily.WINDOWS, windowsRunner);
+    Path dir = tmp.resolve("win").resolve("buildomatic");
+    Files.createDirectories(dir);
+    for (String name : List.of("js-export.bat", "js-import.bat", "js-ant.bat")) {
+      Files.writeString(dir.resolve(name), "@echo off\r\n");
+    }
+    Buildomatic bat = new BuildomaticLocator(windows).locate(tmp.resolve("win")).orElseThrow();
+    Path out = tmp.resolve("x.zip");
+    ExportRequest r =
+        export(
+            ExportRequest.Scope.REPOSITORY,
+            Set.of("/b", "/a"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            out);
+
+    new VendorTools(windowsRunner, windows.files(), redactor)
+        .export(bat, r, out, Optional.of(javaHome), sink, scope);
+
+    List<String> command = windowsRunner.last().command();
+    assertThat(command).containsSequence(VendorFlags.URIS, "\"/a,/b\"");
+    assertThat(command).doesNotContain("/a,/b");
+  }
+
   @Test
   void should_report_a_failure_when_ant_says_build_failed_but_the_wrapper_exits_zero() {
     runner.exit(0, "some noise", "BUILD FAILED", "js-import.sh returns anyway");
@@ -305,14 +343,22 @@ class VendorToolsTest {
   void should_mask_storepass_on_logged_command_line_when_importing_keystore() {
     runner.exit(0);
     try (Secret pw = Secret.fromString("ks-pass-123")) {
+      ImportRequest withKeystore =
+          new ImportRequest(
+              tmp.resolve("in.zip"),
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              Optional.of(tmp.resolve("src.jrsks")),
+              Optional.empty());
+      redactor.register(pw);
       tools()
-          .importKeystore(
-              buildomatic,
-              tmp.resolve("src.jrsks"),
-              Optional.of(pw),
-              Optional.of(javaHome),
-              sink,
-              scope);
+          .importArchive(
+              buildomatic, withKeystore, Optional.of(pw), Optional.of(javaHome), sink, scope);
     }
 
     assertThat(runner.last().command()).contains("--storepass", "ks-pass-123");

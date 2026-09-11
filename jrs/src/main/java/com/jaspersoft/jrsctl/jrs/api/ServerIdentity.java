@@ -17,9 +17,11 @@ public record ServerIdentity(
     String build,
     String dateFormat) {
 
+  /** {@code UNKNOWN} when serverInfo names neither edition; never assumed (review finding 2.7). */
   public enum Edition {
     CE,
-    PRO
+    PRO,
+    UNKNOWN
   }
 
   public enum Tenancy {

@@ -24,6 +24,9 @@ final class Wire {
       String licenseType,
       String expiration) {}
 
+  /** The JSON error every JRS answers with for a missing task or resource. */
+  record ErrorBody(String message, String errorCode) {}
+
   /** Body of {@code POST /rest_v2/export|import} and of the {@code /state} polls. */
   record AsyncState(String id, String phase, String message, String errorCode, String fileName) {}
 

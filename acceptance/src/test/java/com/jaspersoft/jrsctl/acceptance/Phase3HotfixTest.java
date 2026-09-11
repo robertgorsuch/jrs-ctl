@@ -96,10 +96,20 @@ class Phase3HotfixTest {
             .willReturn(okJson("{\"organization\":[]}")));
     server.stubFor(
         get(urlPathEqualTo(WEBAPP + "/rest_v2/export/jrsctl-probe/state"))
-            .willReturn(aResponse().withStatus(404)));
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"errorCode\":\"no.such.export.process\",\"message\":\"No task jrsctl-probe\"}")));
     server.stubFor(
         get(urlPathEqualTo(WEBAPP + "/rest_v2/import/jrsctl-probe/state"))
-            .willReturn(aResponse().withStatus(404)));
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"errorCode\":\"no.such.export.process\",\"message\":\"No task jrsctl-probe\"}")));
     server.stubFor(
         post(urlPathEqualTo(WEBAPP + "/rest_v2/login"))
             .willReturn(

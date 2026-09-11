@@ -80,6 +80,81 @@ class KeystoreInspectorTest {
     assertThat(info.reason().get()).contains("CORP\\jasper");
   }
 
+  /**
+   * Review finding 2.5: the installation's {@code buildomatic/keystore.init.properties} names the
+   * keystore location ({@code ks}, {@code ksp}) and wins over any account-based guess; the real
+   * 10.0.0 install on this machine points both at the installing user's profile.
+   */
+  @Test
+  void should_prefer_keystore_init_properties_when_the_install_names_the_location()
+      throws IOException {
+    Path install = root.resolve("install");
+    Path ksDir = Files.createDirectories(root.resolve("ks-home"));
+    Path kspDir = Files.createDirectories(root.resolve("ksp-home"));
+    Files.write(ksDir.resolve(".jrsks"), "keystore-bytes".getBytes(StandardCharsets.US_ASCII));
+    Files.writeString(kspDir.resolve(".jrsksp"), "ks=x\n");
+    Files.createDirectories(install.resolve("buildomatic"));
+    Files.writeString(
+        install.resolve("buildomatic").resolve("keystore.init.properties"),
+        "#Location of the keystore\nks="
+            + ksDir.toString().replace("\\", "/")
+            + "\nksp="
+            + kspDir.toString().replace("\\", "/")
+            + "\n");
+    KeystoreInspector inspector =
+        new KeystoreInspector(
+            new FakePlatform(Platform.OsFamily.WINDOWS),
+            withInstallDir(config(Optional.of("nobody-here")), install),
+            homes(root.resolve("me")));
+
+    KeystoreInfo info = inspector.inspect();
+
+    assertThat(info.present()).isTrue();
+    assertThat(info.keystoreFile()).contains(ksDir.resolve(".jrsks"));
+    assertThat(info.propertiesFile()).contains(kspDir.resolve(".jrsksp"));
+    assertThat(info.reason().orElse("")).contains("keystore.init.properties");
+  }
+
+  /** Windows service accounts have no directory under Users; their profiles live under Windows. */
+  @Test
+  void should_map_windows_service_accounts_to_their_profile_directories() throws IOException {
+    Path system =
+        root.resolve("Windows").resolve("System32").resolve("config").resolve("systemprofile");
+    Path network = root.resolve("Windows").resolve("ServiceProfiles").resolve("NetworkService");
+    keystoreIn(system, false);
+    keystoreIn(network, false);
+    KeystoreInspector inspector =
+        new KeystoreInspector(
+            new FakePlatform(Platform.OsFamily.WINDOWS),
+            config(Optional.of("NT AUTHORITY\\SYSTEM")),
+            homes(root.resolve("me")));
+
+    assertThat(inspector.inspect().keystoreFile()).contains(system.resolve(".jrsks"));
+    assertThat(inspector.homeOf("LocalSystem")).contains(system);
+    assertThat(inspector.homeOf("NT AUTHORITY\\NetworkService")).contains(network);
+    assertThat(inspector.homeOf("NetworkService")).contains(network);
+    assertThat(inspector.homeOf("LocalService")).isEmpty();
+  }
+
+  private static Config withInstallDir(Config base, Path installDir) {
+    Config.Server s = base.server();
+    return new Config(
+        new Config.Server(
+            s.baseUrl(),
+            s.webappName(),
+            Optional.of(installDir),
+            s.tomcatDir(),
+            s.runAsUser(),
+            s.auth()),
+        base.service(),
+        base.database(),
+        base.vendor(),
+        base.network(),
+        base.console(),
+        base.backups(),
+        base.smoke());
+  }
+
   @Test
   void should_resolve_home_from_passwd_when_linux_user_has_custom_home() throws IOException {
     Path home = root.resolve("srv").resolve("jrs-home");

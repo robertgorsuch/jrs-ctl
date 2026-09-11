@@ -82,6 +82,12 @@ public final class ServerIdentities {
       return ServerIdentity.Edition.PRO;
     }
     String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
-    return n.contains("community") ? ServerIdentity.Edition.CE : ServerIdentity.Edition.PRO;
+    if (n.contains("community")) {
+      return ServerIdentity.Edition.CE;
+    }
+    if (n.contains("enterprise") || n.contains("professional") || n.contains("commercial")) {
+      return ServerIdentity.Edition.PRO;
+    }
+    return ServerIdentity.Edition.UNKNOWN;
   }
 }

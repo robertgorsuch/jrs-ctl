@@ -87,8 +87,21 @@ final class AdapterFixture {
     probe("/rest_v2/login", 405);
   }
 
+  /**
+   * A present task endpoint answers the probe id with 404 and a JSON error body, as every recorded
+   * server does ({@code jrs/src/test/resources/recordings}); other statuses are stubbed bare.
+   */
   void probe(String path, int status) {
-    wm.stubFor(any(urlPathEqualTo(CONTEXT + path)).willReturn(aResponse().withStatus(status)));
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder r =
+        aResponse().withStatus(status);
+    if (status == 404) {
+      r =
+          r.withHeader("Content-Type", "application/json")
+              .withBody(
+                  "{\"message\":\"No export task with id jrsctl-probe.\","
+                      + "\"errorCode\":\"no.such.export.process\",\"parameters\":[\"jrsctl-probe\"]}");
+    }
+    wm.stubFor(any(urlPathEqualTo(CONTEXT + path)).willReturn(r));
   }
 
   String path(String rel) {

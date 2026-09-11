@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.jrs.strategy;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
@@ -12,6 +13,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.VendorFlags;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -193,6 +195,101 @@ class VendorCliStrategyTest {
             "import.js-import:SUCCEEDED",
             "import.start-service:SUCCEEDED",
             "import.wait-for-server:SUCCEEDED");
+  }
+
+  /**
+   * Review finding 2.6: the keystore step ran {@code js-import} a second time with only {@code
+   * --keystore --storepass} and no archive, an invocation the 10.0.0 importer has no use for (its
+   * option bundle documents {@code keystore} as "import the key from a java keystore", an option of
+   * an archive import). The options ride on the one archive import; the step keeps the backup.
+   */
+  @Test
+  void should_run_js_import_once_with_the_keystore_options_when_a_source_keystore_is_given()
+      throws IOException {
+    Files.writeString(tmp.resolve("in.zip"), "PK");
+    Path keystore = Files.writeString(tmp.resolve("source.jrsks"), "keystore-bytes");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.importSteps(importRequest(Optional.of(keystore))), ctx);
+
+    assertThat(outcome)
+        .as(String.join("\n", fx.journal()))
+        .isInstanceOf(RunOutcome.Succeeded.class);
+    List<ProcessRunner.Request> imports =
+        fx.processes.requests().stream()
+            .filter(r -> r.command().get(0).endsWith("js-import.sh"))
+            .toList();
+    assertThat(imports).hasSize(1);
+    assertThat(imports.get(0).command())
+        .containsSequence("--input-zip", tmp.resolve("in.zip").toString())
+        .containsSequence(VendorFlags.KEYSTORE, keystore.toString());
+  }
+
+  /**
+   * Review finding 2.8: {@code js-import.sh} expands {@code $*} unquoted, so a path with a space
+   * reaches the importer as two arguments; the vendor steps refuse such paths before stopping the
+   * service.
+   */
+  @Test
+  void should_refuse_an_archive_path_with_a_space_when_the_wrapper_is_a_shell_script()
+      throws IOException {
+    Path archive = tmp.resolve("my exports").resolve("in.zip");
+    Files.createDirectories(archive.getParent());
+    Files.writeString(archive, "PK");
+    ImportRequest request =
+        new ImportRequest(
+            archive,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty());
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+    Step run =
+        strategy.importSteps(request).stream()
+            .filter(s -> s.id().equals("import.js-import"))
+            .findFirst()
+            .orElseThrow();
+
+    CheckResult result = run.precheck(ctx);
+
+    assertThat(result).isInstanceOf(CheckResult.Fail.class);
+    assertThat(((CheckResult.Fail) result).message()).contains("space");
+  }
+
+  @Test
+  void should_refuse_an_output_path_with_a_space_when_the_wrapper_is_a_shell_script() {
+    Path spaced = tmp.resolve("my exports").resolve("full.zip");
+    ExportRequest request =
+        new ExportRequest(
+            ExportRequest.Scope.EVERYTHING,
+            Set.of(),
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+            spaced);
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+    Step run =
+        strategy.exportSteps(request).stream()
+            .filter(s -> s.id().equals("export.js-export"))
+            .findFirst()
+            .orElseThrow();
+
+    CheckResult result = run.precheck(ctx);
+
+    assertThat(result).isInstanceOf(CheckResult.Fail.class);
+    assertThat(((CheckResult.Fail) result).message()).contains("space");
   }
 
   @Test

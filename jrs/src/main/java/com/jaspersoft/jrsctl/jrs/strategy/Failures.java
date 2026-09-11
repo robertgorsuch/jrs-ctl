@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.jrs.strategy;
 
 import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -33,6 +34,22 @@ final class Failures {
     return StepResult.failed(
         new StepFailure.Retryable(cause, List.of(), List.copyOf(uris), List.of(), nextAction));
   }
+
+  /** A transient HTTP answer (review finding 2.2): retried, no sooner than {@code Retry-After}. */
+  static StepResult transientHttp(RestException e, String doing, String remediation) {
+    return StepResult.failed(
+        new StepFailure.Retryable(
+            doing + ": HTTP " + e.status() + " (" + e.getMessage() + ")",
+            List.of(),
+            List.of(),
+            List.of(),
+            remediation,
+            e.retryAfter()));
+  }
+
+  static final String TRANSIENT_REMEDIATION =
+      "the server or a proxy in front of it answered a transient status; the step is retried and"
+          + " no action is needed unless every retry fails";
 
   static String describe(RuntimeException e) {
     String msg = e.getMessage();

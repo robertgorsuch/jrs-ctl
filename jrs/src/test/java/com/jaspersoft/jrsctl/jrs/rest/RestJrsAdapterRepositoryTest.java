@@ -263,6 +263,73 @@ class RestJrsAdapterRepositoryTest {
             .withRequestBody(containing("j_username=")));
   }
 
+  /**
+   * Review finding 2.3: a form session was established once and never again, so after a service
+   * restart or a session timeout every call answered 401 until the process was restarted. A 401 in
+   * form mode now clears the session, logs in once and replays the request.
+   */
+  @Test
+  void should_log_in_again_and_replay_the_request_when_the_form_session_expires() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/login"))).willReturn(aResponse().withStatus(405)));
+    // the credential-less capability probe POSTs here too; it must not consume a login state
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/login")))
+            .atPriority(10)
+            .willReturn(aResponse().withStatus(401)));
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/login")))
+            .withRequestBody(containing("j_username="))
+            .atPriority(1)
+            .inScenario("login")
+            .whenScenarioStateIs(com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED)
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Set-Cookie", "JSESSIONID=F1RST; Path=/jasperserver-pro"))
+            .willSetStateTo("second"));
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/login")))
+            .withRequestBody(containing("j_username="))
+            .atPriority(1)
+            .inScenario("login")
+            .whenScenarioStateIs("second")
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Set-Cookie", "JSESSIONID=SEC0ND; Path=/jasperserver-pro")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .withHeader("Cookie", containing("JSESSIONID=F1RST"))
+            .inScenario("session")
+            .whenScenarioStateIs(com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED)
+            .willReturn(aResponse().withStatus(200))
+            .willSetStateTo("expired"));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .withHeader("Cookie", containing("JSESSIONID=F1RST"))
+            .inScenario("session")
+            .whenScenarioStateIs("expired")
+            .willReturn(aResponse().withStatus(401)));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .withHeader("Cookie", containing("JSESSIONID=SEC0ND"))
+            .willReturn(aResponse().withStatus(200)));
+
+    assertThat(f.adapter.schedulerReachable()).as("first call logs in").isTrue();
+    assertThat(f.adapter.schedulerReachable()).as("session expired under the second call").isTrue();
+
+    wm.verify(
+        2,
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login")))
+            .withRequestBody(containing("j_username=jasperadmin")));
+    wm.verify(
+        1,
+        getRequestedFor(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .withHeader("Cookie", containing("JSESSIONID=SEC0ND")));
+  }
+
   @Test
   void should_login_through_spring_form_when_rest_login_is_absent() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);

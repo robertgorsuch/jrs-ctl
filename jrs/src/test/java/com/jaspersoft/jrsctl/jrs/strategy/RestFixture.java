@@ -94,6 +94,14 @@ final class RestFixture {
   }
 
   private void probe(String rel, int status) {
-    wm.stubFor(any(urlPathEqualTo(path(rel))).willReturn(aResponse().withStatus(status)));
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder r =
+        aResponse().withStatus(status);
+    if (status == 404) {
+      r =
+          r.withHeader("Content-Type", "application/json")
+              .withBody(
+                  "{\"message\":\"No export task with id jrsctl-probe.\",\"errorCode\":\"no.such.export.process\"}");
+    }
+    wm.stubFor(any(urlPathEqualTo(path(rel))).willReturn(r));
   }
 }

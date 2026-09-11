@@ -223,32 +223,10 @@ public final class VendorTools {
       Optional<Path> javaHome,
       EventSink sink,
       LogScope scope) {
-    return run(
-        new Invocation(
-            buildomatic, Buildomatic.IMPORT_SCRIPT, importArgs(request, storepass), javaHome),
-        sink,
-        scope);
-  }
-
-  /**
-   * The vendor-documented keystore import step (spec §9.3): runs {@code js-import} with only the
-   * keystore options so the server adopts the source server's {@code .jrsks}. UNCERTAIN: the
-   * Administrator Guide describes the keystore flags per release and this build assumes {@link
-   * VendorFlags#KEYSTORE} and {@link VendorFlags#STOREPASS}; if the installed version rejects them,
-   * correct {@link VendorFlags} rather than this method. The caller is responsible for backing up
-   * the server keystore files before invoking this and restoring them on compensation.
-   */
-  public VendorRun importKeystore(
-      Buildomatic buildomatic,
-      Path keystore,
-      Optional<Secret> storepass,
-      Optional<Path> javaHome,
-      EventSink sink,
-      LogScope scope) {
     storepass.ifPresent(redactor::register);
     return run(
         new Invocation(
-            buildomatic, Buildomatic.IMPORT_SCRIPT, keystoreArgs(keystore, storepass), javaHome),
+            buildomatic, Buildomatic.IMPORT_SCRIPT, importArgs(request, storepass), javaHome),
         sink,
         scope);
   }
@@ -266,6 +244,19 @@ public final class VendorTools {
     args.add(target);
     args.addAll(extraArgs);
     return run(new Invocation(buildomatic, Buildomatic.ANT_SCRIPT, args, javaHome), sink, scope);
+  }
+
+  /**
+   * Review finding 2.8: a batch wrapper re-reads its arguments as {@code %1} tokens, and cmd splits
+   * a token at a comma, a semicolon or an equals sign, so {@code --uris /a,/b} arrived as three
+   * arguments. Such a value is wrapped in double quotes, which cmd keeps as one token and strips
+   * before the importer sees it. Java already quotes arguments holding spaces.
+   */
+  static String quoteForCmd(String arg) {
+    boolean splits = arg.indexOf(',') >= 0 || arg.indexOf(';') >= 0 || arg.indexOf('=') >= 0;
+    boolean quoted = arg.length() >= 2 && arg.startsWith("\"") && arg.endsWith("\"");
+    boolean spaced = arg.indexOf(' ') >= 0 || arg.indexOf('\t') >= 0;
+    return splits && !quoted && !spaced ? "\"" + arg + "\"" : arg;
   }
 
   // ---------------------------------------------------------------- the one launcher
@@ -293,7 +284,10 @@ public final class VendorTools {
     }
     List<String> command = new ArrayList<>();
     command.add(script.get().toString());
-    command.addAll(invocation.args());
+    boolean batch = script.get().getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".bat");
+    for (String arg : invocation.args()) {
+      command.add(batch ? quoteForCmd(arg) : arg);
+    }
     Map<String, String> env = Map.of(VendorFlags.JAVA_HOME, invocation.javaHome().get().toString());
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);

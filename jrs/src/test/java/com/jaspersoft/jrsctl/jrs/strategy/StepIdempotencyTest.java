@@ -326,16 +326,6 @@ class StepIdempotencyTest {
   @Test
   void should_back_up_the_keystore_once_when_import_source_keystore_executes_twice()
       throws IOException {
-    // the vendor tool replaces the server keystore with the source one
-    fx.processes.answer(
-        (request, onLine) -> {
-          try {
-            Files.writeString(serverKeystore, "source-ks");
-          } catch (IOException e) {
-            throw new UncheckedIOException(e);
-          }
-          return new ProcessRunner.Result(0, false, Duration.ofMillis(1));
-        });
     Context ctx = ctx();
     Step step =
         new ImportSourceKeystore("import", importRequest(Optional.of(sourceKeystore)), vendor);
@@ -347,30 +337,25 @@ class StepIdempotencyTest {
     assertThat(Files.readString(backup)).isEqualTo("server-ks");
     executeOk(step, ctx);
 
-    assertThat(fx.processes.requests()).hasSize(2);
+    assertThat(fx.processes.requests())
+        .as("the keystore options ride on the archive import, not on a run of their own")
+        .isEmpty();
     assertThat(Files.readString(backup))
         .as("the pristine copy is never overwritten")
         .isEqualTo("server-ks");
     assertThat(fx.platform.files().sha256(manifest)).isEqualTo(manifestOnce);
-    assertThat(Files.readString(serverKeystore)).isEqualTo("source-ks");
+    assertThat(Files.readString(serverKeystore)).isEqualTo("server-ks");
   }
 
   @Test
   void should_restore_the_original_keystore_when_import_source_keystore_compensates_twice()
       throws IOException {
-    fx.processes.answer(
-        (request, onLine) -> {
-          try {
-            Files.writeString(serverKeystore, "source-ks");
-          } catch (IOException e) {
-            throw new UncheckedIOException(e);
-          }
-          return new ProcessRunner.Result(0, false, Duration.ofMillis(1));
-        });
     Context ctx = ctx();
     Step step =
         new ImportSourceKeystore("import", importRequest(Optional.of(sourceKeystore)), vendor);
     executeOk(step, ctx);
+    // the archive import (not this step) may have replaced the server keystore
+    Files.writeString(serverKeystore, "source-ks");
 
     compensateOk(step, ctx);
     assertThat(Files.readString(serverKeystore)).isEqualTo("server-ks");

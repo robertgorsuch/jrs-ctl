@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,10 +87,17 @@ final class StartImport implements Step {
       }
       Handles.ImportHandle handle;
       try {
-        handle = ctx.service(JrsAdapter.class).startImport(request, request.archive());
+        handle =
+            ctx.service(JrsAdapter.class)
+                .startImport(request, request.archive(), ctx.cancel()::isCancelled);
       } catch (JrsUnreachableException e) {
         return Failures.retryable(
             "server unreachable: " + e.getMessage(), List.of(e.url()), e.remediation());
+      } catch (RestException e) {
+        if (!e.transientFailure()) {
+          throw e;
+        }
+        return Failures.transientHttp(e, "cannot start the import", Failures.TRANSIENT_REMEDIATION);
       }
       RunFiles.write(handleFile, handle.id());
       Logs.info(out, ctx, this, "import task " + handle.id() + " started");

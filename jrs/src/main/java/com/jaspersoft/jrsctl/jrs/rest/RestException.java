@@ -1,6 +1,8 @@
 package com.jaspersoft.jrsctl.jrs.rest;
 
+import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A response the caller could not use: a non-2xx status on a call that needed one, or a body that
@@ -17,6 +19,7 @@ public final class RestException extends RuntimeException {
   private final int status;
   private final String method;
   private final String path;
+  private Optional<Duration> retryAfter = Optional.empty();
 
   public RestException(int status, String method, String path, String message) {
     super(message);
@@ -30,6 +33,29 @@ public final class RestException extends RuntimeException {
     this.status = status;
     this.method = Objects.requireNonNull(method, "method");
     this.path = Objects.requireNonNull(path, "path");
+  }
+
+  /** As above, with the delay a {@code Retry-After} header asked for. */
+  public RestException(
+      int status, String method, String path, String message, Optional<Duration> retryAfter) {
+    super(message);
+    this.status = status;
+    this.method = Objects.requireNonNull(method, "method");
+    this.path = Objects.requireNonNull(path, "path");
+    this.retryAfter = Objects.requireNonNull(retryAfter, "retryAfter");
+  }
+
+  /**
+   * True for the statuses a step may retry without a human (review finding 2.2): 408 request
+   * timeout, 429 throttled, 502/503/504 a proxy or a still-deploying Tomcat in front of the server.
+   */
+  public boolean transientFailure() {
+    return status == 408 || status == 429 || status == 502 || status == 503 || status == 504;
+  }
+
+  /** The server's {@code Retry-After}, when it sent one. */
+  public Optional<Duration> retryAfter() {
+    return retryAfter;
   }
 
   /** HTTP status, or 0 when the failure was not a status. */

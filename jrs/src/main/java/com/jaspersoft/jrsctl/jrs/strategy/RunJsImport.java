@@ -6,6 +6,9 @@ import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
@@ -18,14 +21,15 @@ import java.util.Optional;
 
 /**
  * Runs {@code js-import} with the service stopped (spec §7.4, §9.2). Repository-mutating; the
- * request's keystore options are handled by the preceding {@code ImportSourceKeystore} step, so
- * this invocation passes only the import switches. Compensation is a logged no-op: the repository
- * is restored by the ops layer's pre-import snapshot (spec §9.4), which this step cannot do itself.
- * Invariant: this step reports success only on positive evidence from the tool's own output. {@code
- * js-import.sh} guards the import with {@code if [ $? -eq 0 ]} after {@code js-ant
- * validate-database validate-keystore} and has no else branch, so a validation failure imports
- * nothing and exits 0; a run whose transcript never showed a build banner is treated as a failure
- * rather than recorded as a verified import.
+ * request's keystore options ({@code --keystore}, {@code --storepass}) ride on this invocation, the
+ * preceding {@code ImportSourceKeystore} step only holding the backup of the server keystore for
+ * rollback (review finding 2.6). Compensation is a logged no-op: the repository is restored by the
+ * ops layer's pre-import snapshot (spec §9.4), which this step cannot do itself. Invariant: this
+ * step reports success only on positive evidence from the tool's own output. {@code js-import.sh}
+ * guards the import with {@code if [ $? -eq 0 ]} after {@code js-ant validate-database
+ * validate-keystore} and has no else branch, so a validation failure imports nothing and exits 0; a
+ * run whose transcript never showed a build banner is treated as a failure rather than recorded as
+ * a verified import.
  */
 final class RunJsImport implements Step {
 
@@ -62,6 +66,10 @@ final class RunJsImport implements Step {
   @Override
   public CheckResult precheck(Context ctx) {
     Path archive = request.archive();
+    Optional<CheckResult> spaced = VendorAccess.refuseSpaces(ctx, archive, "archive path");
+    if (spaced.isPresent()) {
+      return spaced.get();
+    }
     try {
       if (!Files.isRegularFile(archive) || Files.size(archive) <= 0) {
         return CheckResult.fail(
@@ -81,39 +89,45 @@ final class RunJsImport implements Step {
           "buildomatic directory not found", List.of(), "set server.installDir");
     }
     Config config = ctx.service(Config.class);
-    ImportRequest plain =
-        new ImportRequest(
-            request.archive(),
-            request.update(),
-            request.skipUserUpdate(),
-            request.includeAccessEvents(),
-            request.includeAuditEvents(),
-            request.includeMonitoring(),
-            request.includeSettings(),
-            request.skipThemes(),
-            Optional.empty(),
-            Optional.empty());
-    VendorRun run =
-        vendor
-            .tools()
-            .apply(ctx)
-            .importArchive(
-                b.get(),
-                plain,
-                Optional.empty(),
-                config.vendor().javaHome(),
-                out,
-                Logs.scope(ctx, this));
-    return switch (run) {
-      case VendorRun.Completed c -> completed(c);
-      case VendorRun.TimedOut t ->
-          Failures.recoverable(
-              "js-import did not finish within " + t.timeout().toMinutes() + " minutes",
-              List.of(request.archive()),
-              "check for a hung buildomatic process; the pre-import snapshot is re-imported by"
-                  + " rollback");
-      case VendorRun.NotStarted n -> Failures.recoverable(n.reason(), List.of(), n.remediation());
-    };
+    // Review finding 2.6: the keystore options are options of the archive import itself, so
+    // they ride on this invocation; the preceding ImportSourceKeystore step only holds the backup.
+    Optional<Secret> storepass;
+    try {
+      storepass =
+          request
+              .sourceKeystorePassword()
+              .map(ref -> ctx.service(SecretResolver.class).resolve(ref));
+    } catch (SecretException e) {
+      return Failures.recoverable(
+          "cannot resolve the source keystore password: " + e.getMessage(),
+          List.of(),
+          "check --source-keystore-password-ref");
+    }
+    try {
+      VendorRun run =
+          vendor
+              .tools()
+              .apply(ctx)
+              .importArchive(
+                  b.get(),
+                  request,
+                  storepass,
+                  config.vendor().javaHome(),
+                  out,
+                  Logs.scope(ctx, this));
+      return switch (run) {
+        case VendorRun.Completed c -> completed(c);
+        case VendorRun.TimedOut t ->
+            Failures.recoverable(
+                "js-import did not finish within " + t.timeout().toMinutes() + " minutes",
+                List.of(request.archive()),
+                "check for a hung buildomatic process; the pre-import snapshot is re-imported by"
+                    + " rollback");
+        case VendorRun.NotStarted n -> Failures.recoverable(n.reason(), List.of(), n.remediation());
+      };
+    } finally {
+      storepass.ifPresent(Secret::close);
+    }
   }
 
   /**

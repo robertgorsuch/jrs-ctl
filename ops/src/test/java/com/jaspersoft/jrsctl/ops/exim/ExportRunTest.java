@@ -72,10 +72,20 @@ class ExportRunTest {
                     .withBody(SERVER_INFO)));
     wm.stubFor(
         get(urlPathEqualTo(CONTEXT + "/rest_v2/export/jrsctl-probe/state"))
-            .willReturn(aResponse().withStatus(404)));
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"errorCode\":\"no.such.export.process\",\"message\":\"No task jrsctl-probe\"}")));
     wm.stubFor(
         get(urlPathEqualTo(CONTEXT + "/rest_v2/import/jrsctl-probe/state"))
-            .willReturn(aResponse().withStatus(404)));
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"errorCode\":\"no.such.export.process\",\"message\":\"No task jrsctl-probe\"}")));
     wm.stubFor(
         get(urlPathEqualTo(CONTEXT + "/rest_v2/organizations"))
             .willReturn(aResponse().withStatus(200).withBody("{\"organization\":[]}")));

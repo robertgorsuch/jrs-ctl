@@ -56,6 +56,10 @@ final class RunJsExport implements Step {
 
   @Override
   public CheckResult precheck(Context ctx) {
+    Optional<CheckResult> spaced = VendorAccess.refuseSpaces(ctx, request.output(), "output path");
+    if (spaced.isPresent()) {
+      return spaced.get();
+    }
     Path parent = request.output().toAbsolutePath().getParent();
     if (parent != null && Files.exists(parent) && !Files.isDirectory(parent)) {
       return CheckResult.fail(parent + " is not a directory", "choose another output path");

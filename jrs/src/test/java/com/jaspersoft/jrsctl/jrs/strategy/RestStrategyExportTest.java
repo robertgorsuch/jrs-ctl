@@ -14,6 +14,7 @@ import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
@@ -179,6 +180,92 @@ class RestStrategyExportTest {
     assertThat(fx.journal()).doesNotContain("export.download:RUNNING");
     assertThat(Files.exists(output)).isFalse();
     assertThat(Files.exists(Sidecar.pathFor(output))).isFalse();
+  }
+
+  /**
+   * Review finding 2.2: one 503 from a restarting Tomcat or a proxy during a two-hour export used
+   * to fail the run while the server-side task went on. The poll tick now tolerates transient
+   * answers and keeps polling.
+   */
+  @Test
+  void should_keep_polling_when_a_poll_answers_503_then_recovers() throws IOException {
+    stubStart();
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/state")))
+            .inScenario("flaky")
+            .whenScenarioStateIs(Scenario.STARTED)
+            .willReturn(aResponse().withStatus(503).withHeader("Retry-After", "1"))
+            .willSetStateTo("up"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/state")))
+            .inScenario("flaky")
+            .whenScenarioStateIs("up")
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"ready\"}")));
+    byte[] archive = stubDownload();
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(Files.size(output)).isEqualTo(archive.length);
+    assertThat(fx.sink.logMessages()).anyMatch(m -> m.contains("503"));
+  }
+
+  @Test
+  void should_fail_recoverably_when_polls_keep_answering_503() {
+    stubStart();
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/state")))
+            .willReturn(aResponse().withStatus(503)));
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).cause())
+        .contains(String.valueOf(Polling.MAX_CONSECUTIVE_FAILURES))
+        .contains("503");
+    wm.verify(
+        Polling.MAX_CONSECUTIVE_FAILURES,
+        getRequestedFor(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/state"))));
+  }
+
+  @Test
+  void should_retry_the_start_when_the_server_answers_503_with_retry_after() {
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/export")))
+            .willReturn(aResponse().withStatus(503).withHeader("Retry-After", "7")));
+    Step start = new RestStrategy(fx.polling).exportSteps(request()).get(0);
+
+    StepResult result = start.execute(fx.context(rest.config, rest.adapter), EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    StepFailure failure = ((StepResult.Failed) result).failure();
+    assertThat(failure).isInstanceOf(StepFailure.Retryable.class);
+    assertThat(failure.cause()).contains("503");
+    assertThat(((StepFailure.Retryable) failure).retryAfter())
+        .contains(java.time.Duration.ofSeconds(7));
+  }
+
+  @Test
+  void should_retry_the_download_when_the_server_answers_502() throws IOException {
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/export.zip")))
+            .willReturn(aResponse().withStatus(502)));
+    Context ctx = fx.context(rest.config, rest.adapter);
+    RunFiles.write(RunFiles.in(ctx, RunFiles.EXPORT_HANDLE), "exp-1");
+    Step download = new DownloadExport(output);
+
+    StepResult result = download.execute(ctx, EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    assertThat(((StepResult.Failed) result).failure())
+        .isInstanceOf(StepFailure.Retryable.class)
+        .extracting(StepFailure::cause)
+        .asString()
+        .contains("502");
   }
 
   @Test

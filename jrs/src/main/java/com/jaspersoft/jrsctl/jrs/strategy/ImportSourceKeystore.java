@@ -7,17 +7,12 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.json.Json;
-import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.secrets.Secret;
-import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
-import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
-import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,15 +24,13 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The vendor-documented keystore import step (spec §9.3): backs up the server's {@code .jrsks} and
- * {@code .jrsksp}, then runs {@code js-import} with the keystore options so the target server
- * adopts the source keystore before the archive is imported. Invariants: the backup is taken once
- * per run (re-execution reuses it, so the pristine files are never overwritten by a second copy);
- * compensation restores exactly the files that existed and deletes any the vendor tool created; the
- * keystore password is resolved from {@code sourceKeystorePassword} through the {@code
- * SecretResolver} in the run context and registered with the {@code Redactor} before it reaches a
- * command line. The exact vendor flags are the least certain part of this build, see {@link
- * VendorTools#importKeystore}.
+ * Backs up the server's {@code .jrsks} and {@code .jrsksp} before an import that names a source
+ * keystore (spec §9.3), so a rollback can put them back. Invariants: the backup is taken once per
+ * run and never overwritten; nothing here touches the vendor tools. The keystore options themselves
+ * ({@code --keystore}, {@code --storepass}) are options of the archive import and ride on {@code
+ * RunJsImport} (review finding 2.6): the 10.0.0 importer documents {@code keystore} as "import the
+ * key from a java keystore" and has no keystore-only command, so the separate invocation this step
+ * used to run could never succeed.
  */
 final class ImportSourceKeystore implements Step {
 
@@ -148,57 +141,17 @@ final class ImportSourceKeystore implements Step {
           List.of(manifestFile),
           "check permissions on the run directory and the keystore files");
     }
-    Config config = ctx.service(Config.class);
-    Optional<Buildomatic> b = vendor.locate(ctx);
-    if (b.isEmpty()) {
-      return Failures.recoverable(
-          "buildomatic directory not found", List.of(), "set server.installDir");
-    }
-    Optional<Secret> storepass;
-    try {
-      storepass = resolvePassword(ctx);
-    } catch (SecretException e) {
-      return Failures.recoverable(
-          "cannot resolve the source keystore password: " + e.getMessage(),
-          List.of(),
-          "check --source-keystore-password-ref");
-    }
-    try {
-      VendorRun run =
-          vendor
-              .tools()
-              .apply(ctx)
-              .importKeystore(
-                  b.get(),
-                  sourceKeystore,
-                  storepass,
-                  config.vendor().javaHome(),
-                  out,
-                  Logs.scope(ctx, this));
-      return switch (run) {
-        case VendorRun.Completed c ->
-            c.ok()
-                ? StepResult.ok()
-                : Failures.recoverableWithBackups(
-                    "js-import (keystore) exited with "
-                        + c.exitCode()
-                        + ": "
-                        + String.join(" | ", c.tail()),
-                    List.of(sourceKeystore),
-                    backups(ctx),
-                    "check the buildomatic log; the previous keystore files are restored by"
-                        + " rollback");
-        case VendorRun.TimedOut t ->
-            Failures.recoverableWithBackups(
-                "js-import (keystore) did not finish within " + t.timeout().toMinutes() + "m",
-                List.of(sourceKeystore),
-                backups(ctx),
-                "check for a hung buildomatic process and run again");
-        case VendorRun.NotStarted n -> Failures.recoverable(n.reason(), List.of(), n.remediation());
-      };
-    } finally {
-      storepass.ifPresent(Secret::close);
-    }
+    // Review finding 2.6: the keystore options ride on the archive import itself (js-import
+    // with --input-zip plus --keystore and --storepass); the importer has no keystore-only
+    // command, so the second invocation this step used to run could never succeed.
+    Logs.info(
+        out,
+        ctx,
+        this,
+        "source keystore "
+            + sourceKeystore
+            + " backed up; its options are passed on the archive import");
+    return StepResult.ok();
   }
 
   @Override
@@ -260,16 +213,5 @@ final class ImportSourceKeystore implements Step {
   private List<Path> backups(Context ctx) {
     Path dir = RunFiles.in(ctx, BACKUP_DIR);
     return Files.isDirectory(dir) ? List.of(dir) : List.of();
-  }
-
-  private Optional<Secret> resolvePassword(Context ctx) {
-    if (request.sourceKeystorePassword().isEmpty()) {
-      return Optional.empty();
-    }
-    Secret s = ctx.service(SecretResolver.class).resolve(request.sourceKeystorePassword().get());
-    if (ctx.has(Redactor.class)) {
-      ctx.service(Redactor.class).register(s);
-    }
-    return Optional.of(s);
   }
 }

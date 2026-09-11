@@ -88,6 +88,50 @@ class RestJrsAdapterCapabilitiesTest {
     wm.verify(0, getRequestedFor(urlPathEqualTo(f.path("/rest_v2/export"))));
   }
 
+  /**
+   * Review finding 2.7: a 404 counted as "endpoint present", but a server without {@code
+   * /rest_v2/export} answers 404 too. A present endpoint answers the probe id with the JSON error
+   * body every recorded server returns; a bare 404 is absence.
+   */
+  @Test
+  void should_report_export_absent_when_the_probe_404_carries_no_task_error() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    f.allProbesPresent();
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/export/jrsctl-probe/state")))
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "text/html")
+                    .withBody("<html><body>Not Found</body></html>")));
+
+    assertThat(f.adapter.capabilities())
+        .contains(Capability.IMPORT_ASYNC)
+        .doesNotContain(Capability.EXPORT_ASYNC);
+    assertThat(f.adapter.probeResults().get(Capability.EXPORT_ASYNC)).contains("absent");
+  }
+
+  /**
+   * A version the compat matrix does not list is unknown, not incapable: the probeable capabilities
+   * are still probed, keystore encryption is assumed for 7.5 and later, and the detail says the
+   * assumption was made.
+   */
+  @Test
+  void should_treat_a_version_unknown_to_the_matrix_as_unknown_not_absent() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("11.0.0-PRO");
+    f.allProbesPresent();
+
+    assertThat(f.adapter.expectedCapabilities()).isEmpty();
+    assertThat(f.adapter.capabilities())
+        .contains(Capability.EXPORT_ASYNC, Capability.IMPORT_ASYNC, Capability.KEYSTORE_ENCRYPTION);
+    assertThat(f.adapter.probeResults().get(Capability.KEYSTORE_ENCRYPTION))
+        .contains("not in the compat matrix")
+        .contains("assumed");
+    assertThat(f.adapter.keystore().reason().orElse("")).doesNotContain("pre 7.5");
+  }
+
   @Test
   void should_derive_identity_when_server_info_is_multi_tenant() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);

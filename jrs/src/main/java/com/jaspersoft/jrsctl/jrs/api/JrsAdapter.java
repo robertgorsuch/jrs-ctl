@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.jrs.api;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /**
  * The one server adapter (spec §7.2, ADR-0004). Behaviour is driven entirely by {@link
@@ -31,7 +32,21 @@ public interface JrsAdapter {
   /** Streams the finished export to {@code target} and returns it. */
   Path downloadExport(Handles.ExportHandle handle, Path target);
 
+  /**
+   * As above, abandoning the transfer as soon as {@code cancelled} answers true; implementations
+   * that cannot watch a transfer fall back to the plain download.
+   */
+  default Path downloadExport(Handles.ExportHandle handle, Path target, BooleanSupplier cancelled) {
+    return downloadExport(handle, target);
+  }
+
   Handles.ImportHandle startImport(ImportRequest request, Path archive);
+
+  /** As above, abandoning the upload as soon as {@code cancelled} answers true. */
+  default Handles.ImportHandle startImport(
+      ImportRequest request, Path archive, BooleanSupplier cancelled) {
+    return startImport(request, archive);
+  }
 
   Handles.ImportStatus pollImport(Handles.ImportHandle handle);
 

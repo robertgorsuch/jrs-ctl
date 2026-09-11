@@ -7,8 +7,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Stream;
 
 /**
@@ -30,25 +32,44 @@ public final class KeystoreInspector {
    * point every root at a temporary tree.
    */
   public record Homes(
-      Path windowsUsersRoot, Path passwdFile, Path linuxHomeRoot, Path currentUserHome) {
-
+      Path windowsUsersRoot,
+      Path passwdFile,
+      Path linuxHomeRoot,
+      Path currentUserHome,
+      Path windowsSystemRoot) {
     public Homes {
       Objects.requireNonNull(windowsUsersRoot, "windowsUsersRoot");
       Objects.requireNonNull(passwdFile, "passwdFile");
       Objects.requireNonNull(linuxHomeRoot, "linuxHomeRoot");
       Objects.requireNonNull(currentUserHome, "currentUserHome");
+      Objects.requireNonNull(windowsSystemRoot, "windowsSystemRoot");
+    }
+
+    /** The Windows directory is taken to sit beside the Users directory. */
+    public Homes(Path windowsUsersRoot, Path passwdFile, Path linuxHomeRoot, Path currentUserHome) {
+      this(
+          windowsUsersRoot,
+          passwdFile,
+          linuxHomeRoot,
+          currentUserHome,
+          windowsUsersRoot.toAbsolutePath().resolveSibling("Windows"));
     }
 
     public static Homes system() {
       String drive = System.getenv("SystemDrive");
       String usersRoot = (drive == null || drive.isBlank() ? "C:" : drive.strip()) + "\\Users";
+      String systemRoot = System.getenv("SystemRoot");
       return new Homes(
           Path.of(usersRoot),
           Path.of("/etc/passwd"),
           Path.of("/home"),
-          Path.of(System.getProperty("user.home", ".")));
+          Path.of(System.getProperty("user.home", ".")),
+          Path.of(systemRoot == null || systemRoot.isBlank() ? "C:\\Windows" : systemRoot));
     }
   }
+
+  /** {@code buildomatic/keystore.init.properties}: where the installer put the keystore. */
+  public static final String INIT_PROPERTIES = "keystore.init.properties";
 
   private final Platform platform;
   private final Config config;
@@ -65,6 +86,10 @@ public final class KeystoreInspector {
   }
 
   public KeystoreInfo inspect() {
+    Optional<KeystoreInfo> fromInstall = fromInitProperties();
+    if (fromInstall.isPresent()) {
+      return fromInstall.get();
+    }
     Optional<String> user = config.server().runAsUser();
     Path home;
     String note;
@@ -104,15 +129,82 @@ public final class KeystoreInspector {
   }
 
   /**
+   * Review finding 2.5: the installer records the keystore location in {@code
+   * buildomatic/keystore.init.properties} ({@code ks}, {@code ksp}), which beats any guess from the
+   * account name; the real 10.0.0 install on the development machine points both at the installing
+   * user's profile. Empty when {@code server.installDir} is unset or the file names no location.
+   */
+  private Optional<KeystoreInfo> fromInitProperties() {
+    Optional<Path> installDir = config.server().installDir();
+    if (installDir.isEmpty()) {
+      return Optional.empty();
+    }
+    Path file = installDir.get().resolve("buildomatic").resolve(INIT_PROPERTIES);
+    if (!Files.isRegularFile(file)) {
+      return Optional.empty();
+    }
+    Properties props = new Properties();
+    try (var in = Files.newBufferedReader(file, StandardCharsets.ISO_8859_1)) {
+      props.load(in);
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+    String ks = props.getProperty("ks", "").strip();
+    if (ks.isEmpty()) {
+      return Optional.empty();
+    }
+    String ksp = props.getProperty("ksp", "").strip();
+    Path keystore = Path.of(ks).resolve(KEYSTORE_FILE);
+    Path properties = Path.of(ksp.isEmpty() ? ks : ksp).resolve(PROPERTIES_FILE);
+    String note =
+        "resolved from " + file + " (ks=" + ks + (ksp.isEmpty() ? "" : ", ksp=" + ksp) + ")";
+    if (!Files.isRegularFile(keystore)) {
+      return Optional.of(KeystoreInfo.absent(keystore + " not found (" + note + ")"));
+    }
+    try {
+      return Optional.of(
+          new KeystoreInfo(
+              true,
+              Optional.of(keystore),
+              Files.isRegularFile(properties) ? Optional.of(properties) : Optional.empty(),
+              Optional.of(platform.files().sha256(keystore)),
+              Optional.of(note)));
+    } catch (IOException e) {
+      return Optional.of(
+          KeystoreInfo.absent(
+              "cannot read " + keystore + ": " + e.getMessage() + " (" + note + ")"));
+    }
+  }
+
+  /**
    * Home directory of an OS account by platform convention; a {@code DOMAIN\\user} or {@code
-   * user@domain} spelling is reduced to the bare account name. Empty when no directory exists.
+   * user@domain} spelling is reduced to the bare account name. The Windows service accounts
+   * (SYSTEM, LocalService, NetworkService) have no directory under Users; their profiles live under
+   * the Windows directory (review finding 2.5). Empty when no directory exists.
    */
   public Optional<Path> homeOf(String user) {
     String account = bareAccount(user);
     return switch (platform.os()) {
-      case WINDOWS -> existingDir(homes.windowsUsersRoot().resolve(account));
+      case WINDOWS ->
+          serviceProfile(account)
+              .or(() -> Optional.of(homes.windowsUsersRoot().resolve(account)))
+              .flatMap(KeystoreInspector::existingDir);
       case LINUX ->
           passwdHome(account).or(() -> existingDir(homes.linuxHomeRoot().resolve(account)));
+    };
+  }
+
+  private Optional<Path> serviceProfile(String account) {
+    String a = account.toLowerCase(Locale.ROOT).replace(" ", "");
+    Path windows = homes.windowsSystemRoot();
+    return switch (a) {
+      case "system", "localsystem" ->
+          Optional.of(windows.resolve("System32").resolve("config").resolve("systemprofile"));
+      case "localservice" ->
+          Optional.of(windows.resolve("ServiceProfiles").resolve("LocalService"));
+      case "networkservice" ->
+          Optional.of(windows.resolve("ServiceProfiles").resolve("NetworkService"));
+      default -> Optional.empty();
     };
   }
 

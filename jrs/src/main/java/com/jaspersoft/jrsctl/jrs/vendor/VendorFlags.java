@@ -32,9 +32,19 @@ public final class VendorFlags {
   public static final String INCLUDE_MONITORING_EVENTS = "--include-monitoring-events";
   public static final String INCLUDE_SERVER_SETTINGS = "--include-server-settings";
 
-  // ---- keystore (JRS 7.5+, spec §9.3); verify against the guide for the installed version ----
+  // ---- keystore (JRS 7.5+, spec §9.3) ----
+  // Verified against the 10.0.0 importer's option bundle
+  // (buildomatic/conf_source/iePro/bundles/ji-export-messages.properties, 2026-09-11): the
+  // encryption key of an archive import comes either from a java keystore, `--keystore <file>
+  // --storepass <pw>` with `--keyalias <alias> --keypass <pw>` naming the key inside it, or
+  // directly as `--secret-key <hex>`. They are options of the archive import (`--input-zip`),
+  // not a command of their own (review finding 2.6). The export side has `--destkeystore`,
+  // `--deststorepass` and `--destkeypass`, unused here.
   public static final String KEYSTORE = "--keystore";
   public static final String STOREPASS = "--storepass";
+  public static final String KEYALIAS = "--keyalias";
+  public static final String KEYPASS = "--keypass";
+  public static final String SECRET_KEY = "--secret-key";
 
   /** Separator js-export expects between repository URIs. */
   public static final String URI_SEPARATOR = ",";
