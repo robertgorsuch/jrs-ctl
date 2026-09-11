@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.TerminalState;
 import com.jaspersoft.jrsctl.core.state.Transition;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -515,6 +517,55 @@ class RunnerTest {
         .extracting(Event.StepRollbackFailed::cause)
         .asString()
         .contains("cannot restore");
+  }
+
+  @Test
+  void should_redact_every_emitted_event_when_a_step_leaks_a_registered_secret() {
+    String secret = "s3cr3t-pw-91";
+    Redactor redactor = new Redactor();
+    redactor.register(secret);
+    Runner runner = new Runner(fx.store, fx.bus, fx.clock, fx.sleeps::add, redactor);
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply")
+                .onExecute(
+                    (ctx, out) -> {
+                      out.emit(
+                          new Event.Log(
+                              EngineFixture.NOW,
+                              ctx.runId(),
+                              Optional.of("s1"),
+                              "apply",
+                              Event.Log.Level.INFO,
+                              "connecting with password=" + secret));
+                      return StepResult.failed(
+                          new StepFailure.Recoverable(
+                              "login failed for " + secret,
+                              List.of(),
+                              List.of(URI.create("http://admin:" + secret + "@jrs/rest_v2")),
+                              List.of(),
+                              "retry with " + secret));
+                    }));
+
+    RunOutcome outcome =
+        runner.run(plan, fx.context(RUN), EngineFixture.fingerprint(), RunOptions.DEFAULT);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(fx.sink.events()).isNotEmpty();
+    assertThat(fx.sink.events())
+        .as("no subscriber ever sees the raw secret")
+        .allSatisfy(e -> assertThat(e.toString()).doesNotContain(secret));
+    assertThat(fx.sink.of(Event.StepFailed.class))
+        .singleElement()
+        .satisfies(
+            e -> {
+              assertThat(e.failure().cause()).isEqualTo("login failed for [redacted]");
+              assertThat(e.failure().affectedUris())
+                  .containsExactly(URI.create("http://jrs/rest_v2"));
+            });
+    assertThat(fx.sink.of(Event.Log.class))
+        .anyMatch(l -> l.message().equals("connecting with password=[redacted]"));
   }
 
   @Test

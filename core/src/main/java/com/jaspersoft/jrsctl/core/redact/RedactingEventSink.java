@@ -3,6 +3,9 @@ package com.jaspersoft.jrsctl.core.redact;
 import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -10,7 +13,9 @@ import java.util.Objects;
  * variant before handing it to the delegate (spec §5.8). Invariant: the switch over the sealed
  * hierarchy has no default branch, so adding an event type without deciding what to redact fails to
  * compile; identifiers (run id, step id, phase, plan id, fingerprint) and paths pass through
- * unchanged because they never carry secrets.
+ * unchanged because they never carry secrets, while URIs keep only scheme, host, port, path and
+ * fragment. {@link com.jaspersoft.jrsctl.core.engine.Runner} wraps its sink in this decorator, so
+ * every subscriber receives redacted events without having to redact for itself.
  */
 public final class RedactingEventSink implements EventSink {
 
@@ -75,20 +80,60 @@ public final class RedactingEventSink implements EventSink {
     };
   }
 
-  /** The failure with its cause and next action redacted; paths and URIs pass through. */
+  /**
+   * The failure with its cause and next action redacted; paths pass through, and every URI loses
+   * its user-info and query, the two parts that can carry a credential or a token.
+   */
   public StepFailure redact(StepFailure failure) {
     Objects.requireNonNull(failure, "failure");
     return switch (failure) {
       case StepFailure.Retryable f ->
           new StepFailure.Retryable(
-              r(f.cause()), f.affectedPaths(), f.affectedUris(), f.backups(), r(f.nextAction()));
+              r(f.cause()),
+              f.affectedPaths(),
+              strip(f.affectedUris()),
+              f.backups(),
+              r(f.nextAction()));
       case StepFailure.Recoverable f ->
           new StepFailure.Recoverable(
-              r(f.cause()), f.affectedPaths(), f.affectedUris(), f.backups(), r(f.nextAction()));
+              r(f.cause()),
+              f.affectedPaths(),
+              strip(f.affectedUris()),
+              f.backups(),
+              r(f.nextAction()));
       case StepFailure.Fatal f ->
           new StepFailure.Fatal(
-              r(f.cause()), f.affectedPaths(), f.affectedUris(), f.backups(), r(f.nextAction()));
+              r(f.cause()),
+              f.affectedPaths(),
+              strip(f.affectedUris()),
+              f.backups(),
+              r(f.nextAction()));
     };
+  }
+
+  private static List<URI> strip(List<URI> uris) {
+    return uris.stream().map(RedactingEventSink::strip).toList();
+  }
+
+  /** Scheme, host, port, path and fragment only; user-info and query are dropped. */
+  static URI strip(URI uri) {
+    if (uri.isOpaque() || (uri.getRawUserInfo() == null && uri.getRawQuery() == null)) {
+      return uri;
+    }
+    try {
+      return new URI(
+          uri.getScheme(),
+          null,
+          uri.getHost(),
+          uri.getPort(),
+          uri.getPath(),
+          null,
+          uri.getFragment());
+    } catch (URISyntaxException e) {
+      // The components came out of a valid URI, so this cannot happen; keep only the path if it
+      // does.
+      return URI.create(uri.getRawPath() == null ? "" : uri.getRawPath());
+    }
   }
 
   private String r(String text) {

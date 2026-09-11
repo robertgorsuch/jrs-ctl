@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.event.Event;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,6 +36,28 @@ class RedactingEventSinkTest {
     assertThat(log.message()).isEqualTo("pw is [redacted]");
     assertThat(log.runId()).isEqualTo("run1");
     assertThat(log.stepId()).contains("s1");
+  }
+
+  @Test
+  void should_strip_userinfo_and_query_from_affected_uris_when_step_fails() {
+    StepFailure failure =
+        new StepFailure.Recoverable(
+            "export failed",
+            List.of(),
+            List.of(
+                URI.create("https://admin:" + SECRET + "@jrs.example:8443/rest_v2/export?pp=tok"),
+                URI.create("/repository/reports/AllAccounts")),
+            List.of(),
+            "retry");
+
+    sink.emit(new Event.StepFailed(TS, "run1", Optional.of("s1"), "apply", failure));
+
+    Event.StepFailed e = (Event.StepFailed) received.get(0);
+    assertThat(e.failure().affectedUris())
+        .containsExactly(
+            URI.create("https://jrs.example:8443/rest_v2/export"),
+            URI.create("/repository/reports/AllAccounts"));
+    assertThat(e.toString()).doesNotContain(SECRET).doesNotContain("pp=tok");
   }
 
   @Test

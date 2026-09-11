@@ -2,6 +2,8 @@ package com.jaspersoft.jrsctl.core.engine;
 
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.redact.RedactingEventSink;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.TerminalState;
@@ -30,8 +32,10 @@ import java.util.function.Supplier;
  * cancellation compensates the in-flight step and then every succeeded mutating step; irreversible
  * steps are skipped during compensation; the run row always receives a terminal state and exit code
  * before the Runner returns. Steps that throw are treated as {@code Recoverable} with the exception
- * as the cause. {@link com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so
- * the CLI can map it to exit code 9.
+ * as the cause. Every event, including those steps emit themselves, passes the redactor before any
+ * subscriber sees it, so redaction is an engine guarantee rather than a per-sink convention. {@link
+ * com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so the CLI can map it to
+ * exit code 9.
  */
 public final class Runner {
 
@@ -43,9 +47,21 @@ public final class Runner {
   private final Clock clock;
   private final Sleeper sleeper;
 
+  /** As below, redacting with the process-wide {@link Redactor#global()}. */
   public Runner(StateStore store, EventSink sink, Clock clock, Sleeper sleeper) {
+    this(store, sink, clock, sleeper, Redactor.global());
+  }
+
+  /**
+   * Every event this runner emits, including those a step emits through the sink it is handed,
+   * passes {@code redactor} before {@code sink} sees it. Subscribers therefore never need to redact
+   * for themselves, and a new subscriber cannot leak by forgetting to.
+   */
+  public Runner(StateStore store, EventSink sink, Clock clock, Sleeper sleeper, Redactor redactor) {
     this.store = Objects.requireNonNull(store, "store");
-    this.sink = Objects.requireNonNull(sink, "sink");
+    this.sink =
+        new RedactingEventSink(
+            Objects.requireNonNull(sink, "sink"), Objects.requireNonNull(redactor, "redactor"));
     this.clock = Objects.requireNonNull(clock, "clock");
     this.sleeper = Objects.requireNonNull(sleeper, "sleeper");
   }
