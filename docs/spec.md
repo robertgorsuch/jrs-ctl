@@ -709,7 +709,7 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 
 - GitHub Actions matrix: `windows-latest`, `ubuntu-latest`; JDK 21 Temurin.
 - Jobs: build+unit, integration (Testcontainers on Linux only), acceptance per phase, secret scan (gitleaks), dependency audit (OWASP), SBOM, package, sign (CI secrets only), release on tag.
-- Release gate (not phase gate): `needs-jrs` adapter contract tests against every JRS image available in the private registry. Nightly run; failures open an issue automatically. Open question Q6 (§19) names the CE image.
+- The adapter contract (identity, capabilities, health) runs on every build against a recorded server per compat-matrix row (`jrs/src/test/resources/recordings/`, ADR-0011); a matrix row without a recording fails the build. Release gate (not phase gate), where an image exists: the same contract as `needs-jrs` tests against every JRS image available in the private registry, nightly; failures open an issue automatically. Open question Q6 (§19) names the CE image. The `integration` job is not a release gate while ADR-0007 is deferred.
 
 ---
 
@@ -769,7 +769,7 @@ Open questions for PM/engineering (record answers as ADRs):
 
 - All Phase 0–8 acceptance scripts pass on Windows and Linux CI.
 - Portable-archive smoke tests pass on clean VMs with no pre-installed JDK.
-- `needs-jrs` adapter contract suite green across every version in `compat/matrix.yaml`.
+- Recorded adapter contract suite (ADR-0011) green across every row of `compat/matrix.yaml`, and the `needs-jrs` live suite green against every image that exists.
 - Zero findings from secret scan and dependency audit at High or above.
 - Operator guide reviewed by support engineering.
 - `docs/BUILD_STATUS.md` shows no stubbed components remaining except those explicitly deferred by ADR.

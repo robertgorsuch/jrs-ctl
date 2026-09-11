@@ -197,7 +197,10 @@ jobs:
     name: sign (CI secret) and publish GitHub release
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [package, integration, dependency-audit]
+    # `integration` is not a release gate: it selects needs-docker tests and none exist yet
+    # (ADR-0007, deferred), so its green would be a vacuous one. The adapter contract suite runs
+    # per compat-matrix row against recorded servers inside `build` (ADR-0011).
+    needs: [package, dependency-audit]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write

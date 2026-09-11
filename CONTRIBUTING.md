@@ -86,7 +86,9 @@ drives the packaged jar the way an operator would.
   `IdempotencyCoverageTest` in `ops` scans the classpath and fails when a step has none. A step
   that can fail part-way (file swap, SQL, vendor script) also needs a test that drives that failure
   through the `Runner` and checks the server afterwards.
-- Adapter changes are tested against WireMock fixtures recorded from real servers
+- Adapter changes are tested against WireMock fixtures recorded from real servers, and the
+  adapter contract runs against every recorded server under `jrs/src/test/resources/recordings/`
+  (one per compat-matrix row; see its README to record a new one from a live server)
   (`jrs/src/test/resources/fixtures/`), one per supported version and edition.
 
 ## Commits and pull requests
