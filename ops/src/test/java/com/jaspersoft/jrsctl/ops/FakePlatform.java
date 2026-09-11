@@ -46,6 +46,12 @@ public final class FakePlatform implements Platform {
   public boolean ownerOnly = true;
   public boolean writable = true;
   public boolean realFiles;
+
+  /**
+   * When set, {@code atomicReplace} onto exactly this target throws, simulating a mid-swap fault.
+   */
+  public Optional<Path> failReplaceOf = Optional.empty();
+
   public ServiceController.State serviceState = ServiceController.State.RUNNING;
   public final FakeServiceController controller = new FakeServiceController(this, "fake service");
 
@@ -98,6 +104,14 @@ public final class FakePlatform implements Platform {
 
       @Override
       public void atomicReplace(Path source, Path target) throws IOException {
+        if (failReplaceOf.isPresent()
+            && failReplaceOf
+                .get()
+                .toAbsolutePath()
+                .normalize()
+                .equals(target.toAbsolutePath().normalize())) {
+          throw new IOException("simulated swap failure on " + target.getFileName());
+        }
         if (realFiles) {
           hostFiles.atomicReplace(source, target);
           return;

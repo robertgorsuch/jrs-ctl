@@ -294,6 +294,41 @@ class HotfixApplyTest {
   }
 
   @Test
+  void should_restore_every_file_and_restart_the_service_when_atomic_swap_fails_midway()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);
+      String oldFoo = f.sha(HotfixFixture.FOO);
+      String olderFoo = f.sha(HotfixFixture.FOO_OLDER);
+      String bar = f.sha(HotfixFixture.BAR);
+      // foo-1.2.3.jar swaps and foo-1.2.2.jar is deleted first; the add of fix.properties fails
+      f.fake.platform.failReplaceOf = Optional.of(f.target(HotfixFixture.FIX));
+
+      RunOutcome outcome = f.run(plan, "r-midswap");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause())
+          .contains("cannot swap")
+          .contains("simulated swap failure");
+      assertThat(f.sha(HotfixFixture.FOO)).as("swapped jar restored").isEqualTo(oldFoo);
+      assertThat(f.sha(HotfixFixture.FOO_OLDER)).as("deleted sibling restored").isEqualTo(olderFoo);
+      assertThat(f.sha(HotfixFixture.BAR)).isEqualTo(bar);
+      assertThat(f.target(HotfixFixture.FIX)).doesNotExist();
+      assertThat(f.ops().list()).isEmpty();
+      assertThat(f.fake.platform.controller.events).containsExactly("stop", "start");
+      assertThat(f.fake.platform.serviceState)
+          .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.RUNNING);
+      assertThat(journal(f, "r-midswap"))
+          .containsSubsequence("atomic-swap:FAILED", "atomic-swap:ROLLED_BACK")
+          .containsSubsequence("atomic-swap:ROLLED_BACK", "stop-service:ROLLED_BACK");
+    }
+  }
+
+  static List<String> journal(HotfixFixture f, String runId) {
+    return f.store().transitions(runId).stream().map(t -> t.stepId() + ":" + t.toState()).toList();
+  }
+
+  @Test
   void should_converge_when_atomic_swap_executes_twice() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
       Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);

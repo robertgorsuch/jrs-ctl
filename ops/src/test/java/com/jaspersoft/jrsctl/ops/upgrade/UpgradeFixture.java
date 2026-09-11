@@ -43,6 +43,9 @@ public final class UpgradeFixture implements AutoCloseable {
   public static final String OLD_SCRIPT = "console.log('old');\n";
   public static final String NEW_SCRIPT = "console.log('new');\n";
 
+  /** Marker file in the package: the fake js-ant copies the new webapp, then exits 3. */
+  static final String FAIL_AFTER_COPY = "fail-after-copy";
+
   public final FakeServices fake;
   public final Services services;
   public final Path root;
@@ -116,6 +119,14 @@ public final class UpgradeFixture implements AutoCloseable {
     return new UpgradeFixture(root);
   }
 
+  /**
+   * Makes the fake vendor upgrade fail part-way: it still copies the new webapp over the old one,
+   * then exits 3, the shape of a migration that dies after touching the files.
+   */
+  public void failVendorScriptAfterCopy() throws IOException {
+    write(packageDir.resolve(FAIL_AFTER_COPY), "");
+  }
+
   /** Re-scripts the vendor Java probe, e.g. to simulate a JDK 11. */
   public void javaVersion(String banner) {
     for (String exe : List.of("java", "java.exe")) {
@@ -187,6 +198,9 @@ public final class UpgradeFixture implements AutoCloseable {
             + target
             + "\" >nul\r\n"
             + "if errorlevel 1 exit /b 1\r\n"
+            + "if exist \"%~dp0..\\"
+            + FAIL_AFTER_COPY
+            + "\" (echo BUILD FAILED after copying the webapp & exit /b 3)\r\n"
             + "echo %1 >> \"%~dp0..\\js-ant.log\"\r\n"
             + "exit /b 0\r\n");
     write(
@@ -196,6 +210,9 @@ public final class UpgradeFixture implements AutoCloseable {
             + "cp -R \"$(dirname \"$0\")/../webapp-new/.\" \""
             + target
             + "/\" || exit 1\n"
+            + "if [ -f \"$(dirname \"$0\")/../"
+            + FAIL_AFTER_COPY
+            + "\" ]; then echo \"BUILD FAILED after copying the webapp\"; exit 3; fi\n"
             + "echo \"$1\" >> \"$(dirname \"$0\")/../js-ant.log\"\n"
             + "exit 0\n");
     exportScripts(buildomatic);

@@ -93,6 +93,39 @@ class HotfixSqlTest {
   }
 
   @Test
+  void should_undo_started_scripts_and_restore_files_when_apply_sql_fails_through_the_runner()
+      throws IOException {
+    try (HotfixFixture f = withDatabase(tmp)) {
+      Map<String, String> files = twoScriptFiles();
+      files.put(
+          "sql/postgresql/002.sql",
+          "CREATE TABLE second_marker (id int);\nINSERT INTO second_marker VALUES (1);\n");
+      Path zip = f.build(f.bundleDir("two-sql", TWO_SCRIPT_MANIFEST, files));
+      Plan plan = f.ops().planApply(zip, SIGNED);
+      // fails inside 002 after its first statement; the rollback scripts never match this text
+      f.jdbc.failOnStatementContaining = Optional.of("INSERT INTO second_marker");
+
+      RunOutcome outcome = f.run(plan, "r-sql-midway");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("INSERT INTO second_marker");
+      assertThat(f.jdbc.executed)
+          .as("both started scripts are undone, newest first, then the files")
+          .containsExactly(
+              "SELECT 1",
+              "CREATE TABLE first_marker (id int)",
+              "CREATE TABLE second_marker (id int)",
+              "DROP TABLE second_marker",
+              "DROP TABLE first_marker");
+      assertThat(f.target(HotfixFixture.SCRIPT)).doesNotExist();
+      assertThat(f.ops().list()).isEmpty();
+      assertThat(HotfixApplyTest.journal(f, "r-sql-midway"))
+          .containsSubsequence(
+              "apply-sql:FAILED", "apply-sql:ROLLED_BACK", "atomic-swap:ROLLED_BACK");
+    }
+  }
+
+  @Test
   void should_undo_only_the_sql_scripts_that_started_when_a_later_one_never_ran()
       throws IOException {
     try (HotfixFixture f = withDatabase(tmp)) {

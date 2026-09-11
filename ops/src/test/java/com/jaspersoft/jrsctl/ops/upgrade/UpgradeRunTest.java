@@ -108,6 +108,41 @@ class UpgradeRunTest {
   }
 
   @Test
+  void should_restore_point_b_and_restart_the_service_when_the_vendor_script_fails_after_copying()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      String oldHash = f.sha(f.webappDir.resolve("scripts").resolve("app.js"));
+      f.failVendorScriptAfterCopy();
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-vendor-fail", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause())
+          .contains("vendor upgrade exited with 3");
+      assertThat(UpgradeFixture.read(f.webappDir.resolve("version.txt")))
+          .as("the half-migrated webapp is put back to point B")
+          .isEqualTo(UpgradeFixture.OLD_VERSION);
+      assertThat(f.sha(f.webappDir.resolve("scripts").resolve("app.js"))).isEqualTo(oldHash);
+      assertThat(f.webappDir.resolve("WEB-INF").resolve("lib").resolve("jasperserver-9.0.0.jar"))
+          .doesNotExist();
+      assertThat(f.logs()).anyMatch(m -> m.contains("webapp restored from"));
+      assertThat(f.fake.platform.controller.events).endsWith("stop", "start");
+      assertThat(f.fake.platform.serviceState)
+          .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.RUNNING);
+      List<String> journal =
+          f.store().transitions("r-up-vendor-fail").stream()
+              .map(t -> t.stepId() + ":" + t.toState())
+              .toList();
+      assertThat(journal)
+          .containsSubsequence(
+              "run-vendor-upgrade:FAILED",
+              "run-vendor-upgrade:ROLLED_BACK",
+              "stop-service:ROLLED_BACK");
+    }
+  }
+
+  @Test
   void should_only_roll_back_the_verify_phase_when_smoke_fails_without_rollback_all()
       throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
