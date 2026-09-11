@@ -25,6 +25,12 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- Reproducible archives (jar, shaded jar, zip, tar.gz): every entry carries this timestamp
+         instead of the build time, so two builds of the same commit produce the same bytes and a
+         signature attests something that can be rebuilt. Bump it with each release. The jlink
+         runtime image is not reproducible (ADR-0003), which is why the manifest and the signature
+         cover the archive rather than the image alone. -->
+    <project.build.outputTimestamp>2026-09-11T00:00:00Z</project.build.outputTimestamp>
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.6</picocli.version>
@@ -56,7 +62,8 @@
     <surefire.forkCount>1C</surefire.forkCount>
     <surefire.reuseForks>true</surefire.reuseForks>
     <jacoco.version>0.8.12</jacoco.version>
-    <dependency-check.version>9.2.0</dependency-check.version>
+    <!-- 9.2.0 (2024) cannot reach today's NVD even with an API key (403); 13.0.0 can. -->
+    <dependency-check.version>13.0.0</dependency-check.version>
 
     <!-- Tests tagged with these JUnit tags are release gates, not phase gates (spec §0 rule 10) -->
     <excluded.groups>needs-jrs,needs-docker</excluded.groups>
@@ -252,6 +259,37 @@
   </build>
 
   <profiles>
+    <!-- Release builds (CI on a v* tag, after versions:set from the tag): refuse a SNAPSHOT version
+         and SNAPSHOT dependencies, so a signed release can never be a snapshot renamed by hand
+         (spec §20; the v1.0.0 pre-release was exactly that). -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-enforcer-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>enforce-release</id>
+                <goals><goal>enforce</goal></goals>
+                <configuration>
+                  <rules>
+                    <requireReleaseVersion>
+                      <message>a release is built from a release version, never a SNAPSHOT: tag the commit and let CI set the version from the tag (spec §20)</message>
+                    </requireReleaseVersion>
+                    <requireReleaseDeps>
+                      <message>a release must not depend on SNAPSHOT artifacts</message>
+                      <onlyWhenRelease>true</onlyWhenRelease>
+                    </requireReleaseDeps>
+                  </rules>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>dependency-check</id>
       <build>

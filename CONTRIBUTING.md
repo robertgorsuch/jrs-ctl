@@ -41,6 +41,10 @@ drives the packaged jar the way an operator would.
   Spotless (google-java-format), then every acceptance phase against the shaded jar. It takes
   about eight minutes on a laptop.
 - One acceptance phase only: `scripts\mvn.cmd verify -Dphase=N`.
+- After any change to a pom (a dependency bump, a plugin, a property), gate with
+  `scripts\mvn.cmd clean verify`. An incremental build reuses compiled classes for unchanged
+  sources, so a deprecation that the new dependency introduces under `-Werror` shows up in CI's
+  fresh checkout and not on your machine.
 - Format before committing: `scripts\mvn.cmd spotless:apply`. The pre-commit hook in `.githooks`
   runs the Spotless check; enable it once with `git config core.hooksPath .githooks`.
 - Tests tagged `needs-jrs` (a real JasperReports Server) or `needs-docker` are excluded by default;
@@ -99,6 +103,27 @@ drives the packaged jar the way an operator would.
   so `Phase8ExplainDocsTest` fails when a command lacks its section).
 - CI (`.github/workflows/ci.yml`) runs the full gate on Ubuntu and Windows, packages both
   archives, and audits dependencies. A pull request must be green on both operating systems.
+
+## Cutting a release
+
+The pom stays at a `-SNAPSHOT` version on `main`; a release is a tag, never a version bump by
+hand.
+
+1. Make sure `main` is green in CI on both operating systems and the dependency audit passed.
+2. Bump `project.build.outputTimestamp` in the root pom to the release date (reproducible archives),
+   commit, push, wait for green.
+3. Tag the commit `vX.Y.Z` (or `vX.Y.Z-rc1` for a pre-release) and push the tag.
+4. CI does the rest: every job runs `versions:set` from the tag, builds with the `release` profile
+   (which refuses SNAPSHOT versions and SNAPSHOT dependencies), packages and smoke-tests both
+   archives, checks that both carry the tag's version and match their checksums, signs the
+   archives, checksums and SBOM with the CI-only key, and publishes the GitHub release. A tag
+   containing `-` is published as a pre-release.
+5. Never upload hand-built archives to a release and never rename a SNAPSHOT build: the `release`
+   job is the only path that produces signed artefacts.
+
+Every action in the workflows is pinned to a commit and every job has a timeout;
+`Phase0SkeletonTest` fails when either slips, and Dependabot's github-actions updates keep the
+pins current.
 
 ## Reporting a problem
 

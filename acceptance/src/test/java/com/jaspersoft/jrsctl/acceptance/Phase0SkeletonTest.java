@@ -91,6 +91,43 @@ class Phase0SkeletonTest {
     }
   }
 
+  /**
+   * A workflow that runs on a moving tag executes whatever that tag points at tomorrow, and a job
+   * without a timeout can hold a runner for six hours. Every {@code uses:} must name a 40-hex
+   * commit and every job must set {@code timeout-minutes} (assessment item 5.5).
+   */
+  @Test
+  void every_workflow_pins_actions_to_a_commit_and_bounds_every_job() throws Exception {
+    Path workflows = repoRoot().resolve(".github/workflows");
+    YAMLMapper yaml = new YAMLMapper();
+    List<String> problems = new java.util.ArrayList<>();
+    try (Stream<Path> listing = Files.list(workflows)) {
+      for (Path file :
+          listing.filter(p -> p.getFileName().toString().matches(".*\\.ya?ml")).toList()) {
+        JsonNode tree;
+        try (InputStream in = Files.newInputStream(file)) {
+          tree = yaml.readTree(in);
+        }
+        tree.path("jobs")
+            .properties()
+            .forEach(
+                job -> {
+                  String where = file.getFileName() + " job " + job.getKey();
+                  if (!job.getValue().path("timeout-minutes").isNumber()) {
+                    problems.add(where + " has no timeout-minutes");
+                  }
+                  for (JsonNode step : job.getValue().path("steps")) {
+                    String uses = step.path("uses").asText("");
+                    if (!uses.isEmpty() && !uses.matches("[^@]+@[0-9a-f]{40}")) {
+                      problems.add(where + " uses " + uses + " (not pinned to a commit)");
+                    }
+                  }
+                });
+      }
+    }
+    assertThat(problems).as("workflow hygiene").isEmpty();
+  }
+
   private static Path repoRoot() {
     return Path.of(System.getProperty("jrsctl.acceptanceDir")).getParent();
   }
