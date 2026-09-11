@@ -133,6 +133,43 @@ class ManifestValidatorTest {
     assertThat(problems(json)).anyMatch(p -> p.contains("plain file name"));
   }
 
+  /**
+   * Assessment item O4: {@code replaces} naming the entry's own file, in any letter case, made the
+   * swap delete the payload it had just installed and record the hotfix as installed.
+   */
+  @Test
+  void should_reject_replaces_naming_the_target_itself_in_any_letter_case() {
+    for (String self : List.of("a.jar", "A.JAR")) {
+      String json =
+          manifest(
+              "{\"action\":\"replace\",\"path\":\"webapps/js/WEB-INF/lib/a.jar\",\"sha256\":\""
+                  + SHA
+                  + "\",\"replaces\":[\""
+                  + self
+                  + "\"]}",
+              "required",
+              "snapshot",
+              "");
+      assertThat(problems(json)).as(self).anyMatch(p -> p.contains("names the file itself"));
+    }
+  }
+
+  @Test
+  void should_reject_replaces_naming_a_file_this_hotfix_installs() {
+    String json =
+        manifest(
+            "{\"action\":\"add\",\"path\":\"webapps/js/WEB-INF/lib/b.jar\",\"sha256\":\""
+                + SHA
+                + "\"},{\"action\":\"replace\",\"path\":\"webapps/js/WEB-INF/lib/a.jar\","
+                + "\"sha256\":\""
+                + SHA
+                + "\",\"replaces\":[\"B.jar\"]}",
+            "required",
+            "snapshot",
+            "");
+    assertThat(problems(json)).anyMatch(p -> p.contains("installs"));
+  }
+
   @Test
   void should_report_invalid_json_when_manifest_is_not_json() {
     assertThat(problems("{not json")).singleElement().asString().contains("not valid JSON");

@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.hotfix;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
@@ -208,6 +209,31 @@ class HotfixStepIdempotencyTest {
       assertThat(f.target(HotfixFixture.FIX)).exists();
       assertThat(f.target(HotfixFixture.BAR)).doesNotExist();
       assertThat(f.target(HotfixFixture.FOO_OLDER)).doesNotExist();
+    }
+  }
+
+  /**
+   * Assessment item O4: the swap had no postcheck, so a target that changed under it (or a payload
+   * deleted by a sibling rule) was recorded as installed. The postcheck re-hashes every landed file
+   * and confirms every deletion.
+   */
+  @Test
+  void should_fail_the_postcheck_when_a_swapped_file_changed_under_it() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = webInf(f);
+      Context ctx = start(f, plan, "r-post");
+      Idempotency.runUpTo(plan, ctx, "stage-files");
+      Step swap = Idempotency.step(plan, "atomic-swap");
+      Idempotency.executeOk(swap, ctx);
+      assertThat(swap.postcheck(ctx).failed()).as("clean swap passes its postcheck").isFalse();
+
+      HotfixFixture.write(f.target(HotfixFixture.FOO), "tampered after the swap");
+
+      CheckResult after = swap.postcheck(ctx);
+      assertThat(after.failed()).isTrue();
+      assertThat(((CheckResult.Fail) after).message())
+          .contains(Path.of(HotfixFixture.FOO).getFileName().toString())
+          .contains("hash");
     }
   }
 

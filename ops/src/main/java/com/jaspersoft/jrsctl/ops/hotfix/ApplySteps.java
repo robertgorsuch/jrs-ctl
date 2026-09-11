@@ -669,6 +669,48 @@ final class ApplySteps {
               "end the process holding the file, then re-run");
     }
 
+    /**
+     * Assessment item O4: after the swap every landed file must still hash to what the manifest
+     * promised and every deletion must have happened, so a payload removed by a sibling rule or
+     * changed under the swap is never recorded as installed.
+     */
+    @Override
+    public CheckResult postcheck(Context ctx) {
+      FileOps files = rt.files();
+      List<String> wrong = new ArrayList<>();
+      for (FileTarget t : in.targets()) {
+        switch (t.action()) {
+          case ADD, REPLACE -> {
+            String expected = t.after().orElse("");
+            Optional<String> actual = FileTarget.hashOf(files, t.target());
+            if (actual.isEmpty()) {
+              wrong.add(t.target() + " is missing after the swap");
+            } else if (!actual.get().equals(expected)) {
+              wrong.add(
+                  t.target()
+                      + " hash is "
+                      + actual.get()
+                      + " after the swap, expected "
+                      + expected);
+            }
+            for (FileTarget.Sibling s : t.replaces()) {
+              if (Files.exists(s.path())) {
+                wrong.add(s.path() + " should have been replaced but still exists");
+              }
+            }
+          }
+          case DELETE -> {
+            if (Files.exists(t.target())) {
+              wrong.add(t.target() + " should have been deleted but still exists");
+            }
+          }
+        }
+      }
+      return wrong.isEmpty()
+          ? CheckResult.pass()
+          : CheckResult.fail(String.join("; ", wrong), "the run is rolled back from the snapshot");
+    }
+
     @Override
     public StepResult execute(Context ctx, EventSink out) {
       FileOps files = rt.files();

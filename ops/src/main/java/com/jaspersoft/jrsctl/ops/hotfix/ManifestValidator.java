@@ -9,9 +9,12 @@ import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -86,6 +89,14 @@ public final class ManifestValidator {
   public static List<String> semanticProblems(Manifest m) {
     Set<String> problems = new LinkedHashSet<>();
     Set<String> seen = new LinkedHashSet<>();
+    // Assessment item O4: what this hotfix installs, by case-folded normalised key, so a
+    // `replaces` sibling can be checked against the entry's own file and every other payload.
+    Map<String, String> installs = new LinkedHashMap<>();
+    for (Manifest.FileEntry f : m.files()) {
+      if (f.action() != Manifest.Action.DELETE && HotfixPaths.pathProblems(f.path()).isEmpty()) {
+        installs.putIfAbsent(HotfixPaths.key(Path.of(f.path())), f.path());
+      }
+    }
     for (Manifest.FileEntry f : m.files()) {
       String where = "files[" + f.path() + "]";
       for (String p : HotfixPaths.pathProblems(f.path())) {
@@ -106,6 +117,29 @@ public final class ManifestValidator {
       for (String sibling : f.replaces()) {
         if (!HotfixPaths.isPlainFileName(sibling)) {
           problems.add(where + ": replaces entry '" + sibling + "' must be a plain file name");
+          continue;
+        }
+        if (!HotfixPaths.pathProblems(f.path()).isEmpty()) {
+          continue;
+        }
+        Path own = Path.of(f.path());
+        Path siblingPath = own.resolveSibling(sibling);
+        String siblingKey = HotfixPaths.key(siblingPath);
+        if (siblingKey.equals(HotfixPaths.key(own))) {
+          problems.add(
+              where
+                  + ": replaces entry '"
+                  + sibling
+                  + "' names the file itself; the swap would delete the payload it just"
+                  + " installed");
+        } else if (installs.containsKey(siblingKey)) {
+          problems.add(
+              where
+                  + ": replaces entry '"
+                  + sibling
+                  + "' names a file this hotfix installs ("
+                  + installs.get(siblingKey)
+                  + ")");
         }
       }
       if (f.action() == Manifest.Action.DELETE && !f.replaces().isEmpty()) {
