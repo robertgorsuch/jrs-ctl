@@ -15,6 +15,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class StateStoreTest {
@@ -102,7 +104,7 @@ class StateStoreTest {
 
   @Test
   void should_apply_migrations_and_create_the_db_when_opened_on_an_empty_home() {
-    assertThat(store.schemaVersion()).isEqualTo(1);
+    assertThat(store.schemaVersion()).isEqualTo(2);
     assertThat(Files.exists(home.stateDb())).isTrue();
   }
 
@@ -113,7 +115,7 @@ class StateStoreTest {
 
     store = StateStore.open(home, CLOCK);
 
-    assertThat(store.schemaVersion()).isEqualTo(1);
+    assertThat(store.schemaVersion()).isEqualTo(2);
     assertThat(store.run("r1")).isPresent();
     assertThat(store.executeUpdate("UPDATE runs SET operation='x' WHERE run_id='r1'")).isEqualTo(1);
   }
@@ -292,6 +294,82 @@ class StateStoreTest {
     assertThat(store.filesOwnedBy(List.of(lib))).isEmpty();
     assertThatThrownBy(() -> store.updateHotfixState("nope", HotfixState.SUPERSEDED))
         .isInstanceOf(StateStoreException.class);
+  }
+
+  /**
+   * Review finding 1.14: {@code Instant.toString()} emits 0, 3, 6 or 9 fractional digits, so {@code
+   * ...:00Z} sorted after {@code ...:00.500Z} and the LIFO rollback order was wrong within a
+   * second. Timestamps are stored fixed-width at millisecond precision.
+   */
+  @Test
+  void should_order_installed_hotfixes_by_time_at_sub_second_granularity() {
+    HotfixInstalled first = hotfix("HF-A", NOW);
+    HotfixInstalled second = hotfix("HF-B", NOW.plusMillis(500));
+    store.recordHotfixInstalled(second, List.of());
+    store.recordHotfixInstalled(first, List.of());
+
+    assertThat(store.installedHotfixes()).containsExactly(first, second);
+    assertThat(store.hotfixes()).containsExactly(first, second);
+  }
+
+  @Test
+  void should_treat_a_plan_as_expired_when_it_lapsed_less_than_a_second_ago() {
+    Instant expiry = NOW.plusSeconds(1);
+    store.savePlan(
+        new StoredPlan(
+            "p-sub", "hotfix apply", "{}", "{}", "sha256:sub", NOW, expiry, Optional.empty()));
+
+    assertThat(store.consumePlan("p-sub", "r1", expiry.plusMillis(500))).isFalse();
+    assertThat(store.expirePlans(expiry.plusMillis(500))).isEqualTo(1);
+  }
+
+  /**
+   * Review finding 1.15: ownership was answered by comparing raw path strings, so a path spelled
+   * with a redundant segment (or, on Windows, in another letter case) missed the row, and the LIFO
+   * and overlap checks with it. Rows carry a canonical key next to the display path.
+   */
+  @Test
+  void should_find_owned_files_when_queried_by_an_unnormalised_spelling_of_the_path() {
+    Path lib = Path.of("/opt/jrs/WEB-INF/lib/foo.jar");
+    store.recordHotfixInstalled(
+        hotfix("HF-1", NOW),
+        List.of(new HotfixFile("HF-1", lib, "replace", Optional.of("aa"), Optional.of("bb"))));
+
+    Path spelledDifferently = Path.of("/opt/jrs/WEB-INF/./classes/../lib/foo.jar");
+    assertThat(store.filesOwnedBy(List.of(spelledDifferently)))
+        .singleElement()
+        .extracting(HotfixFile::path)
+        .isEqualTo(lib);
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_find_owned_files_regardless_of_letter_case_on_windows() {
+    Path lib = Path.of("C:/opt/jrs/WEB-INF/lib/foo.jar");
+    store.recordHotfixInstalled(
+        hotfix("HF-1", NOW),
+        List.of(new HotfixFile("HF-1", lib, "replace", Optional.of("aa"), Optional.of("bb"))));
+
+    assertThat(store.filesOwnedBy(List.of(Path.of("c:/OPT/jrs/web-inf/LIB/FOO.JAR"))))
+        .singleElement()
+        .extracting(HotfixFile::path)
+        .isEqualTo(lib);
+  }
+
+  @Test
+  void should_unregister_a_customization_when_given_an_unnormalised_spelling_of_its_path() {
+    Path file = Path.of("/opt/jrs/WEB-INF/classes/custom.properties");
+    store.registerCustomization(new Customization(file, "aa", Optional.empty(), NOW));
+
+    assertThat(
+            store.unregisterCustomization(Path.of("/opt/jrs/WEB-INF/./classes/custom.properties")))
+        .isTrue();
+    assertThat(store.customizations()).isEmpty();
+  }
+
+  private static HotfixInstalled hotfix(String id, Instant at) {
+    return new HotfixInstalled(
+        id, "1.0", "Fix " + id, "r1", Optional.empty(), HotfixState.INSTALLED, at);
   }
 
   @Test

@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.core.state;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -23,20 +24,25 @@ import java.util.Locale;
 final class Migrations {
 
   /** Ordered list of scripts; add new versions at the end, never edit an applied script. */
-  static final List<String> SCRIPTS = List.of("V001__init.sql");
+  static final List<String> SCRIPTS =
+      List.of("V001__init.sql", "V002__timestamps_and_path_keys.sql");
 
   private static final String RESOURCE_DIR = "db/migrations/";
 
   private Migrations() {}
 
   static void apply(Connection conn, Clock clock) throws SQLException {
+    apply(conn, clock, SCRIPTS);
+  }
+
+  static void apply(Connection conn, Clock clock, List<String> scripts) throws SQLException {
     try (Statement s = conn.createStatement()) {
       s.execute(
           "CREATE TABLE IF NOT EXISTS schema_version ("
               + "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
     }
     int current = currentVersion(conn);
-    for (String script : SCRIPTS) {
+    for (String script : scripts) {
       int version = versionOf(script);
       if (version <= current) {
         continue;
@@ -48,12 +54,16 @@ final class Migrations {
           for (String sql : statements) {
             s.execute(sql);
           }
+          if (version == 2) {
+            fillPathKeys(conn, "hotfix_files");
+            fillPathKeys(conn, "customizations");
+          }
           try (var ps =
               conn.prepareStatement(
                   "INSERT INTO schema_version(version, name, applied_at) VALUES (?, ?, ?)")) {
             ps.setInt(1, version);
             ps.setString(2, script);
-            ps.setString(3, clock.instant().toString());
+            ps.setString(3, Timestamps.encode(clock.instant()));
             ps.executeUpdate();
           }
           s.execute("COMMIT");
@@ -63,6 +73,29 @@ final class Migrations {
         }
       }
       current = version;
+    }
+  }
+
+  /**
+   * V002 companion: the canonical key cannot be built in SQL (it folds case only where the file
+   * system does), so rows that predate the column get theirs here, inside the same transaction.
+   */
+  private static void fillPathKeys(Connection conn, String table) throws SQLException {
+    List<Object[]> rows = new ArrayList<>();
+    try (Statement s = conn.createStatement();
+        ResultSet rs =
+            s.executeQuery("SELECT rowid, path FROM " + table + " WHERE path_key IS NULL")) {
+      while (rs.next()) {
+        rows.add(new Object[] {rs.getLong(1), rs.getString(2)});
+      }
+    }
+    try (var ps = conn.prepareStatement("UPDATE " + table + " SET path_key=? WHERE rowid=?")) {
+      for (Object[] row : rows) {
+        ps.setString(1, PathKeys.key(Path.of((String) row[1])));
+        ps.setLong(2, (Long) row[0]);
+        ps.addBatch();
+      }
+      ps.executeBatch();
     }
   }
 

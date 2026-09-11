@@ -161,8 +161,8 @@ public final class StateStore implements AutoCloseable {
             ps.setString(3, server.version());
             ps.setString(4, server.edition());
             ps.setString(5, server.tenancy());
-            ps.setString(6, server.firstSeen().toString());
-            ps.setString(7, server.lastSeen().toString());
+            ps.setString(6, Timestamps.encode(server.firstSeen()));
+            ps.setString(7, Timestamps.encode(server.lastSeen()));
             ps.executeUpdate();
           }
           return null;
@@ -207,19 +207,20 @@ public final class StateStore implements AutoCloseable {
             ps.setString(4, hotfix.installedRunId());
             ps.setString(5, hotfix.snapshotRef().orElse(null));
             ps.setString(6, hotfix.state().name());
-            ps.setString(7, hotfix.installedAt().toString());
+            ps.setString(7, Timestamps.encode(hotfix.installedAt()));
             ps.executeUpdate();
           }
           try (PreparedStatement ps =
               c.prepareStatement(
-                  "INSERT INTO hotfix_files(hotfix_id, path, action, before_sha256, after_sha256)"
-                      + " VALUES (?,?,?,?,?)")) {
+                  "INSERT INTO hotfix_files(hotfix_id, path, action, before_sha256, after_sha256,"
+                      + " path_key) VALUES (?,?,?,?,?,?)")) {
             for (HotfixFile f : files) {
               ps.setString(1, hotfix.id());
               ps.setString(2, f.path().toString());
               ps.setString(3, f.action());
               ps.setString(4, f.beforeSha256().orElse(null));
               ps.setString(5, f.afterSha256().orElse(null));
+              ps.setString(6, PathKeys.key(f.path()));
               ps.addBatch();
             }
             ps.executeBatch();
@@ -318,7 +319,7 @@ public final class StateStore implements AutoCloseable {
    */
   public List<HotfixFile> filesOwnedBy(Collection<Path> paths) {
     List<String> wanted =
-        new ArrayList<>(new LinkedHashSet<>(paths.stream().map(Path::toString).toList()));
+        new ArrayList<>(new LinkedHashSet<>(paths.stream().map(PathKeys::key).toList()));
     if (wanted.isEmpty()) {
       return List.of();
     }
@@ -333,7 +334,7 @@ public final class StateStore implements AutoCloseable {
             try (PreparedStatement ps =
                 c.prepareStatement(
                     "SELECT f.* FROM hotfix_files f JOIN hotfixes_installed h ON h.id=f.hotfix_id"
-                        + " WHERE h.state='INSTALLED' AND f.path IN ("
+                        + " WHERE h.state='INSTALLED' AND f.path_key IN ("
                         + placeholders
                         + ") ORDER BY h.installed_at, f.path")) {
               for (int i = 0; i < slice.size(); i++) {
@@ -365,16 +366,24 @@ public final class StateStore implements AutoCloseable {
     write(
         c -> {
           try (PreparedStatement ps =
+              c.prepareStatement("DELETE FROM customizations WHERE path_key=? AND path<>?")) {
+            ps.setString(1, PathKeys.key(customization.path()));
+            ps.setString(2, customization.path().toString());
+            ps.executeUpdate();
+          }
+          try (PreparedStatement ps =
               c.prepareStatement(
-                  "INSERT INTO customizations(path, original_sha256, snapshot_ref, registered_at)"
-                      + " VALUES (?,?,?,?) ON CONFLICT(path) DO UPDATE SET"
+                  "INSERT INTO customizations(path, original_sha256, snapshot_ref, registered_at,"
+                      + " path_key) VALUES (?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET"
                       + " original_sha256=excluded.original_sha256,"
                       + " snapshot_ref=excluded.snapshot_ref,"
-                      + " registered_at=excluded.registered_at")) {
+                      + " registered_at=excluded.registered_at,"
+                      + " path_key=excluded.path_key")) {
             ps.setString(1, customization.path().toString());
             ps.setString(2, customization.originalSha256());
             ps.setString(3, customization.snapshotRef().orElse(null));
-            ps.setString(4, customization.registeredAt().toString());
+            ps.setString(4, Timestamps.encode(customization.registeredAt()));
+            ps.setString(5, PathKeys.key(customization.path()));
             ps.executeUpdate();
           }
           return null;
@@ -385,8 +394,8 @@ public final class StateStore implements AutoCloseable {
     return write(
         c -> {
           try (PreparedStatement ps =
-              c.prepareStatement("DELETE FROM customizations WHERE path=?")) {
-            ps.setString(1, path.toString());
+              c.prepareStatement("DELETE FROM customizations WHERE path_key=?")) {
+            ps.setString(1, PathKeys.key(path));
             return ps.executeUpdate() > 0;
           }
         });
@@ -425,8 +434,8 @@ public final class StateStore implements AutoCloseable {
             ps.setString(3, plan.argsJson());
             ps.setString(4, plan.planJson());
             ps.setString(5, plan.fingerprint());
-            ps.setString(6, plan.createdAt().toString());
-            ps.setString(7, plan.expiresAt().toString());
+            ps.setString(6, Timestamps.encode(plan.createdAt()));
+            ps.setString(7, Timestamps.encode(plan.expiresAt()));
             ps.setString(8, plan.consumedByRunId().orElse(null));
             ps.executeUpdate();
           }
@@ -459,7 +468,7 @@ public final class StateStore implements AutoCloseable {
                       + " AND consumed_by_run_id IS NULL AND expires_at > ?")) {
             ps.setString(1, runId);
             ps.setString(2, planId);
-            ps.setString(3, now.toString());
+            ps.setString(3, Timestamps.encode(now));
             return ps.executeUpdate() == 1;
           }
         });
@@ -472,7 +481,7 @@ public final class StateStore implements AutoCloseable {
           try (PreparedStatement ps =
               c.prepareStatement(
                   "DELETE FROM plans WHERE consumed_by_run_id IS NULL AND expires_at <= ?")) {
-            ps.setString(1, now.toString());
+            ps.setString(1, Timestamps.encode(now));
             return ps.executeUpdate();
           }
         });
@@ -502,7 +511,7 @@ public final class StateStore implements AutoCloseable {
             ps.setString(1, runId);
             ps.setString(2, operation);
             ps.setString(3, planId.orElse(null));
-            ps.setString(4, startedAt.toString());
+            ps.setString(4, Timestamps.encode(startedAt));
             ps.executeUpdate();
           }
           return null;
@@ -516,7 +525,7 @@ public final class StateStore implements AutoCloseable {
               try (PreparedStatement ps =
                   c.prepareStatement(
                       "UPDATE runs SET ended_at=?, terminal_state=?, exit_code=? WHERE run_id=?")) {
-                ps.setString(1, endedAt.toString());
+                ps.setString(1, Timestamps.encode(endedAt));
                 ps.setString(2, state.name());
                 ps.setInt(3, exitCode);
                 ps.setString(4, runId);
@@ -609,7 +618,7 @@ public final class StateStore implements AutoCloseable {
                   c.prepareStatement(
                       "INSERT INTO step_transitions(ts, run_id, step_id, phase, from_state,"
                           + " to_state, detail) VALUES (?,?,?,?,?,?,?)")) {
-                ps.setString(1, ts.toString());
+                ps.setString(1, Timestamps.encode(ts));
                 ps.setString(2, runId);
                 ps.setString(3, stepId);
                 ps.setString(4, phase);
@@ -758,7 +767,7 @@ public final class StateStore implements AutoCloseable {
               try (PreparedStatement ps =
                   c.prepareStatement(
                       "INSERT INTO audit(ts, actor, action, detail) VALUES (?,?,?,?)")) {
-                ps.setString(1, ts.toString());
+                ps.setString(1, Timestamps.encode(ts));
                 ps.setString(2, actor);
                 ps.setString(3, action);
                 ps.setString(4, sanitizedDetail);
@@ -870,6 +879,6 @@ public final class StateStore implements AutoCloseable {
   }
 
   private static Instant instant(ResultSet rs, String column) throws SQLException {
-    return Instant.parse(rs.getString(column));
+    return Timestamps.decode(rs.getString(column));
   }
 }

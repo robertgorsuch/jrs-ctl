@@ -89,8 +89,10 @@ public record HotfixPaths(Path installDir, Path tomcatDir) {
 
   /** True when the manifest path lies under {@code WEB-INF/lib} or {@code WEB-INF/classes}. */
   public static boolean requiresServiceStop(String manifestPath) {
-    String p = "/" + manifestPath.replace('\\', '/');
-    return p.contains("/WEB-INF/lib/") || p.contains("/WEB-INF/classes/");
+    // Case-insensitive on purpose (review finding 1.15): Tomcat serves WEB-INF whatever its
+    // spelling on a case-folding file system, and a manifest must not dodge the stop by case.
+    String p = ("/" + manifestPath.replace('\\', '/')).toLowerCase(Locale.ROOT);
+    return p.contains("/web-inf/lib/") || p.contains("/web-inf/classes/");
   }
 
   /** Why {@code manifestPath} is not acceptable; empty when it is. */
