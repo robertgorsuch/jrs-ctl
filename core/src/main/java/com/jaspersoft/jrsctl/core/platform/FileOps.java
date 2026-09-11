@@ -39,6 +39,12 @@ public interface FileOps {
 
   long freeSpaceBytes(Path anyPathOnVolume) throws IOException;
 
+  /**
+   * Identifies the volume (file store) holding {@code anyPathOnVolume} or its nearest existing
+   * ancestor; two paths with equal ids draw on the same free space.
+   */
+  String volumeId(Path anyPathOnVolume) throws IOException;
+
   boolean isWritable(Path dir);
 
   /** Owner-only check for secret files (0600 on Linux; owner + Administrators only on Windows). */

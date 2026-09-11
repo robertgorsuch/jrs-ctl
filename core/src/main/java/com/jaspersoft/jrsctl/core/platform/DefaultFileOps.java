@@ -138,6 +138,15 @@ public class DefaultFileOps implements FileOps {
 
   @Override
   public long freeSpaceBytes(Path anyPathOnVolume) throws IOException {
+    return fileStore(anyPathOnVolume).getUsableSpace();
+  }
+
+  @Override
+  public String volumeId(Path anyPathOnVolume) throws IOException {
+    return fileStore(anyPathOnVolume).toString();
+  }
+
+  private static FileStore fileStore(Path anyPathOnVolume) throws IOException {
     Path probe = anyPathOnVolume.toAbsolutePath();
     while (probe != null && !Files.exists(probe)) {
       probe = probe.getParent();
@@ -145,8 +154,7 @@ public class DefaultFileOps implements FileOps {
     if (probe == null) {
       throw new NoSuchFileException(anyPathOnVolume.toString());
     }
-    FileStore store = Files.getFileStore(probe);
-    return store.getUsableSpace();
+    return Files.getFileStore(probe);
   }
 
   @Override

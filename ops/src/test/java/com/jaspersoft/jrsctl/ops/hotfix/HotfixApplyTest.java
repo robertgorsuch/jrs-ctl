@@ -325,6 +325,35 @@ class HotfixApplyTest {
   }
 
   /**
+   * Review finding 1.19: staging was a read-only step, so the runner never called its compensation
+   * and every rolled-back run left its staging tree behind.
+   */
+  @Test
+  void should_remove_the_staging_tree_when_the_run_rolls_back_after_staging() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);
+      f.fake.platform.failReplaceOf = Optional.of(f.target(HotfixFixture.FIX));
+
+      RunOutcome outcome = f.run(plan, "r-staging");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(f.fake.home.stagingDir("r-staging")).doesNotExist();
+      assertThat(journal(f, "r-staging"))
+          .containsSubsequence("atomic-swap:ROLLED_BACK", "stage-files:ROLLED_BACK");
+    }
+  }
+
+  @Test
+  void should_remove_the_staging_tree_when_the_run_succeeds() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planApply(f.buildWebInf(), SIGNED), "r-staged"))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+
+      assertThat(f.fake.home.stagingDir("r-staged")).doesNotExist();
+    }
+  }
+
+  /**
    * Review finding 1.13: a service the operator had stopped before the run is not this run's to
    * start. The stop step is a no-op on a stopped service, and its compensation must be one too.
    */

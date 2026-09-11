@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import java.io.IOException;
@@ -80,11 +81,11 @@ final class PointB {
       throws IOException {
     Path parent = target.toAbsolutePath().getParent();
     Path staging = parent.resolve("." + target.getFileName() + ".jrsctl-restore");
-    Archives.deleteRecursively(staging);
+    Trees.deleteRecursively(staging);
     long entries = Archives.extract(os, archive, staging, cancel);
     if (Files.exists(target)) {
       if (Files.exists(aside)) {
-        Archives.deleteRecursively(target);
+        Trees.deleteRecursively(target);
       } else {
         Files.createDirectories(aside.getParent());
         moveTree(target, aside);
@@ -99,7 +100,7 @@ final class PointB {
     if (!Files.exists(aside)) {
       return false;
     }
-    Archives.deleteRecursively(target);
+    Trees.deleteRecursively(target);
     moveTree(aside, target);
     return true;
   }
@@ -123,7 +124,7 @@ final class PointB {
       // cross-volume: copy then delete
     }
     copyTree(source, target);
-    Archives.deleteRecursively(source);
+    Trees.deleteRecursively(source);
   }
 
   /**

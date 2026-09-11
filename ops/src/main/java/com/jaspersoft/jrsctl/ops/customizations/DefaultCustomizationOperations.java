@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.customizations;
 
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotManifest;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
@@ -12,14 +13,10 @@ import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -115,7 +112,7 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
     store.unregisterCustomization(existing.get().path());
     String runId = runIdFor(file);
     try {
-      deleteRecursively(services.home().snapshots().resolve(runId));
+      Trees.deleteRecursively(services.home().snapshots().resolve(runId));
     } catch (IOException e) {
       throw new CustomizationException(
           "row removed but the snapshot under "
@@ -268,34 +265,5 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
 
   private String actor() {
     return System.getProperty("user.name", "unknown");
-  }
-
-  private static void deleteRecursively(Path dir) throws IOException {
-    if (!Files.exists(dir)) {
-      return;
-    }
-    List<Path> files = new ArrayList<>();
-    Files.walkFileTree(
-        dir,
-        new SimpleFileVisitor<>() {
-          @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-            files.add(file);
-            return FileVisitResult.CONTINUE;
-          }
-
-          @Override
-          public FileVisitResult postVisitDirectory(Path directory, IOException error)
-              throws IOException {
-            if (error != null) {
-              throw error;
-            }
-            files.add(directory);
-            return FileVisitResult.CONTINUE;
-          }
-        });
-    for (Path p : files) {
-      Files.delete(p);
-    }
   }
 }

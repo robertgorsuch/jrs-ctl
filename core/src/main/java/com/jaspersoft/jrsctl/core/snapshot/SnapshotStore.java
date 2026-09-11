@@ -3,8 +3,10 @@ package com.jaspersoft.jrsctl.core.snapshot;
 import static java.util.Objects.requireNonNull;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.platform.Durability;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
@@ -81,13 +83,25 @@ public final class SnapshotStore {
     Path dir = snapshotDir(runId, stepId);
     if (Files.exists(dir)) {
       LOG.warn("removing incomplete snapshot directory {}", dir);
-      deleteRecursively(dir);
+      Trees.deleteRecursively(dir);
+    }
+    Set<Path> sources = uniqueSources(paths, base);
+    // Review finding 1.16: the copy must fit on the snapshot volume before it starts.
+    long bytes = 0;
+    for (Path source : sources) {
+      bytes += Files.size(source);
+    }
+    List<String> short_ =
+        DiskSpace.problems(
+            files, List.of(new DiskSpace.Need("snapshot " + runId + "/" + stepId, dir, bytes)));
+    if (!short_.isEmpty()) {
+      throw new IOException("not enough free space for the snapshot: " + String.join("; ", short_));
     }
     Path payload = dir.resolve(Snapshot.PAYLOAD_DIR);
     Files.createDirectories(payload);
 
     List<SnapshotManifest.Entry> entries = new ArrayList<>();
-    for (Path source : uniqueSources(paths, base)) {
+    for (Path source : sources) {
       Path relative = base.relativize(source);
       String manifestPath = manifestPath(relative);
       Path copy = payload.resolve(relative);
@@ -229,7 +243,7 @@ public final class SnapshotStore {
     List<Snapshot> removed = pruneCandidates(retention, maxSnapshots, protectedRunIds);
     for (Snapshot snapshot : removed) {
       LOG.info("pruning snapshot {}/{}", snapshot.runId(), snapshot.stepId());
-      deleteRecursively(snapshot.dir());
+      Trees.deleteRecursively(snapshot.dir());
       deleteIfEmpty(snapshot.dir().getParent());
     }
     return removed;
@@ -345,32 +359,6 @@ public final class SnapshotStore {
       joined.append(element);
     }
     return joined.toString();
-  }
-
-  private static void deleteRecursively(Path dir) throws IOException {
-    if (!Files.exists(dir)) {
-      return;
-    }
-    Files.walkFileTree(
-        dir,
-        new SimpleFileVisitor<>() {
-          @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-              throws IOException {
-            Files.delete(file);
-            return FileVisitResult.CONTINUE;
-          }
-
-          @Override
-          public FileVisitResult postVisitDirectory(Path directory, IOException error)
-              throws IOException {
-            if (error != null) {
-              throw error;
-            }
-            Files.delete(directory);
-            return FileVisitResult.CONTINUE;
-          }
-        });
   }
 
   private static void deleteIfEmpty(Path dir) throws IOException {

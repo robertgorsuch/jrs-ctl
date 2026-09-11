@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -94,6 +96,85 @@ class SnapshotStoreTest {
         .contains("\"runId\" : \"run-1\"")
         .contains("\"sha256\"")
         .doesNotContain("file:/");
+  }
+
+  /**
+   * Review finding 1.16: the store never asked how much room the snapshot volume had, so a large
+   * snapshot could fill the disk half-way through the copy.
+   */
+  @Test
+  void should_refuse_to_create_when_the_snapshot_volume_is_short_of_space() throws IOException {
+    long needed = Files.size(jar) + Files.size(props);
+    JrsctlHome home = new JrsctlHome(homeDir);
+    SnapshotStore starved =
+        new SnapshotStore(home, new ShortVolume(files, needed - 1 + DiskSpace.MARGIN_BYTES), clock);
+
+    assertThatThrownBy(() -> starved.create("r1", "snapshot", List.of(jar, props), install))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("free");
+    assertThat(home.snapshots().resolve("r1")).doesNotExist();
+
+    SnapshotStore fed =
+        new SnapshotStore(home, new ShortVolume(files, needed + DiskSpace.MARGIN_BYTES), clock);
+    assertThat(fed.create("r1", "snapshot", List.of(jar, props), install).manifestFile()).exists();
+  }
+
+  /** Real file operations with a fixed answer for free space. */
+  private record ShortVolume(FileOps real, long free) implements FileOps {
+    @Override
+    public String sha256(Path file) throws IOException {
+      return real.sha256(file);
+    }
+
+    @Override
+    public void atomicReplace(Path source, Path target) throws IOException {
+      real.atomicReplace(source, target);
+    }
+
+    @Override
+    public void copyPreserving(Path source, Path target) throws IOException {
+      real.copyPreserving(source, target);
+    }
+
+    @Override
+    public boolean isLocked(Path file) {
+      return real.isLocked(file);
+    }
+
+    @Override
+    public Optional<String> lockHolder(Path file) {
+      return real.lockHolder(file);
+    }
+
+    @Override
+    public Permissions capturePermissions(Path path) throws IOException {
+      return real.capturePermissions(path);
+    }
+
+    @Override
+    public void applyPermissions(Path path, Permissions permissions) throws IOException {
+      real.applyPermissions(path, permissions);
+    }
+
+    @Override
+    public long freeSpaceBytes(Path anyPathOnVolume) {
+      return free;
+    }
+
+    @Override
+    public String volumeId(Path anyPathOnVolume) {
+      return "short";
+    }
+
+    @Override
+    public boolean isWritable(Path dir) {
+      return real.isWritable(dir);
+    }
+
+    @Override
+    public boolean isOwnerOnly(Path file) throws IOException {
+      return real.isOwnerOnly(file);
+    }
   }
 
   @Test

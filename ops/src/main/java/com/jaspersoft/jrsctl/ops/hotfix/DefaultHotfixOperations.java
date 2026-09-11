@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
@@ -452,7 +453,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
       return body.apply(b);
     } finally {
       try {
-        HotfixBundle.deleteRecursively(dir);
+        Trees.deleteRecursively(dir);
       } catch (IOException e) {
         // a leftover verify directory is harmless; the next run cleans up
       }

@@ -7,8 +7,10 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
@@ -136,7 +138,7 @@ final class ApplySteps {
       HotfixBundle bundle;
       try {
         Path dir = in.bundleDir(ctx);
-        HotfixBundle.deleteRecursively(dir);
+        Trees.deleteRecursively(dir);
         bundle = HotfixBundle.extract(in.bundle(), dir);
       } catch (IOException e) {
         return CheckResult.fail(
@@ -313,7 +315,8 @@ final class ApplySteps {
 
     @Override
     public String detail() {
-      return "free space >= 2x payload, write access, locks, service state"
+      return "free space per volume for staging, snapshot and landing, write access, locks,"
+          + " service state"
           + (in.hasSql() ? ", database connectivity" : "");
     }
 
@@ -333,15 +336,23 @@ final class ApplySteps {
         }
       }
       Path base = in.paths().commonBase();
-      try {
-        long free = files.freeSpaceBytes(base);
-        if (free < 2 * payloadBytes) {
-          problems.add(
-              "only " + free + " bytes free under " + base + "; need " + (2 * payloadBytes));
+      // Review finding 1.16: staging, the snapshot and the landing tree may each sit on a volume
+      // of their own; every volume must hold what will land on it, plus a margin.
+      long snapshotBytes = 0;
+      for (Path existing : in.snapshotPaths()) {
+        try {
+          snapshotBytes += Files.size(existing);
+        } catch (IOException e) {
+          problems.add("cannot size " + existing + " for the snapshot: " + e.getMessage());
         }
-      } catch (IOException e) {
-        problems.add("cannot determine free space under " + base + ": " + e.getMessage());
       }
+      problems.addAll(
+          DiskSpace.problems(
+              files,
+              List.of(
+                  new DiskSpace.Need("staging", in.stagingDir(ctx), payloadBytes),
+                  new DiskSpace.Need("snapshot", ctx.home().snapshots(), snapshotBytes),
+                  new DiskSpace.Need("landing", base, payloadBytes))));
       Set<Path> dirs = new HashSet<>();
       for (Path p : in.touched()) {
         dirs.add(nearestExistingDir(p.getParent()));
@@ -551,6 +562,16 @@ final class ApplySteps {
 
   /** Step 7: copy payload files into the run's staging directory and verify their hashes. */
   static final class StageFiles extends ReadOnly {
+    /**
+     * Review finding 1.19: staging writes a tree under the run directory, so it is a mutation the
+     * runner must compensate; as a read-only step its clean-up was never called and staging trees
+     * accumulated after every rolled-back run.
+     */
+    @Override
+    public boolean mutating() {
+      return true;
+    }
+
     StageFiles(HotfixRuntime rt, ApplyInput in) {
       super(rt, in);
     }
@@ -614,7 +635,7 @@ final class ApplySteps {
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
       try {
-        HotfixBundle.deleteRecursively(in.stagingDir(ctx));
+        Trees.deleteRecursively(in.stagingDir(ctx));
         return StepResult.ok();
       } catch (IOException e) {
         return Failures.recoverable(
@@ -999,6 +1020,19 @@ final class ApplySteps {
           rt.actor(),
           AUDIT_APPLIED,
           id + " version " + in.manifest().version() + " in run " + ctx.runId());
+      try {
+        // The swap moved every payload out of staging; what is left is empty directories.
+        Trees.deleteRecursively(in.stagingDir(ctx));
+      } catch (IOException e) {
+        out.emit(
+            new Event.Log(
+                rt.clock().instant(),
+                ctx.runId(),
+                Optional.of(id()),
+                phase(),
+                Event.Log.Level.WARN,
+                "staging left behind: " + e.getMessage()));
+      }
       return StepResult.ok();
     }
 

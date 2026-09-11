@@ -191,6 +191,11 @@ final class EximFixture implements AutoCloseable {
             }
 
             @Override
+            public String volumeId(Path anyPathOnVolume) throws IOException {
+              return inner.volumeId(anyPathOnVolume);
+            }
+
+            @Override
             public boolean isWritable(Path dir) {
               return inner.isWritable(dir);
             }

@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.hotfix;
 
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -153,7 +154,7 @@ public final class HotfixBundle {
 
   /** Deletes the unpacked directory; safe to call twice. */
   public void delete() throws IOException {
-    deleteRecursively(dir);
+    Trees.deleteRecursively(dir);
   }
 
   /** Bundle-relative name with forward slashes. */
@@ -181,32 +182,6 @@ public final class HotfixBundle {
         throw new IOException("ZIP entry name is not acceptable: " + name);
       }
     }
-  }
-
-  static void deleteRecursively(Path dir) throws IOException {
-    if (!Files.exists(dir)) {
-      return;
-    }
-    Files.walkFileTree(
-        dir,
-        new SimpleFileVisitor<>() {
-          @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-              throws IOException {
-            Files.delete(file);
-            return FileVisitResult.CONTINUE;
-          }
-
-          @Override
-          public FileVisitResult postVisitDirectory(Path directory, IOException error)
-              throws IOException {
-            if (error != null) {
-              throw error;
-            }
-            Files.delete(directory);
-            return FileVisitResult.CONTINUE;
-          }
-        });
   }
 
   private static void copy(InputStream in, Path target, long limit, String name)

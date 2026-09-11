@@ -15,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +45,13 @@ public final class FakePlatform implements Platform {
   public OsFamily os;
   public Path home;
   public long freeSpace = 100L << 30;
+
+  /**
+   * Free space by directory: a path under one of these keys (the deepest wins) reports that much
+   * and names the key as its volume; any other path reports {@link #freeSpace} on volume "default".
+   */
+  public final Map<Path, Long> freeSpaceUnder = new LinkedHashMap<>();
+
   public boolean ownerOnly = true;
   public boolean writable = true;
   public boolean realFiles;
@@ -89,6 +98,13 @@ public final class FakePlatform implements Platform {
   @Override
   public ServiceController services(ServiceConfig cfg) {
     return controller;
+  }
+
+  private Optional<Path> volume(Path path) {
+    Path abs = path.toAbsolutePath().normalize();
+    return freeSpaceUnder.keySet().stream()
+        .filter(k -> abs.startsWith(k.toAbsolutePath().normalize()))
+        .max(Comparator.comparingInt(Path::getNameCount));
   }
 
   @Override
@@ -152,10 +168,33 @@ public final class FakePlatform implements Platform {
 
       @Override
       public long freeSpaceBytes(Path anyPathOnVolume) throws IOException {
-        if (!Files.exists(anyPathOnVolume)) {
-          throw new IOException("no such path " + anyPathOnVolume);
+        Optional<Path> volume = volume(anyPathOnVolume);
+        if (volume.isPresent()) {
+          return freeSpaceUnder.get(volume.get());
         }
+        requireExistingAncestor(anyPathOnVolume);
         return freeSpace;
+      }
+
+      @Override
+      public String volumeId(Path anyPathOnVolume) throws IOException {
+        Optional<Path> volume = volume(anyPathOnVolume);
+        if (volume.isPresent()) {
+          return volume.get().toString();
+        }
+        requireExistingAncestor(anyPathOnVolume);
+        return "default";
+      }
+
+      /** Like the real file ops: a path that does not exist yet is measured where it will be. */
+      private void requireExistingAncestor(Path path) throws IOException {
+        Path probe = path.toAbsolutePath().normalize();
+        while (probe != null && !Files.exists(probe)) {
+          probe = probe.getParent();
+        }
+        if (probe == null) {
+          throw new IOException("no such path " + path);
+        }
       }
 
       @Override

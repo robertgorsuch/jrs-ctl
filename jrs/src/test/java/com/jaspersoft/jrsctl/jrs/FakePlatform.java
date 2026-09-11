@@ -115,6 +115,11 @@ public final class FakePlatform implements Platform {
       }
 
       @Override
+      public String volumeId(Path anyPathOnVolume) {
+        return "fake";
+      }
+
+      @Override
       public boolean isWritable(Path dir) {
         return true;
       }

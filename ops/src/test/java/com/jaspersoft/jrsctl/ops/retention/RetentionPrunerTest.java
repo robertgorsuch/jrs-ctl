@@ -9,12 +9,15 @@ import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.core.state.TerminalState;
 import com.jaspersoft.jrsctl.ops.FakeServices;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -213,6 +216,106 @@ class RetentionPrunerTest {
     assertThat(result.get().removed()).isEmpty();
     assertThat(fake.stateStore().auditRows(5))
         .noneMatch(row -> row.action().equals(RetentionPruner.AUDIT_ACTION));
+  }
+
+  /**
+   * Review finding 1.19: pre-import snapshots are plain zips with no manifest, so the pruner never
+   * saw them. They expire by age like any snapshot.
+   */
+  @Test
+  void should_remove_expired_pre_import_snapshots_when_no_run_is_pending() throws Exception {
+    services(30, 20);
+    Path old = preImportZip("pre-import-old-abc123.zip", Duration.ofDays(40));
+    Path fresh = preImportZip("pre-import-new-def456.zip", Duration.ofDays(1));
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).containsExactly("pre-import/pre-import-old-abc123.zip");
+    assertThat(result.removed().get(0).path()).isEqualTo(old);
+    assertThat(old).doesNotExist();
+    assertThat(fresh).exists();
+    assertThat(result.kept()).isEqualTo(1);
+  }
+
+  /** A pending run's rollback may still need its pre-import snapshot, and the zip names no run. */
+  @Test
+  void should_keep_expired_pre_import_snapshots_while_a_run_is_pending_recovery() throws Exception {
+    services(30, 20);
+    Path old = preImportZip("pre-import-old-abc123.zip", Duration.ofDays(40));
+    fake.stateStore()
+        .recordRunStart("r-pending", "import", Optional.empty(), now.minus(Duration.ofHours(1)));
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).isEmpty();
+    assertThat(old).exists();
+    assertThat(result.protectedCount()).isEqualTo(1);
+  }
+
+  /**
+   * Upgrade sets (webapp archives, full export, manifest) live beside the run's step snapshots but
+   * carry no snapshot manifest. They follow the run's protection: the most recent successful
+   * upgrade keeps its set, an older unprotected run loses it once it has passed retention.
+   */
+  @Test
+  void should_remove_the_upgrade_set_when_its_run_is_expired_and_unprotected() throws Exception {
+    services(30, 20);
+    Path oldSet = upgradeSet("r-up-old", Duration.ofDays(40));
+    Path newSet = upgradeSet("r-up-new", Duration.ofDays(1));
+    upgradeRun("r-up-old", Duration.ofDays(40));
+    upgradeRun("r-up-new", Duration.ofDays(1));
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).containsExactly("r-up-old/*");
+    assertThat(oldSet).doesNotExist();
+    assertThat(newSet).exists();
+    assertThat(result.kept()).isEqualTo(1);
+    assertThat(result.protectedCount()).isEqualTo(1);
+  }
+
+  @Test
+  void should_report_but_keep_loose_artefacts_when_dry_run() throws Exception {
+    services(30, 20);
+    Path old = preImportZip("pre-import-old-abc123.zip", Duration.ofDays(40));
+    Path oldSet = upgradeSet("r-up-old", Duration.ofDays(40));
+    upgradeRun("r-up-old", Duration.ofDays(40));
+    upgradeRun("r-up-new", Duration.ofDays(1));
+
+    RetentionPruner.Result result = pruner().prune(true);
+
+    assertThat(ids(result))
+        .containsExactlyInAnyOrder("pre-import/pre-import-old-abc123.zip", "r-up-old/*");
+    assertThat(old).exists();
+    assertThat(oldSet).exists();
+  }
+
+  private Path preImportZip(String name, Duration age) throws IOException {
+    Path dir = Files.createDirectories(fake.home.snapshots().resolve("pre-import"));
+    Path zip = dir.resolve(name);
+    Files.writeString(zip, "not really a zip", StandardCharsets.UTF_8);
+    Files.setLastModifiedTime(zip, FileTime.from(now.minus(age)));
+    return zip;
+  }
+
+  private Path upgradeSet(String runId, Duration age) throws IOException {
+    Path set = fake.home.snapshots().resolve(runId);
+    Path archives = Files.createDirectories(set.resolve("backup-webapp"));
+    Files.writeString(archives.resolve("webapp.zip"), "archive", StandardCharsets.UTF_8);
+    Files.writeString(set.resolve("upgrade.json"), "{}", StandardCharsets.UTF_8);
+    FileTime at = FileTime.from(now.minus(age));
+    for (Path p :
+        List.of(archives.resolve("webapp.zip"), set.resolve("upgrade.json"), archives, set)) {
+      Files.setLastModifiedTime(p, at);
+    }
+    return set;
+  }
+
+  private void upgradeRun(String runId, Duration age) {
+    Instant started = now.minus(age);
+    fake.stateStore()
+        .recordRunStart(runId, UpgradeOperations.UPGRADE_OPERATION, Optional.empty(), started);
+    fake.stateStore().recordRunEnd(runId, started.plusSeconds(60), TerminalState.SUCCEEDED, 0);
   }
 
   @Test

@@ -8,7 +8,10 @@ import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -17,8 +20,21 @@ public final class FakePlatform implements Platform {
 
   private final Path home;
 
+  /**
+   * Free space by directory: a path under one of these keys (the deepest wins) reports that much
+   * and names the key as its volume; any other path reports unlimited space on volume "fake".
+   */
+  public final Map<Path, Long> freeSpaceUnder = new LinkedHashMap<>();
+
   public FakePlatform(Path home) {
     this.home = home;
+  }
+
+  private Optional<Path> volume(Path path) {
+    Path abs = path.toAbsolutePath().normalize();
+    return freeSpaceUnder.keySet().stream()
+        .filter(k -> abs.startsWith(k.toAbsolutePath().normalize()))
+        .max(Comparator.comparingInt(Path::getNameCount));
   }
 
   @Override
@@ -94,7 +110,12 @@ public final class FakePlatform implements Platform {
 
       @Override
       public long freeSpaceBytes(Path anyPathOnVolume) {
-        return Long.MAX_VALUE;
+        return volume(anyPathOnVolume).map(freeSpaceUnder::get).orElse(Long.MAX_VALUE);
+      }
+
+      @Override
+      public String volumeId(Path anyPathOnVolume) {
+        return volume(anyPathOnVolume).map(Path::toString).orElse("fake");
       }
 
       @Override

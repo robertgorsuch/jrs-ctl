@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
@@ -313,6 +314,28 @@ final class BackupSteps {
         return CheckResult.fail(
             "webapp directory " + in.webappDir() + " does not exist",
             "check server.tomcatDir and server.webappName");
+      }
+      // Review finding 1.16: the archives are at most as large as the trees they hold; the
+      // snapshot volume must have that much room, plus the margin, before archiving starts.
+      long bytes;
+      try {
+        bytes = DiskSpace.treeBytes(in.webappDir());
+        if (Files.isDirectory(in.installedBuildomatic())) {
+          bytes += DiskSpace.treeBytes(in.installedBuildomatic());
+        }
+      } catch (IOException e) {
+        return CheckResult.fail(
+            "cannot size the trees to archive: " + e.getMessage(),
+            "check read access under " + in.webappDir());
+      }
+      List<String> problems =
+          DiskSpace.problems(
+              rt.files(),
+              List.of(new DiskSpace.Need("webapp backup", in.snapshots(ctx).archivesDir(), bytes)));
+      if (!problems.isEmpty()) {
+        return CheckResult.fail(
+            String.join("; ", problems),
+            "free space under " + rt.home().snapshots() + " or move the jrsctl home");
       }
       return CheckResult.pass();
     }

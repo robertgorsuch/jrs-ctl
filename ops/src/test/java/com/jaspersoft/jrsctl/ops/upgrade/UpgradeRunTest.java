@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
@@ -229,7 +230,7 @@ class UpgradeRunTest {
           .isInstanceOf(RunOutcome.Succeeded.class);
       Path config = f.fake.home.snapshots().resolve("r-up-pruned").resolve(SnapshotSet.CONFIG_STEP);
       assertThat(config).isDirectory();
-      Archives.deleteRecursively(config);
+      Trees.deleteRecursively(config);
 
       assertThatThrownBy(() -> f.ops().planRollback("r-up-pruned", RollbackPoint.B))
           .isInstanceOf(UpgradeException.class)

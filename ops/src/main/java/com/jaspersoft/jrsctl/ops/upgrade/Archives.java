@@ -229,33 +229,6 @@ final class Archives {
     return List.copyOf(names);
   }
 
-  /** Deletes a directory tree; a missing directory is not an error. */
-  static void deleteRecursively(Path dir) throws IOException {
-    if (!Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) {
-      return;
-    }
-    Files.walkFileTree(
-        dir,
-        new SimpleFileVisitor<>() {
-          @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-              throws IOException {
-            Files.delete(file);
-            return FileVisitResult.CONTINUE;
-          }
-
-          @Override
-          public FileVisitResult postVisitDirectory(Path directory, IOException error)
-              throws IOException {
-            if (error != null) {
-              throw error;
-            }
-            Files.delete(directory);
-            return FileVisitResult.CONTINUE;
-          }
-        });
-  }
-
   @FunctionalInterface
   private interface EntryWriter {
     void write(Path file, String relative, BasicFileAttributes attrs) throws IOException;
