@@ -38,7 +38,7 @@ class ConsoleAuthTest {
   }
 
   private ConsoleAuth tokenMode(String bind) {
-    return new ConsoleAuth(token, Config.ConsoleAuthMode.TOKEN, Optional.empty(), bind, 7420);
+    return new ConsoleAuth(token, Config.ConsoleAuthMode.TOKEN, Optional.empty(), bind, () -> 7420);
   }
 
   @Test
@@ -73,7 +73,7 @@ class ConsoleAuthTest {
   void should_require_basic_token_and_password_when_mode_is_local() {
     ConsoleAuth auth =
         new ConsoleAuth(
-            token, Config.ConsoleAuthMode.LOCAL, Optional.of(PASSWORD), "127.0.0.1", 7420);
+            token, Config.ConsoleAuthMode.LOCAL, Optional.of(PASSWORD), "127.0.0.1", () -> 7420);
     assertThat(auth.authorised("Basic " + basic(token.text(), "operator-pw"))).isTrue();
     assertThat(auth.authorised("Basic " + basic(token.text(), "wrong"))).isFalse();
     assertThat(auth.authorised("Basic " + basic("not-the-token", "operator-pw"))).isFalse();
@@ -86,7 +86,7 @@ class ConsoleAuthTest {
     assertThatThrownBy(
             () ->
                 new ConsoleAuth(
-                    token, Config.ConsoleAuthMode.LOCAL, Optional.empty(), "127.0.0.1", 7420))
+                    token, Config.ConsoleAuthMode.LOCAL, Optional.empty(), "127.0.0.1", () -> 7420))
         .isInstanceOf(ConsoleRefusedException.class)
         .hasMessageContaining("console.auth.passwordRef");
   }

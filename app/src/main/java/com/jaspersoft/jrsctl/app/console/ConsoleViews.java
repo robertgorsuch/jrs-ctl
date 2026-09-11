@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.IntSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,14 +64,15 @@ final class ConsoleViews {
   private final RunManager runs;
   private final DoctorCache doctor;
   private final String bind;
-  private final int port;
+  private final IntSupplier port;
 
-  ConsoleViews(Services services, RunManager runs, DoctorCache doctor, String bind, int port) {
+  ConsoleViews(
+      Services services, RunManager runs, DoctorCache doctor, String bind, IntSupplier port) {
     this.services = Objects.requireNonNull(services, "services");
     this.runs = Objects.requireNonNull(runs, "runs");
     this.doctor = Objects.requireNonNull(doctor, "doctor");
     this.bind = Objects.requireNonNull(bind, "bind");
-    this.port = port;
+    this.port = Objects.requireNonNull(port, "port");
   }
 
   private StateStore store() {
@@ -86,7 +88,7 @@ final class ConsoleViews {
     tool.put("version", Version.current().version());
     tool.put("matrixVersion", Integer.toString(services.matrix().matrixVersion()));
     m.put("tool", tool);
-    m.put("bind", bind + ":" + port);
+    m.put("bind", bind + ":" + port.getAsInt());
     m.put("networkMode", services.config().network().mode().yamlValue());
     Optional<RunRecord> last =
         store.runs(RUN_LIMIT).stream().filter(r -> r.terminalState().isPresent()).findFirst();

@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.IntSupplier;
 
 /**
  * The gate in front of every {@code /api/*} request (spec §11.2). Invariants: the {@code Host}
@@ -34,19 +35,19 @@ public final class ConsoleAuth implements Handler {
   private final Config.ConsoleAuthMode mode;
   private final Optional<byte[]> password;
   private final Set<String> allowedHosts;
-  private final int port;
+  private final IntSupplier port;
 
   ConsoleAuth(
       ConsoleToken token,
       Config.ConsoleAuthMode mode,
       Optional<byte[]> password,
       String bind,
-      int port) {
+      IntSupplier port) {
     this.token = Objects.requireNonNull(token, "token");
     this.mode = Objects.requireNonNull(mode, "mode");
     this.password = Objects.requireNonNull(password, "password");
     this.allowedHosts = allowedHosts(bind);
-    this.port = port;
+    this.port = Objects.requireNonNull(port, "port");
     if (mode == Config.ConsoleAuthMode.LOCAL && password.isEmpty()) {
       throw new ConsoleRefusedException(
           "console.auth.mode is local but console.auth.passwordRef is not set");
@@ -88,7 +89,7 @@ public final class ConsoleAuth implements Handler {
     }
     if (portPart.isPresent()) {
       try {
-        if (Integer.parseInt(portPart.get()) != port) {
+        if (Integer.parseInt(portPart.get()) != port.getAsInt()) {
           return false;
         }
       } catch (NumberFormatException e) {

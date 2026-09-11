@@ -133,21 +133,12 @@ public final class ConsoleServer implements AutoCloseable {
                             return connector;
                           }));
             });
-    try {
-      if (ssl.isPresent()) {
-        javalin.start();
-      } else {
-        javalin.start(bind, requestedPort);
-      }
-    } catch (RuntimeException e) {
-      issued.close();
-      token = Optional.empty();
-      throw new ConsoleRefusedException(
-          "cannot listen on " + bind + ":" + requestedPort + ": " + rootMessage(e), e);
-    }
-    port = javalin.port();
-    ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, port);
-    ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, port);
+    // Every filter and route is registered before the listener opens. Registering after start
+    // left a window in which the static UI answered but /api/* was 404 and unguarded, which a
+    // client polling from another process (the phase 6 acceptance test) can hit. The port is
+    // read lazily because an ephemeral port is only known once Jetty has bound it.
+    ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, javalin::port);
+    ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, javalin::port);
     SupportBundle bundle = new SupportBundle(services, views, doctor);
     ConsoleApi api =
         new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle, heartbeats);
@@ -165,6 +156,19 @@ public final class ConsoleServer implements AutoCloseable {
           }
         });
     api.register(javalin);
+    try {
+      if (ssl.isPresent()) {
+        javalin.start();
+      } else {
+        javalin.start(bind, requestedPort);
+      }
+    } catch (RuntimeException e) {
+      issued.close();
+      token = Optional.empty();
+      throw new ConsoleRefusedException(
+          "cannot listen on " + bind + ":" + requestedPort + ": " + rootMessage(e), e);
+    }
+    port = javalin.port();
     app = Optional.of(javalin);
     try {
       services
