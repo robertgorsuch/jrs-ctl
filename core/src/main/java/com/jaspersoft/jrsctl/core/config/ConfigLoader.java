@@ -288,7 +288,8 @@ public final class ConfigLoader {
                 text(proxy, "host"),
                 integer(proxy, "port"),
                 text(proxy, "username"),
-                text(proxy, "passwordRef").map(v -> secretRef("network.proxy.passwordRef", v))),
+                text(proxy, "passwordRef").map(v -> secretRef("network.proxy.passwordRef", v)),
+                strings(proxy, "noProxy")),
             new Config.TrustStore(
                 text(trust, "path").map(v -> path("network.trustStore.path", v)),
                 text(trust, "passwordRef")
@@ -317,6 +318,20 @@ public final class ConfigLoader {
     return v == null || v.isNull() || v.isMissingNode()
         ? Optional.empty()
         : Optional.of(v.asText());
+  }
+
+  private static List<String> strings(JsonNode parent, String field) {
+    JsonNode v = parent.path(field);
+    if (!v.isArray()) {
+      return List.of();
+    }
+    List<String> out = new ArrayList<>();
+    for (JsonNode item : v) {
+      if (!item.isNull() && !item.asText().isBlank()) {
+        out.add(item.asText().strip());
+      }
+    }
+    return List.copyOf(out);
   }
 
   private static Optional<Integer> integer(JsonNode parent, String field) {

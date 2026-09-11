@@ -596,6 +596,46 @@ class RunnerTest {
     assertThat(fx.sink.types()).endsWith("RunCancelled");
   }
 
+  /**
+   * Review finding 2.2: a server that answers 429 or 503 with {@code Retry-After} says when to come
+   * back; a retryable failure may carry that delay and the runner waits at least that long.
+   */
+  @Test
+  void should_wait_at_least_the_retry_after_delay_when_a_retryable_failure_carries_one() {
+    Context ctx = fx.context(RUN);
+    List<Duration> slept = new ArrayList<>();
+    Sleeper recording = slept::add;
+    Runner runner = new Runner(fx.store, fx.bus, fx.clock, recording);
+    RetryPolicy policy = new RetryPolicy(3, Duration.ZERO, 1.0, Duration.ZERO, 0);
+    AtomicInteger calls = new AtomicInteger();
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply")
+                .retry(policy)
+                .onExecute(
+                    (c, out) ->
+                        calls.incrementAndGet() == 1
+                            ? StepResult.failed(
+                                new StepFailure.Retryable(
+                                    "503",
+                                    List.of(),
+                                    List.of(),
+                                    List.of(),
+                                    "wait",
+                                    Optional.of(Duration.ofSeconds(3))))
+                            : StepResult.ok()));
+
+    RunOutcome outcome = runner.run(plan, ctx, EngineFixture.fingerprint(), RunOptions.DEFAULT);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    Duration total = slept.stream().reduce(Duration.ZERO, Duration::plus);
+    assertThat(total).isGreaterThanOrEqualTo(Duration.ofSeconds(3));
+    assertThat(fx.sink.of(Event.StepRetry.class))
+        .singleElement()
+        .satisfies(r -> assertThat(r.delayMillis()).isGreaterThanOrEqualTo(3000));
+  }
+
   @Test
   void should_end_the_run_as_failed_when_the_journal_cannot_be_written() {
     Plan plan =

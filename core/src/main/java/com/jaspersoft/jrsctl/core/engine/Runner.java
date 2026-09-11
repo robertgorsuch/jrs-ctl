@@ -328,7 +328,10 @@ public final class Runner {
         StepFailure sf = failure.get();
         if (sf instanceof StepFailure.Retryable retryable && attempt < policy.maxAttempts()) {
           attempt++;
-          Duration delay = policy.delayBefore(attempt);
+          // A Retry-After from the server is a floor under the policy's backoff (review 2.2).
+          Duration backoff = policy.delayBefore(attempt);
+          Duration delay =
+              retryable.retryAfter().filter(d -> d.compareTo(backoff) > 0).orElse(backoff);
           transition(
               step,
               StepState.RUNNING,

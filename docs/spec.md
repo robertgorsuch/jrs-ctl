@@ -178,7 +178,7 @@ vendor:
   javaHome: /opt/jasperreports-server/java   # JDK used to run buildomatic; never jrsctl's bundled runtime
 network:
   mode: isolated                        # isolated | public
-  proxy: { host, port, username, passwordRef }
+  proxy: { host, port, username, passwordRef, noProxy: [host | .suffix] }
   trustStore: { path, passwordRef }
 console:
   bind: 127.0.0.1

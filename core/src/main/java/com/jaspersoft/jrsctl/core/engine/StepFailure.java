@@ -2,7 +2,10 @@ package com.jaspersoft.jrsctl.core.engine;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A step's own classification of why it failed (spec §6.1). The {@code Runner} never infers the
@@ -23,14 +26,32 @@ public sealed interface StepFailure
 
   String nextAction();
 
-  /** Transient; the Runner applies the step's {@link RetryPolicy}. */
+  /**
+   * Transient; the Runner applies the step's {@link RetryPolicy}. {@code retryAfter}, when the
+   * server named a delay ({@code Retry-After}), is a floor under the policy's backoff.
+   */
   record Retryable(
       String cause,
       List<Path> affectedPaths,
       List<URI> affectedUris,
       List<Path> backups,
-      String nextAction)
-      implements StepFailure {}
+      String nextAction,
+      Optional<Duration> retryAfter)
+      implements StepFailure {
+
+    public Retryable {
+      Objects.requireNonNull(retryAfter, "retryAfter");
+    }
+
+    public Retryable(
+        String cause,
+        List<Path> affectedPaths,
+        List<URI> affectedUris,
+        List<Path> backups,
+        String nextAction) {
+      this(cause, affectedPaths, affectedUris, backups, nextAction, Optional.empty());
+    }
+  }
 
   /** Permanent for this run; the Runner compensates back to the nearest phase boundary. */
   record Recoverable(

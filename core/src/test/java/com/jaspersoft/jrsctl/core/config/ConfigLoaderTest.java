@@ -122,6 +122,27 @@ class ConfigLoaderTest {
     assertThat(c.backups().maxSnapshots()).isEqualTo(20);
   }
 
+  /** Review finding 2.9: hosts that must not go through the proxy are listed under the proxy. */
+  @Test
+  void should_parse_the_proxy_bypass_list_when_given() throws IOException {
+    write(
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+        network:
+          proxy:
+            host: proxy.local
+            port: 3128
+            noProxy: [".corp.example", "intranet"]
+        """);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThat(c.network().proxy().host()).contains("proxy.local");
+    assertThat(c.network().proxy().noProxy()).containsExactly(".corp.example", "intranet");
+    assertThat(Config.Proxy.empty().noProxy()).isEmpty();
+  }
+
   @Test
   void should_map_camel_case_paths_to_upper_snake_env_keys() {
     assertThat(ConfigLoader.envKey("server.baseUrl")).isEqualTo("JRSCTL_SERVER_BASE_URL");

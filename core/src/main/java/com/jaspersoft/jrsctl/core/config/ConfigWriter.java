@@ -98,6 +98,10 @@ public final class ConfigWriter {
     c.network().proxy().port().ifPresent(v -> proxy.put("port", v.intValue()));
     c.network().proxy().username().ifPresent(v -> proxy.put("username", v));
     ref(c.network().proxy().passwordRef(), proxy);
+    if (!c.network().proxy().noProxy().isEmpty()) {
+      var noProxy = proxy.putArray("noProxy");
+      c.network().proxy().noProxy().forEach(noProxy::add);
+    }
     ObjectNode trust = network.putObject("trustStore");
     path(c.network().trustStore().path(), trust, "path");
     ref(c.network().trustStore().passwordRef(), trust);

@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -276,18 +277,32 @@ public record Config(
     }
   }
 
-  /** The {@code network.proxy:} block. */
+  /**
+   * The {@code network.proxy:} block. {@code noProxy} lists hosts that bypass the proxy: a bare
+   * host name matches exactly, a {@code .suffix} matches every host under it; loopback always
+   * bypasses.
+   */
   public record Proxy(
       Optional<String> host,
       Optional<Integer> port,
       Optional<String> username,
-      Optional<SecretRef> passwordRef) {
+      Optional<SecretRef> passwordRef,
+      List<String> noProxy) {
 
     public Proxy {
       Objects.requireNonNull(host, "host");
       Objects.requireNonNull(port, "port");
       Objects.requireNonNull(username, "username");
       Objects.requireNonNull(passwordRef, "passwordRef");
+      noProxy = List.copyOf(Objects.requireNonNull(noProxy, "noProxy"));
+    }
+
+    public Proxy(
+        Optional<String> host,
+        Optional<Integer> port,
+        Optional<String> username,
+        Optional<SecretRef> passwordRef) {
+      this(host, port, username, passwordRef, List.of());
     }
 
     public static Proxy empty() {

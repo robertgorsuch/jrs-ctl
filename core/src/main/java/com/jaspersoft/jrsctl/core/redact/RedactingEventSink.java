@@ -93,7 +93,8 @@ public final class RedactingEventSink implements EventSink {
               f.affectedPaths(),
               strip(f.affectedUris()),
               f.backups(),
-              r(f.nextAction()));
+              r(f.nextAction()),
+              f.retryAfter());
       case StepFailure.Recoverable f ->
           new StepFailure.Recoverable(
               r(f.cause()),
