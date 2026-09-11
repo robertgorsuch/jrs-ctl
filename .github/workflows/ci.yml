@@ -89,7 +89,9 @@ jobs:
       # The vulnerability database (H2, about 500 MB) is kept between runs: every run restores the
       # newest cache and saves its own, so only the "modified" feed is fetched. A full load from
       # the NVD REST API took over two hours at the API's throttled rate and timed out this job.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # restore/save rather than the combined action: the combined action saves only when the job
+      # succeeds, and this job fails by design while a High advisory is open.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: dependency-check-data-${{ github.run_id }}
@@ -113,6 +115,11 @@ jobs:
           -DfailBuildOnCVSS=7
           -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
           "-DnvdDatafeedUrl=https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: always()
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: dependency-check-data-${{ github.run_id }}
 
   package:
     name: package (jlink image, archive, SBOM, portable smoke) (${{ matrix.platform }})
