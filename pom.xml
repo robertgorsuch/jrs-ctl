@@ -30,7 +30,7 @@
     <picocli.version>4.7.6</picocli.version>
     <javalin.version>6.4.0</javalin.version>
     <jackson.version>2.22.2</jackson.version>
-    <slf4j.version>2.0.13</slf4j.version>
+    <slf4j.version>2.0.19</slf4j.version>
     <logback.version>1.5.19</logback.version>
     <logstash-logback.version>7.4</logstash-logback.version>
     <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
