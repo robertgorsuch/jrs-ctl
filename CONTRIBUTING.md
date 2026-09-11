@@ -46,7 +46,13 @@ drives the packaged jar the way an operator would.
   sources, so a deprecation that the new dependency introduces under `-Werror` shows up in CI's
   fresh checkout and not on your machine.
 - Format before committing: `scripts\mvn.cmd spotless:apply`. The pre-commit hook in `.githooks`
-  runs the Spotless check; enable it once with `git config core.hooksPath .githooks`.
+  runs the Spotless check on the staged Java files only; the build scripts set
+  `core.hooksPath` to `.githooks` the first time they run, so the hook is active after one
+  `scripts\mvn.cmd` call (or `git config core.hooksPath .githooks` by hand). Git runs the hook
+  through its own `sh` on Windows too.
+- Never commit per-developer files: `.claude/` (agent plugins and permissions) and
+  `tmp-real-home/` (a scratch home for manual checks against a real server) are ignored, and
+  `Phase0SkeletonTest` fails if either is tracked.
 - Tests tagged `needs-jrs` (a real JasperReports Server) or `needs-docker` are excluded by default;
   they are release gates, not phase gates (spec §0 rule 10).
 - Distribution: `scripts\build-dist.cmd` or `scripts/build-dist.sh` (Maven profile `dist`).

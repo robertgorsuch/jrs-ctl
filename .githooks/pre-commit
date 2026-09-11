@@ -1,38 +1,40 @@
 #!/usr/bin/env sh
-# Pre-commit hook to verify Google Java Format compliance via Spotless before committing.
+# Pre-commit hook: google-java-format (Spotless) check on the staged Java files only.
+#
+# Wired automatically: scripts/mvn.sh and scripts\mvn.cmd set core.hooksPath=.githooks the first
+# time they run (git config core.hooksPath .githooks does the same by hand). Git runs this file
+# through sh on every platform, Windows included, so there is no .cmd twin. Only the files that
+# are part of the commit are checked (assessment item B3: the old hook ran Spotless over the whole
+# reactor on every commit); a commit with no Java files costs nothing.
+set -eu
 
-echo "Running pre-commit spotless check..."
+cd "$(git rev-parse --show-toplevel)"
 
-# Resolve repository root
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$REPO_ROOT" ]; then
-  REPO_ROOT="."
-fi
-
-cd "$REPO_ROOT" || exit 1
-
-if [ -f "scripts/mvn.sh" ]; then
-  MVN_CMD="scripts/mvn.sh"
-elif [ -f "./mvnw" ]; then
-  MVN_CMD="./mvnw"
-elif command -v mvn >/dev/null 2>&1; then
-  MVN_CMD="mvn"
-else
-  echo "Warning: Maven or mvnw not found in PATH; skipping pre-commit formatting check."
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.java')
+if [ -z "$files" ]; then
   exit 0
 fi
 
-$MVN_CMD spotless:check
-EXIT_CODE=$?
+# Spotless matches each -DspotlessFiles entry as a regex against the absolute path, so every
+# staged path becomes ".*[\/]<path with . escaped and / accepting either separator>".
+pattern=""
+for f in $files; do
+  esc=$(printf '%s' "$f" | sed -e 's/[.]/\\./g' -e 's#/#[\\\\/]#g')
+  pattern="${pattern:+$pattern,}.*[\\\\/]$esc"
+done
 
-if [ $EXIT_CODE -ne 0 ]; then
-  echo ""
-  echo "Error: Spotless formatting check failed."
-  echo "To automatically format Java source files, run:"
-  echo "  ./mvnw spotless:apply"
-  echo "  (or 'scripts\\mvn.cmd spotless:apply' on Windows)"
-  echo ""
-  exit $EXIT_CODE
+if [ -f scripts/mvn.sh ]; then
+  MVN=scripts/mvn.sh
+elif [ -f ./mvnw ]; then
+  MVN=./mvnw
+else
+  MVN=mvn
 fi
 
-exit 0
+echo "pre-commit: Spotless check on $(printf '%s\n' "$files" | wc -l | tr -d ' ') staged Java file(s)"
+if ! "$MVN" -q spotless:check -DspotlessFiles="$pattern"; then
+  echo ""
+  echo "error: Spotless formatting check failed for staged files."
+  echo "Run scripts/mvn.sh spotless:apply (scripts\\mvn.cmd spotless:apply on Windows), stage, and commit again."
+  exit 1
+fi

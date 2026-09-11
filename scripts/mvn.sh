@@ -2,6 +2,11 @@
 # Runs Maven with the JDK 21 this project requires. Usage: scripts/mvn.sh verify
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Wire the repository's git hooks once (staged-files Spotless check on commit, .githooks/):
+# quiet, idempotent, never overrides a path the developer set themselves.
+if command -v git >/dev/null 2>&1 && [ -z "$(git config --get core.hooksPath 2>/dev/null || true)" ]; then
+  git config core.hooksPath .githooks 2>/dev/null || true
+fi
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     exec cmd.exe //c "scripts\\mvn.cmd $*"

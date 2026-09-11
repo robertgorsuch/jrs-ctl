@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -156,6 +157,37 @@ class Phase0SkeletonTest {
           .doesNotContainIgnoringCase("Apache License, Version 2.0")
           .doesNotContainIgnoringCase("all rights reserved");
     }
+  }
+
+  /**
+   * Repository hygiene (assessment items B3 and the tracked scratch config): no personal tool
+   * settings or live-server scratch home in the index; the pre-commit hook is executable in the
+   * index (git runs it as a program), checks only the staged Java files, and the build scripts wire
+   * {@code core.hooksPath} so the hook is not merely documented.
+   */
+  @Test
+  void repo_tracks_no_personal_files_and_wires_an_executable_staged_only_hook() throws Exception {
+    Path root = repoRoot();
+    Process git =
+        new ProcessBuilder("git", "ls-files", "-s")
+            .directory(root.toFile())
+            .redirectErrorStream(true)
+            .start();
+    String index = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    assertThat(git.waitFor()).as(index).isZero();
+    List<String> tracked = index.lines().toList();
+
+    assertThat(tracked.stream().map(l -> l.substring(l.indexOf('	') + 1)))
+        .noneMatch(p -> p.startsWith(".claude/") || p.startsWith("tmp-real-home/"));
+    assertThat(tracked)
+        .as("the hook is tracked with the executable bit")
+        .anyMatch(l -> l.startsWith("100755 ") && l.endsWith("	.githooks/pre-commit"));
+    assertThat(tracked).noneMatch(l -> l.endsWith(".githooks/pre-commit.cmd"));
+
+    String hook = Files.readString(root.resolve(".githooks/pre-commit"));
+    assertThat(hook).contains("--cached").contains("spotlessFiles");
+    assertThat(Files.readString(root.resolve("scripts/mvn.cmd"))).contains("core.hooksPath");
+    assertThat(Files.readString(root.resolve("scripts/mvn.sh"))).contains("core.hooksPath");
   }
 
   private static Path repoRoot() {

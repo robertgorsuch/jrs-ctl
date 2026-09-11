@@ -12,15 +12,8 @@ design/canvas/jrsctl-screens.html
 hs_err_pid*
 .flattened-pom.xml
 
-# agent worktrees live inside the repo dir
-.claude/worktrees/
+# per-developer agent tooling: plugin lists, permissions, worktrees (never shared)
+.claude/
 
-# live-server scratch home: config.yaml is tracked, state and run artifacts are not
-/tmp-real-home/runs/
-/tmp-real-home/runs.lock
-/tmp-real-home/keys/
-/tmp-real-home/logs/
-/tmp-real-home/snapshots/
-/tmp-real-home/*.db
-/tmp-real-home/*.db-wal
-/tmp-real-home/*.db-shm
+# live-server scratch home used for manual checks against a real install (never shared)
+/tmp-real-home/
