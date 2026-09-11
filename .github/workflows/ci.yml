@@ -104,17 +104,15 @@ jobs:
             echo "::error::the NVD_API_KEY repository secret is not set; the dependency audit cannot run (spec §20)"
             exit 1
           fi
-      # Bulk data comes from the project's daily-refreshed NVD mirror (JSON 2.0 feeds); the key is
-      # handed over by environment-variable name so it never appears on a command line, and stays
-      # required so the job can fall back to the REST API by dropping nvdDatafeedUrl.
+      # The plugin configuration lives in the root pom (pluginManagement) so this job and a local
+      # `-Pdependency-check` run judge the same thing: what ships (spec §20), at CVSS 7, with bulk
+      # data from the project's daily NVD mirror and the key read from the environment by name, so
+      # it never appears on a command line. The key stays required so the job can fall back to the
+      # REST API by clearing nvdDatafeedUrl.
       - name: OWASP dependency check (fails at CVSS >= 7)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: >-
-          mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
-          -DfailBuildOnCVSS=7
-          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
-          "-DnvdDatafeedUrl=https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
+        run: mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always()
         with:

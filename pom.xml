@@ -44,7 +44,7 @@
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.6</picocli.version>
-    <javalin.version>6.4.0</javalin.version>
+    <javalin.version>7.2.3</javalin.version>
     <jackson.version>2.22.2</jackson.version>
     <slf4j.version>2.0.13</slf4j.version>
     <logback.version>1.5.19</logback.version>
@@ -54,6 +54,7 @@
     <commons-compress.version>1.28.0</commons-compress.version>
     <!-- transitive through commons-compress; pinned so the SBOM never carries an old lang3 -->
     <commons-lang3.version>3.20.0</commons-lang3.version>
+    <kotlin-stdlib.version>2.4.20</kotlin-stdlib.version>
     <semver4j.version>5.3.0</semver4j.version>
 
     <!-- Test dependencies -->
@@ -112,6 +113,10 @@
       <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>${json-schema-validator.version}</version></dependency>
       <dependency><groupId>org.apache.commons</groupId><artifactId>commons-compress</artifactId><version>${commons-compress.version}</version></dependency>
       <dependency><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>${commons-lang3.version}</version></dependency>
+      <!-- Transitive through Javalin (7.2.3 declares 2.2.20). Pinned past the Kotlin advisory the
+           release audit flags (CVE-2026-53914, fixed in 2.4.20); the standard library is
+           backward compatible, so Javalin runs on the newer one unchanged. Not a new dependency. -->
+      <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin-stdlib.version}</version></dependency>
       <dependency><groupId>org.semver4j</groupId><artifactId>semver4j</artifactId><version>${semver4j.version}</version></dependency>
 
       <!-- Aligns jackson-core and jackson-annotations with the four modules declared above: without
@@ -230,7 +235,19 @@
           <artifactId>dependency-check-maven</artifactId>
           <version>${dependency-check.version}</version>
           <configuration>
+            <!-- Spec §20: the audit judges what ships, like the SBOM. Test-scope dependencies are
+                 skipped; the acceptance module, which ships nothing, sets dependency-check.skip. -->
             <failBuildOnCVSS>7</failBuildOnCVSS>
+            <skipTestScope>true</skipTestScope>
+            <!-- A Java project: the .NET assembly analyzer needs a dotnet runtime and otherwise ends
+                 the run with an initialization error once nothing else has failed. -->
+            <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+            <!-- Bulk NVD data from the project's daily-refreshed mirror (JSON 2.0 feeds): a full load
+                 through the REST API took over two hours at its throttled rate. The API key is read
+                 by environment-variable name so it never appears on a command line; drop the feed URL
+                 (-DnvdDatafeedUrl=) to fall back to the API. -->
+            <nvdDatafeedUrl>https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz</nvdDatafeedUrl>
+            <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
             <formats>
               <format>HTML</format>
               <format>JSON</format>

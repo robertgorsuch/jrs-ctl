@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.ops.Services;
 import io.javalin.Javalin;
+import io.javalin.compression.CompressionStrategy;
 import io.javalin.http.staticfiles.Location;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -23,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntSupplier;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.ServerConnector;
@@ -104,18 +107,30 @@ public final class ConsoleServer implements AutoCloseable {
         ConsoleToken.issue(services.home(), services.platform(), services.redactor());
     token = Optional.of(issued);
     DoctorCache doctor = new DoctorCache(services);
+    // Every filter and route is registered inside the config block, before the listener opens
+    // (Javalin 7 allows nothing else). Registering after start once left a window in which the
+    // static UI answered but /api/* was 404 and unguarded, which a client polling from another
+    // process (the phase 6 acceptance test) can hit. The port is read lazily through the holder
+    // because an ephemeral port is only known once Jetty has bound it, and the server object
+    // itself does not exist until the config block has run.
+    AtomicReference<Javalin> holder = new AtomicReference<>();
+    IntSupplier boundPort = () -> holder.get().port();
+    ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, boundPort);
+    ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, boundPort);
+    SupportBundle bundle = new SupportBundle(services, views, doctor);
+    ConsoleApi api =
+        new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle, heartbeats);
     Javalin javalin =
         Javalin.create(
             c -> {
-              c.showJavalinBanner = false;
-              c.startupWatcherEnabled = false;
-              c.http.disableCompression();
+              c.startup.showJavalinBanner = false;
+              c.startup.startupWatcherEnabled = false;
+              c.http.compressionStrategy = CompressionStrategy.NONE;
               c.staticFiles.add(
                   s -> {
                     s.hostedPath = "/";
                     s.directory = "/web";
                     s.location = Location.CLASSPATH;
-                    s.precompress = false;
                     s.headers = Map.of("Cache-Control", "no-store");
                   });
               ssl.ifPresent(
@@ -132,32 +147,24 @@ public final class ConsoleServer implements AutoCloseable {
                             connector.setPort(requestedPort);
                             return connector;
                           }));
+              c.routes.before(
+                  ctx -> {
+                    ctx.header("Cache-Control", "no-store");
+                    ctx.header("Content-Security-Policy", CSP);
+                    ctx.header("X-Content-Type-Options", "nosniff");
+                    ctx.header("Referrer-Policy", "no-referrer");
+                    ctx.header("X-Frame-Options", "DENY");
+                    String path = ctx.path();
+                    if (path.equals("/api/auth/launch")) {
+                      // no token yet, but never from a foreign Host
+                      auth.requireHost(ctx);
+                    } else if (path.equals("/api") || path.startsWith("/api/")) {
+                      auth.handle(ctx);
+                    }
+                  });
+              api.register(c.routes);
             });
-    // Every filter and route is registered before the listener opens. Registering after start
-    // left a window in which the static UI answered but /api/* was 404 and unguarded, which a
-    // client polling from another process (the phase 6 acceptance test) can hit. The port is
-    // read lazily because an ephemeral port is only known once Jetty has bound it.
-    ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, javalin::port);
-    ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, javalin::port);
-    SupportBundle bundle = new SupportBundle(services, views, doctor);
-    ConsoleApi api =
-        new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle, heartbeats);
-    javalin.before(
-        ctx -> {
-          ctx.header("Cache-Control", "no-store");
-          ctx.header("Content-Security-Policy", CSP);
-          ctx.header("X-Content-Type-Options", "nosniff");
-          ctx.header("Referrer-Policy", "no-referrer");
-          ctx.header("X-Frame-Options", "DENY");
-          String path = ctx.path();
-          if (path.equals("/api/auth/launch")) {
-            // no token yet, but never from a foreign Host
-            auth.requireHost(ctx);
-          } else if (path.equals("/api") || path.startsWith("/api/")) {
-            auth.handle(ctx);
-          }
-        });
-    api.register(javalin);
+    holder.set(javalin);
     try {
       if (ssl.isPresent()) {
         javalin.start();

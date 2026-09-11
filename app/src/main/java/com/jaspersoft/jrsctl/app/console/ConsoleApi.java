@@ -16,7 +16,7 @@ import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.core.state.Transition;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.ops.Services;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.sse.SseClient;
 import java.io.IOException;
@@ -83,7 +83,7 @@ final class ConsoleApi {
     this.redactor = services.redactor();
   }
 
-  void register(Javalin app) {
+  void register(RoutesConfig app) {
     app.get("/", this::index);
     app.post("/api/auth/launch", this::exchangeLaunchCode);
     app.get("/api/health", ctx -> json(ctx, 200, views.health()));
