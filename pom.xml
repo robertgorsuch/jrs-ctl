@@ -29,18 +29,20 @@
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.6</picocli.version>
     <javalin.version>6.4.0</javalin.version>
-    <jackson.version>2.17.2</jackson.version>
+    <jackson.version>2.22.2</jackson.version>
     <slf4j.version>2.0.13</slf4j.version>
-    <logback.version>1.5.17</logback.version>
+    <logback.version>1.5.19</logback.version>
     <logstash-logback.version>7.4</logstash-logback.version>
-    <sqlite-jdbc.version>3.48.0.0</sqlite-jdbc.version>
+    <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
     <json-schema-validator.version>1.4.0</json-schema-validator.version>
-    <commons-compress.version>1.26.2</commons-compress.version>
+    <commons-compress.version>1.28.0</commons-compress.version>
+    <!-- transitive through commons-compress; pinned so the SBOM never carries an old lang3 -->
+    <commons-lang3.version>3.20.0</commons-lang3.version>
     <semver4j.version>5.3.0</semver4j.version>
 
     <!-- Test dependencies -->
     <junit.version>5.10.2</junit.version>
-    <assertj.version>3.26.0</assertj.version>
+    <assertj.version>3.27.7</assertj.version>
     <wiremock.version>3.6.0</wiremock.version>
     <testcontainers.version>1.19.8</testcontainers.version>
     <jqwik.version>1.8.4</jqwik.version>
@@ -92,8 +94,13 @@
       <dependency><groupId>org.xerial</groupId><artifactId>sqlite-jdbc</artifactId><version>${sqlite-jdbc.version}</version></dependency>
       <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>${json-schema-validator.version}</version></dependency>
       <dependency><groupId>org.apache.commons</groupId><artifactId>commons-compress</artifactId><version>${commons-compress.version}</version></dependency>
+      <dependency><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>${commons-lang3.version}</version></dependency>
       <dependency><groupId>org.semver4j</groupId><artifactId>semver4j</artifactId><version>${semver4j.version}</version></dependency>
 
+      <!-- Aligns jackson-core and jackson-annotations with the four modules declared above: without
+           the BOM they resolve through other libraries' transitive declarations and can lag behind
+           databind, which then fails at class-load time (JsonSerializeAs on 2.22 needs 2.22 annotations). -->
+      <dependency><groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>${jackson.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>${junit.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>${assertj.version}</version></dependency>
       <dependency><groupId>org.wiremock</groupId><artifactId>wiremock</artifactId><version>${wiremock.version}</version></dependency>
