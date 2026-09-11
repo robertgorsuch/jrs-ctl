@@ -1,9 +1,17 @@
 name: Publish to GitHub Packages
 
+# Runs on the tag push itself, not on the release event: the release is created by ci.yml with
+# GITHUB_TOKEN, and events raised with that token never trigger other workflows, so a `release`
+# trigger here would never fire. `workflow_dispatch` with a tag re-publishes an existing release.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (for example v1.0.1)"
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +29,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
@@ -29,12 +39,15 @@ jobs:
           distribution: 'temurin'
           server-id: github
 
-      - name: Use the release tag as the version (release events only)
-        if: github.event_name == 'release'
+      - name: Use the release tag as the version
         shell: bash
-        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          case "$TAG" in v*) ;; *) echo "::error::not a release tag: $TAG"; exit 1 ;; esac
+          ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${TAG#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
 
-      - name: Publish to GitHub Packages
-        run: ./mvnw -B -DskipTests deploy
+      - name: "Publish to GitHub Packages (release profile: never a SNAPSHOT)"
+        run: ./mvnw -B -DskipTests -Prelease deploy
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
