@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.service.ServiceRuntime;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
@@ -28,7 +29,8 @@ record UpgradeRuntime(
     SnapshotStore snapshots,
     Function<Services, VendorTools> vendorTools,
     Function<Services, HotfixOperations> hotfixOperations,
-    Sleeper sleeper) {
+    Sleeper sleeper)
+    implements ServiceRuntime {
 
   UpgradeRuntime {
     Objects.requireNonNull(services, "services");
@@ -54,7 +56,8 @@ record UpgradeRuntime(
     return services.home();
   }
 
-  Clock clock() {
+  @Override
+  public Clock clock() {
     return services.clock();
   }
 
@@ -70,16 +73,23 @@ record UpgradeRuntime(
     return hotfixOperations.apply(services);
   }
 
-  ServiceController controller() {
+  @Override
+  public ServiceController controller() {
     return services.platform().services(config().toServiceConfig());
   }
 
-  Duration serviceTimeout() {
+  @Override
+  public Duration serviceTimeout() {
     return Duration.ofSeconds(config().service().stopTimeoutSeconds());
   }
 
   ServerIdentity identity() {
     return services.adapter().get().identity();
+  }
+
+  @Override
+  public ServerIdentity refreshIdentity() {
+    return services.adapter().get().refreshIdentity();
   }
 
   String actor() {

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  * <caption>Step to idempotency test</caption>
  * <tr><th>Step</th><th>Execute twice</th><th>Compensate twice</th></tr>
  * <tr><td>hotfix ApplySteps.VerifySignature, ValidateManifest, Preflight, RunChecks;
- *     hotfix ServiceSteps.WaitForServer</td>
+ *     ops.service ServiceSteps.WaitForServer</td>
  *     <td colspan="2">HotfixStepIdempotencyTest#should_not_mutate_when_read_only_apply_steps_execute_twice</td></tr>
  * <tr><td>hotfix ApplySteps.TakeSnapshot</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_take_snapshot_executes_twice</td>
@@ -54,10 +54,10 @@ import org.junit.jupiter.api.Test;
  * <tr><td>hotfix ApplySteps.RecordInstalled</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_record_installed_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_record_installed_compensates_twice</td></tr>
- * <tr><td>hotfix ServiceSteps.StopService</td>
+ * <tr><td>ops.service ServiceSteps.StopService</td>
  *     <td>HotfixStepIdempotencyTest#should_stop_once_when_stop_service_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_start_once_when_stop_service_compensates_twice</td></tr>
- * <tr><td>hotfix ServiceSteps.StartService</td>
+ * <tr><td>ops.service ServiceSteps.StartService</td>
  *     <td>HotfixStepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
  * <tr><td>hotfix RollbackSteps.RestoreSnapshot</td>
@@ -88,7 +88,7 @@ import org.junit.jupiter.api.Test;
  * <tr><td>smoke SmokePlan.DeleteFolder (irreversible)</td>
  *     <td colspan="2">SmokePlanIdempotencyTest#should_delete_the_folder_once_when_delete_folder_executes_twice</td></tr>
  * <tr><td>upgrade PreflightSteps.Doctor, VerifyTargetPackage, ConfirmDbBackup; VerifySteps.Smoke;
- *     UpgradeServiceSteps.WaitForServer</td>
+ *     ServiceSteps.WaitForServer (upgrade suite)</td>
  *     <td colspan="2">UpgradeStepIdempotencyTest#should_not_mutate_when_read_only_upgrade_steps_execute_twice</td></tr>
  * <tr><td>upgrade BackupSteps.FullExport</td>
  *     <td>UpgradeStepIdempotencyTest#should_reuse_the_export_when_full_export_executes_twice</td>
@@ -110,10 +110,10 @@ import org.junit.jupiter.api.Test;
  * <tr><td>upgrade VendorSteps.RunVendorUpgrade</td>
  *     <td>UpgradeStepIdempotencyTest#should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_converge_when_run_vendor_upgrade_compensates_twice</td></tr>
- * <tr><td>upgrade UpgradeServiceSteps.StopService</td>
+ * <tr><td>ops.service ServiceSteps.StopService (upgrade suite)</td>
  *     <td>UpgradeStepIdempotencyTest#should_stop_once_when_stop_service_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_start_once_when_stop_service_compensates_twice</td></tr>
- * <tr><td>upgrade UpgradeServiceSteps.StartService</td>
+ * <tr><td>ops.service ServiceSteps.StartService (upgrade suite)</td>
  *     <td>UpgradeStepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
  * <tr><td>upgrade ReconcileSteps.PlanHotfixReapply</td>
@@ -233,19 +233,29 @@ class IdempotencyCoverageTest {
                   + "should_converge_when_record_installed_executes_twice;"
                   + H
                   + "should_converge_when_record_installed_compensates_twice"),
+          // the service steps shared by every plan (ops.service.ServiceSteps): both suites cover
+          // them
           Map.entry(
-              OPS + "hotfix.ServiceSteps$StopService",
+              OPS + "service.ServiceSteps$StopService",
               H
                   + "should_stop_once_when_stop_service_executes_twice;"
                   + H
+                  + "should_start_once_when_stop_service_compensates_twice;"
+                  + U
+                  + "should_stop_once_when_stop_service_executes_twice;"
+                  + U
                   + "should_start_once_when_stop_service_compensates_twice"),
           Map.entry(
-              OPS + "hotfix.ServiceSteps$StartService",
+              OPS + "service.ServiceSteps$StartService",
               H
                   + "should_start_once_when_start_service_executes_twice;"
                   + H
+                  + "should_stop_once_when_start_service_compensates_twice;"
+                  + U
+                  + "should_start_once_when_start_service_executes_twice;"
+                  + U
                   + "should_stop_once_when_start_service_compensates_twice"),
-          Map.entry(OPS + "hotfix.ServiceSteps$WaitForServer", H_READ_ONLY),
+          Map.entry(OPS + "service.ServiceSteps$WaitForServer", H_READ_ONLY + ";" + U_READ_ONLY),
           // hotfix rollback
           Map.entry(
               OPS + "hotfix.RollbackSteps$RestoreSnapshot",
@@ -327,19 +337,6 @@ class IdempotencyCoverageTest {
                   + "should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice;"
                   + U
                   + "should_converge_when_run_vendor_upgrade_compensates_twice"),
-          Map.entry(
-              OPS + "upgrade.UpgradeServiceSteps$StopService",
-              U
-                  + "should_stop_once_when_stop_service_executes_twice;"
-                  + U
-                  + "should_start_once_when_stop_service_compensates_twice"),
-          Map.entry(
-              OPS + "upgrade.UpgradeServiceSteps$StartService",
-              U
-                  + "should_start_once_when_start_service_executes_twice;"
-                  + U
-                  + "should_stop_once_when_start_service_compensates_twice"),
-          Map.entry(OPS + "upgrade.UpgradeServiceSteps$WaitForServer", U_READ_ONLY),
           Map.entry(
               OPS + "upgrade.ReconcileSteps$PlanHotfixReapply",
               U
@@ -448,7 +445,8 @@ class IdempotencyCoverageTest {
     steps.addAll(concreteSteps("ops"));
     steps.addAll(concreteSteps("jrs"));
 
-    assertThat(steps).as("classpath scan found the known steps").hasSizeGreaterThanOrEqualTo(58);
+    // 56 since the hotfix and upgrade service-step families became one (ops.service.ServiceSteps)
+    assertThat(steps).as("classpath scan found the known steps").hasSizeGreaterThanOrEqualTo(56);
     assertThat(steps)
         .as("every Step implementation needs an idempotency test (add it to COVERAGE)")
         .allSatisfy(step -> assertThat(COVERAGE).containsKey(step));

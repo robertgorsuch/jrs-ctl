@@ -142,6 +142,68 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Review finding 1.13, the half of it the upgrade copy got wrong: the "this run stopped the
+   * service" marker was written after the stop, so a stop that went wrong half-way left no marker
+   * and the rollback left the service in whatever state the failed stop produced. The marker is
+   * written before the stop is attempted; compensation then converges the service to running.
+   */
+  @Test
+  void should_restart_the_service_on_rollback_when_the_stop_itself_went_wrong_half_way()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.platform.controller.stopLeaves =
+          Optional.of(com.jaspersoft.jrsctl.core.platform.ServiceController.State.UNKNOWN);
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-halfstop", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("did not stop");
+      assertThat(f.fake.platform.controller.events).endsWith("stop", "start");
+      assertThat(f.fake.platform.serviceState)
+          .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.RUNNING);
+    }
+  }
+
+  /** Review finding 1.13: a service the operator had stopped is not this run's to start. */
+  @Test
+  void should_leave_a_service_the_operator_had_stopped_stopped_when_rolling_back()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.platform.serviceState =
+          com.jaspersoft.jrsctl.core.platform.ServiceController.State.STOPPED;
+      f.failVendorScriptAfterCopy();
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      // --rollback-all: the default rollback is phase-scoped and leaves the backup phase's own
+      // service start in place; rolling back everything must end where the operator left it
+      RunOutcome outcome = f.run(plan, "r-up-prestopped", RunOptions.withRollbackAll());
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(f.fake.platform.controller.events).isNotEmpty().last().isEqualTo("stop");
+      assertThat(f.fake.platform.serviceState)
+          .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.STOPPED);
+    }
+  }
+
+  /**
+   * The hotfix copy learnt that {@code identity()} is memoised and a wait-for-server polling it
+   * passes without reaching the server; the upgrade copy never did. One implementation, one fix.
+   */
+  @Test
+  void should_probe_the_server_uncached_when_waiting_after_a_restart() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      f.fake.adapter.calls.clear();
+
+      RunOutcome outcome = f.run(plan, "r-up-wait", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.fake.adapter.calls).contains("refreshIdentity");
+    }
+  }
+
   @Test
   void should_only_roll_back_the_verify_phase_when_smoke_fails_without_rollback_all()
       throws Exception {

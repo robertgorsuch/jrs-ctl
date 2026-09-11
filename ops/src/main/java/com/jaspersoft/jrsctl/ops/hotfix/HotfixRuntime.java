@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.db.JdbcConnector;
+import com.jaspersoft.jrsctl.ops.service.ServiceRuntime;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
@@ -27,7 +28,8 @@ record HotfixRuntime(
     JdbcConnector jdbc,
     KeyRing keys,
     HttpProbe http,
-    Sleeper sleeper) {
+    Sleeper sleeper)
+    implements ServiceRuntime {
 
   HotfixRuntime {
     Objects.requireNonNull(services, "services");
@@ -54,15 +56,18 @@ record HotfixRuntime(
     return services.home();
   }
 
-  Clock clock() {
+  @Override
+  public Clock clock() {
     return services.clock();
   }
 
-  ServiceController controller() {
+  @Override
+  public ServiceController controller() {
     return services.platform().services(config().toServiceConfig());
   }
 
-  Duration serviceTimeout() {
+  @Override
+  public Duration serviceTimeout() {
     return Duration.ofSeconds(config().service().stopTimeoutSeconds());
   }
 
@@ -70,7 +75,8 @@ record HotfixRuntime(
     return services.adapter().get().identity();
   }
 
-  ServerIdentity refreshIdentity() {
+  @Override
+  public ServerIdentity refreshIdentity() {
     return services.adapter().get().refreshIdentity();
   }
 

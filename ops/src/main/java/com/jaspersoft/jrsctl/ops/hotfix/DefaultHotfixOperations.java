@@ -23,6 +23,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
+import com.jaspersoft.jrsctl.ops.service.ServiceSteps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -191,7 +192,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     steps.add(new ApplySteps.RunChecks(rt, in, false));
     steps.add(new ApplySteps.TakeSnapshot(rt, in));
     if (in.restartRequired()) {
-      steps.add(new ServiceSteps.StopService(rt, ApplySteps.APPLY, ""));
+      steps.add(ServiceSteps.stop(rt, ApplySteps.APPLY, ServiceSteps.STOP));
     }
     steps.add(new ApplySteps.StageFiles(rt, in));
     steps.add(new ApplySteps.AtomicSwap(rt, in));
@@ -199,8 +200,8 @@ public final class DefaultHotfixOperations implements HotfixOperations {
       steps.add(new ApplySteps.ApplySql(rt, in));
     }
     if (in.restartRequired()) {
-      steps.add(new ServiceSteps.StartService(rt, ApplySteps.APPLY, ""));
-      steps.add(new ServiceSteps.WaitForServer(rt, ApplySteps.APPLY, ""));
+      steps.add(ServiceSteps.start(rt, ApplySteps.APPLY, ServiceSteps.START));
+      steps.add(ServiceSteps.waitForServer(rt, ApplySteps.APPLY, ServiceSteps.WAIT));
     }
     steps.add(new ApplySteps.RunChecks(rt, in, true));
     steps.add(new ApplySteps.RecordInstalled(rt, in));
@@ -302,15 +303,15 @@ public final class DefaultHotfixOperations implements HotfixOperations {
       boolean stop = in.needsServiceStop();
       restart |= stop;
       if (stop) {
-        steps.add(new ServiceSteps.StopService(rt, phase, suffix));
+        steps.add(ServiceSteps.stop(rt, phase, ServiceSteps.STOP + suffix));
       }
       steps.add(new RollbackSteps.RestoreSnapshot(rt, in));
       if (!irreversible && !in.rollbackScripts().isEmpty()) {
         steps.add(new RollbackSteps.RunSqlRollback(rt, in));
       }
       if (stop) {
-        steps.add(new ServiceSteps.StartService(rt, phase, suffix));
-        steps.add(new ServiceSteps.WaitForServer(rt, phase, suffix));
+        steps.add(ServiceSteps.start(rt, phase, ServiceSteps.START + suffix));
+        steps.add(ServiceSteps.waitForServer(rt, phase, ServiceSteps.WAIT + suffix));
       }
       steps.add(new RollbackSteps.RecordRolledBack(rt, in));
       touched.addAll(in.touched());

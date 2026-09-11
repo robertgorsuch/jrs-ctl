@@ -324,6 +324,28 @@ class HotfixApplyTest {
     }
   }
 
+  /**
+   * Review finding 1.13: a service the operator had stopped before the run is not this run's to
+   * start. The stop step is a no-op on a stopped service, and its compensation must be one too.
+   */
+  @Test
+  void should_leave_a_service_the_operator_had_stopped_stopped_when_rolling_back()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      f.fake.platform.serviceState =
+          com.jaspersoft.jrsctl.core.platform.ServiceController.State.STOPPED;
+      Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);
+      f.fake.platform.failReplaceOf = Optional.of(f.target(HotfixFixture.FIX));
+
+      RunOutcome outcome = f.run(plan, "r-prestopped");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(f.fake.platform.controller.events).as("neither stopped nor started").isEmpty();
+      assertThat(f.fake.platform.serviceState)
+          .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.STOPPED);
+    }
+  }
+
   static List<String> journal(HotfixFixture f, String runId) {
     return f.store().transitions(runId).stream().map(t -> t.stepId() + ":" + t.toState()).toList();
   }

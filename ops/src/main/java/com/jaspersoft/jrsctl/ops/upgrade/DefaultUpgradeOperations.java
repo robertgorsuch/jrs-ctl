@@ -22,6 +22,7 @@ import com.jaspersoft.jrsctl.ops.hotfix.DefaultHotfixOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixException;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
+import com.jaspersoft.jrsctl.ops.service.ServiceSteps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -138,23 +139,20 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     if (options.mode() == Mode.SAMEDB) {
       steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
     }
-    steps.add(
-        UpgradeServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
+    steps.add(ServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
     steps.add(new BackupSteps.FullExport(rt, in));
+    steps.add(ServiceSteps.start(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-start-service"));
     steps.add(
-        UpgradeServiceSteps.start(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-start-service"));
-    steps.add(
-        UpgradeServiceSteps.waitForServer(
+        ServiceSteps.waitForServer(
             rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-wait-for-server"));
     steps.add(new BackupSteps.BackupKeystore(rt, in));
     steps.add(new BackupSteps.BackupWebapp(rt, in));
     steps.add(new BackupSteps.BackupConfig(rt, in));
     steps.add(new VendorSteps.WriteMasterProperties(rt, in));
-    steps.add(UpgradeServiceSteps.stop(rt, Phases.VENDOR_UPGRADE, VendorSteps.STOP_SERVICE));
+    steps.add(ServiceSteps.stop(rt, Phases.VENDOR_UPGRADE, VendorSteps.STOP_SERVICE));
     steps.add(new VendorSteps.RunVendorUpgrade(rt, in));
-    steps.add(UpgradeServiceSteps.start(rt, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
-    steps.add(
-        UpgradeServiceSteps.waitForServer(rt, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
+    steps.add(ServiceSteps.start(rt, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
+    steps.add(ServiceSteps.waitForServer(rt, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
     List<Step> embedded = new ArrayList<>();
     List<String> embeddedIds = new ArrayList<>();
     if (options.reapplyHotfixes()) {
@@ -172,13 +170,12 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       warnings.add(
           "a registered customization lives under WEB-INF; the service is stopped again while it"
               + " is re-applied");
-      steps.add(UpgradeServiceSteps.stop(rt, Phases.RECONCILE, reapply + "-stop-service"));
+      steps.add(ServiceSteps.stop(rt, Phases.RECONCILE, reapply + "-stop-service"));
     }
     steps.add(new ReconcileSteps.PlanCustomizationReapply(rt, in));
     if (stopForCustomizations) {
-      steps.add(UpgradeServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
-      steps.add(
-          UpgradeServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
+      steps.add(ServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
+      steps.add(ServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
     }
     steps.add(new VerifySteps.Smoke(rt, in));
     steps.add(new VerifySteps.RecordUpgrade(rt, in));
@@ -310,13 +307,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     RestoreSteps.Input in =
         new RestoreSteps.Input(runId, point, set, paths, webappName(config, paths));
     List<Step> steps = new ArrayList<>();
-    steps.add(UpgradeServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
+    steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
     steps.add(new RestoreSteps.RestoreWebapp(rt, in));
     steps.add(new RestoreSteps.RestoreBuildomatic(rt, in));
     steps.add(new RestoreSteps.RestoreConfig(rt, in));
     steps.add(new RestoreSteps.RestoreKeystore(rt, in));
-    steps.add(UpgradeServiceSteps.start(rt, Phases.ROLLBACK, RestoreSteps.START_SERVICE));
-    steps.add(UpgradeServiceSteps.waitForServer(rt, Phases.ROLLBACK, RestoreSteps.WAIT_FOR_SERVER));
+    steps.add(ServiceSteps.start(rt, Phases.ROLLBACK, RestoreSteps.START_SERVICE));
+    steps.add(ServiceSteps.waitForServer(rt, Phases.ROLLBACK, RestoreSteps.WAIT_FOR_SERVER));
     steps.add(new RestoreSteps.RecordRollback(rt, in));
     List<String> warnings = new ArrayList<>();
     warnings.add(SAMEDB_WARNING);

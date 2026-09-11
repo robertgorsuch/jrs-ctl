@@ -16,6 +16,9 @@ public final class FakeServiceController implements ServiceController {
   public boolean stopFails;
   public boolean startFails;
 
+  /** When set, {@code stop} leaves the service in this state (a stop that went wrong half-way). */
+  public java.util.Optional<State> stopLeaves = java.util.Optional.empty();
+
   private final FakePlatform platform;
   private final String description;
 
@@ -32,7 +35,9 @@ public final class FakeServiceController implements ServiceController {
   @Override
   public State stop(Duration timeout) {
     events.add("stop");
-    if (!stopFails) {
+    if (stopLeaves.isPresent()) {
+      platform.serviceState = stopLeaves.get();
+    } else if (!stopFails) {
       platform.serviceState = State.STOPPED;
     }
     return platform.serviceState;
