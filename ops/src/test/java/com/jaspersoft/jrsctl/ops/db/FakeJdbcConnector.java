@@ -40,16 +40,11 @@ public final class FakeJdbcConnector implements JdbcConnector {
       }
 
       @Override
-      public int execute(String sqlText) throws JdbcException {
-        int count = 0;
-        for (String statement : SqlScript.statements(sqlText)) {
-          if (failOnStatementContaining.map(statement::contains).orElse(false)) {
-            throw new JdbcException(JdbcException.Kind.SQL_FAILED, "boom: " + statement);
-          }
-          executed.add(statement);
-          count++;
+      public void executeStatement(String statement) throws JdbcException {
+        if (failOnStatementContaining.map(statement::contains).orElse(false)) {
+          throw new JdbcException(JdbcException.Kind.SQL_FAILED, "boom: " + statement);
         }
-        return count;
+        executed.add(statement);
       }
 
       @Override

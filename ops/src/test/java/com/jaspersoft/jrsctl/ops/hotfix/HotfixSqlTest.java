@@ -93,6 +93,26 @@ class HotfixSqlTest {
   }
 
   @Test
+  void should_send_a_delimiter_scoped_statement_whole_when_run_through_the_runner()
+      throws IOException {
+    try (HotfixFixture f = withDatabase(tmp)) {
+      String body = "CREATE PROCEDURE p AS BEGIN UPDATE t SET a = 1; UPDATE t SET b = 2; END;";
+      Map<String, String> files = files(true);
+      files.put("sql/postgresql/001.sql", "-- jrsctl:delimiter //\n" + body + "\n//\n");
+      Path zip = f.build(f.bundleDir("delim", sqlManifest("snapshot", ""), files));
+
+      RunOutcome outcome = f.run(f.ops().planApply(zip, SIGNED), "r-delim");
+
+      assertThat(outcome)
+          .as(String.join("\n", f.events.toString()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.jdbc.executed)
+          .as("the procedure body must reach the driver as one statement")
+          .containsExactly("SELECT 1", body);
+    }
+  }
+
+  @Test
   void should_undo_started_scripts_and_restore_files_when_apply_sql_fails_through_the_runner()
       throws IOException {
     try (HotfixFixture f = withDatabase(tmp)) {

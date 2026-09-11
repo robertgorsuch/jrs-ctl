@@ -161,20 +161,13 @@ public final class DefaultJdbcConnector implements JdbcConnector {
     }
 
     @Override
-    public int execute(String sqlText) throws JdbcException {
-      int count = 0;
-      for (String statement : SqlScript.statements(sqlText)) {
-        try (Statement s = connection.createStatement()) {
-          s.execute(statement);
-        } catch (SQLException e) {
-          throw new JdbcException(
-              JdbcException.Kind.SQL_FAILED,
-              "statement " + (count + 1) + " failed: " + e.getMessage(),
-              e);
-        }
-        count++;
+    public void executeStatement(String statement) throws JdbcException {
+      try (Statement s = connection.createStatement()) {
+        s.execute(statement);
+      } catch (SQLException e) {
+        throw new JdbcException(
+            JdbcException.Kind.SQL_FAILED, "statement failed: " + e.getMessage(), e);
       }
-      return count;
     }
 
     @Override

@@ -30,10 +30,11 @@ public interface JdbcConnector {
     boolean queryHasRow(String sql) throws JdbcException;
 
     /**
-     * Runs every statement of {@code sqlText} (see {@link SqlScript#statements}) and returns how
-     * many were executed.
+     * Sends exactly one statement, already split out by {@link SqlScript}, to the driver as-is.
+     * Never re-splits: a {@code -- jrsctl:delimiter} directive is only visible to the reader that
+     * saw the whole script, so a statement whose body holds semicolons must arrive here whole.
      */
-    int execute(String sqlText) throws JdbcException;
+    void executeStatement(String statement) throws JdbcException;
 
     @Override
     void close() throws JdbcException;

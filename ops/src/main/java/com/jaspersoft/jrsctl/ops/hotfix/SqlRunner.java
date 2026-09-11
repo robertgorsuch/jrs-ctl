@@ -51,7 +51,8 @@ final class SqlRunner {
         progress.start(script);
         int count = 0;
         for (String statement : SqlScript.read(bundleDir.resolve(script))) {
-          count += session.execute(statement);
+          session.executeStatement(statement);
+          count++;
         }
         out.emit(
             new Event.Log(

@@ -162,7 +162,24 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     steps.add(new ReconcileSteps.PlanHotfixReapply(rt, in, embeddedIds));
     steps.addAll(embedded);
+    // A customization under WEB-INF/lib or WEB-INF/classes is re-applied with the service stopped,
+    // the same rule every hotfix obeys (spec §5.3); anything else is re-applied live.
+    boolean stopForCustomizations =
+        rt.store().customizations().stream()
+            .anyMatch(c -> HotfixPaths.requiresServiceStop(c.path().toString()));
+    String reapply = ReconcileSteps.PLAN_CUSTOMIZATION_REAPPLY;
+    if (stopForCustomizations) {
+      warnings.add(
+          "a registered customization lives under WEB-INF; the service is stopped again while it"
+              + " is re-applied");
+      steps.add(UpgradeServiceSteps.stop(rt, Phases.RECONCILE, reapply + "-stop-service"));
+    }
     steps.add(new ReconcileSteps.PlanCustomizationReapply(rt, in));
+    if (stopForCustomizations) {
+      steps.add(UpgradeServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
+      steps.add(
+          UpgradeServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
+    }
     steps.add(new VerifySteps.Smoke(rt, in));
     steps.add(new VerifySteps.RecordUpgrade(rt, in));
 

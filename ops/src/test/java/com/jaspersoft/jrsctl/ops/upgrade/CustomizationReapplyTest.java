@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.RunOptions;
+import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.ops.customizations.DefaultCustomizationOperations;
@@ -27,7 +29,11 @@ class CustomizationReapplyTest {
   }
 
   private Path registerCustomized(UpgradeFixture f) throws Exception {
-    Path file = f.webappDir.resolve("WEB-INF").resolve("classes").resolve("custom.properties");
+    return registerCustomized(
+        f, f.webappDir.resolve("WEB-INF").resolve("classes").resolve("custom.properties"));
+  }
+
+  private Path registerCustomized(UpgradeFixture f, Path file) throws Exception {
     Path pristine = tmp.resolve("pristine.properties");
     UpgradeFixture.write(pristine, ORIGINAL);
     UpgradeFixture.write(file, CUSTOMIZED);
@@ -36,6 +42,53 @@ class CustomizationReapplyTest {
     ops.register(file, java.util.Optional.of(pristine));
     assertThat(f.store().customizations().get(0).originalSha256()).isEqualTo(f.sha(pristine));
     return file;
+  }
+
+  @Test
+  void should_stop_and_restart_the_service_around_reapply_when_a_target_is_under_web_inf()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      registerCustomized(f);
+      Plan plan =
+          f.ops().planUpgrade(UpgradeOptions.newdb(UpgradeFixture.NEW_VERSION, f.packageDir));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "wait-for-server",
+              "plan-customization-reapply-stop-service",
+              "plan-customization-reapply",
+              "plan-customization-reapply-start-service",
+              "plan-customization-reapply-wait-for-server",
+              "smoke");
+      assertThat(plan.byPhase().get("reconcile").stream().map(Step::id))
+          .contains(
+              "plan-customization-reapply-stop-service",
+              "plan-customization-reapply-start-service",
+              "plan-customization-reapply-wait-for-server");
+
+      RunOutcome outcome = f.run(plan, "r-cust-svc", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.fake.platform.controller.events)
+          .as("full export, vendor upgrade, then the WEB-INF customisation each stop and start")
+          .containsExactly("stop", "start", "stop", "start", "stop", "start");
+    }
+  }
+
+  @Test
+  void should_not_add_service_steps_when_no_customization_is_under_web_inf() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      registerCustomized(f, f.webappDir.resolve("scripts").resolve("custom.js"));
+      Plan plan =
+          f.ops().planUpgrade(UpgradeOptions.newdb(UpgradeFixture.NEW_VERSION, f.packageDir));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .contains("plan-customization-reapply")
+          .doesNotContain(
+              "plan-customization-reapply-stop-service",
+              "plan-customization-reapply-start-service",
+              "plan-customization-reapply-wait-for-server");
+    }
   }
 
   @Test
