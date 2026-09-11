@@ -36,13 +36,16 @@ import org.slf4j.LoggerFactory;
  * <p>Windows has no way to ask whether a file may be renamed without renaming it: the only open
  * flag that requests DELETE access, {@code DELETE_ON_CLOSE}, also takes it, and a hard link is
  * checked against its own directory entry rather than the one the holder opened. So the probe
- * renames, and everything around that rename exists to make the window survivable. A hard link
- * beside the file gives its bytes a second name before anything moves; a rename that is refused
- * answers the question with nothing moved at all, which is the case on a live server; a rename that
- * succeeds is undone at once, from the guard link if the probe name cannot be moved back; and a
- * restore that fails every way throws rather than reporting "not locked" over a missing jar.
- * Whatever a crash leaves behind is named after the file it came from, and {@link #isLocked} puts
- * it back before it does anything else.
+ * renames, and everything around that rename exists to make the window survivable. Nothing is
+ * created before the rename: a rename that is refused, which is the case on a live server, answers
+ * the question with nothing moved and nothing left beside the jar (assessment item C3: a guard link
+ * made beforehand could not be removed while the jar was held on Windows builds that delete without
+ * POSIX semantics, and stayed in {@code WEB-INF/lib}). A rename that succeeds is undone at once:
+ * the file's own name is linked back to the probe name, which works even if something has already
+ * opened the probe, and the probe name is then dropped; if that fails the probe is renamed back
+ * with retries; and a restore that fails every way throws rather than reporting "not locked" over a
+ * missing jar. Whatever a crash leaves behind is named after the file it came from, and {@link
+ * #isLocked} puts it back before it does anything else.
  */
 public final class WindowsFileOps extends DefaultFileOps {
 
@@ -82,10 +85,10 @@ public final class WindowsFileOps extends DefaultFileOps {
   }
 
   /**
-   * True when the file cannot be renamed inside its own directory. The rename is only attempted
-   * after a hard link has given the bytes a second name, so the only path that leaves the file's
-   * own name unused is a crash between the two renames, and {@link #healLeftoverProbe} closes that
-   * on the next call.
+   * True when the file cannot be renamed inside its own directory. Nothing is created before the
+   * rename, so a refusal leaves the directory exactly as it was; the only path that leaves the
+   * file's own name unused is a crash between the rename and the restore, and {@link
+   * #healLeftoverProbe} closes that on the next call.
    *
    * @throws IllegalStateException when the file was moved aside and could not be put back, which
    *     must never be mistaken for "not locked"
@@ -93,57 +96,42 @@ public final class WindowsFileOps extends DefaultFileOps {
   private boolean deniesRename(Path file) {
     Path absolute = file.toAbsolutePath();
     Path probe = absolute.resolveSibling(absolute.getFileName() + LOCK_PROBE_SUFFIX);
-    Path guard = absolute.resolveSibling(absolute.getFileName() + LOCK_GUARD_SUFFIX);
-    boolean guarded = link(absolute, guard);
     try {
       Files.move(absolute, probe);
     } catch (IOException e) {
       LOG.debug("{} refuses rename: {}", file, e.toString());
-      discard(guard);
       return true;
     }
-    restore(absolute, probe, guarded ? Optional.of(guard) : Optional.empty());
+    restore(absolute, probe);
     return false;
   }
 
-  /** Creates the guard link; false when the volume or the holder will not have one. */
-  private static boolean link(Path file, Path guard) {
-    try {
-      Files.deleteIfExists(guard);
-      Files.createLink(guard, file);
-      return true;
-    } catch (IOException | UnsupportedOperationException e) {
-      LOG.debug("no guard link for {}: {}", file, e.toString());
-      return false;
-    }
-  }
-
   /**
-   * Puts the file back under its own name, from the probe name if that can be renamed and from the
-   * guard link if it cannot, and removes whichever copy is left over.
+   * Puts the file back under its own name. First choice: a hard link from the file's name to the
+   * probe, which succeeds even while something (an on-access scanner, typically) has already opened
+   * the probe, followed by dropping the probe name; second choice: renaming the probe back, with
+   * retries. Whichever copy is left over is removed, and a leftover the holder will not release is
+   * logged, never a reason to fail the check.
    */
-  private static void restore(Path file, Path probe, Optional<Path> guard) {
-    IOException last = null;
+  private static void restore(Path file, Path probe) {
+    IOException last;
+    try {
+      Files.createLink(file, probe);
+      discard(probe);
+      return;
+    } catch (IOException | UnsupportedOperationException e) {
+      LOG.debug("cannot link {} back to {}: {}", file, probe, e.toString());
+      last = e instanceof IOException io ? io : new IOException(e);
+    }
     for (int attempt = 0; attempt < RENAME_BACK_ATTEMPTS; attempt++) {
       try {
         Files.move(probe, file);
-        guard.ifPresent(WindowsFileOps::discard);
         return;
       } catch (IOException e) {
         last = e;
         if (!pause()) {
           break;
         }
-      }
-    }
-    if (guard.isPresent()) {
-      try {
-        Files.move(guard.get(), file);
-        LOG.warn("{} was restored from its guard link; removing {}", file, probe);
-        discard(probe);
-        return;
-      } catch (IOException e) {
-        last.addSuppressed(e);
       }
     }
     throw new IllegalStateException(
@@ -170,9 +158,9 @@ public final class WindowsFileOps extends DefaultFileOps {
 
   /**
    * Undoes a probe that a crash interrupted. The file's bytes are always still there under the
-   * probe or the guard name, so the repair is a rename and nothing is lost; the other name, if it
-   * survived too, is the same data and goes. This runs before every lock check, so no caller ever
-   * sees the gap.
+   * probe name (or the guard name an earlier jrsctl release used), so the repair is a rename and
+   * nothing is lost; the other name, if it survived too, is the same data and goes. This runs
+   * before every lock check, so no caller ever sees the gap.
    */
   private static void healLeftoverProbe(Path file) {
     if (Files.exists(file)) {

@@ -177,9 +177,50 @@ class DefaultFileOpsTest {
       assertThat(Files.readString(jar, StandardCharsets.UTF_8))
           .as("a refused rename must leave the file exactly where it was")
           .isEqualTo("jar bytes");
+      // Assessment item C3: nothing may be created beside a held jar, because on Windows
+      // builds without POSIX delete semantics a guard link made before the rename could not
+      // be removed while the jar was held and stayed in WEB-INF/lib.
+      try (var siblings = Files.list(dir)) {
+        assertThat(siblings).as("no guard or probe beside a held file").containsExactly(jar);
+      }
     }
 
     assertThat(files.isLocked(jar)).isFalse();
+    assertThat(Files.readString(jar, StandardCharsets.UTF_8)).isEqualTo("jar bytes");
+    try (var siblings = Files.list(dir)) {
+      assertThat(siblings).containsExactly(jar);
+    }
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_leave_one_name_and_the_same_bytes_when_probing_a_free_file(@TempDir Path dir)
+      throws IOException {
+    // The success path renames the file aside and links its own name back to the probe; what
+    // remains must be exactly the file, under exactly its name, with its bytes.
+    Path jar = dir.resolve("free.jar");
+    Files.writeString(jar, "jar bytes", StandardCharsets.UTF_8);
+
+    assertThat(files.isLocked(jar)).isFalse();
+
+    assertThat(Files.readString(jar, StandardCharsets.UTF_8)).isEqualTo("jar bytes");
+    try (var siblings = Files.list(dir)) {
+      assertThat(siblings).containsExactly(jar);
+    }
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_restore_the_file_when_only_the_probe_name_was_left_behind(@TempDir Path dir)
+      throws IOException {
+    // The leftover shape of the current probe: no guard link exists before the rename, so a
+    // crash between the rename and the restore leaves the probe name alone.
+    Path jar = dir.resolve("held.jar");
+    Files.writeString(
+        dir.resolve("held.jar.jrsctl-lockprobe"), "jar bytes", StandardCharsets.UTF_8);
+
+    assertThat(files.isLocked(jar)).isFalse();
+
     assertThat(Files.readString(jar, StandardCharsets.UTF_8)).isEqualTo("jar bytes");
     try (var siblings = Files.list(dir)) {
       assertThat(siblings).containsExactly(jar);
