@@ -8,12 +8,14 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.ServiceControlException;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 /**
  * Service lifecycle steps shared by the apply and rollback plans (spec Â§8.2 steps 6 and 10,
@@ -27,6 +29,11 @@ final class ServiceSteps {
   static final String START = "start-service";
   static final String WAIT = "wait-for-server";
   static final Duration WAIT_CAP = Duration.ofMinutes(10);
+
+  /** The platform refused the service command outright; waiting would not have helped. */
+  static final String RIGHTS_REMEDIATION =
+      "run jrsctl with the rights the service manager demands (see the message), then re-run;"
+          + " nothing was changed";
 
   private ServiceSteps() {}
 
@@ -69,12 +76,12 @@ final class ServiceSteps {
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      return stop(rt);
+      return stop(rt, ctx.cancel()::isCancelled);
     }
 
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
-      return start(rt);
+      return start(rt, ctx.cancel()::isCancelled);
     }
   }
 
@@ -117,12 +124,12 @@ final class ServiceSteps {
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      return start(rt);
+      return start(rt, ctx.cancel()::isCancelled);
     }
 
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
-      return stop(rt);
+      return stop(rt, ctx.cancel()::isCancelled);
     }
   }
 
@@ -232,13 +239,13 @@ final class ServiceSteps {
     }
   }
 
-  static StepResult stop(HotfixRuntime rt) {
+  static StepResult stop(HotfixRuntime rt, BooleanSupplier cancelled) {
     try {
       ServiceController controller = rt.controller();
       if (controller.state() == ServiceController.State.STOPPED) {
         return StepResult.ok();
       }
-      ServiceController.State result = controller.stop(rt.serviceTimeout());
+      ServiceController.State result = controller.stop(rt.serviceTimeout(), cancelled);
       if (result == ServiceController.State.STOPPED) {
         return StepResult.ok();
       }
@@ -251,19 +258,21 @@ final class ServiceSteps {
               + controller.describe()
               + ")",
           "stop the service by hand, then re-run");
+    } catch (ServiceControlException e) {
+      return Failures.recoverable(e.getMessage(), RIGHTS_REMEDIATION);
     } catch (RuntimeException e) {
       return Failures.recoverable(
           "cannot stop the service: " + Failures.describe(e), "check service.* in config.yaml");
     }
   }
 
-  static StepResult start(HotfixRuntime rt) {
+  static StepResult start(HotfixRuntime rt, BooleanSupplier cancelled) {
     try {
       ServiceController controller = rt.controller();
       if (controller.state() == ServiceController.State.RUNNING) {
         return StepResult.ok();
       }
-      ServiceController.State result = controller.start(rt.serviceTimeout());
+      ServiceController.State result = controller.start(rt.serviceTimeout(), cancelled);
       if (result == ServiceController.State.RUNNING) {
         return StepResult.ok();
       }
@@ -276,6 +285,8 @@ final class ServiceSteps {
               + controller.describe()
               + ")",
           "start the service by hand and check its log");
+    } catch (ServiceControlException e) {
+      return Failures.recoverable(e.getMessage(), RIGHTS_REMEDIATION);
     } catch (RuntimeException e) {
       return Failures.recoverable(
           "cannot start the service: " + Failures.describe(e), "check service.* in config.yaml");

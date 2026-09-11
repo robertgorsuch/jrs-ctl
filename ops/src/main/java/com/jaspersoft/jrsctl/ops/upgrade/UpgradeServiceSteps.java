@@ -8,6 +8,7 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.ServiceControlException;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
@@ -18,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 /**
  * Service stop/start/wait steps for the upgrade plans (spec §10.2 steps 4, 9, 11 and the rollback
@@ -29,6 +31,11 @@ import java.util.Objects;
 final class UpgradeServiceSteps {
 
   static final Duration WAIT_CAP = Duration.ofMinutes(10);
+
+  /** The platform refused the service command outright; waiting would not have helped. */
+  static final String RIGHTS_REMEDIATION =
+      "run jrsctl with the rights the service manager demands (see the message), then re-run;"
+          + " nothing was changed";
 
   private UpgradeServiceSteps() {}
 
@@ -62,13 +69,13 @@ final class UpgradeServiceSteps {
     }
   }
 
-  static StepResult stop(UpgradeRuntime rt) {
+  static StepResult stop(UpgradeRuntime rt, BooleanSupplier cancelled) {
     try {
       ServiceController controller = rt.controller();
       if (controller.state() == ServiceController.State.STOPPED) {
         return StepResult.ok();
       }
-      ServiceController.State result = controller.stop(rt.serviceTimeout());
+      ServiceController.State result = controller.stop(rt.serviceTimeout(), cancelled);
       if (result == ServiceController.State.STOPPED) {
         return StepResult.ok();
       }
@@ -81,19 +88,21 @@ final class UpgradeServiceSteps {
               + controller.describe()
               + ")",
           "stop the service by hand or raise service.stopTimeoutSeconds, then run again");
+    } catch (ServiceControlException e) {
+      return Failures.recoverable(e.getMessage(), RIGHTS_REMEDIATION);
     } catch (RuntimeException e) {
       return Failures.recoverable(
           "cannot stop the service: " + Failures.describe(e), "check service.* in config.yaml");
     }
   }
 
-  static StepResult start(UpgradeRuntime rt) {
+  static StepResult start(UpgradeRuntime rt, BooleanSupplier cancelled) {
     try {
       ServiceController controller = rt.controller();
       if (controller.state() == ServiceController.State.RUNNING) {
         return StepResult.ok();
       }
-      ServiceController.State result = controller.start(WAIT_CAP);
+      ServiceController.State result = controller.start(WAIT_CAP, cancelled);
       if (result == ServiceController.State.RUNNING) {
         return StepResult.ok();
       }
@@ -106,6 +115,8 @@ final class UpgradeServiceSteps {
               + controller.describe()
               + ")",
           "check the Tomcat log and start the service by hand");
+    } catch (ServiceControlException e) {
+      return Failures.recoverable(e.getMessage(), RIGHTS_REMEDIATION);
     } catch (RuntimeException e) {
       return Failures.recoverable(
           "cannot start the service: " + Failures.describe(e), "check service.* in config.yaml");
@@ -165,7 +176,7 @@ final class UpgradeServiceSteps {
         Logs.info(rt, ctx, out, this, "service already stopped");
         return StepResult.ok();
       }
-      StepResult result = stop(rt);
+      StepResult result = stop(rt, ctx.cancel()::isCancelled);
       if (result instanceof StepResult.Ok) {
         try {
           Files.createDirectories(marker(ctx).getParent());
@@ -193,7 +204,7 @@ final class UpgradeServiceSteps {
         Logs.info(rt, ctx, out, this, "service was not stopped by this run; leaving it as is");
         return StepResult.ok();
       }
-      StepResult result = start(rt);
+      StepResult result = start(rt, ctx.cancel()::isCancelled);
       if (result instanceof StepResult.Ok) {
         try {
           Files.deleteIfExists(marker(ctx));
@@ -243,7 +254,7 @@ final class UpgradeServiceSteps {
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      return start(rt);
+      return start(rt, ctx.cancel()::isCancelled);
     }
 
     @Override
@@ -256,7 +267,7 @@ final class UpgradeServiceSteps {
 
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
-      return stop(rt);
+      return stop(rt, ctx.cancel()::isCancelled);
     }
   }
 

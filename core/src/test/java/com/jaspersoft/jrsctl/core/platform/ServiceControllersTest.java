@@ -30,6 +30,62 @@ class ServiceControllersTest {
   }
 
   @Test
+  void should_fail_fast_when_windows_refuses_the_stop_command() {
+    FakeProcessRunner runner =
+        new FakeProcessRunner()
+            .on(SC_QUERY, scState("RUNNING"))
+            .on(SC_STOP, Response.failing(5, "[SC] OpenService FAILED 5:", "Access is denied."));
+    WindowsServiceController controller = new WindowsServiceController(runner, SERVICE, POLL);
+
+    long started = System.nanoTime();
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.stop(TIMEOUT))
+        .as("a refused command must not be waited out as if the service were slow")
+        .isInstanceOf(ServiceControlException.class)
+        .hasMessageContaining("sc.exe stop")
+        .hasMessageContaining("Access is denied")
+        .hasMessageContaining("administrator");
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
+  }
+
+  @Test
+  void should_fail_fast_when_systemd_refuses_the_start_command() {
+    List<String> isActive = List.of("systemctl", "is-active", "jasperreports");
+    List<String> start = List.of("systemctl", "start", "jasperreports");
+    FakeProcessRunner runner =
+        new FakeProcessRunner()
+            .on(isActive, Response.failing(3, "inactive"))
+            .on(
+                start,
+                Response.failing(
+                    4,
+                    "Failed to start jasperreports.service: Access denied",
+                    "See system logs and 'systemctl status jasperreports.service' for details."));
+    SystemdServiceController controller =
+        new SystemdServiceController(runner, "jasperreports", POLL);
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.start(TIMEOUT))
+        .isInstanceOf(ServiceControlException.class)
+        .hasMessageContaining("systemctl start")
+        .hasMessageContaining("Access denied")
+        .hasMessageContaining("root");
+  }
+
+  @Test
+  void should_stop_waiting_when_cancelled_while_a_service_stops() {
+    FakeProcessRunner runner =
+        new FakeProcessRunner()
+            .on(SC_QUERY, scState("RUNNING"), scState("STOP_PENDING"))
+            .on(SC_STOP, Response.ok());
+    WindowsServiceController controller = new WindowsServiceController(runner, SERVICE, POLL);
+
+    long started = System.nanoTime();
+    State result = controller.stop(Duration.ofSeconds(30), () -> true);
+
+    assertThat(result).as("the last observed state, not an assumption").isEqualTo(State.STOPPING);
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
+  }
+
+  @Test
   void should_return_stopped_when_windows_service_passes_through_stop_pending() {
     FakeProcessRunner runner =
         new FakeProcessRunner()

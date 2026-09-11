@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.core.redact.RedactingEventSink;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.core.state.StateStoreException;
 import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -33,7 +34,10 @@ import java.util.function.Supplier;
  * steps are skipped during compensation; the run row always receives a terminal state and exit code
  * before the Runner returns. Steps that throw are treated as {@code Recoverable} with the exception
  * as the cause. Every event, including those steps emit themselves, passes the redactor before any
- * subscriber sees it, so redaction is an engine guarantee rather than a per-sink convention. {@link
+ * subscriber sees it, so redaction is an engine guarantee rather than a per-sink convention. A
+ * journal write that fails ends the run with a {@code Failed} outcome and a {@code RunFailed} event
+ * naming {@code runs recover}, never with an escaping exception; cancellation is noticed inside a
+ * retry backoff within one {@link Sleeper#SLICE}. {@link
  * com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so the CLI can map it to
  * exit code 9.
  */
@@ -164,6 +168,42 @@ public final class Runner {
     }
 
     RunOutcome proceed(int startIndex) {
+      try {
+        return proceedJournalled(startIndex);
+      } catch (StateStoreException e) {
+        return journalFailed(e);
+      }
+    }
+
+    /**
+     * The journal is the run's source of truth; when it cannot be written the run cannot go on and
+     * cannot even record that it stopped. The outcome says so, names the run for {@code runs
+     * recover}, and counts as rollback-incomplete whenever a mutating step already ran, because
+     * nothing was undone. The terminal row is still attempted, since the failure may have been a
+     * single write.
+     */
+    private RunOutcome journalFailed(StateStoreException e) {
+      String cause = "the run journal could not be written: " + describe(e);
+      String nextAction =
+          "the state of run "
+              + runId
+              + " is unknown until state.db is writable again; run jrsctl doctor, then"
+              + " jrsctl runs recover "
+              + runId
+              + " --resume or --rollback";
+      RunOutcome.Failed outcome = new RunOutcome.Failed(cause, mutated, nextAction, List.of());
+      try {
+        store.recordRunEnd(runId, now(), TerminalState.FAILED, outcome.exitCode());
+      } catch (StateStoreException again) {
+        // the journal is what failed; the pending row is what runs recover will find
+      }
+      emit(
+          new Event.RunFailed(
+              now(), runId, RUN_PHASE, cause, List.of(), nextAction, outcome.rollbackIncomplete()));
+      return outcome;
+    }
+
+    private RunOutcome proceedJournalled(int startIndex) {
       emit(
           new Event.PlanCreated(
               now(), runId, RUN_PHASE, plan.planId(), plan.fingerprint().value()));
@@ -189,6 +229,14 @@ public final class Runner {
     }
 
     RunOutcome rollbackRecorded(String cause) {
+      try {
+        return rollbackRecordedJournalled(cause);
+      } catch (StateStoreException e) {
+        return journalFailed(e);
+      }
+    }
+
+    private RunOutcome rollbackRecordedJournalled(String cause) {
       List<Step> steps = plan.steps();
       List<Integer> targets = new ArrayList<>(succeededMutating);
       for (int i = 0; i < steps.size(); i++) {
@@ -297,7 +345,7 @@ public final class Runner {
                   delay.toMillis(),
                   retryable.cause()));
           try {
-            sleeper.sleep(delay);
+            sleeper.sleep(delay, ctx.cancel());
           } catch (CancellationToken.CancelledException e) {
             return cancelInFlight(step, e.getMessage());
           }

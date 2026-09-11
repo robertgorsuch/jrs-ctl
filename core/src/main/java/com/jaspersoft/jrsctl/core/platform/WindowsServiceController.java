@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,24 +58,38 @@ public final class WindowsServiceController extends PollingServiceController {
     return State.UNKNOWN;
   }
 
+  private static final String REMEDIATION =
+      "run jrsctl from an elevated (administrator) prompt, or grant this account the right to"
+          + " control the service";
+
   @Override
   public State stop(Duration timeout) {
+    return stop(timeout, () -> false);
+  }
+
+  @Override
+  public State stop(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.STOPPED) {
       return State.STOPPED;
     }
-    invoke(List.of("sc.exe", "stop", serviceName), QUERY_TIMEOUT);
-    return await(State.STOPPED, remaining(start, timeout));
+    control(List.of("sc.exe", "stop", serviceName), QUERY_TIMEOUT, State.STOPPED, REMEDIATION);
+    return await(State.STOPPED, remaining(start, timeout), cancelled);
   }
 
   @Override
   public State start(Duration timeout) {
+    return start(timeout, () -> false);
+  }
+
+  @Override
+  public State start(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
-    invoke(List.of("sc.exe", "start", serviceName), QUERY_TIMEOUT);
-    return await(State.RUNNING, remaining(start, timeout));
+    control(List.of("sc.exe", "start", serviceName), QUERY_TIMEOUT, State.RUNNING, REMEDIATION);
+    return await(State.RUNNING, remaining(start, timeout), cancelled);
   }
 
   @Override

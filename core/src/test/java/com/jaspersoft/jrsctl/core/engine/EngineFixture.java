@@ -32,7 +32,24 @@ public final class EngineFixture implements AutoCloseable {
     this.home = new JrsctlHome(root);
     this.store = StateStore.open(home, clock);
     bus.subscribe(sink);
-    this.runner = new Runner(store, bus, clock, sleeps::add);
+    this.runner = new Runner(store, bus, clock, recordingSleeper());
+  }
+
+  /** Records each requested wait whole (not in slices) and still honours the token. */
+  private Sleeper recordingSleeper() {
+    return new Sleeper() {
+      @Override
+      public void sleep(Duration duration) {
+        sleeps.add(duration);
+      }
+
+      @Override
+      public void sleep(Duration duration, CancellationToken token) {
+        token.checkpoint();
+        sleeps.add(duration);
+        token.checkpoint();
+      }
+    };
   }
 
   public Context context(String runId) {

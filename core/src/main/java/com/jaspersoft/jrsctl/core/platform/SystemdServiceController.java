@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 /**
  * {@link ServiceController} for a systemd unit driven by {@code systemctl}. Invariants: state is
@@ -54,24 +55,37 @@ public final class SystemdServiceController extends PollingServiceController {
     return State.UNKNOWN;
   }
 
+  private static final String REMEDIATION =
+      "run jrsctl as root, or as a user allowed to control the unit (polkit or sudo)";
+
   @Override
   public State stop(Duration timeout) {
+    return stop(timeout, () -> false);
+  }
+
+  @Override
+  public State stop(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.STOPPED) {
       return State.STOPPED;
     }
-    invoke(List.of("systemctl", "stop", unit), timeout);
-    return await(State.STOPPED, remaining(start, timeout));
+    control(List.of("systemctl", "stop", unit), timeout, State.STOPPED, REMEDIATION);
+    return await(State.STOPPED, remaining(start, timeout), cancelled);
   }
 
   @Override
   public State start(Duration timeout) {
+    return start(timeout, () -> false);
+  }
+
+  @Override
+  public State start(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
-    invoke(List.of("systemctl", "start", unit), timeout);
-    return await(State.RUNNING, remaining(start, timeout));
+    control(List.of("systemctl", "start", unit), timeout, State.RUNNING, REMEDIATION);
+    return await(State.RUNNING, remaining(start, timeout), cancelled);
   }
 
   @Override

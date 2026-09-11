@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.core.platform;
 
 import java.time.Duration;
+import java.util.function.BooleanSupplier;
 
 /**
  * Starts and stops the JRS application server for the configured {@code service.kind} (spec §5.3).
@@ -23,6 +24,18 @@ public interface ServiceController {
   State stop(Duration timeout);
 
   State start(Duration timeout);
+
+  /**
+   * As {@link #stop(Duration)}, but gives up waiting as soon as {@code cancelled} answers true and
+   * returns the last observed state. The default ignores the signal; real controllers override.
+   */
+  default State stop(Duration timeout, BooleanSupplier cancelled) {
+    return stop(timeout);
+  }
+
+  default State start(Duration timeout, BooleanSupplier cancelled) {
+    return start(timeout);
+  }
 
   /** Human-readable description shown in plans, e.g. "Windows service jasperreportsTomcat". */
   String describe();

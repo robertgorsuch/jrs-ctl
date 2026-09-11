@@ -119,7 +119,7 @@ public final class ServiceSteps {
       Duration timeout = stopTimeout(ctx);
       Logs.info(
           out, ctx, this, "stopping " + c.describe() + " (timeout " + timeout.toSeconds() + "s)");
-      ServiceController.State after = c.stop(timeout);
+      ServiceController.State after = c.stop(timeout, ctx.cancel()::isCancelled);
       if (after != ServiceController.State.STOPPED) {
         return Failures.recoverable(
             c.describe()
@@ -164,7 +164,7 @@ public final class ServiceSteps {
         // an unreadable marker is treated as "we stopped it": starting a running service is a no-op
       }
       ServiceController c = controller(ctx);
-      ServiceController.State s = c.start(START_TIMEOUT);
+      ServiceController.State s = c.start(START_TIMEOUT, ctx.cancel()::isCancelled);
       if (s != ServiceController.State.RUNNING) {
         return Failures.recoverable(
             c.describe() + " did not start during rollback (state " + s + ")",
@@ -220,7 +220,7 @@ public final class ServiceSteps {
         return StepResult.ok();
       }
       Logs.info(out, ctx, this, "starting " + c.describe());
-      ServiceController.State s = c.start(START_TIMEOUT);
+      ServiceController.State s = c.start(START_TIMEOUT, ctx.cancel()::isCancelled);
       if (s != ServiceController.State.RUNNING) {
         return Failures.recoverable(
             c.describe()

@@ -569,6 +569,63 @@ class RunnerTest {
   }
 
   @Test
+  void should_cancel_during_retry_backoff_when_the_token_is_cancelled_while_sleeping() {
+    Context ctx = fx.context(RUN);
+    // The operator presses Ctrl-C while the runner is waiting to retry: the sleeper is where the
+    // cancellation lands, and the wait must end there, not after the whole backoff and another
+    // attempt.
+    Sleeper cancelling = duration -> ctx.cancel().cancel("operator pressed Ctrl-C");
+    Runner runner = new Runner(fx.store, fx.bus, fx.clock, cancelling);
+    RetryPolicy policy = new RetryPolicy(5, Duration.ofSeconds(2), 1.0, Duration.ofSeconds(2), 0);
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply"),
+            fx.step("s2", "apply")
+                .retry(policy)
+                .executeReturns(StepResult.failed(StepFailure.retryable("503", "wait"))));
+
+    RunOutcome outcome = runner.run(plan, ctx, EngineFixture.fingerprint(), RunOptions.DEFAULT);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Cancelled.class);
+    assertThat(outcome.exitCode()).isEqualTo(5);
+    assertThat(fx.trace)
+        .as("one attempt, then the in-flight step and its predecessor are compensated")
+        .containsExactly("exec:s1", "exec:s2", "comp:s2", "comp:s1");
+    assertThat(fx.sink.of(Event.StepRetry.class)).hasSize(1);
+    assertThat(fx.sink.types()).endsWith("RunCancelled");
+  }
+
+  @Test
+  void should_end_the_run_as_failed_when_the_journal_cannot_be_written() {
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply"),
+            fx.step("s2", "apply")
+                .onExecute(
+                    (ctx, out) -> {
+                      // the disk fills, the file is deleted, the database is corrupted: the next
+                      // transition cannot be written
+                      fx.store.close();
+                      return StepResult.ok();
+                    }));
+
+    RunOutcome outcome = run(plan);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Failed.class);
+    RunOutcome.Failed failed = (RunOutcome.Failed) outcome;
+    assertThat(failed.exitCode()).isEqualTo(4);
+    assertThat(failed.cause()).contains("journal");
+    assertThat(failed.rollbackIncomplete()).as("s1 mutated and nothing was undone").isTrue();
+    assertThat(failed.nextAction()).contains("runs recover");
+    assertThat(fx.sink.types()).endsWith("RunFailed");
+    assertThat(fx.sink.of(Event.RunFailed.class))
+        .singleElement()
+        .satisfies(e -> assertThat(e.cause()).contains("journal"));
+  }
+
+  @Test
   void should_succeed_with_exit_0_when_every_step_passes() {
     Plan plan =
         EngineFixture.plan("p1", fx.step("s1", "apply"), fx.step("s2", "verify").nonMutating());
