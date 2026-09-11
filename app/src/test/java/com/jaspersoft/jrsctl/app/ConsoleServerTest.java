@@ -686,6 +686,48 @@ class ConsoleServerTest {
   }
 
   @Test
+  void should_reject_a_launch_exchange_from_a_foreign_host_and_keep_the_code_usable()
+      throws Exception {
+    startDefault();
+    String launchUrl = server.launchUrl();
+    String code = launchUrl.substring(launchUrl.indexOf("#launch=") + 8);
+    String body = "{\"code\":\"" + code + "\"}";
+
+    // A DNS-rebinding page reaches the listener with its own Host header; java.net.http refuses
+    // to send a custom Host, so speak HTTP/1.1 on a raw socket.
+    String raw;
+    try (java.net.Socket socket =
+        new java.net.Socket(java.net.InetAddress.getLoopbackAddress(), server.port())) {
+      socket.setSoTimeout(10_000);
+      String request =
+          "POST /api/auth/launch HTTP/1.1\r\nHost: evil.example:"
+              + server.port()
+              + "\r\nContent-Type: application/json\r\nContent-Length: "
+              + body.getBytes(StandardCharsets.UTF_8).length
+              + "\r\nConnection: close\r\n\r\n"
+              + body;
+      socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
+      socket.getOutputStream().flush();
+      raw = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    }
+    assertThat(raw)
+        .as("the one unauthenticated route still gets the Host gate")
+        .startsWith("HTTP/1.1 421");
+    assertThat(raw).doesNotContain(token);
+
+    // The rejected attempt did not consume the code: the real browser can still exchange it.
+    HttpResponse<String> ok =
+        http.send(
+            HttpRequest.newBuilder(URI.create(server.baseUrl() + "/api/auth/launch"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(ok.statusCode()).isEqualTo(200);
+    assertThat(json(ok).get("token").asText()).isEqualTo(token);
+  }
+
+  @Test
   void should_issue_and_exchange_single_use_launch_code() throws Exception {
     startDefault();
     String launchUrl = server.launchUrl();

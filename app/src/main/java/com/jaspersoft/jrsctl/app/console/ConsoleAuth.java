@@ -56,11 +56,20 @@ public final class ConsoleAuth implements Handler {
 
   @Override
   public void handle(Context ctx) {
-    if (!hostAllowed(ctx.header("Host"))) {
-      throw new ConsoleHttpException(421, HOST_REJECTED);
-    }
+    requireHost(ctx);
     if (!authorised(ctx.header("Authorization"))) {
       throw new ConsoleHttpException(401, TOKEN_REQUIRED);
+    }
+  }
+
+  /**
+   * The Host gate alone, for the one route that cannot demand a token yet ({@code
+   * /api/auth/launch}): a DNS-rebinding page reaches the listener with its own Host header and must
+   * be turned away before it can trade a launch code for the token.
+   */
+  public void requireHost(Context ctx) {
+    if (!hostAllowed(ctx.header("Host"))) {
+      throw new ConsoleHttpException(421, HOST_REJECTED);
     }
   }
 

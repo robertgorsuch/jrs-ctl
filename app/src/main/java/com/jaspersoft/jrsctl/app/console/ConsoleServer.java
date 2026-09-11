@@ -150,8 +150,10 @@ public final class ConsoleServer implements AutoCloseable {
           ctx.header("Referrer-Policy", "no-referrer");
           ctx.header("X-Frame-Options", "DENY");
           String path = ctx.path();
-          if ((path.equals("/api") || path.startsWith("/api/"))
-              && !path.equals("/api/auth/launch")) {
+          if (path.equals("/api/auth/launch")) {
+            // no token yet, but never from a foreign Host
+            auth.requireHost(ctx);
+          } else if (path.equals("/api") || path.startsWith("/api/")) {
             auth.handle(ctx);
           }
         });
