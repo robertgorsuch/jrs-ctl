@@ -261,8 +261,8 @@ public final class VendorTools {
 
   static String quoteForCmd(String arg) {
     boolean splits = false;
-    for (char c : CMD_METACHARACTERS.toCharArray()) {
-      splits |= arg.indexOf(c) >= 0;
+    for (int i = 0; i < CMD_METACHARACTERS.length(); i++) {
+      splits |= arg.indexOf(CMD_METACHARACTERS.charAt(i)) >= 0;
     }
     boolean quoted = arg.length() >= 2 && arg.startsWith("\"") && arg.endsWith("\"");
     boolean spaced = arg.indexOf(' ') >= 0 || arg.indexOf('\t') >= 0;
