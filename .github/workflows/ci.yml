@@ -70,10 +70,18 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: OWASP dependency check (fails at CVSS >= 7)
-        run: mvn -B -DskipTests org.owasp:dependency-check-maven:9.2.0:aggregate -DfailBuildOnCVSS=7
+      - name: Require the NVD API key (the audit is a release gate, so it must not silently skip)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::the NVD_API_KEY repository secret is not set; the dependency audit cannot run (spec §20)"
+            exit 1
+          fi
+      - name: OWASP dependency check (fails at CVSS >= 7)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: mvn -B -DskipTests org.owasp:dependency-check-maven:9.2.0:aggregate -DfailBuildOnCVSS=7 "-DnvdApiKey=$NVD_API_KEY"
 
   package:
     name: package (jlink image, archive, SBOM, portable smoke) (${{ matrix.os }})
