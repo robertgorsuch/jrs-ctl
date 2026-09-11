@@ -39,6 +39,7 @@ public final class DoctorOperation {
           "vendor",
           "vendor-java",
           "database",
+          "state",
           "runs",
           "lock",
           "snapshots",
@@ -92,6 +93,7 @@ public final class DoctorOperation {
             "vendor-java",
             s -> probe.dependent("vendor-java", c -> ServerChecks.vendorJava(s, c))));
     items.add(guard("database", DatabaseCheck::check));
+    items.add(guard("state", LocalChecks::state));
     items.add(guard("runs", LocalChecks::runs));
     items.add(guard("lock", LocalChecks::lock));
     items.add(guard("snapshots", LocalChecks::snapshots));

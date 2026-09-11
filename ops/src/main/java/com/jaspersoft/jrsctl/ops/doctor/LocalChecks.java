@@ -15,6 +15,8 @@ import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.Recovery;
 import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.RunRecord;
+import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.core.state.StateStoreException;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
@@ -260,6 +262,31 @@ final class LocalChecks {
     }
     return ReportItem.pass(
         "vendor", "js-export, js-import, js-ant present in " + buildomatic.get());
+  }
+
+  /**
+   * {@code PRAGMA quick_check} on {@code state.db} (review finding 1.18). The store refuses to open
+   * a damaged file, so the failure surfaces here with the way out rather than in the first check
+   * that needs the store.
+   */
+  static ReportItem state(Services s) {
+    Path db = s.home().stateDb();
+    if (!Files.exists(db)) {
+      return ReportItem.pass("state", "no state.db yet; created on first use");
+    }
+    try {
+      StateStore store = s.stateStore().get();
+      String check = store.integrity();
+      if ("ok".equals(check)) {
+        return ReportItem.pass(
+            "state", "quick_check ok, schema v" + store.schemaVersion() + ", " + db);
+      }
+      return ReportItem.fail(
+          "state", "quick_check: " + check, StateStore.corruptionRemediation(db));
+    } catch (StateStoreException e) {
+      return ReportItem.fail(
+          "state", "cannot open state.db: " + e.getMessage(), StateStore.corruptionRemediation(db));
+    }
   }
 
   static ReportItem runs(Services s) {

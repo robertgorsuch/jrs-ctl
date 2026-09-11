@@ -86,6 +86,39 @@ class DoctorOperationTest {
     }
   }
 
+  /** Review finding 1.18: doctor runs the integrity check and names the way out. */
+  @Test
+  void should_fail_state_with_a_remediation_when_state_db_is_corrupt() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+    Path db = new com.jaspersoft.jrsctl.core.JrsctlHome(home).stateDb();
+    try (com.jaspersoft.jrsctl.core.state.StateStore victim =
+        com.jaspersoft.jrsctl.core.state.StateStore.open(db, java.time.Clock.systemUTC())) {
+      for (int i = 0; i < 200; i++) {
+        victim.audit("test", "fill", "row " + i + " " + "x".repeat(200));
+      }
+    }
+    try (java.nio.channels.FileChannel ch =
+        java.nio.channels.FileChannel.open(db, java.nio.file.StandardOpenOption.WRITE)) {
+      // page headers of pages 2 to 4: an invalid page type fails quick_check whatever the page
+      // holds, whereas unallocated space inside a page is not validated
+      byte[] junk = new byte[64];
+      java.util.Arrays.fill(junk, (byte) 0xFF);
+      for (int page = 2; page <= 4; page++) {
+        ch.write(java.nio.ByteBuffer.wrap(junk), (page - 1) * 4096L);
+      }
+    }
+    try (FakeServices fake = FakeServices.in(home).yaml(healthyYaml(install))) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+      Map<String, ReportItem> items = byName(report);
+
+      assertThat(items.get("state").status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(items.get("state").detail()).contains("quick_check");
+      assertThat(items.get("state").remediation()).contains("move").contains("state.db");
+      assertThat(report.exitCode()).isNotZero();
+    }
+  }
+
   @Test
   void should_fail_server_and_skip_dependents_when_server_unreachable() throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));

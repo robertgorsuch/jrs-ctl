@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The exclusive run lock on {@code $JRSCTL_HOME/runs.lock} (spec §5.5). Invariants: the lock is an
@@ -23,12 +25,15 @@ import java.util.Optional;
  */
 public final class RunLock implements AutoCloseable {
 
+  private static final Logger LOG = LoggerFactory.getLogger(RunLock.class);
+
   private static final long LOCK_POSITION = 1L << 40;
 
   private final Path file;
   private final FileChannel channel;
   private final FileLock lock;
   private final String runId;
+  private volatile boolean closed;
 
   public RunLock(JrsctlHome home, String runId, Instant startedAt) {
     this.file = home.runLock();
@@ -104,8 +109,16 @@ public final class RunLock implements AutoCloseable {
     }
   }
 
+  /**
+   * Releases the lock. Never throws and is idempotent (review finding 1.18): it runs after the
+   * run's outcome is journaled, so a failure to truncate or release is logged, not raised.
+   */
   @Override
   public void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
     IOException failure = null;
     try {
       channel.truncate(0);
@@ -132,7 +145,7 @@ public final class RunLock implements AutoCloseable {
       }
     }
     if (failure != null) {
-      throw new IllegalStateException("cannot release run lock " + file, failure);
+      LOG.warn("run lock {} was not released cleanly: {}", file, failure.getMessage());
     }
   }
 

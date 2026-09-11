@@ -18,6 +18,8 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The SQLite state store at {@code $JRSCTL_HOME/state.db}: the single source of truth for run
@@ -26,16 +28,22 @@ import java.util.Optional;
  * idempotent; every write happens inside a {@code BEGIN IMMEDIATE ... COMMIT} transaction; {@code
  * step_transitions} and {@code audit} are append-only (enforced by triggers); every public method
  * is thread-safe and never returns {@code null}. {@code SQLException} never escapes; failures are
- * reported as {@link StateStoreException}.
+ * reported as {@link StateStoreException}. A damaged file is refused on open: {@code PRAGMA
+ * quick_check} runs before the migrations and a result other than {@code ok} raises {@link
+ * StateStoreException} naming the file and the way out ({@link #corruptionRemediation}), so
+ * corruption surfaces at start rather than in whatever query first touches it. {@link #close()}
+ * never throws: it runs after a run's outcome is journaled, and a failure to close is logged.
  */
 public final class StateStore implements AutoCloseable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(StateStore.class);
 
   private final Connection conn;
   private final Path file;
   private final Clock clock;
   private final Object mutex = new Object();
 
-  private StateStore(Connection conn, Path file, Clock clock) {
+  StateStore(Connection conn, Path file, Clock clock) {
     this.conn = conn;
     this.file = file;
     this.clock = clock;
@@ -72,6 +80,16 @@ public final class StateStore implements AutoCloseable {
         s.execute("PRAGMA synchronous=FULL");
         s.execute("PRAGMA foreign_keys=ON");
       }
+      String check = quickCheck(c);
+      if (!"ok".equals(check)) {
+        throw new StateStoreException(
+            "state store "
+                + abs
+                + " failed PRAGMA quick_check: "
+                + check
+                + "; "
+                + corruptionRemediation(abs));
+      }
       Migrations.apply(c, clock);
     } catch (SQLException | RuntimeException e) {
       try {
@@ -89,6 +107,37 @@ public final class StateStore implements AutoCloseable {
 
   public Path file() {
     return file;
+  }
+
+  /**
+   * {@code PRAGMA quick_check}: {@code "ok"} for a sound database, otherwise the first problems
+   * SQLite reports, joined by {@code "; "}. Read-only; {@code doctor} shows it.
+   */
+  public String integrity() {
+    return read(StateStore::quickCheck);
+  }
+
+  /** What an operator does with a state store that fails its integrity check. */
+  public static String corruptionRemediation(Path file) {
+    return "stop every jrsctl process, move "
+        + file
+        + " aside (for example to state.db.corrupt-<date>), then restore state.db from the most"
+        + " recent support bundle or let jrsctl create a fresh one; runs and installed hotfixes"
+        + " recorded only in the damaged file are not recoverable from it";
+  }
+
+  private static String quickCheck(Connection c) throws SQLException {
+    List<String> problems = new ArrayList<>();
+    try (Statement s = c.createStatement();
+        ResultSet rs = s.executeQuery("PRAGMA quick_check(3)")) {
+      while (rs.next()) {
+        problems.add(rs.getString(1));
+      }
+    }
+    if (problems.size() == 1 && "ok".equals(problems.get(0))) {
+      return "ok";
+    }
+    return String.join("; ", problems);
   }
 
   public int schemaVersion() {
@@ -760,13 +809,14 @@ public final class StateStore implements AutoCloseable {
         });
   }
 
+  /** Never throws (review finding 1.18): a close failure is logged, not turned into an error. */
   @Override
   public void close() {
     synchronized (mutex) {
       try {
         conn.close();
-      } catch (SQLException e) {
-        throw new StateStoreException("cannot close state store " + file, e);
+      } catch (SQLException | RuntimeException e) {
+        LOG.warn("state store {} did not close cleanly: {}", file, e.getMessage());
       }
     }
   }

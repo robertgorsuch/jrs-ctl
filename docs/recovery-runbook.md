@@ -74,6 +74,21 @@ jrsctl home, and the step whose compensation failed.
    repeats the whole restore (webapp, buildomatic, configuration, keystore) from the recorded
    backups and refuses to start if any of them is missing or does not match its recorded hash.
 
+## "state store ... failed PRAGMA quick_check"
+
+`state.db` is checked with SQLite's `quick_check` every time jrsctl opens it and by `doctor` (item
+`state`). A result other than `ok` means the file is damaged (a full disk, a power cut during a
+write, a copy taken while jrsctl was running) and jrsctl refuses to use it, because a journal that
+cannot be trusted is worse than none. What to do:
+
+1. Stop every jrsctl process.
+2. Move the file aside: `state.db` to `state.db.corrupt-<date>` (and `state.db-wal`,
+   `state.db-shm` next to it, if present). Keep the copies for support.
+3. Restore `state.db` from the most recent support bundle, or start with none: jrsctl creates a
+   fresh one on the next command. A fresh store does not know the hotfixes installed or the runs
+   made through the damaged one; `jrsctl hotfix list` will be empty until they are re-registered.
+4. Run `jrsctl doctor`; the `state` item must be PASS before any mutating command.
+
 ## "the run journal could not be written"
 
 `state.db` could not take the next transition: the disk is full, the file was deleted or made

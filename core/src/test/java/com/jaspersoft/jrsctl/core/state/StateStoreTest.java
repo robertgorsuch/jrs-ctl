@@ -38,6 +38,69 @@ class StateStoreTest {
   }
 
   @Test
+  void should_report_ok_from_quick_check_when_the_db_is_sound() {
+    assertThat(store.integrity()).isEqualTo("ok");
+  }
+
+  /**
+   * Review finding 1.18: a damaged {@code state.db} must be refused on open with a message that
+   * says what to do, not fail later on whatever query first touches the damage.
+   */
+  @Test
+  void should_refuse_to_open_a_corrupt_state_db_with_a_remediation() throws Exception {
+    Path db = tmp.resolve("damaged").resolve("state.db");
+    try (StateStore victim = StateStore.open(db, CLOCK)) {
+      for (int i = 0; i < 200; i++) {
+        victim.audit("test", "fill", "row " + i + " " + "x".repeat(200));
+      }
+    }
+    try (java.nio.channels.FileChannel ch =
+        java.nio.channels.FileChannel.open(db, java.nio.file.StandardOpenOption.WRITE)) {
+      // page headers of pages 2 to 4: an invalid page type fails quick_check whatever the page
+      // holds, whereas unallocated space inside a page is not validated
+      byte[] junk = new byte[64];
+      java.util.Arrays.fill(junk, (byte) 0xFF);
+      for (int page = 2; page <= 4; page++) {
+        ch.write(java.nio.ByteBuffer.wrap(junk), (page - 1) * 4096L);
+      }
+    }
+
+    assertThatThrownBy(() -> StateStore.open(db, CLOCK))
+        .isInstanceOf(StateStoreException.class)
+        .hasMessageContaining("quick_check")
+        .hasMessageContaining(db.toString())
+        .hasMessageContaining("move");
+  }
+
+  /** Review finding 1.18: a failure to close must never turn a finished run into an error. */
+  @Test
+  void should_not_throw_from_close_when_the_connection_refuses_to_close() throws Exception {
+    Path db = tmp.resolve("stubborn").resolve("state.db");
+    java.nio.file.Files.createDirectories(db.getParent());
+    java.sql.Connection real = java.sql.DriverManager.getConnection("jdbc:sqlite:" + db);
+    java.sql.Connection refusing =
+        (java.sql.Connection)
+            java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {java.sql.Connection.class},
+                (proxy, method, args) -> {
+                  if (method.getName().equals("close")) {
+                    throw new java.sql.SQLException("simulated close failure");
+                  }
+                  try {
+                    return method.invoke(real, args);
+                  } catch (java.lang.reflect.InvocationTargetException e) {
+                    throw e.getCause();
+                  }
+                });
+    StateStore stubborn = new StateStore(refusing, db, CLOCK);
+
+    stubborn.close();
+
+    real.close();
+  }
+
+  @Test
   void should_apply_migrations_and_create_the_db_when_opened_on_an_empty_home() {
     assertThat(store.schemaVersion()).isEqualTo(1);
     assertThat(Files.exists(home.stateDb())).isTrue();

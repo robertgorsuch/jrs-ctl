@@ -50,6 +50,21 @@ class RunLockTest {
     assertThat(RunLock.readHolder(home.runLock())).isEmpty();
   }
 
+  /**
+   * Review finding 1.18: {@code close()} runs after the run's outcome is journaled, so it must
+   * never throw; the second close finds a closed channel and must be a no-op.
+   */
+  @Test
+  void should_not_throw_when_closed_twice() {
+    JrsctlHome home = new JrsctlHome(tmp);
+    RunLock lock = new RunLock(home, "r-twice", NOW);
+
+    lock.close();
+    lock.close();
+
+    assertThat(RunLock.readHolder(home.runLock())).isEmpty();
+  }
+
   @Test
   void should_allow_reacquiring_when_previous_holder_closed() {
     JrsctlHome home = new JrsctlHome(tmp);
