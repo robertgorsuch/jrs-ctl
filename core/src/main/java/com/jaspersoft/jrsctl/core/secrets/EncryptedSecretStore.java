@@ -37,24 +37,34 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The {@code $JRSCTL_HOME/secrets.enc} store (spec §5.2): a JSON file {@code {version:1,
+ * The {@code $JRSCTL_HOME/secrets.enc} store (spec §5.2): a JSON file {@code {version:2,
  * kdf:"PBKDF2WithHmacSHA256", iterations:600000, salt:base64, verifier:{iv,ct},
  * entries:{name:{iv:base64, ct:base64}}}} whose entries are AES-256/GCM ciphertexts under a key
  * derived from the operator passphrase. The KDF salt is <em>machine-bound</em>: the 16 random bytes
- * stored in the file are concatenated with the host name (the {@code machineId}) before being fed
- * to PBKDF2, so a copied file cannot be unlocked on another machine even with the passphrase, and a
- * host rename requires re-creating the store. Each entry uses a fresh 96-bit IV and the entry name
- * as GCM associated data, so a ciphertext cannot be re-labelled. Invariants: the passphrase is
- * requested lazily and only for operations that need the key ({@code init}, {@code set}, {@code
- * get}); a wrong passphrase is detected by the verifier before anything is written; every write is
- * atomic (temp file + rename) and, on POSIX, owner-only; no secret value or passphrase ever appears
- * in an exception message. Only JDK cryptography is used.
+ * stored in the file are concatenated with the machine identity ({@code /etc/machine-id}, else
+ * {@code COMPUTERNAME}, else the host name) before being fed to PBKDF2, so a copied file cannot be
+ * unlocked on another machine even with the passphrase. Version 1 files were salted with the DNS
+ * host name instead; when such a file refuses the current identity it is retried with that legacy
+ * identity and, if that unlocks it, rewritten in place as version 2 under the current one. A
+ * version 2 file is never retried. Each entry uses a fresh 96-bit IV and the entry name as GCM
+ * associated data, so a ciphertext cannot be re-labelled. Invariants: the passphrase is requested
+ * lazily and only for operations that need the key ({@code init}, {@code set}, {@code get}); a
+ * wrong passphrase is detected by the verifier before anything is written; every write is atomic
+ * (temp file + rename) and, on POSIX, owner-only; no secret value or passphrase ever appears in an
+ * exception message. Only JDK cryptography is used.
  */
 public final class EncryptedSecretStore {
 
-  public static final int VERSION = 1;
+  public static final int VERSION = 2;
+
+  /** Files of this version were salted with the DNS host name; see the class comment. */
+  public static final int LEGACY_VERSION = 1;
+
+  private static final Logger LOG = LoggerFactory.getLogger(EncryptedSecretStore.class);
   public static final String KDF = "PBKDF2WithHmacSHA256";
   public static final int ITERATIONS = 600_000;
 
@@ -69,21 +79,33 @@ public final class EncryptedSecretStore {
   private final Path file;
   private final PassphraseSource passphrase;
   private final String machineId;
+  private final Optional<String> legacyMachineId;
   private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
   private final SecureRandom random = new SecureRandom();
 
   private byte[] cachedSalt;
+  private String cachedIdentity;
   private SecretKey cachedKey;
 
   public EncryptedSecretStore(Path file, PassphraseSource passphrase) {
-    this(file, passphrase, hostName());
+    this(file, passphrase, hostName(), Optional.of(legacyHostName()));
   }
 
   /** As above with an explicit machine identity (tests, or a deliberately portable store). */
   public EncryptedSecretStore(Path file, PassphraseSource passphrase, String machineId) {
+    this(file, passphrase, machineId, Optional.empty());
+  }
+
+  /**
+   * As above, also naming the identity a version 1 store may have been salted with (the DNS host
+   * name used before 2026-09-10); it is tried only when a version 1 file refuses the current one.
+   */
+  public EncryptedSecretStore(
+      Path file, PassphraseSource passphrase, String machineId, Optional<String> legacyMachineId) {
     this.file = Objects.requireNonNull(file, "file");
     this.passphrase = Objects.requireNonNull(passphrase, "passphrase");
     this.machineId = Objects.requireNonNull(machineId, "machineId");
+    this.legacyMachineId = Objects.requireNonNull(legacyMachineId, "legacyMachineId");
   }
 
   public Path file() {
@@ -194,6 +216,11 @@ public final class EncryptedSecretStore {
 
   // ---- crypto -----------------------------------------------------------------------------------
 
+  /**
+   * Derives the key for {@code root} and proves it against the verifier. A version 1 file that
+   * refuses the current machine identity is retried with the legacy one and, on success, rebound to
+   * the current identity and rewritten as version 2 before the key is returned.
+   */
   private SecretKey unlock(ObjectNode root) {
     byte[] salt = base64(root, "salt");
     int iterations = root.path("iterations").asInt(0);
@@ -205,29 +232,70 @@ public final class EncryptedSecretStore {
               + iterations
               + " KDF iterations; refusing to use it");
     }
-    SecretKey key = deriveKey(salt, iterations);
     JsonNode verifier = root.get("verifier");
     if (verifier == null || !verifier.isObject()) {
       throw new SecretException("secrets store " + file + " has no verifier; re-initialise it");
     }
-    byte[] check = decrypt(key, VERIFIER_AAD, verifier, "verifier");
-    boolean ok = Arrays.equals(check, VERIFIER_PLAINTEXT);
-    Arrays.fill(check, (byte) 0);
-    if (!ok) {
-      throw wrongPassphrase();
+    SecretKey key = deriveKey(salt, iterations, machineId);
+    if (verifies(key, verifier)) {
+      return key;
     }
-    return key;
+    boolean legacyFile = root.path("version").asInt(-1) == LEGACY_VERSION;
+    if (legacyFile && legacyMachineId.isPresent() && !legacyMachineId.get().equals(machineId)) {
+      SecretKey legacyKey = deriveKey(salt, iterations, legacyMachineId.get());
+      if (verifies(legacyKey, verifier)) {
+        rebind(root, legacyKey, key);
+        return key;
+      }
+    }
+    throw wrongPassphrase();
+  }
+
+  private boolean verifies(SecretKey key, JsonNode verifier) {
+    Optional<byte[]> check = tryDecrypt(key, VERIFIER_AAD, verifier);
+    if (check.isEmpty()) {
+      return false;
+    }
+    boolean ok = Arrays.equals(check.get(), VERIFIER_PLAINTEXT);
+    Arrays.fill(check.get(), (byte) 0);
+    return ok;
+  }
+
+  /**
+   * Re-encrypts the verifier and every entry from {@code from} to {@code to}, stamps the current
+   * version and writes the file, so the store is bound to this machine's identity from now on.
+   */
+  private void rebind(ObjectNode root, SecretKey from, SecretKey to) {
+    root.set("verifier", encrypt(to, VERIFIER_AAD, VERIFIER_PLAINTEXT));
+    ObjectNode entries = entries(root);
+    List<String> names = new ArrayList<>();
+    entries.fieldNames().forEachRemaining(names::add);
+    for (String name : names) {
+      byte[] plain = decrypt(from, name, entries.get(name), "entry " + name);
+      try {
+        entries.set(name, encrypt(to, name, plain));
+      } finally {
+        Arrays.fill(plain, (byte) 0);
+      }
+    }
+    root.put("version", VERSION);
+    write(root);
+    LOG.warn(
+        "secrets store {} was created by an earlier build and bound to the host name; it is now"
+            + " bound to this machine's identity (version {})",
+        file,
+        VERSION);
   }
 
   private SecretKey deriveKey(byte[] salt) {
-    return deriveKey(salt, ITERATIONS);
+    return deriveKey(salt, ITERATIONS, machineId);
   }
 
-  private synchronized SecretKey deriveKey(byte[] salt, int iterations) {
-    if (cachedKey != null && Arrays.equals(cachedSalt, salt)) {
+  private synchronized SecretKey deriveKey(byte[] salt, int iterations, String identity) {
+    if (cachedKey != null && Arrays.equals(cachedSalt, salt) && identity.equals(cachedIdentity)) {
       return cachedKey;
     }
-    byte[] machine = machineId.getBytes(StandardCharsets.UTF_8);
+    byte[] machine = identity.getBytes(StandardCharsets.UTF_8);
     byte[] boundSalt = new byte[salt.length + machine.length];
     System.arraycopy(salt, 0, boundSalt, 0, salt.length);
     System.arraycopy(machine, 0, boundSalt, salt.length, machine.length);
@@ -239,6 +307,7 @@ public final class EncryptedSecretStore {
         SecretKey key = new SecretKeySpec(raw, "AES");
         Arrays.fill(raw, (byte) 0);
         cachedSalt = salt.clone();
+        cachedIdentity = identity;
         cachedKey = key;
         return key;
       } catch (GeneralSecurityException e) {
@@ -268,18 +337,24 @@ public final class EncryptedSecretStore {
   }
 
   private byte[] decrypt(SecretKey key, String aad, JsonNode entry, String what) {
+    return tryDecrypt(key, aad, entry)
+        .orElseThrow(
+            () ->
+                new SecretException(
+                    "secrets store " + file + ": " + what + " is corrupt or was re-labelled"));
+  }
+
+  /** Empty when the GCM tag does not verify: wrong key, wrong label, or altered ciphertext. */
+  private Optional<byte[]> tryDecrypt(SecretKey key, String aad, JsonNode entry) {
     byte[] iv = base64(entry, "iv");
     byte[] ct = base64(entry, "ct");
     try {
       Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
       cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
       cipher.updateAAD(aad.getBytes(StandardCharsets.UTF_8));
-      return cipher.doFinal(ct);
+      return Optional.of(cipher.doFinal(ct));
     } catch (AEADBadTagException e) {
-      throw what.equals("verifier")
-          ? wrongPassphrase()
-          : new SecretException(
-              "secrets store " + file + ": " + what + " is corrupt or was re-labelled", e);
+      return Optional.empty();
     } catch (GeneralSecurityException e) {
       throw new SecretException("decryption failed: " + e.getClass().getSimpleName(), e);
     }
@@ -310,9 +385,16 @@ public final class EncryptedSecretStore {
       throw new SecretException("secrets store " + file + " is not a JSON object");
     }
     int version = obj.path("version").asInt(-1);
-    if (version != VERSION) {
+    if (version != VERSION && version != LEGACY_VERSION) {
       throw new SecretException(
-          "secrets store " + file + " has version " + version + "; this build supports " + VERSION);
+          "secrets store "
+              + file
+              + " has version "
+              + version
+              + "; this build supports versions "
+              + LEGACY_VERSION
+              + " and "
+              + VERSION);
     }
     if (!KDF.equals(obj.path("kdf").asText())) {
       throw new SecretException("secrets store " + file + " uses an unsupported kdf");
@@ -381,6 +463,19 @@ public final class EncryptedSecretStore {
     if (!SecretRef.ENC_NAME.matcher(name).matches()) {
       throw new SecretException(
           "invalid secret name '" + name + "': use letters, digits, '_', '.', '-'");
+    }
+  }
+
+  /**
+   * The identity builds before 2026-09-10 salted with: the DNS host name, which flips between short
+   * and fully qualified forms as resolvers change. Kept only to unlock version 1 files.
+   */
+  private static String legacyHostName() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      Map<String, String> env = System.getenv();
+      return env.getOrDefault("COMPUTERNAME", env.getOrDefault("HOSTNAME", "localhost"));
     }
   }
 

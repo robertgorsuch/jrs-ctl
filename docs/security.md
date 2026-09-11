@@ -113,7 +113,10 @@ Review `config-redacted.yaml` for host names and paths you consider sensitive be
   naming the bundle and the actor. It exists for bundles an operator built themselves; a support
   process should never require it.
 - `secrets.enc` is AES-256-GCM with a PBKDF2-HMAC-SHA256 key derived from the passphrase and a
-  machine-bound salt; copying the file to another host does not move the secrets.
+  machine-bound salt; copying the file to another host does not move the secrets. The identity
+  is `/etc/machine-id` on Linux and the computer name on Windows (store version 2); a version 1
+  store, bound to the DNS host name by builds before 2026-09-10, is rebound in place the first
+  time it is unlocked and a version 2 store is never retried with the old identity.
 
 ## Hardening (Phase 8)
 

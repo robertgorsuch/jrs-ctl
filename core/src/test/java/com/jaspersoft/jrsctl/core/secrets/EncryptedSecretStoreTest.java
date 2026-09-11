@@ -1,15 +1,18 @@
 package com.jaspersoft.jrsctl.core.secrets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +28,92 @@ class EncryptedSecretStoreTest {
     return new EncryptedSecretStore(tmp.resolve("secrets.enc"), passphrase(passphrase), machine);
   }
 
+  private EncryptedSecretStore store(String passphrase, String machine, String legacyMachine) {
+    return new EncryptedSecretStore(
+        tmp.resolve("secrets.enc"), passphrase(passphrase), machine, Optional.of(legacyMachine));
+  }
+
+  /** Rewrites the file's version field, everything else being layout-identical across versions. */
+  private void stampVersion(Path file, int version) throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode root;
+    try (InputStream in = Files.newInputStream(file)) {
+      root = (ObjectNode) mapper.readTree(in);
+    }
+    root.put("version", version);
+    Files.writeString(file, mapper.writeValueAsString(root), StandardCharsets.UTF_8);
+  }
+
+  private static int versionOf(Path file) throws IOException {
+    try (InputStream in = Files.newInputStream(file)) {
+      return new ObjectMapper().readTree(in).get("version").asInt();
+    }
+  }
+
+  @Test
+  void should_unlock_a_version_1_store_with_the_legacy_host_name_and_rewrite_it_as_version_2()
+      throws IOException {
+    // a store created before the machine-id change: salted with the DNS host name, version 1
+    EncryptedSecretStore legacy = store("pp", "old-dns-name");
+    legacy.init();
+    try (Secret value = Secret.fromString("db-pass")) {
+      legacy.set("db", value);
+    }
+    stampVersion(legacy.file(), 1);
+
+    EncryptedSecretStore current = store("pp", "machine-id-abc", "old-dns-name");
+    try (Secret got = current.get("db").orElseThrow()) {
+      assertThat(new String(got.chars())).isEqualTo("db-pass");
+    }
+
+    assertThat(versionOf(current.file())).as("rewritten in place").isEqualTo(2);
+    try (Secret again = store("pp", "machine-id-abc").get("db").orElseThrow()) {
+      assertThat(new String(again.chars())).as("now bound to the machine id").isEqualTo("db-pass");
+    }
+    assertThatThrownBy(() -> store("pp", "old-dns-name").get("db"))
+        .as("the legacy identity no longer unlocks it")
+        .isInstanceOf(SecretException.class);
+  }
+
+  @Test
+  void should_report_wrong_passphrase_when_neither_identity_unlocks_a_version_1_store()
+      throws IOException {
+    EncryptedSecretStore legacy = store("hunter2-xyz", "some-other-host");
+    legacy.init();
+    stampVersion(legacy.file(), 1);
+
+    assertThatCode(() -> store("hunter2-xyz", "machine-id-abc", "old-dns-name").list())
+        .as("listing needs no passphrase")
+        .doesNotThrowAnyException();
+    assertThatThrownBy(() -> store("hunter2-xyz", "machine-id-abc", "old-dns-name").get("db"))
+        .isInstanceOf(SecretException.class)
+        .hasMessageContaining("passphrase does not unlock")
+        .hasMessageNotContaining("hunter2");
+    assertThat(versionOf(tmp.resolve("secrets.enc"))).as("left untouched").isEqualTo(1);
+  }
+
+  @Test
+  void should_never_try_the_legacy_identity_on_a_version_2_store() {
+    EncryptedSecretStore other = store("pp", "host-a");
+    other.init();
+
+    assertThatThrownBy(() -> store("pp", "host-b", "host-a").get("db"))
+        .as("a version 2 store stays bound to the machine it was created on")
+        .isInstanceOf(SecretException.class)
+        .hasMessageContaining("passphrase does not unlock");
+  }
+
+  @Test
+  void should_refuse_a_store_from_a_newer_build() throws IOException {
+    EncryptedSecretStore store = store("pp", "host-a");
+    store.init();
+    stampVersion(store.file(), 3);
+
+    assertThatThrownBy(() -> store.list())
+        .isInstanceOf(SecretException.class)
+        .hasMessageContaining("version 3");
+  }
+
   @Test
   void should_write_documented_layout_when_initialised() throws IOException {
     EncryptedSecretStore store = store("pp", "host-a");
@@ -34,7 +123,7 @@ class EncryptedSecretStoreTest {
     try (InputStream in = Files.newInputStream(store.file())) {
       root = new ObjectMapper().readTree(in);
     }
-    assertThat(root.get("version").asInt()).isEqualTo(1);
+    assertThat(root.get("version").asInt()).isEqualTo(2);
     assertThat(root.get("kdf").asText()).isEqualTo("PBKDF2WithHmacSHA256");
     assertThat(root.get("iterations").asInt()).isEqualTo(600_000);
     assertThat(root.get("salt").asText()).isNotBlank();

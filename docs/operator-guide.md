@@ -364,7 +364,7 @@ Generates an Ed25519 key pair for signing your own bundles: the public key is tr
 
 ### `jrsctl secrets init`
 
-Creates an empty encrypted store `secrets.enc` in the jrsctl home (AES-256-GCM, key derived with PBKDF2-HMAC-SHA256 from a machine-bound salt and your passphrase). The passphrase comes from `--passphrase-file`, then `JRSCTL_PASSPHRASE`, then a console prompt when interactive. The store is bound to the host name: a copied `secrets.enc` cannot be unlocked on another machine even with the passphrase; recreate it after a host rename.
+Creates an empty encrypted store `secrets.enc` in the jrsctl home (AES-256-GCM, key derived with PBKDF2-HMAC-SHA256 from a machine-bound salt and your passphrase). The passphrase comes from `--passphrase-file`, then `JRSCTL_PASSPHRASE`, then a console prompt when interactive. The store is bound to the machine identity (`/etc/machine-id` on Linux, the computer name on Windows): a copied `secrets.enc` cannot be unlocked on another machine even with the passphrase. A store created by a build before 2026-09-10 was bound to the DNS host name instead; the first command that unlocks it rebinds it to the machine identity in place and logs a warning, after which the old host name no longer unlocks it.
 
 - **Mutates:** `secrets.enc` in the jrsctl home; refuses to overwrite an existing store.
 - **Rollback:** delete `secrets.enc`.
