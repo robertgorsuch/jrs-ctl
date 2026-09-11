@@ -331,7 +331,7 @@ Rules:
 - Takes the run lock (§5.5), executes Steps sequentially, emits events to `EventBus`, writes every transition to `step_transitions` inside a transaction before emitting the event.
 - On `StepFailed`:
   - `Retryable` → apply `RetryPolicy`, emit `StepRetry` per attempt; exhausted retries become `Recoverable`.
-  - `Recoverable` → run compensations in reverse order for all succeeded Steps back to the nearest Phase boundary (or the full plan with `--rollback-all`), emit `RunRolledBack` (exit 3). Any compensation failure emits `StepRollbackFailed` and ends the run with exit 4.
+  - `Recoverable` → compensate the failing Step itself first when it is mutating and its `execute` ran (a precheck failure never ran and is not compensated), then run compensations in reverse order for all succeeded Steps back to the nearest Phase boundary (or the full plan with `--rollback-all`), emit `RunRolledBack` (exit 3). Any compensation failure emits `StepRollbackFailed` and ends the run with exit 4. (ADR-0009)
   - `Fatal` → halt, emit `RunFailed` with backup locations and manual next steps (exit 4 if state was mutated, else 2).
 - Every failure message includes: step id, phase, cause, affected paths/URIs, backup location, next available action.
 
@@ -349,7 +349,7 @@ Rules:
 
 - `jrsctl runs recover <runId> --resume|--rollback`.
 - Resume re-runs the precheck of the interrupted Step and then re-executes it (idempotency guarantees convergence). If the precheck fails, only rollback is offered.
-- Rollback compensates every succeeded Step of the run in reverse.
+- Rollback compensates every succeeded Step of the run in reverse, after first compensating a mutating Step the journal left `RUNNING` or `FAILED` (the process died before that Step's own compensation ran). A compensation must therefore converge from any partial state, including one where `execute` never started.
 
 ---
 
@@ -667,7 +667,7 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 - Multi-module Maven build (§4); `CLAUDE.md`; `docs/spec.md`, `docs/spec-changelog.md`, `docs/BUILD_STATUS.md`; `jrsctl --version`; `selfcheck` passes; CI workflow runs on Windows and Linux runners.
 
 **Phase 1 — Core + Engine**
-- Config load with precedence tests; secrets resolve for `env:`, `file:`, `enc:` including non-interactive passphrase; platform layer detects OS and a fake Tomcat layout; service controller for every `service.kind` against fakes; state store migrations; step transitions written transactionally and recovered; run lock blocks a second process (exit 9); pending run blocks non-interactive commands (exit 8); snapshot create/verify/restore with permissions; redaction property test over raw/Base64/URL-encoded; Runner executes a fake 5-step plan with a forced `Recoverable` failure at step 4 and rolls back steps 1–3; compensation failure yields `StepRollbackFailed` and exit 4; cancellation mid-step compensates; fingerprint mismatch refuses execution; streaming hash of a >2 GB sparse file stays under 64 MB heap.
+- Config load with precedence tests; secrets resolve for `env:`, `file:`, `enc:` including non-interactive passphrase; platform layer detects OS and a fake Tomcat layout; service controller for every `service.kind` against fakes; state store migrations; step transitions written transactionally and recovered; run lock blocks a second process (exit 9); pending run blocks non-interactive commands (exit 8); snapshot create/verify/restore with permissions; redaction property test over raw/Base64/URL-encoded; Runner executes a fake 5-step plan with a forced `Recoverable` failure at step 4 and rolls back steps 4, 3, 2, 1 in that order; compensation failure yields `StepRollbackFailed` and exit 4; cancellation mid-step compensates; fingerprint mismatch refuses execution; streaming hash of a >2 GB sparse file stays under 64 MB heap.
 
 **Phase 2 — Adapter + Detection + Doctor**
 - WireMock fixtures for `serverInfo` and capability probes across 7.x/8.x/9.x/10.x; single adapter behaves correctly under each capability set; isolated-mode allowlist refuses a second host; `init` detects a fake layout on both OSes and writes a valid config; `doctor` produces a full report against WireMock; `@Tag("needs-jrs")` Testcontainers test exists and is stubbed if no image is available.

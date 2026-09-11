@@ -23,14 +23,15 @@ import java.util.function.Supplier;
  * change is journalled to {@code step_transitions} in its own transaction <em>before</em> the
  * matching event is emitted, so the journal is always at least as advanced as what observers saw;
  * {@code Retryable} failures are retried per the step's {@link RetryPolicy} and become {@code
- * Recoverable} when exhausted; {@code Recoverable} failures compensate succeeded mutating steps in
- * reverse back to the failing step's phase boundary (or the whole plan with {@code rollbackAll});
- * {@code Fatal} failures never compensate; cancellation compensates the in-flight step and then
- * every succeeded mutating step; irreversible steps are skipped during compensation; the run row
- * always receives a terminal state and exit code before the Runner returns. Steps that throw are
- * treated as {@code Recoverable} with the exception as the cause. {@link
- * com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so the CLI can map it to
- * exit code 9.
+ * Recoverable} when exhausted; {@code Recoverable} failures compensate the failing step itself when
+ * it is mutating and its {@code execute} ran (a precheck failure never ran, so it is not
+ * compensated), then every succeeded mutating step in reverse back to the failing step's phase
+ * boundary (or the whole plan with {@code rollbackAll}); {@code Fatal} failures never compensate;
+ * cancellation compensates the in-flight step and then every succeeded mutating step; irreversible
+ * steps are skipped during compensation; the run row always receives a terminal state and exit code
+ * before the Runner returns. Steps that throw are treated as {@code Recoverable} with the exception
+ * as the cause. {@link com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so
+ * the CLI can map it to exit code 9.
  */
 public final class Runner {
 
@@ -76,8 +77,10 @@ public final class Runner {
   }
 
   /**
-   * Compensates every step of a pending run that the journal records as {@code SUCCEEDED} (and a
-   * mutating step still {@code RUNNING}), in reverse order, then ends the run.
+   * Compensates every step of a pending run that the journal records as {@code SUCCEEDED}, and a
+   * mutating step recorded {@code RUNNING} or {@code FAILED} (the process died before its
+   * compensation ran), in reverse order, then ends the run. A compensation must therefore converge
+   * from any partial state, including one where {@code execute} never started.
    */
   public RunOutcome rollback(Plan plan, Context ctx, Map<String, StepState> journal, String cause) {
     try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant())) {
@@ -102,7 +105,8 @@ public final class Runner {
     record PrecheckFailed(String stepId, String message, String remediation)
         implements StepOutcome {}
 
-    record Failure(StepFailure failure) implements StepOutcome {}
+    /** {@code executed} is false when the step failed its precheck and never ran. */
+    record Failure(StepFailure failure, boolean executed) implements StepOutcome {}
 
     record Cancelled(String reason, Optional<RollbackFailure> inFlight) implements StepOutcome {}
   }
@@ -158,7 +162,7 @@ public final class Runner {
             switch (outcome) {
               case StepOutcome.Done d -> Optional.empty();
               case StepOutcome.PrecheckFailed p -> Optional.of(precheckFailed(p));
-              case StepOutcome.Failure f -> Optional.of(failed(index, f.failure()));
+              case StepOutcome.Failure f -> Optional.of(failed(index, f.failure(), f.executed()));
               case StepOutcome.Cancelled c -> Optional.of(cancelled(c.reason(), c.inFlight()));
             };
         if (terminal.isPresent()) {
@@ -172,7 +176,8 @@ public final class Runner {
       List<Step> steps = plan.steps();
       List<Integer> targets = new ArrayList<>(succeededMutating);
       for (int i = 0; i < steps.size(); i++) {
-        if (states.get(steps.get(i).id()) == StepState.RUNNING && steps.get(i).mutating()) {
+        StepState st = states.get(steps.get(i).id());
+        if ((st == StepState.RUNNING || st == StepState.FAILED) && steps.get(i).mutating()) {
           targets.add(i);
         }
       }
@@ -217,7 +222,7 @@ public final class Runner {
           if (!mutated) {
             return new StepOutcome.PrecheckFailed(step.id(), f.message(), f.remediation());
           }
-          return new StepOutcome.Failure(failure);
+          return new StepOutcome.Failure(failure, false);
         }
       }
 
@@ -297,7 +302,7 @@ public final class Runner {
             };
         transition(step, StepState.FAILED, Optional.of(finalFailure.cause()));
         emit(new Event.StepFailed(now(), runId, stepId, step.phase(), finalFailure));
-        return new StepOutcome.Failure(finalFailure);
+        return new StepOutcome.Failure(finalFailure, true);
       }
     }
 
@@ -337,11 +342,18 @@ public final class Runner {
       return new StepOutcome.Cancelled(why, inFlight);
     }
 
-    private RunOutcome failed(int index, StepFailure failure) {
+    private RunOutcome failed(int index, StepFailure failure, boolean executed) {
       return switch (failure) {
         case StepFailure.Recoverable r -> {
           int from = opts.rollbackAll() ? 0 : phaseStart(index);
-          List<Integer> targets = succeededMutating.stream().filter(i -> i >= from).toList();
+          List<Integer> targets =
+              new ArrayList<>(succeededMutating.stream().filter(i -> i >= from).toList());
+          // The step that failed part-way through its work is undone first; one that never ran
+          // its execute (precheck failure) has nothing to undo.
+          if (executed && plan.steps().get(index).mutating()) {
+            targets.add(index);
+          }
+          targets.sort(null);
           Optional<RollbackFailure> rf = compensate(targets);
           if (rf.isPresent()) {
             List<Path> backups = new ArrayList<>(r.backups());

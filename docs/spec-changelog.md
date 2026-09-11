@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-10
+
+- §6.3, §6.6, §14 phase 1: a `Recoverable` failure compensates the failing Step itself first (when it is mutating and its `execute` ran) and `runs recover --rollback` also compensates a mutating Step the journal left `RUNNING` or `FAILED`. Draft 1.1 compensated only succeeded Steps, which left a half-swapped `WEB-INF/lib` or a half-migrated webapp in place and then restarted the service on it while reporting exit 3. Recorded in ADR-0009; found as item 1.9 of `docs/reviews/2026-09-10-codebase-review.md`.
+
 ## Draft 1.1 — 2026-09-08
 
 Applies every recommendation from `docs/spec-review-2026-09-08.md`. Item references (A1, B3, …) point at that review.

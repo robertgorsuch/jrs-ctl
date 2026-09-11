@@ -47,7 +47,7 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 ## Review follow-ups
 
-The codebase review of 2026-09-10 (`docs/reviews/2026-09-10-codebase-review.md`) is being worked through in priority order. Its five server-safety findings and its four upgrade-rollback findings are fixed; the rest of that document is still open.
+The codebase review of 2026-09-10 (`docs/reviews/2026-09-10-codebase-review.md`) is being worked through in priority order. Its five server-safety findings, its four upgrade-rollback findings and the engine finding 1.9 are fixed; the rest of that document, and the evening assessment (`docs/reviews/2026-09-10-codebase-assessment.md`), are still open.
 
 ### Server safety (1.1, 1.2, 1.3, 1.7, 2.1)
 
@@ -67,6 +67,10 @@ These four decide whether "rollback to point B" is a promise the product can kee
 - **1.8 SQL compensation and splitting were unsafe.** Compensation ran every rollback script in reverse, including for scripts that never started, so a run that failed on its first script also ran the second and third rollbacks against changes that were never made. `ops/hotfix/SqlProgress` journals each script before it is sent, forced to disk, and only the started ones are undone; `hotfix rollback`'s own compensation is symmetric. The statement splitter, which ended a statement wherever a line ended in `;`, is now a reader that ignores a terminator inside a string, a quoted identifier, a comment or a PostgreSQL `$$` body, with a `-- jrsctl:delimiter` directive for statements whose terminator cannot be told from the ones inside them (PL/SQL `BEGIN ... END;`). The manifest contract now says in the schema, the validator message and `docs/hotfix-authoring.md` that `idempotent` covers the rollback script too, since a compensation is re-run until it succeeds. Auto-commit is unchanged: spec §8.1 makes no transactional promise, and that is a spec decision rather than a defect.
 
 Not changed: the driver-default auto-commit of `DefaultJdbcConnector`, and the plan-time hashes that feed the hotfix plan fingerprint. Both are deliberate and documented where they live.
+
+### Engine semantics (1.9)
+
+- **1.9 The failing step was never compensated.** `Runner` compensated only the steps that had succeeded, so a hotfix that died half-way through `atomic-swap` or an upgrade whose vendor script exited non-zero kept its partial work in place, had the service started on top of it by `stop-service`'s compensation, and was still recorded `ROLLED_BACK` with exit 3. The failing step is now compensated first when it is mutating and its `execute` ran; a precheck failure never ran and is left alone. `runs recover --rollback` likewise compensates a mutating step the journal left `RUNNING` or `FAILED`. Spec §6.3 and §6.6 amended, ADR-0009. Twelve engine and recovery tests asserted the old order and were corrected; two app command tests and the phase 1 acceptance test now expect the failing step's `UNDO` line.
 
 ## Known gaps
 

@@ -47,7 +47,7 @@ class Phase1CoreEngineTest {
   @TempDir Path tmp;
 
   @Test
-  void forced_failure_at_step_4_rolls_back_steps_3_2_1_and_exits_3() throws Exception {
+  void forced_failure_at_step_4_rolls_back_steps_4_3_2_1_and_exits_3() throws Exception {
     JrsctlHome home = new JrsctlHome(Files.createDirectories(tmp.resolve("home")));
     List<String> log = new ArrayList<>();
     List<Event> events = new ArrayList<>();
@@ -58,7 +58,8 @@ class Phase1CoreEngineTest {
       assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
       assertThat(outcome.exitCode()).isEqualTo(3);
       assertThat(log)
-          .containsExactly("exec 1", "exec 2", "exec 3", "exec 4", "undo 3", "undo 2", "undo 1");
+          .containsExactly(
+              "exec 1", "exec 2", "exec 3", "exec 4", "undo 4", "undo 3", "undo 2", "undo 1");
       assertThat(store.transitions(runIdOf(events))).isNotEmpty();
       assertThat(Recovery.pendingRuns(store)).isEmpty();
     }

@@ -135,9 +135,11 @@ class ImportCommandTest {
     InitCommandTest.Run run = importOf("--yes");
 
     assertThat(run.code()).as(run.out() + run.err()).isEqualTo(ExitCodes.FAILED_ROLLED_BACK);
-    assertThat(fake.compensated).containsExactly("import.start", "import.snapshot-rollback");
+    assertThat(fake.compensated)
+        .containsExactly("import.poll", "import.start", "import.snapshot-rollback");
     assertThat(run.out())
         .contains("FAIL  06  Wait for import task")
+        .contains("UNDO  06  Wait for import task")
         .contains("UNDO  04  Enable snapshot rollback")
         .contains("rolled back to phase import")
         .contains("pre-import-x.zip");

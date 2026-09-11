@@ -45,7 +45,12 @@ public interface Step {
     return CheckResult.pass();
   }
 
-  /** No-op only when {@link #irreversible()} or {@code !mutating()}. */
+  /**
+   * Undoes whatever {@link #execute} did, converging from any partial state: the Runner calls it
+   * after a successful execute, after an execute that failed part-way, after a crash that left the
+   * step {@code RUNNING} or {@code FAILED} in the journal, and again if a previous compensation
+   * failed. No-op only when {@link #irreversible()} or {@code !mutating()}.
+   */
   StepResult compensate(Context ctx, EventSink out);
 
   default RetryPolicy retryPolicy() {

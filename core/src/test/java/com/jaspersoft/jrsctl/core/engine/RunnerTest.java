@@ -48,7 +48,7 @@ class RunnerTest {
   }
 
   @Test
-  void should_roll_back_steps_3_2_1_in_order_when_step_4_fails_recoverably() {
+  void should_roll_back_steps_4_3_2_1_in_order_when_step_4_fails_recoverably() {
     JournalCheckingSink check = new JournalCheckingSink(fx.store);
     fx.bus.subscribe(check);
     Plan plan =
@@ -69,7 +69,7 @@ class RunnerTest {
     assertThat(((RunOutcome.RolledBack) outcome).rolledBackToPhase()).isEqualTo("apply");
     assertThat(fx.trace)
         .containsExactly(
-            "exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s3", "comp:s2", "comp:s1");
+            "exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s4", "comp:s3", "comp:s2", "comp:s1");
     assertThat(journal())
         .containsExactly(
             "s1:PENDING",
@@ -84,12 +84,13 @@ class RunnerTest {
             "s4:PENDING",
             "s4:RUNNING",
             "s4:FAILED",
+            "s4:ROLLED_BACK",
             "s3:ROLLED_BACK",
             "s2:ROLLED_BACK",
             "s1:ROLLED_BACK");
     assertThat(fx.sink.of(Event.StepRolledBack.class))
         .extracting(e -> e.stepId().orElseThrow())
-        .containsExactly("s3", "s2", "s1");
+        .containsExactly("s4", "s3", "s2", "s1");
     assertThat(fx.sink.types()).startsWith("PlanCreated").endsWith("RunRolledBack");
     assertThat(check.violations).isEmpty();
     assertThat(fx.store.run(RUN).orElseThrow().terminalState()).contains(TerminalState.ROLLED_BACK);
@@ -110,7 +111,8 @@ class RunnerTest {
     RunOutcome outcome = run(plan);
 
     assertThat(outcome).isEqualTo(new RunOutcome.RolledBack("apply", "boom"));
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s3");
+    assertThat(fx.trace)
+        .containsExactly("exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s4", "comp:s3");
   }
 
   @Test
@@ -128,7 +130,8 @@ class RunnerTest {
             plan, fx.context(RUN), EngineFixture.fingerprint(), RunOptions.withRollbackAll());
 
     assertThat(outcome).isEqualTo(new RunOutcome.RolledBack("prepare", "boom"));
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s2", "comp:s1");
+    assertThat(fx.trace)
+        .containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s3", "comp:s2", "comp:s1");
   }
 
   @Test
@@ -153,7 +156,7 @@ class RunnerTest {
     assertThat(failed.rollbackIncomplete()).isTrue();
     assertThat(failed.exitCode()).isEqualTo(4);
     assertThat(failed.backups()).containsExactly(backup);
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s2");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s3", "comp:s2");
     assertThat(fx.sink.of(Event.StepRollbackFailed.class))
         .singleElement()
         .satisfies(
@@ -161,7 +164,7 @@ class RunnerTest {
               assertThat(e.stepId()).contains("s2");
               assertThat(e.backups()).containsExactly(backup);
             });
-    assertThat(journal()).endsWith("s3:FAILED", "s2:ROLLBACK_FAILED");
+    assertThat(journal()).endsWith("s3:FAILED", "s3:ROLLED_BACK", "s2:ROLLBACK_FAILED");
     assertThat(fx.sink.of(Event.RunFailed.class))
         .singleElement()
         .extracting(Event.RunFailed::rollbackIncomplete)
@@ -225,7 +228,7 @@ class RunnerTest {
               assertThat(e.failure()).isInstanceOf(StepFailure.Recoverable.class);
               assertThat(e.failure().cause()).contains("503").contains("2 attempts");
             });
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s2", "comp:s1");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s2", "comp:s2", "comp:s1");
   }
 
   @Test
@@ -326,7 +329,46 @@ class RunnerTest {
     RunOutcome outcome = run(plan);
 
     assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    // s2 never executed, so it has nothing to compensate
     assertThat(fx.trace).containsExactly("exec:s1", "comp:s1");
+    assertThat(journal()).endsWith("s2:FAILED", "s1:ROLLED_BACK");
+  }
+
+  @Test
+  void should_report_exit_4_when_the_failing_step_itself_cannot_be_compensated() {
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply"),
+            fx.step("s2", "apply")
+                .executeReturns(StepResult.failed(StepFailure.recoverable("half swapped", "x")))
+                .compensateReturns(
+                    StepResult.failed(StepFailure.recoverable("cannot restore", "manual"))));
+
+    RunOutcome outcome = run(plan);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Failed.class);
+    assertThat(outcome.exitCode()).isEqualTo(4);
+    assertThat(((RunOutcome.Failed) outcome).rollbackIncomplete()).isTrue();
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s2");
+    assertThat(journal()).endsWith("s2:FAILED", "s2:ROLLBACK_FAILED");
+  }
+
+  @Test
+  void should_skip_the_failing_step_and_compensate_the_rest_when_it_is_irreversible() {
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply"),
+            fx.step("s2", "apply")
+                .markIrreversible()
+                .executeReturns(StepResult.failed(StepFailure.recoverable("boom", "retry"))));
+
+    RunOutcome outcome = run(plan);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s1");
+    assertThat(journal()).endsWith("s2:FAILED", "s2:SKIPPED", "s1:ROLLED_BACK");
   }
 
   @Test
@@ -383,7 +425,8 @@ class RunnerTest {
 
     assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
     assertThat(fx.trace)
-        .containsExactly("exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s3", "comp:s1");
+        .containsExactly(
+            "exec:s1", "exec:s2", "exec:s3", "exec:s4", "comp:s4", "comp:s3", "comp:s1");
     assertThat(fx.sink.of(Event.StepSkipped.class))
         .singleElement()
         .satisfies(
@@ -391,7 +434,8 @@ class RunnerTest {
               assertThat(e.stepId()).contains("s2");
               assertThat(e.reason()).isEqualTo("irreversible");
             });
-    assertThat(journal()).endsWith("s3:ROLLED_BACK", "s2:SKIPPED", "s1:ROLLED_BACK");
+    assertThat(journal())
+        .endsWith("s4:ROLLED_BACK", "s3:ROLLED_BACK", "s2:SKIPPED", "s1:ROLLED_BACK");
   }
 
   @Test
@@ -406,7 +450,7 @@ class RunnerTest {
 
     run(plan);
 
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s2");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "exec:s3", "comp:s3", "comp:s2");
   }
 
   @Test
@@ -431,7 +475,7 @@ class RunnerTest {
         .singleElement()
         .extracting(e -> e.failure().getClass())
         .isEqualTo(StepFailure.Recoverable.class);
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s1");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s2", "comp:s1");
   }
 
   @Test
@@ -446,8 +490,8 @@ class RunnerTest {
 
     assertThat(outcome)
         .isEqualTo(new RunOutcome.RolledBack("apply", "postcheck failed: hash mismatch"));
-    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s1");
-    assertThat(journal()).contains("s2:FAILED").doesNotContain("s2:SUCCEEDED", "s2:ROLLED_BACK");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s2", "comp:s1");
+    assertThat(journal()).contains("s2:FAILED", "s2:ROLLED_BACK").doesNotContain("s2:SUCCEEDED");
   }
 
   @Test

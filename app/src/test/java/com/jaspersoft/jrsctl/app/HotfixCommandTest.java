@@ -115,6 +115,7 @@ class HotfixCommandTest {
     assertThat(run.code()).as(run.out() + run.err()).isEqualTo(ExitCodes.FAILED_ROLLED_BACK);
     assertThat(run.out())
         .contains("FAIL  05  Atomic swap")
+        .contains("UNDO  05  Atomic swap")
         .contains("UNDO  04  Stage files")
         .contains("rolled back to phase apply")
         .contains("step")
@@ -125,7 +126,7 @@ class HotfixCommandTest {
         .contains("snap-1")
         .contains("next")
         .contains("inspect the fake and retry");
-    assertThat(fake.compensated).containsExactly("stage-files");
+    assertThat(fake.compensated).containsExactly("atomic-swap", "stage-files");
   }
 
   @Test

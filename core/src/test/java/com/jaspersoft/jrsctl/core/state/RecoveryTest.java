@@ -135,7 +135,7 @@ class RecoveryTest {
     RunOutcome outcome = recovery.resume(plan, RUN, fx.context(RUN), RunOptions.DEFAULT);
 
     assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
-    assertThat(fx.trace).containsExactly("exec:s2", "exec:s3", "comp:s2", "comp:s1");
+    assertThat(fx.trace).containsExactly("exec:s2", "exec:s3", "comp:s3", "comp:s2", "comp:s1");
   }
 
   @Test
@@ -197,6 +197,22 @@ class RecoveryTest {
     assertThat(fx.sink.types()).endsWith("RunRolledBack");
     assertThat(fx.store.run(RUN).orElseThrow().terminalState()).contains(TerminalState.ROLLED_BACK);
     assertThat(fx.store.pendingRuns()).isEmpty();
+  }
+
+  @Test
+  void should_compensate_the_journaled_failed_step_first_when_rolling_back() {
+    journalInterruptedAt("s1", "s2");
+    // the process died after journaling the failure but before compensating it
+    fx.store.appendTransition(
+        RUN, "s2", "apply", Optional.of("RUNNING"), "FAILED", Optional.of("half swapped"));
+    Plan plan = EngineFixture.plan("p1", fx.step("s1", "apply"), fx.step("s2", "apply"));
+
+    RunOutcome outcome = recovery.rollback(plan, RUN, fx.context(RUN));
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(fx.trace).containsExactly("comp:s2", "comp:s1");
+    assertThat(fx.store.transitions(RUN).stream().map(t -> t.stepId() + ":" + t.toState()))
+        .endsWith("s2:FAILED", "s2:ROLLED_BACK", "s1:ROLLED_BACK");
   }
 
   @Test
