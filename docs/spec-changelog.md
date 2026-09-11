@@ -2,6 +2,8 @@
 
 ## Draft 1.1 amendment — 2026-09-10
 
+- §9.2: refused credentials (HTTP 401/403) on a capability probe are an error, not a failed probe; the command exits 2 rather than falling back to the vendor tools. An import that brings a source keystore always uses the vendor strategy, since `js-import --keystore` must run against a stopped server. Found as items J1 and J2 of `docs/reviews/2026-09-10-codebase-assessment.md`.
+- §5.8, §6.3: redaction is an engine guarantee. `Runner` passes every event through `RedactingEventSink` before any subscriber sees it, and affected URIs lose user-info and query. Found as item C2 of `docs/reviews/2026-09-10-codebase-assessment.md`.
 - §5.2: `secrets.enc` is version 2. The machine-bound salt uses `/etc/machine-id` (Linux) or the computer name (Windows) rather than the DNS host name, which changed with the resolver. A version 1 file that refuses the current identity is retried with the legacy host name and, when that unlocks it, rewritten in place as version 2; a version 2 file is never retried, so the binding guarantee is unchanged. Found as item C1 of `docs/reviews/2026-09-10-codebase-assessment.md`.
 - §6.3, §6.6, §14 phase 1: a `Recoverable` failure compensates the failing Step itself first (when it is mutating and its `execute` ran) and `runs recover --rollback` also compensates a mutating Step the journal left `RUNNING` or `FAILED`. Draft 1.1 compensated only succeeded Steps, which left a half-swapped `WEB-INF/lib` or a half-migrated webapp in place and then restarted the service on it while reporting exit 3. Recorded in ADR-0009; found as item 1.9 of `docs/reviews/2026-09-10-codebase-review.md`.
 
