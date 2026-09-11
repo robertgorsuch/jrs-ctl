@@ -2,7 +2,6 @@ package com.jaspersoft.jrsctl.core.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -36,8 +35,7 @@ final class SchemaKeys {
       out.put(prefix, typeOf(node));
       return;
     }
-    for (Iterator<Map.Entry<String, JsonNode>> it = props.fields(); it.hasNext(); ) {
-      Map.Entry<String, JsonNode> e = it.next();
+    for (Map.Entry<String, JsonNode> e : props.properties()) {
       String path = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
       walk(e.getValue(), path, out);
     }
