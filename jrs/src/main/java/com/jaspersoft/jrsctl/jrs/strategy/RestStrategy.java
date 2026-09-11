@@ -10,11 +10,12 @@ import java.util.Objects;
 
 /**
  * Export and import over the async REST endpoints while the server keeps running (spec §7.3, §9.2).
- * Invariants: no service stop; every step reads what it needs from the run context ({@code
- * JrsAdapter}, {@code Config}, {@code Redactor}, and {@code SecretResolver} only when a source
- * keystore password must be resolved); the export phase is server-read-only, the import phase is
- * repository-mutating and relies on the ops layer's pre-import snapshot for rollback; task handles
- * are persisted per run so a crashed run converges on re-execution.
+ * Invariants: no service stop, which is why an import that brings a source keystore is refused here
+ * and routed to the vendor strategy by {@link Strategies}; every step reads what it needs from the
+ * run context ({@code JrsAdapter}, {@code Config}, {@code Redactor}); the export phase is
+ * server-read-only, the import phase is repository-mutating and relies on the ops layer's
+ * pre-import snapshot for rollback; task handles are persisted per run so a crashed run converges
+ * on re-execution.
  */
 public final class RestStrategy implements ExportImportStrategy {
 
@@ -22,19 +23,13 @@ public final class RestStrategy implements ExportImportStrategy {
   public static final String IMPORT_PHASE = "import";
 
   private final Polling polling;
-  private final VendorAccess vendor;
 
   public RestStrategy() {
-    this(Polling.defaults(), VendorAccess.fromContext());
+    this(Polling.defaults());
   }
 
   public RestStrategy(Polling polling) {
-    this(polling, VendorAccess.fromContext());
-  }
-
-  public RestStrategy(Polling polling, VendorAccess vendor) {
     this.polling = Objects.requireNonNull(polling, "polling");
-    this.vendor = Objects.requireNonNull(vendor, "vendor");
   }
 
   @Override
@@ -60,11 +55,15 @@ public final class RestStrategy implements ExportImportStrategy {
   @Override
   public List<Step> importSteps(ImportRequest request) {
     Objects.requireNonNull(request, "request");
+    if (request.sourceKeystore().isPresent()) {
+      // js-import --keystore replaces the keys a running server loaded at startup; only the vendor
+      // strategy stops and restarts the service around it. Strategies never routes such a request
+      // here, so reaching this is a programming error rather than an operator one.
+      throw new IllegalArgumentException(
+          "an import with a source keystore cannot run over REST; it needs the vendor strategy");
+    }
     List<Step> steps = new ArrayList<>();
     steps.add(new CheckKeystoreFingerprint(IMPORT_PHASE, request));
-    if (request.sourceKeystore().isPresent()) {
-      steps.add(new ImportSourceKeystore(IMPORT_PHASE, request, vendor));
-    }
     steps.add(new StartImport(request));
     steps.add(new PollImport(polling));
     steps.add(new VerifyImport());

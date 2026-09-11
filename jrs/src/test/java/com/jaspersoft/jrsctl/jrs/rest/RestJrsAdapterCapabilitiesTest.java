@@ -26,6 +26,20 @@ class RestJrsAdapterCapabilitiesTest {
       WireMockExtension.newInstance().options(wireMockConfig().dynamicPort()).build();
 
   @Test
+  void should_refuse_the_probe_instead_of_reporting_absent_when_the_server_answers_401() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    f.allProbesPresent();
+    f.probe("/rest_v2/export/jrsctl-probe/state", 401);
+
+    assertThatThrownBy(() -> f.adapter.capabilities())
+        .isInstanceOf(RestException.class)
+        .satisfies(e -> assertThat(((RestException) e).authenticationFailure()).isTrue())
+        .hasMessageContaining("401")
+        .hasMessageNotContaining(AdapterFixture.PASSWORD);
+  }
+
+  @Test
   void should_find_every_capability_when_pro_server_answers_all_probes() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
     f.serverInfo("8.2.0-PRO");

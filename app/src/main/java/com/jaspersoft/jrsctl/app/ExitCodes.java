@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Map;
@@ -160,6 +161,10 @@ public final class ExitCodes {
         return PRECHECK_FAILED;
       }
       if (ex instanceof JrsUnreachableException) {
+        return PRECHECK_FAILED;
+      }
+      if (ex instanceof RestException) {
+        // only reaches here from planning or a read-only command: steps turn it into a failure
         return PRECHECK_FAILED;
       }
       if (ex instanceof SecretException) {

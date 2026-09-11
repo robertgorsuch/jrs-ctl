@@ -186,7 +186,7 @@ public final class RestJrsAdapter implements JrsAdapter {
     probeEndpoint(Capability.IMPORT_ASYNC, IMPORT + "/" + PROBE_ID + "/state", found, details);
 
     String orgs = ORGANIZATIONS + "?limit=1";
-    int s = client.get(orgs).status();
+    int s = refuseIfUnauthenticated(client.get(orgs).status(), ORGANIZATIONS);
     decide(Capability.ORGS, s == 200 || s == 204, "GET " + orgs, s, found, details);
 
     boolean restLogin = restLoginExists();
@@ -213,9 +213,30 @@ public final class RestJrsAdapter implements JrsAdapter {
 
   private void probeEndpoint(
       Capability c, String path, Set<Capability> found, Map<Capability, String> details) {
-    int s = client.get(path).status();
+    int s = refuseIfUnauthenticated(client.get(path).status(), path);
     boolean present = s == 200 || s == 404;
     decide(c, present, "GET " + path, s, found, details);
+  }
+
+  /**
+   * A 401 or 403 on a probe says the credentials in {@code server.auth} were refused, not that the
+   * capability is absent. Reporting it as absent would let strategy selection fall back to the
+   * vendor tools and stop the service over a typo in a password, so it is a hard failure instead.
+   */
+  private static int refuseIfUnauthenticated(int status, String path) {
+    if (status == 401 || status == 403) {
+      throw new RestException(
+          status,
+          "GET",
+          path,
+          "GET "
+              + path
+              + " answered HTTP "
+              + status
+              + ": the server refused the credentials in server.auth; check the user name and"
+              + " the password reference before retrying");
+    }
+    return status;
   }
 
   private static void decide(

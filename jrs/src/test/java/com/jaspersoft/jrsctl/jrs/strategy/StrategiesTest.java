@@ -1,10 +1,12 @@
 package com.jaspersoft.jrsctl.jrs.strategy;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.jrs.FakePlatform;
 import com.jaspersoft.jrsctl.jrs.TestConfigs;
@@ -13,6 +15,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -39,6 +42,10 @@ class StrategiesTest {
   }
 
   private static ImportRequest importRequest() {
+    return importRequest(Optional.empty());
+  }
+
+  private static ImportRequest importRequest(Optional<Path> sourceKeystore) {
     return new ImportRequest(
         Path.of("x.zip"),
         false,
@@ -48,8 +55,69 @@ class StrategiesTest {
         false,
         false,
         false,
-        Optional.empty(),
-        Optional.empty());
+        sourceKeystore,
+        sourceKeystore.map(k -> new SecretRef.Env("KS_PASS")));
+  }
+
+  @Test
+  void should_propagate_an_authentication_failure_instead_of_selecting_vendor() {
+    FakeJrsAdapter refused =
+        new FakeJrsAdapter()
+            .failingProbe(
+                new RestException(
+                    401,
+                    "GET",
+                    "/rest_v2/export/jrsctl-probe/state",
+                    "GET /rest_v2/export/jrsctl-probe/state answered HTTP 401"));
+
+    assertThatThrownBy(() -> strategies.select(config, refused, export(false), Optional.empty()))
+        .as("a wrong password must never turn a REST import into a service stop")
+        .isInstanceOf(RestException.class)
+        .satisfies(e -> assertThat(((RestException) e).authenticationFailure()).isTrue());
+    assertThatThrownBy(() -> strategies.select(config, refused, importRequest(), Optional.empty()))
+        .isInstanceOf(RestException.class);
+  }
+
+  @Test
+  void should_still_select_vendor_when_the_probe_fails_for_another_reason() {
+    FakeJrsAdapter broken =
+        new FakeJrsAdapter()
+            .failingProbe(new RestException(503, "GET", "/rest_v2/organizations", "HTTP 503"));
+
+    Strategies.Selection s = strategies.select(config, broken, export(false), Optional.empty());
+
+    assertThat(s.kind()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
+    assertThat(s.reason()).contains("probe failed");
+  }
+
+  @Test
+  void should_select_vendor_when_an_import_brings_a_source_keystore() {
+    FakeJrsAdapter fine =
+        new FakeJrsAdapter()
+            .withCapabilities(Set.of(Capability.EXPORT_ASYNC, Capability.IMPORT_ASYNC));
+    ImportRequest withKeystore = importRequest(Optional.of(Path.of("source.jrsks")));
+
+    Strategies.Selection chosen = strategies.select(config, fine, withKeystore, Optional.empty());
+    Strategies.Selection forcedRest =
+        strategies.select(config, fine, withKeystore, Optional.of(ExportImportStrategy.Kind.REST));
+
+    assertThat(chosen.kind()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
+    assertThat(chosen.reason()).contains("source keystore").contains("service stopped");
+    assertThat(forcedRest.kind())
+        .as("the keystore swap needs the server down whatever --strategy says")
+        .isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
+    assertThat(forcedRest.reason()).contains("--strategy rest");
+    assertThat(strategies.select(config, fine, importRequest(), Optional.empty()).kind())
+        .as("without a keystore the REST path is unchanged")
+        .isEqualTo(ExportImportStrategy.Kind.REST);
+  }
+
+  @Test
+  void should_refuse_rest_import_steps_when_a_source_keystore_is_present() {
+    assertThatThrownBy(
+            () -> new RestStrategy().importSteps(importRequest(Optional.of(Path.of("k.jrsks")))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("source keystore");
   }
 
   @Test

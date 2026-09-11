@@ -85,7 +85,8 @@ class RestStrategyImportTest {
   }
 
   private CheckResult precheck(FakeJrsAdapter adapter, ImportRequest request) {
-    Step check = new RestStrategy(fx.polling).importSteps(request).get(0);
+    // built directly: a request with a source keystore is refused by the REST strategy as a whole
+    Step check = new CheckKeystoreFingerprint(RestStrategy.IMPORT_PHASE, request);
     assertThat(check.id()).isEqualTo(CheckKeystoreFingerprint.ID);
     return check.precheck(
         fx.context(TestConfigs.server(StrategyFixture.BASE, Config.AuthMode.BASIC), adapter));
@@ -181,28 +182,25 @@ class RestStrategyImportTest {
   }
 
   @Test
-  void should_include_source_keystore_step_only_when_request_names_one() throws IOException {
+  void should_refuse_a_source_keystore_and_never_swap_keys_under_a_running_server()
+      throws IOException {
     Path source = tmp.resolve("source.jrsks");
     Files.writeString(source, "ks");
     RestStrategy strategy = new RestStrategy(fx.polling);
 
     List<String> without =
         strategy.importSteps(request(Optional.empty())).stream().map(Step::id).toList();
-    List<String> with =
-        strategy.importSteps(request(Optional.of(source))).stream().map(Step::id).toList();
 
     assertThat(without)
         .containsExactly(
             CheckKeystoreFingerprint.ID, StartImport.ID, PollImport.ID, VerifyImport.ID);
-    assertThat(with)
-        .containsExactly(
-            CheckKeystoreFingerprint.ID,
-            ImportSourceKeystore.ID,
-            StartImport.ID,
-            PollImport.ID,
-            VerifyImport.ID);
     assertThat(strategy.requiresServiceStop()).isFalse();
     assertThat(strategy.kind()).isEqualTo(ExportImportStrategy.Kind.REST);
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> strategy.importSteps(request(Optional.of(source))))
+        .as("js-import --keystore needs the service stopped, which this strategy never does")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("vendor strategy");
   }
 
   @Test
