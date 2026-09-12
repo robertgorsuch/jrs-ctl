@@ -50,6 +50,9 @@ Errors: any non-2xx with an optional JSON body `{message}`; 401 switches the UI 
 panel; 409/410 from `POST /api/run` are shown as a toast (lock held, fingerprint changed,
 TTL expired); 421 for a rejected Host header.
 
+Every document below has a published JSON Schema in the jar under `schema/json/api-*.schema.json`;
+`ConsoleSchemaTest` and `ConsoleServerTest` validate the real responses against them.
+
 ### `GET /api/health`
 
 ```json
@@ -67,7 +70,7 @@ TTL expired); 421 for a rejected Host header.
 
 `lock` may carry `runId` and `pid` when held. `doctor.attention` is the list of non-PASS items
 from the last doctor run (the dashboard shows the first two). `networkMode` is one of
-`isolated`, `proxy`, `direct`.
+`isolated`, `public`.
 
 ### `GET /api/server`
 
@@ -79,9 +82,13 @@ from the last doctor run (the dashboard shows the first two). `networkMode` is o
   "installDir": "C:\\Jaspersoft\\jasperreports-server-8.2.0",
   "service": {"kind": "Tomcat", "name": "jasperreportsTomcat", "state": "running"},
   "keystore": {"present": true, "user": "jasperserver"},
-  "networkMode": "isolated"
+  "networkMode": "isolated",
+  "reachable": true
 }
 ```
+
+`database.version` is always the empty string today; the vendor comes from the configuration and
+no version probe runs.
 
 ### `POST /api/plan` with `{op, args}`
 
@@ -110,11 +117,9 @@ Response:
     "summary": {
       "filesTouched": "3 under webapps\\jasperserver-pro\\WEB-INF\\ (2 replace, 1 add)",
       "service": "Stop and start jasperreportsTomcat; WEB-INF\\lib changes require it",
-      "database": "No SQL in this bundle",
       "backups": "C:\\ProgramData\\jrsctl\\snapshots\\<runId>\\",
       "rollbackPoints": "After verify, after backup; full rollback via hotfix rollback once recorded",
       "strategy": "File swap with service restart",
-      "requires": "JRS-8.2.0-HF-0003 installed (present)",
       "downtime": "Running stops the server for about 2 minutes.",
       "warnings": ["..."]
     },
@@ -123,8 +128,10 @@ Response:
 }
 ```
 
-Summary values are strings (objects and arrays are flattened for display); unknown string
-keys are shown too. `warnings` render as warning callouts. `validUntil` drives the
+Summary values are display strings; objects and arrays are flattened before they are sent, and
+`warnings` is the one list. The server emits a fixed key set, documented by
+`api-plan.schema.json`. The front-end renders any unknown string key it is given, so adding a
+key is a compatible change. `warnings` render as warning callouts. `validUntil` drives the
 "valid for N min" countdown; when it passes, "Run this plan" is disabled. Steps are rendered
 in order and grouped by consecutive `phase`.
 
