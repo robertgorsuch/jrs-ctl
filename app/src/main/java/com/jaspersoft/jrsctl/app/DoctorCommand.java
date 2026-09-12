@@ -45,11 +45,7 @@ final class DoctorCommand implements Callable<Integer> {
         out.flush();
       } else {
         ReportPrinter.print(
-            out,
-            report.items(),
-            report.counts(),
-            Ansi.forStdout(global.noColor(), Env.vars()),
-            redactor);
+            out, report.items(), report.counts(), Ansi.forStdout(global, Env.vars()), redactor);
       }
       return report.exitCode();
     }

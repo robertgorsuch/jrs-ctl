@@ -71,7 +71,7 @@ final class PlanExecutor {
     this.global = Objects.requireNonNull(global, "global");
     this.out = Objects.requireNonNull(out, "out");
     this.err = Objects.requireNonNull(err, "err");
-    this.ansi = Ansi.forStdout(global.noColor(), env);
+    this.ansi = Ansi.forStdout(global, env);
     this.redactor = services.redactor();
   }
 

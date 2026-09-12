@@ -136,7 +136,7 @@ final class RunsCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         TextTable table = new TextTable();
         table.row(
             ansi.dim("RUN"),
@@ -413,7 +413,7 @@ final class RunsCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         List<String> lines = new ArrayList<>();
         if (!result.removed().isEmpty()) {
           TextTable table = new TextTable();

@@ -144,7 +144,7 @@ final class HotfixCommand implements Runnable {
         } else {
           Report r = Report.of(items(report));
           ReportPrinter.print(
-              out, r.items(), r.counts(), Ansi.forStdout(global.noColor(), Env.vars()), redactor);
+              out, r.items(), r.counts(), Ansi.forStdout(global, Env.vars()), redactor);
           out.println(
               report.ok()
                   ? "bundle " + report.manifestId() + " ok"
@@ -365,7 +365,7 @@ final class HotfixCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         TextTable table = new TextTable();
         table.row(
             ansi.dim("ID"),
