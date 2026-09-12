@@ -219,6 +219,23 @@ class ConsoleWireGoldenTest {
     }
   }
 
+  /**
+   * Captures {@code /api/server} while the fake adapter answers, covering the identity's version,
+   * edition and tenancy, the identity's {@code baseUrl} taking precedence over the configured one,
+   * and {@code keystore.present} coming from the adapter -- the branch {@code server-unreachable}
+   * does not exercise.
+   */
+  @Test
+  void should_match_the_golden_when_the_server_is_reachable() throws Exception {
+    Path home = tmp.resolve("home");
+    TestAdapterFactory.unreachable = false;
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      assertGolden("server-reachable", console.get("/api/server"), home);
+    } finally {
+      TestAdapterFactory.unreachable = false;
+    }
+  }
+
   /** Polls until {@code plans}'s blocking step has started, so the run is reliably mid-flight. */
   private static void waitForBlocking(ConsoleServerTest.BlockingPlans plans) throws Exception {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
