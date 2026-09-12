@@ -106,7 +106,7 @@ class RunsCommandTest {
     }
 
     InitCommandTest.Run text =
-        InitCommandTest.run("runs", "list", "--home", home.toString(), "--no-color");
+        InitCommandTest.run("runs", "list", "--home", home.toString(), "--no-color", "--ascii");
     InitCommandTest.Run json =
         InitCommandTest.run("runs", "list", "--json", "--home", home.toString());
 
@@ -126,7 +126,8 @@ class RunsCommandTest {
     }
 
     InitCommandTest.Run text =
-        InitCommandTest.run("runs", "show", "r-1", "--home", home.toString(), "--no-color");
+        InitCommandTest.run(
+            "runs", "show", "r-1", "--home", home.toString(), "--no-color", "--ascii");
     InitCommandTest.Run json =
         InitCommandTest.run("runs", "show", "r-1", "--json", "--home", home.toString());
 
@@ -190,7 +191,15 @@ class RunsCommandTest {
 
     InitCommandTest.Run run =
         InitCommandTest.run(
-            "runs", "recover", "r-2", "--resume", "--yes", "--home", home.toString(), "--no-color");
+            "runs",
+            "recover",
+            "r-2",
+            "--resume",
+            "--yes",
+            "--home",
+            home.toString(),
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(fake.executed)
@@ -218,7 +227,8 @@ class RunsCommandTest {
             "--yes",
             "--home",
             home.toString(),
-            "--no-color");
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isEqualTo(ExitCodes.FAILED_ROLLED_BACK);
     assertThat(fake.executed).isEmpty();

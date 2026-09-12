@@ -120,10 +120,16 @@ final class SupportBundle {
    * fallback for a console started in-process by a test.
    */
   Path logFile() {
+    Path underHome = services.home().root().resolve("logs").resolve("jrsctl.log");
     String configured = System.getProperty(LogFile.PROPERTY);
-    return configured == null || configured.isBlank()
-        ? services.home().root().resolve("logs").resolve("jrsctl.log")
-        : Path.of(configured);
+    if (configured == null || configured.isBlank()) {
+      return underHome;
+    }
+    // The property is what Main set from --home, so the two are normally the same file. When the
+    // property names a file that is not there, the home's log is the better answer: a bundle with
+    // no log in it is worse than a bundle with the log the console has been writing.
+    Path named = Path.of(configured);
+    return Files.isRegularFile(named) ? named : underHome;
   }
 
   /** The last {@code limit} lines of a text file, read with flat memory. */

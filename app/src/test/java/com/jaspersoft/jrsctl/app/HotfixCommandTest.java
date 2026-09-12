@@ -49,7 +49,7 @@ class HotfixCommandTest {
   private InitCommandTest.Run apply(String... extra) {
     List<String> args = new ArrayList<>(List.of("hotfix", "apply", bundle.toString()));
     args.addAll(List.of(extra));
-    args.addAll(List.of("--home", home.toString(), "--no-color"));
+    args.addAll(List.of("--home", home.toString(), "--no-color", "--ascii"));
     return InitCommandTest.run(args.toArray(String[]::new));
   }
 
@@ -230,7 +230,13 @@ class HotfixCommandTest {
     fake.hashesValid = false;
     InitCommandTest.Run bad =
         InitCommandTest.run(
-            "hotfix", "verify", bundle.toString(), "--home", home.toString(), "--no-color");
+            "hotfix",
+            "verify",
+            bundle.toString(),
+            "--home",
+            home.toString(),
+            "--no-color",
+            "--ascii");
     fake.hashesValid = true;
     InitCommandTest.Run good =
         InitCommandTest.run(
@@ -296,7 +302,7 @@ class HotfixCommandTest {
     InitCommandTest.Run json =
         InitCommandTest.run("hotfix", "list", "--json", "--home", home.toString());
     InitCommandTest.Run text =
-        InitCommandTest.run("hotfix", "list", "--home", home.toString(), "--no-color");
+        InitCommandTest.run("hotfix", "list", "--home", home.toString(), "--no-color", "--ascii");
 
     assertThat(json.code()).isZero();
     JsonNode rows = Json.mapper().readTree(json.out());
@@ -317,7 +323,8 @@ class HotfixCommandTest {
             "--plan",
             "--home",
             home.toString(),
-            "--no-color");
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(run.out()).contains("Plan  hotfix.rollback").contains("01  Restore snapshot");

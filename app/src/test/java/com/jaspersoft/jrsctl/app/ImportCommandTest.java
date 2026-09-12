@@ -59,7 +59,7 @@ class ImportCommandTest {
   private InitCommandTest.Run importOf(String... extra) {
     List<String> args = new ArrayList<>(List.of("import", archive.toString()));
     args.addAll(List.of(extra));
-    args.addAll(List.of("--home", home.toString(), "--no-color"));
+    args.addAll(List.of("--home", home.toString(), "--no-color", "--ascii"));
     return InitCommandTest.run(args.toArray(String[]::new));
   }
 
