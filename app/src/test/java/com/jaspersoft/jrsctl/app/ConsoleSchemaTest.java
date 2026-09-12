@@ -43,14 +43,18 @@ class ConsoleSchemaTest {
     return Stream.of(
         Arguments.of("health-fresh", "api-health.schema.json"),
         Arguments.of("health-after-apply", "api-health.schema.json"),
+        Arguments.of("health-run-in-flight", "api-health.schema.json"),
+        Arguments.of("health-pending-no-steps", "api-health.schema.json"),
         Arguments.of("server-unreachable", "api-server.schema.json"),
+        Arguments.of("server-reachable", "api-server.schema.json"),
         Arguments.of("hotfixes-empty", "api-hotfixes.schema.json"),
         Arguments.of("hotfixes-installed", "api-hotfixes.schema.json"),
         Arguments.of("plan-hotfix-apply", "api-plan.schema.json"),
         Arguments.of("run-started", "api-run-started.schema.json"),
         Arguments.of("runs-after-apply", "api-runs.schema.json"),
         Arguments.of("runs-show-succeeded", "api-runs-show.schema.json"),
-        Arguments.of("runs-show-failed", "api-runs-show.schema.json"));
+        Arguments.of("runs-show-failed", "api-runs-show.schema.json"),
+        Arguments.of("runs-show-running", "api-runs-show.schema.json"));
   }
 
   @ParameterizedTest(name = "{0} validates against {1}")
