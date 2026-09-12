@@ -14,11 +14,10 @@
   <description>Operations producing Plans (hotfix, export, import, upgrade) or Reports (init, doctor, smoke)</description>
 
   <properties>
-    <!-- The plans themselves. Lower than core by two points because the tar.gz
-         archive format carries POSIX-only code, about seventy lines of mode, owner and
-         symbolic-link handling, that cannot execute on the Windows build machine at all;
-         the gate has to pass on both operating systems, so it is set by the stricter of
-         the two. On Linux the same suite reports above 80. -->
+    <!-- The plans themselves. Two points below core: the suite measures 79.1 on Windows
+         and 79.6 on Linux, so the floor is the honest number for both hosts rather than an
+         artefact of one. Raising it to 0.80 means covering SmokeOperation,
+         DefaultUpgradeOperations and RunVendorUpgrade. -->
     <jacoco.line.minimum>0.78</jacoco.line.minimum>
   </properties>
 
