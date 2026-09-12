@@ -276,11 +276,15 @@ class Phase8RetentionTest {
   }
 
   private static Cli.Result jrsctl(String... args) throws Exception {
-    String[] all = new String[args.length + 3];
+    // --ascii as well as --no-color: since review 3.5 the two are separate decisions, so a
+    // UTF-8 terminal without colour still gets the tick glyphs. Assertions on the words need
+    // to ask for the words.
+    String[] all = new String[args.length + 4];
     System.arraycopy(args, 0, all, 0, args.length);
     all[args.length] = "--home";
     all[args.length + 1] = home.toString();
     all[args.length + 2] = "--no-color";
+    all[args.length + 3] = "--ascii";
     return cli.run(all);
   }
 

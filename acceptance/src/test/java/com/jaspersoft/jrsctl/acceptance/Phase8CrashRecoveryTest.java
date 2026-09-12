@@ -716,11 +716,12 @@ class Phase8CrashRecoveryTest {
     }
 
     private String[] withGlobals(String... args) {
-      String[] all = new String[args.length + 3];
+      String[] all = new String[args.length + 4];
       System.arraycopy(args, 0, all, 0, args.length);
       all[args.length] = "--home";
       all[args.length + 1] = home.toString();
       all[args.length + 2] = "--no-color";
+      all[args.length + 3] = "--ascii";
       return all;
     }
 
