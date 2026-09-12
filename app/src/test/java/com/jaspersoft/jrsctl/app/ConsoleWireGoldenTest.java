@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.state.HotfixFile;
+import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
+import com.jaspersoft.jrsctl.core.state.HotfixState;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.http.HttpResponse;
@@ -11,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -73,7 +78,6 @@ class ConsoleWireGoldenTest {
       assertGolden("runs-after-apply", console.get("/api/runs"), home);
       assertGolden("runs-show-succeeded", console.get("/api/runs/" + runId), home);
       assertGolden("health-after-apply", console.get("/api/health"), home);
-      assertGolden("hotfixes-installed", console.get("/api/hotfixes"), home);
     } finally {
       HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
     }
@@ -102,6 +106,71 @@ class ConsoleWireGoldenTest {
       assertGolden("runs-show-failed", console.get("/api/runs/" + runId), home);
     } finally {
       HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
+    }
+  }
+
+  @Test
+  void should_match_the_golden_when_hotfixes_are_installed() throws Exception {
+    Path home = tmp.resolve("home");
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      Path sharedFile = Path.of("webapps/jasperserver-pro/scripts/jrsctl-fix.js");
+      Path otherFile = Path.of("webapps/jasperserver-pro/scripts/jrsctl-old-fix.js");
+      // Recorded in the console's own state store (ConsoleFixture#store), not a second store
+      // opened on the same file, so this is exactly what the running console will read back.
+      // installed_run_id has no foreign key onto the runs table (V001__init.sql), so a synthetic
+      // run id needs no run row seeded first.
+      console
+          .store()
+          .recordHotfixInstalled(
+              new HotfixInstalled(
+                  "JRS-8.2.0-HF-0001",
+                  "1",
+                  "Fake scheduler fix",
+                  "r-seed-hf-0001",
+                  Optional.empty(),
+                  HotfixState.INSTALLED,
+                  Instant.parse("2026-01-01T00:00:00Z")),
+              List.of(
+                  new HotfixFile(
+                      "JRS-8.2.0-HF-0001",
+                      sharedFile,
+                      "replace",
+                      Optional.empty(),
+                      Optional.empty())));
+      console
+          .store()
+          .recordHotfixInstalled(
+              new HotfixInstalled(
+                  "JRS-8.2.0-HF-0002",
+                  "2",
+                  "Fake scheduler fix, take two",
+                  "r-seed-hf-0002",
+                  Optional.empty(),
+                  HotfixState.INSTALLED,
+                  Instant.parse("2026-01-02T00:00:00Z")),
+              List.of(
+                  new HotfixFile(
+                      "JRS-8.2.0-HF-0002",
+                      sharedFile,
+                      "replace",
+                      Optional.empty(),
+                      Optional.empty())));
+      console
+          .store()
+          .recordHotfixInstalled(
+              new HotfixInstalled(
+                  "JRS-8.2.0-HF-0003",
+                  "3",
+                  "Fake fix, since rolled back",
+                  "r-seed-hf-0003",
+                  Optional.empty(),
+                  HotfixState.ROLLED_BACK,
+                  Instant.parse("2026-01-03T00:00:00Z")),
+              List.of(
+                  new HotfixFile(
+                      "JRS-8.2.0-HF-0003", otherFile, "add", Optional.empty(), Optional.empty())));
+
+      assertGolden("hotfixes-installed", console.get("/api/hotfixes"), home);
     }
   }
 

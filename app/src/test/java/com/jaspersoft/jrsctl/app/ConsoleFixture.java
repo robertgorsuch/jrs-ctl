@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.app.console.ConsoleOptions;
 import com.jaspersoft.jrsctl.app.console.ConsoleServer;
+import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
@@ -68,6 +69,11 @@ final class ConsoleFixture implements AutoCloseable {
             ConsoleCommand.catalog(services));
     server.start();
     return new ConsoleFixture(boot, server, server.token().orElseThrow().text());
+  }
+
+  /** The same state store the running console reads and writes, for a test to seed rows into. */
+  StateStore store() {
+    return boot.services().stateStore().get();
   }
 
   HttpResponse<String> get(String path) throws Exception {

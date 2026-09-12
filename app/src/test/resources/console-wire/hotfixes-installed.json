@@ -1,3 +1,24 @@
 {
-  "hotfixes" : [ ]
+  "hotfixes" : [ {
+    "id" : "JRS-8.2.0-HF-0001",
+    "title" : "Fake scheduler fix",
+    "installedAt" : "<instant>",
+    "files" : 1,
+    "state" : "installed",
+    "blockedBy" : [ "JRS-8.2.0-HF-0002" ]
+  }, {
+    "id" : "JRS-8.2.0-HF-0002",
+    "title" : "Fake scheduler fix, take two",
+    "installedAt" : "<instant>",
+    "files" : 1,
+    "state" : "installed",
+    "blockedBy" : [ ]
+  }, {
+    "id" : "JRS-8.2.0-HF-0003",
+    "title" : "Fake fix, since rolled back",
+    "installedAt" : "<instant>",
+    "files" : 1,
+    "state" : "rolled_back",
+    "blockedBy" : [ ]
+  } ]
 }
