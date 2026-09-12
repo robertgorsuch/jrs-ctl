@@ -77,14 +77,18 @@ Every command accepts these flags, before or after the command name.
 | `--passphrase-file <file>` | file holding the passphrase that unlocks `secrets.enc` (alternative to `JRSCTL_PASSPHRASE`) |
 | `--yes` | answer yes to every confirmation without asking; implies `--non-interactive` |
 | `--non-interactive` | never prompt; exit 2 where a confirmation or a passphrase would be needed. It confirms nothing: unattended runs need `--yes` as well. Without either flag a confirmation is asked on the terminal, or on stdin when stdout is piped (`... \| tee run.log` still asks; end of input means no) |
-| `--no-color` | disable ANSI colour; status icons become ASCII words (`OK`, `FAIL`, `RETRY`, `UNDO`, `SKIP`) |
+| `--color <when>` | `auto` (default), `always` or `never`. `auto` colours only where the terminal interprets ANSI escapes, which on Windows means Windows Terminal, ConEmu, ANSICON or a shell that sets `TERM`; plain cmd.exe gets no escapes |
+| `--no-color` | the same as `--color=never` |
+| `--ascii` | never use the tick and arrow glyphs; status icons become ASCII words (`OK`, `FAIL`, `RETRY`, `UNDO`, `SKIP`). The glyphs are also dropped automatically when the output code page cannot carry them, so a cp850 console shows the words |
 | `--json` | emit the result as JSON instead of text (mutating commands: the plan document, then one JSON object per event, then a final `{"outcome": ...}` line) |
 | `--explain` | print the long-form explanation of the command and exit 0 without running it |
 | `-h`, `--help` / `-V`, `--version` | usage / version banner |
 
 `selfcheck`, `docs` and `help` need no configuration and therefore accept only `--json` (where it applies), `--explain` and `--help`.
 
-Colour is used only when stdout is a terminal, `NO_COLOR` is unset and `--no-color` was not given. Every output line passes the redaction filter, so configured secrets never appear in text, JSON or the log.
+Colour is used only when the terminal interprets ANSI escapes, `NO_COLOR` is unset and neither `--no-color` nor `--color=never` was given; glyphs and colour are separate decisions, so a console that cannot print `✔` still gets colour and a terminal without colour still gets glyphs. Every output line passes the redaction filter, so configured secrets never appear in text, JSON or the log.
+
+On Windows, the output of `sc.exe`, `reg.exe` and the other console tools jrsctl reads is decoded with the console (OEM) code page, which `chcp` reports; set `-Djrsctl.console.encoding=IBM850` through `JRSCTL_JAVA_OPTS` if your host uses a code page the probe cannot read.
 
 Environment variables: `JRSCTL_HOME` (home directory), `JRSCTL_PASSPHRASE` (passphrase for `secrets.enc`), `NO_COLOR`, `JRSCTL_JAVA_OPTS` (JVM options for the bundled runtime), plus whatever `env:NAME` references your configuration uses (for example `JRS_PASSWORD`).
 
@@ -109,11 +113,11 @@ Every section below has the same shape so that `jrsctl <command> --explain` answ
 
 ### `jrsctl selfcheck [--json]`
 
-Verifies the tool itself, with no configuration and no server: the Java runtime it is running on, the bundled resources (schemas, compatibility matrix, publisher key, embedded documentation), the key ring and the state schema version. Run it after unpacking a new version and before opening a support ticket.
+Verifies the tool itself, with no configuration and no server: the Java runtime it is running on, the bundled resources (schemas, compatibility matrix, publisher key, embedded documentation), the key ring and the state schema version, the host operating system and architecture, and the directory the SQLite native library is unpacked into. Run it after unpacking a new version and before opening a support ticket.
 
 - **Mutates:** nothing; read-only and independent of the jrsctl home.
 - **Rollback:** not applicable.
-- **Exit codes:** 0 when every item passes; **2** when any item fails (the line names the resource or runtime property).
+- **Exit codes:** 0 when every item passes; **2** when any item fails (the line names the resource or runtime property); **6** when the failure is the `platform` item, that is, the host is not Windows or Linux on x86-64 (ADR-0002). Every other command refuses such a host with the same exit code before it opens anything.
 - **Flags:** `--json` — the report as `{"items": [...], "ok": bool}`.
 
 ### `jrsctl init [--install-dir <dir>] [--force]`
@@ -127,7 +131,9 @@ Detects the JasperReports Server installation (Tomcat layout, the Windows servic
 
 ### `jrsctl doctor [--allow-unsupported] [--json]`
 
-Read-only health report, the check to run before every change: tool, configuration, secrets, server reachability and identity, authentication, compatibility matrix, service controller, installation layout, keystore, database, vendor Java. Items are sorted FAIL, WARN, PASS, SKIP and every non-PASS item carries a remediation (`-> ...`).
+Read-only health report, the check to run before every change: tool, configuration, secrets, server reachability and identity, authentication, compatibility matrix, service controller, service manager, installation layout, keystore, database, vendor Java. Items are sorted FAIL, WARN, PASS, SKIP and every non-PASS item carries a remediation (`-> ...`).
+
+The `service-manager` item reports what supervises services on the host. On Linux it reads process 1: systemd passes; supervisord, OpenRC or SysV warns, because a `ctlscript.sh` or `catalina.sh` stop bypasses the supervisor, which may restart the server in the middle of a run; a `service.kind` of `systemd` on a host that is demonstrably not running systemd fails.
 
 - **Mutates:** nothing. Logs in and logs out of the server with the configured credentials; reads files under the installation.
 - **Rollback:** not applicable.

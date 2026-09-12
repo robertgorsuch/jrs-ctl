@@ -621,7 +621,7 @@ Non-mutating by default: login; serverInfo; list `/` repository; run `smoke.repo
 
 ### 12.3 `selfcheck`
 
-Verifies every jar in the runtime image against a build-time manifest of hashes, runtime version, config schema, key ring, SQLite schema version.
+Verifies every jar in the runtime image against a build-time manifest of hashes, runtime version, config schema, key ring, SQLite schema version, the host operating system and architecture against ADR-0002, and the directory the SQLite native library is unpacked into (a `noexec` mount fails the item). A failing platform item exits 6, not 2.
 
 ---
 
@@ -736,7 +736,7 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 | 3 | run failed, rolled back cleanly |
 | 4 | run failed, rollback incomplete — manual action required (details printed) |
 | 5 | cancelled |
-| 6 | unsupported server/config (compat matrix) |
+| 6 | unsupported server/config (compat matrix), or a host outside ADR-0002 (not Windows or Linux on x86-64) |
 | 7 | signature/verification failure |
 | 8 | pending recovery required — run `jrsctl runs recover <runId>` |
 | 9 | run lock held by another jrsctl process |
