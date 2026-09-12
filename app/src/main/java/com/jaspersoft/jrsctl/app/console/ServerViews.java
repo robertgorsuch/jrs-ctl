@@ -7,9 +7,7 @@ import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.IntSupplier;
 import org.slf4j.Logger;
@@ -33,10 +31,8 @@ final class ServerViews {
     this.services = services;
   }
 
-  Map<String, Object> server() {
+  ServerDoc server() {
     Config config = services.config();
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("product", "JasperReports Server");
     Optional<JrsAdapter> adapter = Optional.empty();
     Optional<ServerIdentity> identity = Optional.empty();
     try {
@@ -45,27 +41,6 @@ final class ServerViews {
     } catch (RuntimeException e) {
       LOG.debug("server not reachable for /api/server: {}", e.getMessage());
     }
-    m.put("version", identity.map(ServerIdentity::version).orElse(""));
-    m.put("edition", identity.map(i -> i.edition().name()).orElse(""));
-    m.put(
-        "tenancy",
-        identity
-            .map(
-                i -> i.tenancy() == ServerIdentity.Tenancy.MULTI ? "multi-tenant" : "single-tenant")
-            .orElse(""));
-    Map<String, Object> database = new LinkedHashMap<>();
-    database.put("vendor", config.database().type().map(Config.DatabaseType::yamlValue).orElse(""));
-    database.put("version", "");
-    m.put("database", database);
-    m.put(
-        "baseUrl",
-        identity
-            .map(i -> i.baseUrl().toString())
-            .or(() -> config.server().baseUrl().map(Object::toString))
-            .orElse(""));
-    m.put("installDir", config.server().installDir().map(Path::toString).orElse(""));
-    m.put("service", service(config));
-    Map<String, Object> keystore = new LinkedHashMap<>();
     Optional<KeystoreInfo> info = Optional.empty();
     if (adapter.isPresent()) {
       try {
@@ -74,18 +49,29 @@ final class ServerViews {
         LOG.debug("keystore not inspectable: {}", e.getMessage());
       }
     }
-    keystore.put("present", info.map(KeystoreInfo::present).orElse(false));
-    keystore.put("user", config.server().runAsUser().orElse(""));
-    m.put("keystore", keystore);
-    m.put("networkMode", config.network().mode().yamlValue());
-    m.put("reachable", identity.isPresent());
-    return m;
+    return new ServerDoc(
+        "JasperReports Server",
+        identity.map(ServerIdentity::version).orElse(""),
+        identity.map(i -> i.edition().name()).orElse(""),
+        identity
+            .map(
+                i -> i.tenancy() == ServerIdentity.Tenancy.MULTI ? "multi-tenant" : "single-tenant")
+            .orElse(""),
+        new ServerDoc.Database(
+            config.database().type().map(Config.DatabaseType::yamlValue).orElse(""), ""),
+        identity
+            .map(i -> i.baseUrl().toString())
+            .or(() -> config.server().baseUrl().map(Object::toString))
+            .orElse(""),
+        config.server().installDir().map(Path::toString).orElse(""),
+        service(config),
+        new ServerDoc.Keystore(
+            info.map(KeystoreInfo::present).orElse(false), config.server().runAsUser().orElse("")),
+        config.network().mode().yamlValue(),
+        identity.isPresent());
   }
 
-  Map<String, Object> service(Config config) {
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("kind", config.service().kind().map(Config.Service::kindToYaml).orElse(""));
-    m.put("name", config.service().name().orElse(""));
+  ServerDoc.Service service(Config config) {
     String state = "";
     if (config.service().kind().isPresent()) {
       try {
@@ -95,7 +81,9 @@ final class ServerViews {
         LOG.debug("service state unavailable: {}", e.getMessage());
       }
     }
-    m.put("state", state);
-    return m;
+    return new ServerDoc.Service(
+        config.service().kind().map(Config.Service::kindToYaml).orElse(""),
+        config.service().name().orElse(""),
+        state);
   }
 }

@@ -60,7 +60,7 @@ final class ConsoleViews {
 
   // ---- delegation to the per-area views (roadmap item 17) ------------------------------------
 
-  Map<String, Object> server() {
+  ServerDoc server() {
     return serverViews.server();
   }
 
