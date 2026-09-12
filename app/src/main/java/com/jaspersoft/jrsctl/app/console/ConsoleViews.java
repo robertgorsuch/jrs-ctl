@@ -64,19 +64,19 @@ final class ConsoleViews {
     return serverViews.server();
   }
 
-  Map<String, Object> planResponse(StoredPlan stored, Plan plan) {
+  PlanDoc planResponse(StoredPlan stored, Plan plan) {
     return runViews.planResponse(stored, plan);
   }
 
-  Map<String, Object> runList() {
+  RunsDoc.RunList runList() {
     return runViews.runList();
   }
 
-  Map<String, Object> runItem(RunRecord run) {
+  RunsDoc.RunItem runItem(RunRecord run) {
     return runViews.runItem(run);
   }
 
-  Map<String, Object> runDetail(RunRecord run) {
+  RunsDoc.RunDetail runDetail(RunRecord run) {
     return runViews.runDetail(run);
   }
 

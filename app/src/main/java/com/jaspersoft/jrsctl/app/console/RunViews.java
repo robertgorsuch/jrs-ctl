@@ -53,51 +53,44 @@ final class RunViews {
     return services.stateStore().get();
   }
 
-  Map<String, Object> planResponse(StoredPlan stored, Plan plan) {
+  PlanDoc planResponse(StoredPlan stored, Plan plan) {
     PlanSummary s = plan.summary();
-    Map<String, Object> root = new LinkedHashMap<>();
-    root.put("planId", stored.planId());
-    Map<String, Object> p = new LinkedHashMap<>();
-    p.put("op", stored.operation());
-    p.put("title", "Plan: " + label(s.operation()) + " " + s.target());
-    p.put("fingerprint", plan.fingerprint().value());
-    p.put("validUntil", stored.expiresAt());
-    Map<String, Object> summary = new LinkedHashMap<>();
-    summary.put("filesTouched", files(s.filesTouched()));
-    if (!s.resourcesTouched().isEmpty()) {
-      summary.put("resourcesTouched", String.join(", ", s.resourcesTouched()));
-    }
-    summary.put(
-        "service",
-        s.serviceRestart()
-            ? "Stop and start the service; the plan changes files that require it"
-            : "No service restart");
-    summary.put(
-        "backups",
-        s.backupLocations().isEmpty()
-            ? "none"
-            : String.join(", ", s.backupLocations().stream().map(Path::toString).toList()));
-    summary.put("rollbackPoints", rollbackPoints(s));
-    summary.put("strategy", s.strategy().isBlank() ? "-" : s.strategy());
-    summary.put(
-        "downtime",
-        s.serviceRestart()
-            ? "Running stops the server while the files are swapped."
-            : "No downtime expected.");
-    summary.put("warnings", s.warnings());
-    p.put("summary", summary);
-    List<Map<String, Object>> steps = new ArrayList<>();
+    PlanDoc.Summary summary =
+        new PlanDoc.Summary(
+            files(s.filesTouched()),
+            s.resourcesTouched().isEmpty()
+                ? Optional.empty()
+                : Optional.of(String.join(", ", s.resourcesTouched())),
+            s.serviceRestart()
+                ? "Stop and start the service; the plan changes files that require it"
+                : "No service restart",
+            s.backupLocations().isEmpty()
+                ? "none"
+                : String.join(", ", s.backupLocations().stream().map(Path::toString).toList()),
+            rollbackPoints(s),
+            s.strategy().isBlank() ? "-" : s.strategy(),
+            s.serviceRestart()
+                ? "Running stops the server while the files are swapped."
+                : "No downtime expected.",
+            s.warnings());
+    List<PlanDoc.PlanStep> steps = new ArrayList<>();
     for (Step step : plan.steps()) {
-      Map<String, Object> st = new LinkedHashMap<>();
-      st.put("id", step.id());
-      st.put("phase", step.phase());
-      st.put("title", step.irreversible() ? step.title() + " (irreversible)" : step.title());
-      st.put("why", step.detail());
-      steps.add(st);
+      steps.add(
+          new PlanDoc.PlanStep(
+              step.id(),
+              step.phase(),
+              step.irreversible() ? step.title() + " (irreversible)" : step.title(),
+              step.detail()));
     }
-    p.put("steps", steps);
-    root.put("plan", p);
-    return root;
+    return new PlanDoc(
+        stored.planId(),
+        new PlanDoc.PlanBody(
+            stored.operation(),
+            "Plan: " + label(s.operation()) + " " + s.target(),
+            plan.fingerprint().value(),
+            stored.expiresAt(),
+            summary,
+            steps));
   }
 
   static String files(List<Path> files) {
@@ -133,48 +126,43 @@ final class RunViews {
     };
   }
 
-  Map<String, Object> runList() {
-    List<Map<String, Object>> items = new ArrayList<>();
+  RunsDoc.RunList runList() {
+    List<RunsDoc.RunItem> items = new ArrayList<>();
     for (RunRecord run : store().runs(RUN_LIMIT)) {
       items.add(runItem(run));
     }
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("runs", items);
-    return m;
+    return new RunsDoc.RunList(items);
   }
 
-  Map<String, Object> runItem(RunRecord run) {
-    Map<String, Object> m = new LinkedHashMap<>();
+  RunsDoc.RunItem runItem(RunRecord run) {
     Optional<JsonNode> plan = planTree(run);
-    m.put("id", run.runId());
-    m.put("op", run.operation());
-    m.put("target", plan.map(t -> t.path("summary").path("target").asText("")).orElse(""));
-    m.put("startedAt", run.startedAt());
-    m.put("finishedAt", run.endedAt());
-    m.put(
-        "durationMs",
+    return new RunsDoc.RunItem(
+        run.runId(),
+        run.operation(),
+        plan.map(t -> t.path("summary").path("target").asText("")).orElse(""),
+        run.startedAt(),
+        run.endedAt(),
         Duration.between(run.startedAt(), run.endedAt().orElseGet(services.clock()::instant))
-            .toMillis());
-    m.put("outcome", outcome(run));
-    m.put("rollbackAvailable", rollbackAvailable(run));
-    m.put("supportBundleAvailable", true);
-    return m;
+            .toMillis(),
+        outcome(run),
+        rollbackAvailable(run),
+        true);
   }
 
-  Map<String, Object> runDetail(RunRecord run) {
+  RunsDoc.RunDetail runDetail(RunRecord run) {
     StateStore store = store();
-    Map<String, Object> m = runItem(run);
     Optional<JsonNode> plan = planTree(run);
     List<Transition> transitions = store.transitions(run.runId());
     List<SnapshotRecord> snapshots = store.snapshots(run.runId());
     String target = plan.map(t -> t.path("summary").path("target").asText("")).orElse("");
-    m.put("title", label(run.operation()) + (target.isEmpty() ? "" : " " + target));
     String strategy = plan.map(t -> t.path("summary").path("strategy").asText("")).orElse("");
-    m.put("subtitle", strategy.isEmpty() ? run.runId() : run.runId() + " · " + strategy);
-    m.put("backups", backups(plan, snapshots));
-    m.put("steps", steps(plan, transitions));
-    failure(run, transitions, snapshots).ifPresent(f -> m.put("failure", f));
-    return m;
+    return RunsDoc.RunDetail.of(
+        runItem(run),
+        label(run.operation()) + (target.isEmpty() ? "" : " " + target),
+        strategy.isEmpty() ? run.runId() : run.runId() + " · " + strategy,
+        backups(plan, snapshots),
+        steps(plan, transitions),
+        failure(run, transitions, snapshots));
   }
 
   /** Step titles from the stored plan, for replaying the journal with the operator's wording. */
@@ -213,7 +201,7 @@ final class RunViews {
     return String.join(", ", locations);
   }
 
-  static List<Map<String, Object>> steps(Optional<JsonNode> plan, List<Transition> transitions) {
+  static List<RunsDoc.StepRow> steps(Optional<JsonNode> plan, List<Transition> transitions) {
     Map<String, String> status = new LinkedHashMap<>();
     Map<String, Instant> running = new HashMap<>();
     Map<String, Long> durations = new HashMap<>();
@@ -238,7 +226,7 @@ final class RunViews {
         case PENDING, SKIPPED, ROLLED_BACK, ROLLBACK_FAILED -> {}
       }
     }
-    List<Map<String, Object>> out = new ArrayList<>();
+    List<RunsDoc.StepRow> out = new ArrayList<>();
     Set<String> seen = new HashSet<>();
     if (plan.isPresent()) {
       for (JsonNode step : plan.get().path("steps")) {
@@ -269,16 +257,9 @@ final class RunViews {
     return out;
   }
 
-  static Map<String, Object> stepRow(
+  static RunsDoc.StepRow stepRow(
       String id, String phase, String title, String why, String status, Long durationMs) {
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("id", id);
-    m.put("phase", phase);
-    m.put("title", title);
-    m.put("why", why);
-    m.put("status", status);
-    m.put("durationMs", durationMs);
-    return m;
+    return new RunsDoc.StepRow(id, phase, title, why, status, Optional.ofNullable(durationMs));
   }
 
   static String stepStatus(StepState state) {
@@ -293,7 +274,7 @@ final class RunViews {
     };
   }
 
-  Optional<Map<String, Object>> failure(
+  Optional<RunsDoc.Failure> failure(
       RunRecord run, List<Transition> transitions, List<SnapshotRecord> snapshots) {
     String outcome = outcome(run);
     if (outcome.equals("succeeded") || outcome.equals("running")) {
@@ -346,12 +327,7 @@ final class RunViews {
     if (cause.isEmpty() && failedStep.isEmpty()) {
       return Optional.empty();
     }
-    Map<String, Object> f = new LinkedHashMap<>();
-    f.put("stepId", failedStep.orElse(""));
-    f.put("cause", cause);
-    f.put("backups", backups);
-    f.put("nextAction", nextAction);
-    return Optional.of(f);
+    return Optional.of(new RunsDoc.Failure(failedStep.orElse(""), cause, backups, nextAction));
   }
 
   String outcome(RunRecord run) {
