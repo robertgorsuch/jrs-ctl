@@ -35,23 +35,23 @@ import org.junit.jupiter.api.Test;
  * <table>
  * <caption>Step to idempotency test</caption>
  * <tr><th>Step</th><th>Execute twice</th><th>Compensate twice</th></tr>
- * <tr><td>hotfix ApplySteps.VerifySignature, ValidateManifest, Preflight, RunChecks;
+ * <tr><td>hotfix HotfixVerifySteps.VerifySignature, ValidateManifest, Preflight, RunChecks;
  *     ops.service ServiceSteps.WaitForServer</td>
  *     <td colspan="2">HotfixStepIdempotencyTest#should_not_mutate_when_read_only_apply_steps_execute_twice</td></tr>
- * <tr><td>hotfix ApplySteps.TakeSnapshot</td>
+ * <tr><td>hotfix HotfixBackupSteps.TakeSnapshot</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_take_snapshot_executes_twice</td>
  *     <td>additive, compensation is a no-op (same test)</td></tr>
- * <tr><td>hotfix ApplySteps.StageFiles</td>
+ * <tr><td>hotfix HotfixApplyPhaseSteps.StageFiles</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_stage_files_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_stage_files_compensates_twice</td></tr>
- * <tr><td>hotfix ApplySteps.AtomicSwap</td>
+ * <tr><td>hotfix HotfixApplyPhaseSteps.AtomicSwap</td>
  *     <td>HotfixApplyTest#should_converge_when_atomic_swap_executes_twice;
  *         HotfixStepIdempotencyTest#should_converge_when_atomic_swap_executes_after_a_partial_swap</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_atomic_swap_compensates_twice</td></tr>
- * <tr><td>hotfix ApplySteps.ApplySql</td>
+ * <tr><td>hotfix HotfixApplyPhaseSteps.ApplySql</td>
  *     <td>HotfixStepIdempotencyTest#should_rerun_idempotent_scripts_when_apply_sql_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_apply_sql_compensates_twice</td></tr>
- * <tr><td>hotfix ApplySteps.RecordInstalled</td>
+ * <tr><td>hotfix HotfixRecordSteps.RecordInstalled</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_record_installed_executes_twice</td>
  *     <td>HotfixStepIdempotencyTest#should_converge_when_record_installed_compensates_twice</td></tr>
  * <tr><td>ops.service ServiceSteps.StopService</td>
@@ -201,34 +201,34 @@ class IdempotencyCoverageTest {
   static final Map<String, String> COVERAGE =
       Map.ofEntries(
           // hotfix apply
-          Map.entry(OPS + "hotfix.ApplySteps$VerifySignature", H_READ_ONLY),
-          Map.entry(OPS + "hotfix.ApplySteps$ValidateManifest", H_READ_ONLY),
-          Map.entry(OPS + "hotfix.ApplySteps$Preflight", H_READ_ONLY),
-          Map.entry(OPS + "hotfix.ApplySteps$RunChecks", H_READ_ONLY),
+          Map.entry(OPS + "hotfix.HotfixVerifySteps$VerifySignature", H_READ_ONLY),
+          Map.entry(OPS + "hotfix.HotfixVerifySteps$ValidateManifest", H_READ_ONLY),
+          Map.entry(OPS + "hotfix.HotfixVerifySteps$Preflight", H_READ_ONLY),
+          Map.entry(OPS + "hotfix.HotfixVerifySteps$RunChecks", H_READ_ONLY),
           Map.entry(
-              OPS + "hotfix.ApplySteps$TakeSnapshot",
+              OPS + "hotfix.HotfixBackupSteps$TakeSnapshot",
               H + "should_converge_when_take_snapshot_executes_twice"),
           Map.entry(
-              OPS + "hotfix.ApplySteps$StageFiles",
+              OPS + "hotfix.HotfixApplyPhaseSteps$StageFiles",
               H
                   + "should_converge_when_stage_files_executes_twice;"
                   + H
                   + "should_converge_when_stage_files_compensates_twice"),
           Map.entry(
-              OPS + "hotfix.ApplySteps$AtomicSwap",
+              OPS + "hotfix.HotfixApplyPhaseSteps$AtomicSwap",
               "hotfix.HotfixApplyTest#should_converge_when_atomic_swap_executes_twice;"
                   + H
                   + "should_converge_when_atomic_swap_executes_after_a_partial_swap;"
                   + H
                   + "should_converge_when_atomic_swap_compensates_twice"),
           Map.entry(
-              OPS + "hotfix.ApplySteps$ApplySql",
+              OPS + "hotfix.HotfixApplyPhaseSteps$ApplySql",
               H
                   + "should_rerun_idempotent_scripts_when_apply_sql_executes_twice;"
                   + H
                   + "should_converge_when_apply_sql_compensates_twice"),
           Map.entry(
-              OPS + "hotfix.ApplySteps$RecordInstalled",
+              OPS + "hotfix.HotfixRecordSteps$RecordInstalled",
               H
                   + "should_converge_when_record_installed_executes_twice;"
                   + H

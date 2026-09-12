@@ -1,20 +1,20 @@
 package com.jaspersoft.jrsctl.app.console;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.jaspersoft.jrsctl.app.RunService;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
-import com.jaspersoft.jrsctl.core.state.Transition;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;

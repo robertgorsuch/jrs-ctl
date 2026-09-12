@@ -1,7 +1,7 @@
 package com.jaspersoft.jrsctl.app.console;
 
-import com.jaspersoft.jrsctl.app.RunService;
 import com.jaspersoft.jrsctl.core.engine.Context;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
@@ -11,7 +11,7 @@ import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.LockHeldException;
+import com.jaspersoft.jrsctl.ops.RunService;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

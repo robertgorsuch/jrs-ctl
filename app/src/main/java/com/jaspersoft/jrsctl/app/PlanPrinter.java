@@ -3,12 +3,10 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanSummary;
 import com.jaspersoft.jrsctl.core.engine.Step;
-import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -91,45 +89,6 @@ final class PlanPrinter {
       out.println(redactor.redact(line.stripTrailing()));
     }
     out.flush();
-  }
-
-  /** The JSON document for {@code --json} and the stored-plan table. */
-  static String toJson(Plan plan) {
-    return Json.writePretty(toTree(plan));
-  }
-
-  static Map<String, Object> toTree(Plan plan) {
-    PlanSummary s = plan.summary();
-    Map<String, Object> summary = new LinkedHashMap<>();
-    summary.put("operation", s.operation());
-    summary.put("target", s.target());
-    summary.put("filesTouched", s.filesTouched().stream().map(Path::toString).toList());
-    summary.put("resourcesTouched", s.resourcesTouched());
-    summary.put("serviceRestart", s.serviceRestart());
-    summary.put("backupLocations", s.backupLocations().stream().map(Path::toString).toList());
-    summary.put("rollbackPointsByPhase", s.rollbackPointsByPhase());
-    summary.put("strategy", s.strategy());
-    summary.put("warnings", s.warnings());
-    Map<String, Object> fingerprint = new LinkedHashMap<>();
-    fingerprint.put("value", plan.fingerprint().value());
-    fingerprint.put("inputs", plan.fingerprint().inputs());
-    List<Map<String, Object>> steps = new ArrayList<>();
-    for (Step step : plan.steps()) {
-      Map<String, Object> m = new LinkedHashMap<>();
-      m.put("id", step.id());
-      m.put("phase", step.phase());
-      m.put("title", step.title());
-      m.put("detail", step.detail());
-      m.put("irreversible", step.irreversible());
-      steps.add(m);
-    }
-    Map<String, Object> root = new LinkedHashMap<>();
-    root.put("planId", plan.planId());
-    root.put("operation", s.operation());
-    root.put("summary", summary);
-    root.put("fingerprint", fingerprint);
-    root.put("steps", steps);
-    return root;
   }
 
   private static String count(int n, String noun) {

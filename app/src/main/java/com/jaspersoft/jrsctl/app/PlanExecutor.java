@@ -3,15 +3,16 @@ package com.jaspersoft.jrsctl.app;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.LockHeldException;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.PrintWriter;
@@ -80,7 +81,7 @@ final class PlanExecutor {
     // review 5.4: a run another process is executing right now holds the lock and is not a run
     // that needs recovery. Checking the lock first stops a second jrsctl telling the operator to
     // `runs recover --resume` a run that is running perfectly well in the first one.
-    Optional<com.jaspersoft.jrsctl.core.state.RunLock.Holder> holder = runs.lockHolder();
+    Optional<com.jaspersoft.jrsctl.core.engine.RunLock.Holder> holder = runs.lockHolder();
     if (holder.isPresent()) {
       return fail(
           ExitCodes.LOCK_HELD,
@@ -141,7 +142,7 @@ final class PlanExecutor {
   }
 
   /**
-   * Resumes or rolls back a pending run through {@link com.jaspersoft.jrsctl.core.state.Recovery};
+   * Resumes or rolls back a pending run through {@link com.jaspersoft.jrsctl.core.engine.Recovery};
    * bypasses the pending check.
    */
   int recover(String runId, Plan plan, boolean resume) {

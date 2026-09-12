@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
+import com.jaspersoft.jrsctl.core.engine.Transition;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;

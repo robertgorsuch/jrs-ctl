@@ -1,11 +1,11 @@
 package com.jaspersoft.jrsctl.app.console;
 
 import com.jaspersoft.jrsctl.app.LogFile;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.Transition;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.BufferedReader;

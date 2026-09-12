@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.app.console.ConsoleOptions;
 import com.jaspersoft.jrsctl.app.console.ConsoleServer;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.AuditEntry;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

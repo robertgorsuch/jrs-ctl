@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.app;
+package com.jaspersoft.jrsctl.ops;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -31,19 +31,19 @@ import java.util.function.Supplier;
  * unknown operation fails with a message naming the known ones; the operations are obtained lazily
  * so listing the registry never touches the server.
  */
-final class PlanRegistry {
+public final class PlanRegistry {
 
-  static final String HOTFIX_APPLY = "hotfix.apply";
-  static final String HOTFIX_ROLLBACK = "hotfix.rollback";
-  static final String EXPORT = "export";
-  static final String IMPORT = "import";
+  public static final String HOTFIX_APPLY = "hotfix.apply";
+  public static final String HOTFIX_ROLLBACK = "hotfix.rollback";
+  public static final String EXPORT = "export";
+  public static final String IMPORT = "import";
 
-  static final String UPGRADE = UpgradeOperations.UPGRADE_OPERATION;
-  static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
+  public static final String UPGRADE = UpgradeOperations.UPGRADE_OPERATION;
+  public static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
 
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
-  PlanRegistry(
+  public PlanRegistry(
       Supplier<HotfixOperations> hotfix,
       Supplier<ExportImportOperations> exim,
       Supplier<UpgradeOperations> upgrade) {
@@ -91,7 +91,7 @@ final class PlanRegistry {
     builders.put(IMPORT, args -> exim.get().planImport(importOptions(args)));
   }
 
-  Plan rebuild(String operation, String argsJson) {
+  public Plan rebuild(String operation, String argsJson) {
     Function<JsonNode, Plan> builder = builders.get(operation);
     if (builder == null) {
       throw new IllegalArgumentException(
@@ -109,21 +109,21 @@ final class PlanRegistry {
     return builder.apply(args);
   }
 
-  static String applyArgs(Path bundle, boolean allowUnsigned) {
+  public static String applyArgs(Path bundle, boolean allowUnsigned) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("bundle", bundle.toAbsolutePath().normalize().toString());
     node.put("allowUnsigned", allowUnsigned);
     return Json.write(node);
   }
 
-  static String rollbackArgs(String hotfixId, boolean cascade) {
+  public static String rollbackArgs(String hotfixId, boolean cascade) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("id", hotfixId);
     node.put("cascade", cascade);
     return Json.write(node);
   }
 
-  static String exportArgs(ExportImportOperations.ExportOptions o) {
+  public static String exportArgs(ExportImportOperations.ExportOptions o) {
     ObjectNode node = Json.mapper().createObjectNode();
     ArrayNode uris = node.putArray("uris");
     o.uris().stream().sorted().forEach(uris::add);
@@ -138,7 +138,7 @@ final class PlanRegistry {
     return Json.write(node);
   }
 
-  static String importArgs(ExportImportOperations.ImportOptions o) {
+  public static String importArgs(ExportImportOperations.ImportOptions o) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("archive", o.archive().toAbsolutePath().normalize().toString());
     node.put("update", o.update());
@@ -162,7 +162,7 @@ final class PlanRegistry {
     return Json.write(node);
   }
 
-  static ExportImportOperations.ExportOptions exportOptions(JsonNode args) {
+  public static ExportImportOperations.ExportOptions exportOptions(JsonNode args) {
     Set<String> uris = new LinkedHashSet<>();
     for (JsonNode u : args.path("uris")) {
       if (u.isTextual() && !u.asText().isBlank()) {
@@ -181,7 +181,7 @@ final class PlanRegistry {
         strategy(args));
   }
 
-  static ExportImportOperations.ImportOptions importOptions(JsonNode args) {
+  public static ExportImportOperations.ImportOptions importOptions(JsonNode args) {
     return new ExportImportOperations.ImportOptions(
         Path.of(required(args, "archive")),
         args.path("update").asBoolean(false),
@@ -208,7 +208,7 @@ final class PlanRegistry {
     return text(args, "strategy").flatMap(StrategyFlag::parse);
   }
 
-  static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
+  public static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("to", options.toVersion());
     node.put("package", options.packageDir().toString());
@@ -218,7 +218,7 @@ final class PlanRegistry {
     return Json.write(node);
   }
 
-  static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {
+  public static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("runId", runId);
     node.put("point", point.name());

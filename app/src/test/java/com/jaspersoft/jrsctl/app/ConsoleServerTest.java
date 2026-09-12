@@ -23,6 +23,9 @@ import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
+import com.jaspersoft.jrsctl.ops.PlanJson;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -435,7 +438,7 @@ class ConsoleServerTest {
               "p-changed",
               PlanRegistry.HOTFIX_APPLY,
               PlanRegistry.applyArgs(bundle, false),
-              PlanPrinter.toJson(plan),
+              PlanJson.toJson(plan),
               "sha256:someone-else",
               now,
               now.plus(Duration.ofMinutes(30)),
@@ -445,7 +448,7 @@ class ConsoleServerTest {
               "p-expired",
               PlanRegistry.HOTFIX_APPLY,
               PlanRegistry.applyArgs(bundle, false),
-              PlanPrinter.toJson(plan),
+              PlanJson.toJson(plan),
               plan.fingerprint().value(),
               now.minus(Duration.ofHours(1)),
               now.minus(Duration.ofMinutes(1)),
@@ -537,7 +540,7 @@ class ConsoleServerTest {
               "p-pending",
               PlanRegistry.HOTFIX_APPLY,
               PlanRegistry.applyArgs(bundle, false),
-              PlanPrinter.toJson(plan),
+              PlanJson.toJson(plan),
               plan.fingerprint().value(),
               t0,
               t0.plus(Duration.ofMinutes(30)),

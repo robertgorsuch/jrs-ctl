@@ -13,6 +13,15 @@
   <name>jrsctl :: ops</name>
   <description>Operations producing Plans (hotfix, export, import, upgrade) or Reports (init, doctor, smoke)</description>
 
+  <properties>
+    <!-- The plans themselves. Lower than core by two points because the tar.gz
+         archive format carries POSIX-only code, about seventy lines of mode, owner and
+         symbolic-link handling, that cannot execute on the Windows build machine at all;
+         the gate has to pass on both operating systems, so it is set by the stricter of
+         the two. On Linux the same suite reports above 80. -->
+    <jacoco.line.minimum>0.78</jacoco.line.minimum>
+  </properties>
+
   <dependencies>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-core</artifactId></dependency>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-jrs</artifactId></dependency>

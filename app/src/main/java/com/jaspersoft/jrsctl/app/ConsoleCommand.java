@@ -7,6 +7,8 @@ import com.jaspersoft.jrsctl.app.console.OperationCatalog;
 import com.jaspersoft.jrsctl.app.console.PlanBuilder;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.BufferedReader;
 import java.io.IOException;

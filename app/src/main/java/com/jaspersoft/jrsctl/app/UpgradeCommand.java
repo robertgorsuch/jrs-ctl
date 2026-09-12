@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeException;

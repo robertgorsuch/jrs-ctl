@@ -12,7 +12,6 @@ import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
-import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
@@ -34,13 +33,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.function.Function;
 
 /**
  * The hotfix subsystem entry point (spec §8): builds, verifies, plans the application and the
@@ -59,6 +55,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
 
   private final HotfixRuntime rt;
   private final ManifestValidator validator = new ManifestValidator();
+  private final BundleWorkspace bundles;
 
   public DefaultHotfixOperations(Services services) {
     this(
@@ -73,6 +70,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
 
   DefaultHotfixOperations(HotfixRuntime rt) {
     this.rt = Objects.requireNonNull(rt, "rt");
+    this.bundles = new BundleWorkspace(rt.home());
   }
 
   @Override
@@ -83,7 +81,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
 
   @Override
   public VerifyReport verify(Path bundle) {
-    return withBundle(
+    return bundles.with(
         bundle,
         b -> {
           BundleVerifier.Signature signature = rt.verifier().signature(b);
@@ -123,7 +121,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
   @Override
   public Plan planApply(Path bundle, ApplyOptions options) {
     Objects.requireNonNull(options, "options");
-    return withBundle(bundle, b -> planApply(bundle, b, options));
+    return bundles.with(bundle, b -> planApply(bundle, b, options));
   }
 
   private Plan planApply(Path bundle, HotfixBundle b, ApplyOptions options) {
@@ -187,25 +185,25 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     }
 
     List<Step> steps = new ArrayList<>();
-    steps.add(new ApplySteps.VerifySignature(rt, in));
-    steps.add(new ApplySteps.ValidateManifest(rt, in));
-    steps.add(new ApplySteps.Preflight(rt, in));
-    steps.add(new ApplySteps.RunChecks(rt, in, false));
-    steps.add(new ApplySteps.TakeSnapshot(rt, in));
+    steps.add(new HotfixVerifySteps.VerifySignature(rt, in));
+    steps.add(new HotfixVerifySteps.ValidateManifest(rt, in));
+    steps.add(new HotfixVerifySteps.Preflight(rt, in));
+    steps.add(new HotfixVerifySteps.RunChecks(rt, in, false));
+    steps.add(new HotfixBackupSteps.TakeSnapshot(rt, in));
     if (in.restartRequired()) {
       steps.add(ServiceSteps.stop(rt, ApplySteps.APPLY, ServiceSteps.STOP));
     }
-    steps.add(new ApplySteps.StageFiles(rt, in));
-    steps.add(new ApplySteps.AtomicSwap(rt, in));
+    steps.add(new HotfixApplyPhaseSteps.StageFiles(rt, in));
+    steps.add(new HotfixApplyPhaseSteps.AtomicSwap(rt, in));
     if (in.hasSql()) {
-      steps.add(new ApplySteps.ApplySql(rt, in));
+      steps.add(new HotfixApplyPhaseSteps.ApplySql(rt, in));
     }
     if (in.restartRequired()) {
       steps.add(ServiceSteps.start(rt, ApplySteps.APPLY, ServiceSteps.START));
       steps.add(ServiceSteps.waitForServer(rt, ApplySteps.APPLY, ServiceSteps.WAIT));
     }
-    steps.add(new ApplySteps.RunChecks(rt, in, true));
-    steps.add(new ApplySteps.RecordInstalled(rt, in));
+    steps.add(new HotfixVerifySteps.RunChecks(rt, in, true));
+    steps.add(new HotfixRecordSteps.RecordInstalled(rt, in));
 
     Path snapshotDir = rt.home().snapshots().resolve("{runId}").resolve(ApplySteps.SNAPSHOT);
     Map<String, String> rollbackPoints = new LinkedHashMap<>();
@@ -268,7 +266,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     for (int i = 0; i < installed.size(); i++) {
       order.put(installed.get(i).id(), i);
     }
-    List<String> chain = chain(store, target, order, options.cascade());
+    List<String> chain = RollbackChain.of(store, target, order, options.cascade());
 
     List<Step> steps = new ArrayList<>();
     List<Path> touched = new ArrayList<>();
@@ -353,46 +351,6 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     return rt.store().hotfixes();
   }
 
-  /** Ids to roll back, newest first, ending with {@code target}. */
-  private static List<String> chain(
-      StateStore store, HotfixInstalled target, Map<String, Integer> order, boolean cascade) {
-    Set<String> selected = new LinkedHashSet<>();
-    List<String> pending = new ArrayList<>();
-    pending.add(target.id());
-    List<String> directBlockers = new ArrayList<>();
-    while (!pending.isEmpty()) {
-      String id = pending.remove(pending.size() - 1);
-      if (!selected.add(id)) {
-        continue;
-      }
-      int position = order.getOrDefault(id, -1);
-      List<Path> paths = store.hotfixFiles(id).stream().map(HotfixFile::path).toList();
-      Set<String> blockers = new LinkedHashSet<>();
-      for (HotfixFile owned : store.filesOwnedBy(paths)) {
-        String other = owned.hotfixId();
-        if (!other.equals(id) && order.getOrDefault(other, -1) > position) {
-          blockers.add(other);
-        }
-      }
-      if (id.equals(target.id())) {
-        directBlockers.addAll(blockers);
-      }
-      pending.addAll(blockers);
-    }
-    if (!directBlockers.isEmpty() && !cascade) {
-      throw new HotfixException(
-          HotfixException.PRECHECK,
-          "rollback of "
-              + target.id()
-              + " is blocked by later hotfixes owning the same files: "
-              + String.join(", ", directBlockers),
-          "roll those back first, or re-run with --cascade");
-    }
-    List<String> ordered = new ArrayList<>(selected);
-    ordered.sort((a, b) -> Integer.compare(order.getOrDefault(b, -1), order.getOrDefault(a, -1)));
-    return List.copyOf(ordered);
-  }
-
   private Optional<Manifest> storedManifest(Path bundleDir) {
     Path file = bundleDir.resolve(HotfixBundle.MANIFEST);
     if (!Files.isRegularFile(file)) {
@@ -421,42 +379,6 @@ public final class DefaultHotfixOperations implements HotfixOperations {
       return Optional.of(rt.identity());
     } catch (JrsUnreachableException | RestException | ConfigException e) {
       return Optional.empty();
-    }
-  }
-
-  private <T> T withBundle(Path bundle, Function<HotfixBundle, T> body) {
-    if (!Files.isRegularFile(bundle)) {
-      throw new HotfixException(
-          HotfixException.PRECHECK, "bundle not found: " + bundle, "check the path");
-    }
-    Path dir;
-    try {
-      Files.createDirectories(rt.home().runs());
-      dir = Files.createTempDirectory(rt.home().runs(), "hotfix-verify-");
-    } catch (IOException e) {
-      throw new HotfixException(
-          HotfixException.PRECHECK,
-          "cannot create a working directory under " + rt.home().runs() + ": " + e.getMessage(),
-          "check permissions on " + rt.home().runs());
-    }
-    try {
-      HotfixBundle b;
-      try {
-        b = HotfixBundle.extract(bundle, dir);
-      } catch (IOException e) {
-        throw new HotfixException(
-            HotfixException.SIGNATURE,
-            "cannot read bundle " + bundle + ": " + e.getMessage(),
-            "check that the file is a jrsctl hotfix ZIP",
-            e);
-      }
-      return body.apply(b);
-    } finally {
-      try {
-        Trees.deleteRecursively(dir);
-      } catch (IOException e) {
-        // a leftover verify directory is harmless; the next run cleans up
-      }
     }
   }
 

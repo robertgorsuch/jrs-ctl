@@ -4,10 +4,6 @@ import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.redact.RedactingEventSink;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.RunLock;
-import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.StateStoreException;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -38,21 +34,21 @@ import java.util.function.Supplier;
  * journal write that fails ends the run with a {@code Failed} outcome and a {@code RunFailed} event
  * naming {@code runs recover}, never with an escaping exception; cancellation is noticed inside a
  * retry backoff within one {@link Sleeper#SLICE}. {@link
- * com.jaspersoft.jrsctl.core.state.LockHeldException} propagates untouched so the CLI can map it to
- * exit code 9.
+ * com.jaspersoft.jrsctl.core.engine.LockHeldException} propagates untouched so the CLI can map it
+ * to exit code 9.
  */
 public final class Runner {
 
   /** Phase name carried by run-level events. */
   public static final String RUN_PHASE = "run";
 
-  private final StateStore store;
+  private final Journal store;
   private final EventSink sink;
   private final Clock clock;
   private final Sleeper sleeper;
 
   /** As below, redacting with the process-wide {@link Redactor#global()}. */
-  public Runner(StateStore store, EventSink sink, Clock clock, Sleeper sleeper) {
+  public Runner(Journal store, EventSink sink, Clock clock, Sleeper sleeper) {
     this(store, sink, clock, sleeper, Redactor.global());
   }
 
@@ -61,7 +57,7 @@ public final class Runner {
    * passes {@code redactor} before {@code sink} sees it. Subscribers therefore never need to redact
    * for themselves, and a new subscriber cannot leak by forgetting to.
    */
-  public Runner(StateStore store, EventSink sink, Clock clock, Sleeper sleeper, Redactor redactor) {
+  public Runner(Journal store, EventSink sink, Clock clock, Sleeper sleeper, Redactor redactor) {
     this.store = Objects.requireNonNull(store, "store");
     this.sink =
         new RedactingEventSink(
@@ -170,7 +166,7 @@ public final class Runner {
     RunOutcome proceed(int startIndex) {
       try {
         return proceedJournalled(startIndex);
-      } catch (StateStoreException e) {
+      } catch (JournalException e) {
         return journalFailed(e);
       }
     }
@@ -182,7 +178,7 @@ public final class Runner {
      * nothing was undone. The terminal row is still attempted, since the failure may have been a
      * single write.
      */
-    private RunOutcome journalFailed(StateStoreException e) {
+    private RunOutcome journalFailed(JournalException e) {
       String cause = "the run journal could not be written: " + describe(e);
       String nextAction =
           "the state of run "
@@ -194,7 +190,7 @@ public final class Runner {
       RunOutcome.Failed outcome = new RunOutcome.Failed(cause, mutated, nextAction, List.of());
       try {
         store.recordRunEnd(runId, now(), TerminalState.FAILED, outcome.exitCode());
-      } catch (StateStoreException again) {
+      } catch (JournalException again) {
         // the journal is what failed; the pending row is what runs recover will find
       }
       emit(
@@ -231,7 +227,7 @@ public final class Runner {
     RunOutcome rollbackRecorded(String cause) {
       try {
         return rollbackRecordedJournalled(cause);
-      } catch (StateStoreException e) {
+      } catch (JournalException e) {
         return journalFailed(e);
       }
     }

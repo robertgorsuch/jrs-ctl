@@ -12,7 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
-import com.jaspersoft.jrsctl.core.state.RunLock;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

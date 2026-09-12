@@ -1,9 +1,9 @@
 package com.jaspersoft.jrsctl.app.console;
 
-import com.jaspersoft.jrsctl.app.RunService;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import io.javalin.Javalin;
 import io.javalin.compression.CompressionStrategy;

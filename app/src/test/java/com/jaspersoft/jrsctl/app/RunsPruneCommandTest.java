@@ -4,15 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -2,10 +2,10 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.platform.UnsupportedPlatformException;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
-import com.jaspersoft.jrsctl.core.state.LockHeldException;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.io.PrintWriter;

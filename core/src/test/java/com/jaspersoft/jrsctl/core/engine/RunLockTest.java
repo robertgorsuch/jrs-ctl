@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.core.state;
+package com.jaspersoft.jrsctl.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

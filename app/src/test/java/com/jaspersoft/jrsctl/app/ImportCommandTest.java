@@ -8,6 +8,7 @@ import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.exim.DefaultExportImportOperations;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import java.nio.charset.StandardCharsets;

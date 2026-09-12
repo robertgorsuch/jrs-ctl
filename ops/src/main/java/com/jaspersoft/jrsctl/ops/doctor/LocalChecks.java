@@ -1,6 +1,9 @@
 package com.jaspersoft.jrsctl.ops.doctor;
 
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.engine.Recovery;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.LinuxInit;
 import com.jaspersoft.jrsctl.core.platform.Platform;
@@ -14,9 +17,6 @@ import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.selfcheck.SelfCheck;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.Recovery;
-import com.jaspersoft.jrsctl.core.state.RunLock;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StateStoreException;
 import com.jaspersoft.jrsctl.ops.ReportItem;
