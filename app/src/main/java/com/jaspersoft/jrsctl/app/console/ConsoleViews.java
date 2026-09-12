@@ -14,7 +14,6 @@ import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -119,51 +118,44 @@ final class ConsoleViews {
 
   // ---- /api/health ----------------------------------------------------------------------------
 
-  Map<String, Object> health() {
+  HealthDoc health() {
     StateStore store = store();
-    Map<String, Object> m = new LinkedHashMap<>();
-    Map<String, Object> tool = new LinkedHashMap<>();
-    tool.put("version", Version.current().version());
-    tool.put("matrixVersion", Integer.toString(services.matrix().matrixVersion()));
-    m.put("tool", tool);
-    m.put("bind", bind + ":" + port.getAsInt());
-    m.put("networkMode", services.config().network().mode().yamlValue());
+    HealthDoc.Tool tool =
+        new HealthDoc.Tool(
+            Version.current().version(), Integer.toString(services.matrix().matrixVersion()));
     Optional<RunRecord> last =
         store.runs(RUN_LIMIT).stream().filter(r -> r.terminalState().isPresent()).findFirst();
-    m.put("lastRun", last.map(this::lastRun));
-    m.put("lock", lock(store));
-    List<Map<String, Object>> pending = new ArrayList<>();
+    List<HealthDoc.PendingRun> pending = new ArrayList<>();
     for (RunRecord run : store.pendingRuns()) {
-      Map<String, Object> p = new LinkedHashMap<>();
-      p.put("id", run.runId());
-      p.put("op", run.operation());
-      p.put("startedAt", run.startedAt());
-      p.put("stepId", RunViews.lastStep(store.transitions(run.runId())));
-      pending.add(p);
+      pending.add(
+          new HealthDoc.PendingRun(
+              run.runId(),
+              run.operation(),
+              run.startedAt(),
+              RunViews.lastStep(store.transitions(run.runId()))));
     }
-    m.put("pendingRuns", pending);
-    m.put("snapshots", snapshots());
-    doctor.last().ifPresent(c -> m.put("doctor", doctorSummary(c)));
-    return m;
+    return new HealthDoc(
+        tool,
+        bind + ":" + port.getAsInt(),
+        services.config().network().mode().yamlValue(),
+        last.map(this::lastRun),
+        lock(store),
+        pending,
+        snapshots(),
+        doctor.last().map(ConsoleViews::doctorSummary));
   }
 
-  private Map<String, Object> lastRun(RunRecord run) {
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("id", run.runId());
-    m.put("op", run.operation());
-    m.put("outcome", outcome(run));
-    m.put("finishedAt", run.endedAt());
-    return m;
+  private HealthDoc.LastRun lastRun(RunRecord run) {
+    return new HealthDoc.LastRun(run.runId(), run.operation(), outcome(run), run.endedAt());
   }
 
-  private Map<String, Object> lock(StateStore store) {
-    Map<String, Object> m = new LinkedHashMap<>();
+  private HealthDoc.Lock lock(StateStore store) {
     Optional<RunManager.LiveRun> live = runs.running();
     if (live.isPresent()) {
-      m.put("held", true);
-      m.put("runId", live.get().runId());
-      m.put("pid", Long.toString(ProcessHandle.current().pid()));
-      return m;
+      return new HealthDoc.Lock(
+          true,
+          Optional.of(live.get().runId()),
+          Optional.of(Long.toString(ProcessHandle.current().pid())));
     }
     Optional<RunLock.Holder> holder = RunLock.readHolder(services.home().runLock());
     boolean alive =
@@ -182,16 +174,13 @@ final class ConsoleViews {
             && holder
                 .map(h -> store.run(h.runId()).map(RunRecord::pending).orElse(true))
                 .orElse(false);
-    m.put("held", held);
-    if (held) {
-      m.put("runId", holder.get().runId());
-      m.put("pid", holder.get().pid());
-    }
-    return m;
+    return held
+        ? new HealthDoc.Lock(
+            true, holder.map(RunLock.Holder::runId), holder.map(RunLock.Holder::pid))
+        : new HealthDoc.Lock(false, Optional.empty(), Optional.empty());
   }
 
-  private Map<String, Object> snapshots() {
-    Map<String, Object> m = new LinkedHashMap<>();
+  private HealthDoc.Snapshots snapshots() {
     SnapshotStore snapshots =
         new SnapshotStore(services.home(), services.platform().files(), services.clock());
     int count = 0;
@@ -202,31 +191,23 @@ final class ConsoleViews {
     } catch (IOException | RuntimeException e) {
       LOG.debug("cannot size the snapshot store: {}", e.getMessage());
     }
-    m.put("count", count);
-    m.put("bytes", bytes);
-    m.put("retentionDays", services.config().backups().retentionDays());
-    return m;
+    return new HealthDoc.Snapshots(count, bytes, services.config().backups().retentionDays());
   }
 
-  private static Map<String, Object> doctorSummary(DoctorCache.Cached cached) {
+  private static HealthDoc.DoctorSummary doctorSummary(DoctorCache.Cached cached) {
     DoctorReport report = cached.report();
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("pass", report.counts().pass());
-    m.put("warn", report.counts().warn());
-    m.put("fail", report.counts().fail());
-    m.put("ranAt", cached.ranAt());
-    List<Map<String, Object>> attention = new ArrayList<>();
+    List<HealthDoc.Attention> attention = new ArrayList<>();
     for (ReportItem item : report.items()) {
       if (item.status() == ReportItem.Status.WARN || item.status() == ReportItem.Status.FAIL) {
-        Map<String, Object> a = new LinkedHashMap<>();
-        a.put("status", item.status().name());
-        a.put("title", item.name());
-        a.put("detail", item.detail());
-        attention.add(a);
+        attention.add(new HealthDoc.Attention(item.status().name(), item.name(), item.detail()));
       }
     }
-    m.put("attention", attention);
-    return m;
+    return new HealthDoc.DoctorSummary(
+        report.counts().pass(),
+        report.counts().warn(),
+        report.counts().fail(),
+        cached.ranAt(),
+        attention);
   }
 
   // ---- /api/server ----------------------------------------------------------------------------
@@ -237,30 +218,28 @@ final class ConsoleViews {
 
   // ---- /api/doctor ----------------------------------------------------------------------------
 
-  static Map<String, Object> doctor(DoctorCache.Cached cached) {
+  static DoctorDoc doctor(DoctorCache.Cached cached) {
     DoctorReport report = cached.report();
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("ranAt", cached.ranAt());
-    Map<String, Object> counts = new LinkedHashMap<>();
-    counts.put("pass", report.counts().pass());
-    counts.put("warn", report.counts().warn());
-    counts.put("fail", report.counts().fail());
-    counts.put("skip", report.counts().skip());
-    m.put("counts", counts);
-    List<Map<String, Object>> items = new ArrayList<>();
+    List<DoctorDoc.Item> items = new ArrayList<>();
     for (ReportItem item : report.items()) {
-      Map<String, Object> i = new LinkedHashMap<>();
-      i.put("id", item.name());
-      i.put("name", item.name());
-      i.put("status", item.status().name());
-      i.put("title", item.name());
-      i.put("detail", item.detail());
-      i.put("remediation", item.remediation());
-      items.add(i);
+      items.add(
+          new DoctorDoc.Item(
+              item.name(),
+              item.name(),
+              item.status().name(),
+              item.name(),
+              item.detail(),
+              item.remediation()));
     }
-    m.put("items", items);
-    m.put("exitCode", report.exitCode());
-    return m;
+    return new DoctorDoc(
+        cached.ranAt(),
+        new DoctorDoc.Counts(
+            report.counts().pass(),
+            report.counts().warn(),
+            report.counts().fail(),
+            report.counts().skip()),
+        items,
+        report.exitCode());
   }
 
   // ---- /api/hotfixes --------------------------------------------------------------------------
