@@ -24,13 +24,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Builds the JSON documents of the console API in exactly the shapes {@code web/README.md}
- * documents (spec §13.1). Invariants: every document is a plain tree of maps, lists, strings,
- * numbers, booleans and instants so the one JSON mapper renders it deterministically; nothing here
- * mutates the server or the journal (reading the doctor cache is the only slow path); the server
- * document degrades to the configuration-known fields with {@code reachable:false} instead of
- * failing when the server cannot be reached; run outcomes use the README's vocabulary ({@code
- * succeeded}, {@code failed}, {@code failed_rolled_back}, {@code rollback_incomplete}, {@code
- * cancelled}, {@code running}, {@code interrupted}).
+ * documents (spec §13.1). Invariants: every document is an immutable record ({@link HealthDoc},
+ * {@link DoctorDoc}, {@link ServerDoc}, {@link HotfixesDoc}, {@link PlanDoc}, {@link RunsDoc})
+ * whose component order is the key order on the wire, rendered by the one shared JSON mapper so the
+ * output is deterministic; nothing here mutates the server or the journal (reading the doctor cache
+ * is the only slow path); the server document degrades to the configuration-known fields with
+ * {@code reachable:false} instead of failing when the server cannot be reached; run outcomes use
+ * the README's vocabulary ({@code succeeded}, {@code failed}, {@code failed_rolled_back}, {@code
+ * rollback_incomplete}, {@code cancelled}, {@code running}, {@code interrupted}).
  */
 final class ConsoleViews {
 
