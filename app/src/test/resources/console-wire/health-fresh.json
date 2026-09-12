@@ -1,7 +1,7 @@
 {
   "tool" : {
-    "version" : "1.0.0-SNAPSHOT",
-    "matrixVersion" : "1"
+    "version" : "<version>",
+    "matrixVersion" : "<version>"
   },
   "bind" : "127.0.0.1:<port>",
   "networkMode" : "isolated",

@@ -30,6 +30,14 @@ final class ConsoleScrub {
   /** Numeric keys whose value is a measurement, replaced by 0 when not null. */
   private static final List<String> MEASURED = List.of("durationMs", "bytes");
 
+  /**
+   * String keys holding a version, replaced by {@code <version>} when non-empty so a golden
+   * survives a release version bump. An empty string is left untouched: {@code server-unreachable}
+   * uses {@code ""} for {@code version} and {@code database.version} as its "server not reachable"
+   * signal.
+   */
+  private static final List<String> VERSIONED = List.of("version", "matrixVersion");
+
   private ConsoleScrub() {}
 
   /** A copy of {@code node} with volatile values replaced; {@code home} becomes {@code <home>}. */
@@ -101,6 +109,9 @@ final class ConsoleScrub {
     }
     if (node.isNumber() && MEASURED.contains(key)) {
       return LongNode.valueOf(0L);
+    }
+    if (node.isTextual() && VERSIONED.contains(key) && !node.asText().isEmpty()) {
+      return TextNode.valueOf("<version>");
     }
     if (node.isTextual()) {
       return TextNode.valueOf(text(node.asText(), home));
