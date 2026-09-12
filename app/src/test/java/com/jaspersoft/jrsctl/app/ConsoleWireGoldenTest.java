@@ -264,6 +264,24 @@ class ConsoleWireGoldenTest {
     }
   }
 
+  /**
+   * Captures {@code /api/runs/{id}} for a pending run seeded with no transitions, over a fresh
+   * fixture that never runs it live, so the console reads its outcome as {@code interrupted}, which
+   * carries {@code rollbackAvailable: true} and a synthetic {@code failure} block -- neither of
+   * which any other golden shows. Captured from the unchanged map code, before the record migration
+   * (R15).
+   */
+  @Test
+  void should_match_the_golden_when_a_pending_run_is_interrupted() throws Exception {
+    Path home = tmp.resolve("home");
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      console
+          .store()
+          .recordRunStart("r-interrupted", "hotfix.apply", Optional.empty(), Instant.now());
+      assertGolden("runs-show-interrupted", console.get("/api/runs/r-interrupted"), home);
+    }
+  }
+
   @Test
   void should_contain_no_backslash_when_any_golden_is_read() throws IOException {
     try (Stream<Path> files = Files.list(Path.of(DIR))) {

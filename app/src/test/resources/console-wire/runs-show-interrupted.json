@@ -1,0 +1,21 @@
+{
+  "id" : "r-interrupted",
+  "op" : "hotfix.apply",
+  "target" : "",
+  "startedAt" : "<instant>",
+  "finishedAt" : null,
+  "durationMs" : 0,
+  "outcome" : "interrupted",
+  "rollbackAvailable" : true,
+  "supportBundleAvailable" : true,
+  "title" : "apply hotfix",
+  "subtitle" : "r-interrupted",
+  "backups" : "",
+  "steps" : [ ],
+  "failure" : {
+    "stepId" : "",
+    "cause" : "the run was interrupted before it reached a terminal state",
+    "backups" : [ ],
+    "nextAction" : "resume or roll back this run"
+  }
+}

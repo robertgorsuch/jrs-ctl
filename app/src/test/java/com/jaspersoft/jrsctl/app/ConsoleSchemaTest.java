@@ -55,7 +55,8 @@ class ConsoleSchemaTest {
         Arguments.of("runs-after-apply", "api-runs.schema.json"),
         Arguments.of("runs-show-succeeded", "api-runs-show.schema.json"),
         Arguments.of("runs-show-failed", "api-runs-show.schema.json"),
-        Arguments.of("runs-show-running", "api-runs-show.schema.json"));
+        Arguments.of("runs-show-running", "api-runs-show.schema.json"),
+        Arguments.of("runs-show-interrupted", "api-runs-show.schema.json"));
   }
 
   @ParameterizedTest(name = "{0} validates against {1}")
