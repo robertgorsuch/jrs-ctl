@@ -237,6 +237,33 @@ class ConsoleWireGoldenTest {
     }
   }
 
+  /**
+   * Captures {@code /api/plan} for an {@code import} plan through the fake export/import
+   * operations, whose plan summary has a non-empty {@code resourcesTouched}, a non-empty {@code
+   * warnings} list and a backup path -- the one risk-section shape {@code plan-hotfix-apply} does
+   * not cover. Captured from the unchanged map code, before the record migration (R15).
+   */
+  @Test
+  void should_match_the_golden_when_a_plan_imports_an_archive() throws Exception {
+    Path home = tmp.resolve("home");
+    FakeExportImportOperations fake = new FakeExportImportOperations();
+    EximOps.factory = services -> fake;
+    Files.createDirectories(home);
+    Path archive = home.resolve("import-archive.zip");
+    Files.writeString(archive, "zip");
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      HttpResponse<String> planned =
+          console.post(
+              "/api/plan",
+              "{\"op\":\"import\",\"args\":{\"archive\":\""
+                  + archive.toString().replace("\\", "\\\\")
+                  + "\"}}");
+      assertGolden("plan-import", planned, home);
+    } finally {
+      EximOps.factory = EximOps.DEFAULT_FACTORY;
+    }
+  }
+
   @Test
   void should_contain_no_backslash_when_any_golden_is_read() throws IOException {
     try (Stream<Path> files = Files.list(Path.of(DIR))) {

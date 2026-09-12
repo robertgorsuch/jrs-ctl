@@ -1,0 +1,50 @@
+{
+  "planId" : "fake-import-<uuid>",
+  "plan" : {
+    "op" : "import",
+    "title" : "Plan: import import-archive.zip",
+    "fingerprint" : "sha256:<hex>",
+    "validUntil" : "<instant>",
+    "summary" : {
+      "filesTouched" : "none",
+      "resourcesTouched" : "/public",
+      "service" : "No service restart",
+      "backups" : "snapshots/pre-import/pre-import-x.zip",
+      "rollbackPoints" : "import: re-import the pre-import snapshot with update (best effort)",
+      "strategy" : "rest (REST: IMPORT_ASYNC probe passed, service stays up)",
+      "downtime" : "No downtime expected.",
+      "warnings" : [ "Rollback re-imports the pre-import snapshot; it restores overwritten resources but cannot delete resources the failed import created." ]
+    },
+    "steps" : [ {
+      "id" : "precheck.import.check-keystore",
+      "phase" : "precheck",
+      "title" : "Check keystore fingerprint",
+      "why" : ""
+    }, {
+      "id" : "backup.pre-import-snapshot",
+      "phase" : "backup",
+      "title" : "Pre-import snapshot",
+      "why" : "/public -> x"
+    }, {
+      "id" : "backup.export.start",
+      "phase" : "backup",
+      "title" : "Start export task",
+      "why" : "uris /public"
+    }, {
+      "id" : "import.snapshot-rollback",
+      "phase" : "import",
+      "title" : "Enable snapshot rollback",
+      "why" : ""
+    }, {
+      "id" : "import.start",
+      "phase" : "import",
+      "title" : "Start import task",
+      "why" : "<home>/import-archive.zip"
+    }, {
+      "id" : "import.poll",
+      "phase" : "import",
+      "title" : "Wait for import task",
+      "why" : "timeout 120m"
+    } ]
+  }
+}

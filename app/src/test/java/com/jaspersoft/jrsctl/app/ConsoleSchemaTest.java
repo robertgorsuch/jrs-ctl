@@ -50,6 +50,7 @@ class ConsoleSchemaTest {
         Arguments.of("hotfixes-empty", "api-hotfixes.schema.json"),
         Arguments.of("hotfixes-installed", "api-hotfixes.schema.json"),
         Arguments.of("plan-hotfix-apply", "api-plan.schema.json"),
+        Arguments.of("plan-import", "api-plan.schema.json"),
         Arguments.of("run-started", "api-run-started.schema.json"),
         Arguments.of("runs-after-apply", "api-runs.schema.json"),
         Arguments.of("runs-show-succeeded", "api-runs-show.schema.json"),
