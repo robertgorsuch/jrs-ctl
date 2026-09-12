@@ -96,7 +96,7 @@ final class ConsoleViews {
     return runViews.installedBy(runId);
   }
 
-  Map<String, Object> hotfixes() {
+  HotfixesDoc hotfixes() {
     return hotfixViews.hotfixes();
   }
 

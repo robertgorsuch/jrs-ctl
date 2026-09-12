@@ -8,7 +8,6 @@ import com.jaspersoft.jrsctl.ops.Services;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,7 +33,7 @@ final class HotfixViews {
     return services.stateStore().get();
   }
 
-  Map<String, Object> hotfixes() {
+  HotfixesDoc hotfixes() {
     StateStore store = store();
     List<HotfixInstalled> all = store.hotfixes();
     Map<String, Set<String>> files = new HashMap<>();
@@ -45,15 +44,9 @@ final class HotfixViews {
       }
       files.put(h.id(), paths);
     }
-    List<Map<String, Object>> rows = new ArrayList<>();
+    List<HotfixesDoc.Row> rows = new ArrayList<>();
     for (int i = 0; i < all.size(); i++) {
       HotfixInstalled h = all.get(i);
-      Map<String, Object> row = new LinkedHashMap<>();
-      row.put("id", h.id());
-      row.put("title", h.title());
-      row.put("installedAt", h.installedAt());
-      row.put("files", files.get(h.id()).size());
-      row.put("state", h.state().name().toLowerCase(Locale.ROOT));
       List<String> blockedBy = new ArrayList<>();
       if (h.state() == HotfixState.INSTALLED) {
         for (int j = i + 1; j < all.size(); j++) {
@@ -64,11 +57,15 @@ final class HotfixViews {
           }
         }
       }
-      row.put("blockedBy", blockedBy);
-      rows.add(row);
+      rows.add(
+          new HotfixesDoc.Row(
+              h.id(),
+              h.title(),
+              h.installedAt(),
+              files.get(h.id()).size(),
+              h.state().name().toLowerCase(Locale.ROOT),
+              blockedBy));
     }
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("hotfixes", rows);
-    return m;
+    return new HotfixesDoc(rows);
   }
 }
