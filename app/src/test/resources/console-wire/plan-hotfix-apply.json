@@ -6,9 +6,9 @@
     "fingerprint" : "sha256:<hex>",
     "validUntil" : "<instant>",
     "summary" : {
-      "filesTouched" : "1 file: webapps\\jasperserver-pro\\scripts\\jrsctl-fix.js",
+      "filesTouched" : "1 file: webapps/jasperserver-pro/scripts/jrsctl-fix.js",
       "service" : "No service restart",
-      "backups" : "snapshots\\snap-1",
+      "backups" : "snapshots/snap-1",
       "rollbackPoints" : "apply: snapshot snap-1",
       "strategy" : "snapshot",
       "downtime" : "No downtime expected.",

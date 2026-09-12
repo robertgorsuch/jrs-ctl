@@ -15,7 +15,9 @@ import java.util.regex.Pattern;
  * Rewrites the values a console document cannot repeat between runs so a golden file stays stable.
  * Invariants: structure and key order are untouched; a JSON {@code null} stays {@code null},
  * because whether a key is absent, null or set is exactly what the goldens guard; replacement is by
- * substring, so text around an id or a path survives.
+ * substring, so text around an id or a path survives; every backslash in a string value is
+ * normalised to a forward slash before any other replacement runs, so a golden compares equal
+ * whether {@code Path.toString()} produced Windows or POSIX separators.
  */
 final class ConsoleScrub {
 
@@ -130,9 +132,9 @@ final class ConsoleScrub {
   }
 
   private static String text(String value, Path home) {
-    String out =
-        value
-            .replace(home.toString(), "<home>")
+    String out = value.replace('\\', '/');
+    out =
+        out.replace(home.toString(), "<home>")
             .replace(home.toString().replace("\\", "/"), "<home>");
     out = RUN_ID.matcher(out).replaceAll("<runId>");
     out = UUID.matcher(out).replaceAll("<uuid>");

@@ -10,7 +10,7 @@
   "supportBundleAvailable" : true,
   "title" : "apply hotfix JRS-8.2.0-HF-0001",
   "subtitle" : "<runId> · snapshot",
-  "backups" : "snapshots\\snap-1",
+  "backups" : "snapshots/snap-1",
   "steps" : [ {
     "id" : "verify-signature",
     "phase" : "verify",

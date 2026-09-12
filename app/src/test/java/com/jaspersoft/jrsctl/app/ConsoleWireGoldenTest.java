@@ -9,7 +9,7 @@ import com.jaspersoft.jrsctl.core.state.HotfixFile;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -236,6 +237,25 @@ class ConsoleWireGoldenTest {
     }
   }
 
+  @Test
+  void should_contain_no_backslash_when_any_golden_is_read() throws IOException {
+    try (Stream<Path> files = Files.list(Path.of(DIR))) {
+      List<Path> offenders =
+          files
+              .filter(p -> p.toString().endsWith(".json"))
+              .filter(
+                  p -> {
+                    try {
+                      return Files.readString(p, StandardCharsets.UTF_8).indexOf('\\') >= 0;
+                    } catch (IOException e) {
+                      throw new UncheckedIOException(e);
+                    }
+                  })
+              .toList();
+      assertThat(offenders).as("goldens must use forward slashes on every platform").isEmpty();
+    }
+  }
+
   /** Polls until {@code plans}'s blocking step has started, so the run is reliably mid-flight. */
   private static void waitForBlocking(ConsoleServerTest.BlockingPlans plans) throws Exception {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -293,7 +313,7 @@ class ConsoleWireGoldenTest {
   }
 
   private static void assertAgainstGolden(String name, JsonNode doc) throws IOException {
-    String actual = Json.writePretty(doc) + "\n";
+    String actual = (Json.writePretty(doc) + "\n").replace("\r\n", "\n");
     Path golden = Path.of(DIR + name + ".json");
     if (Boolean.getBoolean("console.golden.update") || !Files.exists(golden)) {
       Files.createDirectories(golden.getParent());
@@ -301,9 +321,7 @@ class ConsoleWireGoldenTest {
       throw new AssertionError(
           "wrote golden " + golden + "; review it and run again without the update flag");
     }
-    try (InputStream in = Files.newInputStream(golden)) {
-      String expected = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-      assertThat(actual).as(name).isEqualTo(expected);
-    }
+    String expected = Files.readString(golden, StandardCharsets.UTF_8).replace("\r\n", "\n");
+    assertThat(actual).as(name).isEqualTo(expected);
   }
 }
