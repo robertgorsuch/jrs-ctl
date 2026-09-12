@@ -68,6 +68,45 @@ public final class LinuxFileOps extends DefaultFileOps {
     return Optional.empty();
   }
 
+  /**
+   * Review 3.3: {@code /proc/<pid>/fd} belongs to the process owner, so a jrsctl that is not root
+   * cannot see a jar held open by a Tomcat running as another account. Rather than report such a
+   * file as free, the scan says how many processes it could not look inside.
+   */
+  @Override
+  public Optional<String> lockInspectionLimit() {
+    if (!Files.isDirectory(PROC)) {
+      return Optional.of(PROC + " is not mounted; open handles cannot be inspected");
+    }
+    long self = ProcessHandle.current().pid();
+    int total = 0;
+    int unreadable = 0;
+    try (DirectoryStream<Path> processes = Files.newDirectoryStream(PROC, "[0-9]*")) {
+      for (Path proc : processes) {
+        if (proc.getFileName().toString().equals(Long.toString(self))) {
+          continue;
+        }
+        total++;
+        if (!Files.isReadable(proc.resolve("fd"))) {
+          unreadable++;
+        }
+      }
+    } catch (IOException e) {
+      LOG.debug("cannot scan /proc", e);
+      return Optional.of("cannot scan " + PROC + ": " + e.getMessage());
+    }
+    return unreadable == 0
+        ? Optional.empty()
+        : Optional.of(
+            "cannot inspect open handles of "
+                + unreadable
+                + " of "
+                + total
+                + " processes as "
+                + System.getProperty("user.name", "this account")
+                + "; a file held by another account is reported as free");
+  }
+
   private static boolean holdsOpen(Path proc, Path real) {
     try (DirectoryStream<Path> fds = Files.newDirectoryStream(proc.resolve("fd"))) {
       for (Path fd : fds) {

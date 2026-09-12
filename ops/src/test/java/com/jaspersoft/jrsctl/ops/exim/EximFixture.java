@@ -176,6 +176,11 @@ final class EximFixture implements AutoCloseable {
             }
 
             @Override
+            public Optional<String> lockInspectionLimit() {
+              return inner.lockInspectionLimit();
+            }
+
+            @Override
             public Permissions capturePermissions(Path path) throws IOException {
               return inner.capturePermissions(path);
             }

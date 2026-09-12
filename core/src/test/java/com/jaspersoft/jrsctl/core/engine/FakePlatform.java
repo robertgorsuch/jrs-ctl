@@ -101,6 +101,11 @@ public final class FakePlatform implements Platform {
       }
 
       @Override
+      public Optional<String> lockInspectionLimit() {
+        return Optional.empty();
+      }
+
+      @Override
       public Permissions capturePermissions(Path path) {
         return new Permissions("fake", List.of());
       }

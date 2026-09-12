@@ -127,6 +127,11 @@ public class DefaultFileOps implements FileOps {
   }
 
   @Override
+  public Optional<String> lockInspectionLimit() {
+    return Optional.empty();
+  }
+
+  @Override
   public Permissions capturePermissions(Path path) throws IOException {
     return new Permissions(ownerName(path), List.of());
   }

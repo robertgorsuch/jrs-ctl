@@ -32,6 +32,13 @@ public interface FileOps {
   /** Best-effort id of the process holding the lock, for the failure message. */
   Optional<String> lockHolder(Path file);
 
+  /**
+   * Why {@link #isLocked} cannot see every open handle on this host, or empty when it can. A {@code
+   * false} from {@link #isLocked} means "no holder found", not "no holder", whenever this is
+   * present, so callers report a warning instead of treating the file as free (review 3.3).
+   */
+  Optional<String> lockInspectionLimit();
+
   /** Captures owner/permissions/ACLs so they can be re-applied after a restore. */
   Permissions capturePermissions(Path path) throws IOException;
 

@@ -380,6 +380,9 @@ final class ApplySteps {
         }
       }
       boolean running = state.map(s -> s == ServiceController.State.RUNNING).orElse(true);
+      // review 3.3: say so when the scan cannot see other accounts' handles, rather than let a
+      // silent "not locked" read as proof that nothing holds the jars
+      files.lockInspectionLimit().ifPresent(limit -> notes.add("lock detection limited: " + limit));
       for (Path p : in.touched()) {
         if (Files.isRegularFile(p) && files.isLocked(p)) {
           String holder = files.lockHolder(p).map(h -> " by " + h).orElse("");
@@ -683,11 +686,16 @@ final class ApplySteps {
           locked.add(p + files.lockHolder(p).map(h -> " (held by " + h + ")").orElse(""));
         }
       }
-      return locked.isEmpty()
-          ? CheckResult.pass()
-          : CheckResult.fail(
-              "still locked after the service stop: " + String.join(", ", locked),
-              "end the process holding the file, then re-run");
+      if (!locked.isEmpty()) {
+        return CheckResult.fail(
+            "still locked after the service stop: " + String.join(", ", locked),
+            "end the process holding the file, then re-run");
+      }
+      // review 3.3: no holder found is not the same as no holder when the scan is blind
+      return files
+          .lockInspectionLimit()
+          .map(limit -> CheckResult.warn("no locked file found, but " + limit))
+          .orElseGet(CheckResult::pass);
     }
 
     /**
