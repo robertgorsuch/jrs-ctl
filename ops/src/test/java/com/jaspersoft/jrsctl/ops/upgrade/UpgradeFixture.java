@@ -62,7 +62,7 @@ public final class UpgradeFixture implements AutoCloseable {
 
   private UpgradeFixture(Path root) throws IOException {
     this.root = root;
-    this.os = Platforms.osFamily(System.getProperty("os.name", ""));
+    this.os = Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow();
     this.installDir = Files.createDirectories(root.resolve("jrs"));
     this.tomcatDir = installDir.resolve("apache-tomcat");
     this.webappDir = tomcatDir.resolve("webapps").resolve("jasperserver-pro");

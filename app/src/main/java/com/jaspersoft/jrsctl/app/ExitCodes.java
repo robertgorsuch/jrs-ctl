@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.platform.UnsupportedPlatformException;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.state.LockHeldException;
@@ -177,7 +178,8 @@ public final class ExitCodes {
           || ex instanceof RestException
           || ex instanceof SecretException
           || ex instanceof LockHeldException
-          || ex instanceof UnsupportedVersionException;
+          || ex instanceof UnsupportedVersionException
+          || ex instanceof UnsupportedPlatformException;
     }
 
     static String logFile() {
@@ -202,6 +204,10 @@ public final class ExitCodes {
         return LOCK_HELD;
       }
       if (ex instanceof UnsupportedVersionException) {
+        return UNSUPPORTED;
+      }
+      if (ex instanceof UnsupportedPlatformException) {
+        // review 3.1: a host outside ADR-0002 is refused before anything is opened
         return UNSUPPORTED;
       }
       // unmapped: nothing was mutated unless a run has started (review 4.3)

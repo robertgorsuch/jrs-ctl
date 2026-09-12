@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.core.platform;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -105,11 +106,39 @@ class PlatformDetectionTest {
 
   @Test
   void should_map_os_and_arch_names_when_classifying() {
-    assertThat(Platforms.osFamily("Windows 11")).isEqualTo(Platform.OsFamily.WINDOWS);
-    assertThat(Platforms.osFamily("Linux")).isEqualTo(Platform.OsFamily.LINUX);
+    assertThat(Platforms.osFamily("Windows 11")).contains(Platform.OsFamily.WINDOWS);
+    assertThat(Platforms.osFamily("Linux")).contains(Platform.OsFamily.LINUX);
+    assertThat(Platforms.osFamily("Mac OS X")).as("review 3.1: macOS is not Linux").isEmpty();
+    assertThat(Platforms.osFamily("FreeBSD")).isEmpty();
+    assertThat(Platforms.osFamily("")).isEmpty();
     assertThat(Platforms.arch("amd64")).isEqualTo(Platform.Arch.X86_64);
     assertThat(Platforms.arch("x86_64")).isEqualTo(Platform.Arch.X86_64);
     assertThat(Platforms.arch("aarch64")).isEqualTo(Platform.Arch.OTHER);
+  }
+
+  /**
+   * Review finding 3.1: a host outside ADR-0002 is refused with the reason, never treated as Linux.
+   */
+  @Test
+  void should_name_the_unsupported_host_when_os_or_arch_is_outside_adr_0002() {
+    assertThat(Platforms.unsupportedReason("Windows 11", "amd64")).isEmpty();
+    assertThat(Platforms.unsupportedReason("Linux", "x86_64")).isEmpty();
+    assertThat(Platforms.unsupportedReason("Mac OS X", "aarch64"))
+        .hasValueSatisfying(
+            r -> assertThat(r).contains("Mac OS X").contains("aarch64").contains("ADR-0002"));
+    assertThat(Platforms.unsupportedReason("Linux", "aarch64"))
+        .hasValueSatisfying(r -> assertThat(r).contains("aarch64"));
+    assertThat(Platforms.unsupportedReason("FreeBSD", "amd64"))
+        .hasValueSatisfying(r -> assertThat(r).contains("FreeBSD"));
+  }
+
+  @Test
+  void should_throw_unsupported_platform_when_detecting_on_a_foreign_host() {
+    assertThatThrownBy(
+            () -> Platforms.detect("Mac OS X", "aarch64", OperatorPrompt.nonInteractive()))
+        .isInstanceOf(UnsupportedPlatformException.class)
+        .hasMessageContaining("Mac OS X")
+        .hasMessageContaining("aarch64");
   }
 
   @Test

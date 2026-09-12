@@ -74,7 +74,7 @@ public final class FakePlatform implements Platform {
     this.os = os;
     this.home = home;
     this.hostFiles =
-        Platforms.osFamily(System.getProperty("os.name", "")) == OsFamily.WINDOWS
+        Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow() == OsFamily.WINDOWS
             ? new WindowsFileOps()
             : new LinuxFileOps();
     this.detector =

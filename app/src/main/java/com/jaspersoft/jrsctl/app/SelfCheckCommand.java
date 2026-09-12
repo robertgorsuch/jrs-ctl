@@ -34,6 +34,14 @@ final class SelfCheckCommand implements Callable<Integer> {
       out.println(report.ok() ? "selfcheck ok" : "selfcheck failed");
     }
     out.flush();
-    return report.ok() ? ExitCodes.SUCCESS : ExitCodes.PRECHECK_FAILED;
+    if (report.ok()) {
+      return ExitCodes.SUCCESS;
+    }
+    // review 3.1: a host outside ADR-0002 is unsupported (6), not a precheck failure (2)
+    boolean unsupportedHost =
+        report.items().stream()
+            .anyMatch(
+                i -> i.name().equals(SelfCheck.PLATFORM) && i.status() == SelfCheck.Status.FAIL);
+    return unsupportedHost ? ExitCodes.UNSUPPORTED : ExitCodes.PRECHECK_FAILED;
   }
 }
