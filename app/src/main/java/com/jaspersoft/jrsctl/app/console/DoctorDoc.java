@@ -12,8 +12,13 @@ import java.util.List;
  */
 record DoctorDoc(Instant ranAt, Counts counts, List<Item> items, int exitCode) {
 
+  /** The report's pass, warn, fail and skip counts. */
   record Counts(int pass, int warn, int fail, int skip) {}
 
+  /**
+   * One probe result; {@code id}, {@code name} and {@code title} all repeat {@link
+   * com.jaspersoft.jrsctl.ops.ReportItem#name()}.
+   */
   record Item(
       String id, String name, String status, String title, String detail, String remediation) {}
 }
