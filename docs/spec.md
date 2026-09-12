@@ -251,7 +251,7 @@ Rules:
 
 ### 5.5 Run lock and recovery
 
-- `runs.lock` in `$JRSCTL_HOME` is taken (OS file lock) before any mutating Plan executes and held until the run reaches a terminal state. A second mutating run fails immediately with exit code 9 and the holder's run id and pid.
+- `runs.lock` in `$JRSCTL_HOME` is taken (OS file lock) before any mutating Plan executes and held until the run reaches a terminal state. A second mutating run fails immediately with exit code 9 and the holder's run id and pid. The lock is checked before the pending-run check, and by trying it rather than by reading the pid out of the file: a run another process is executing is 9 ("wait for it"), and only a run no process holds any more is 8 ("recover it").
 - On startup, `jrsctl` queries `runs` for rows without a terminal state. In interactive mode it offers `resume` or `rollback` (§6.6). In non-interactive mode (`--yes`, `--non-interactive`, `--json`) any mutating command fails with exit code 8 and prints the exact `runs recover` command to run. `--non-interactive` never confirms anything: a plan that needs confirmation exits 2 unless `--yes` is also given; without either flag the confirmation is asked on the terminal, or on stdin when stdout is not a terminal, with end of input meaning no.
 
 ### 5.6 Snapshots
@@ -584,14 +584,15 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 11.2 Console security
 
-- A per-launch bearer token is generated on every console start, printed once to the terminal, and written to `$JRSCTL_HOME/console.token` with owner-only permissions. Every `/api/*` request must carry it. This applies on loopback as well; a shared host must not allow other local users to start runs.
+- A per-launch bearer token is generated on every console start, printed once to the terminal, and written to `$JRSCTL_HOME/console.token` with owner-only permissions. Every `/api/*` request must carry it. This applies on loopback as well; a shared host must not allow other local users to start runs. The token file is restricted before the token is written into it, never afterwards, and on Windows its inherited access control entries are dropped; a file that cannot be made owner-only is deleted rather than left holding the token.
+- The browser is opened with a single-use launch code, never with the token, because the URL becomes a command line any local account can read. The code is worth 10 seconds, only one is outstanding at a time, it is consumed by the first exchange, and both the exchange and every refusal are audited with the peer address. A home other accounts can reach gets no browser at all unless `--open` is given; a home jrsctl creates is owner-only from the start.
 - The `Host` header must match the bound address or `localhost`; otherwise 421. This blocks DNS rebinding.
 - Default bind `127.0.0.1`. Non-loopback bind additionally requires TLS and `console.auth.mode: local` (token plus operator password); refused otherwise.
 - No cookies are set. Because auth is a header token, CSRF is not applicable.
 
 ### 11.3 Redaction and audit
 
-- As §5.8. Audit rows for: every run start/end, every override flag (`--allow-unsigned`, `--allow-unsupported`, `--db-backup-confirmed`), key ring changes, config changes, console token issuance, isolated-mode refusals.
+- As §5.8. Audit rows for: every run start/end, every override flag (`--allow-unsigned`, `--allow-unsupported`, `--db-backup-confirmed`), key ring changes, config changes, console token issuance, launch-code exchanges and refusals, isolated-mode refusals.
 
 ### 11.4 Least privilege
 
@@ -642,7 +643,7 @@ All endpoints require the bearer token (§11.2).
 | GET | `/api/runs/{id}/events` | SSE stream (replays `step_transitions`, then live) |
 | POST | `/api/runs/{id}/cancel` | cancel |
 | POST | `/api/runs/{id}/rollback` | rollback where available |
-| GET | `/api/runs/{id}/support-bundle` | zip of plan, transitions (JSONL), logs, server info, state excerpt (redacted) |
+| GET | `/api/runs/{id}/support-bundle` | zip of plan, transitions (JSONL), logs, server info, state excerpt (redacted). Everything that can fail, the live doctor run included, is computed before the response is committed, so a failure is an error document rather than a truncated zip delivered as 200; the log is the file named by `jrsctl.log.file` and both the log and the event stream are tailed |
 | GET | `/api/doctor` | run doctor, return report |
 
 ### 13.2 UI
