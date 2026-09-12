@@ -61,6 +61,11 @@ public final class RunService {
     return Recovery.pendingRuns(store());
   }
 
+  /** Who is executing a run in another process right now, if anyone (review 5.4). */
+  public Optional<com.jaspersoft.jrsctl.core.state.RunLock.Holder> lockHolder() {
+    return com.jaspersoft.jrsctl.core.state.RunLock.heldBy(services.home().runLock());
+  }
+
   /** Expires stale plans, stores {@code plan} with the TTL and returns the stored row. */
   public StoredPlan storePlan(Plan plan, String operation, String argsJson) {
     StateStore store = store();

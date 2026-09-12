@@ -89,6 +89,32 @@ public final class RunLock implements AutoCloseable {
     return file;
   }
 
+  /**
+   * Who holds the run lock right now, or empty when it is free (review 5.4). The answer comes from
+   * trying the lock, not from guessing whether the pid in the file is still alive, so a run a
+   * crashed process left behind reads as free and a run another process is executing reads as held.
+   * The probe takes the lock only for the instant it needs it.
+   */
+  public static Optional<Holder> heldBy(Path lockFile) {
+    if (!Files.exists(lockFile)) {
+      return Optional.empty();
+    }
+    try (FileChannel ch =
+        FileChannel.open(lockFile, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+      FileLock probe = ch.tryLock(LOCK_POSITION, 1, false);
+      if (probe != null) {
+        probe.release();
+        return Optional.empty();
+      }
+    } catch (OverlappingFileLockException heldByThisJvm) {
+      return readHolder(lockFile);
+    } catch (IOException e) {
+      LOG.debug("cannot probe the run lock {}: {}", lockFile, e.getMessage());
+      return Optional.empty();
+    }
+    return readHolder(lockFile);
+  }
+
   /** Parses {@code runId pid startedAt} from the lock file; empty when unreadable or blank. */
   public static Optional<Holder> readHolder(Path lockFile) {
     try {

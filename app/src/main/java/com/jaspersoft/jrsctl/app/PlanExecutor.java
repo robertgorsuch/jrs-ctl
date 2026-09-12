@@ -77,6 +77,21 @@ final class PlanExecutor {
 
   /** Shows, confirms and runs a fresh plan; returns the process exit code. */
   int execute(Request request) {
+    // review 5.4: a run another process is executing right now holds the lock and is not a run
+    // that needs recovery. Checking the lock first stops a second jrsctl telling the operator to
+    // `runs recover --resume` a run that is running perfectly well in the first one.
+    Optional<com.jaspersoft.jrsctl.core.state.RunLock.Holder> holder = runs.lockHolder();
+    if (holder.isPresent()) {
+      return fail(
+          ExitCodes.LOCK_HELD,
+          "the run lock is held by run "
+              + holder.get().runId()
+              + " (pid "
+              + holder.get().pid()
+              + ")",
+          Optional.of("wait for that jrsctl process to finish, then run this command again"),
+          Map.of("holderRunId", holder.get().runId(), "holderPid", holder.get().pid()));
+    }
     List<RunRecord> pending = runs.pendingRuns();
     if (!pending.isEmpty()) {
       return pendingRuns(pending);

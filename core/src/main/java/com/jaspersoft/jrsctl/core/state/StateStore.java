@@ -38,6 +38,12 @@ public final class StateStore implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StateStore.class);
 
+  /** How long a statement waits for another connection's write lock before giving up. */
+  private static final int BUSY_TIMEOUT_MS = 5000;
+
+  private static final int OPEN_ATTEMPTS = 20;
+  private static final long OPEN_RETRY_MILLIS = 250;
+
   private final Connection conn;
   private final Path file;
   private final Clock clock;
@@ -74,23 +80,7 @@ public final class StateStore implements AutoCloseable {
       throw new StateStoreException("cannot open state store " + abs, e);
     }
     try {
-      try (Statement s = c.createStatement()) {
-        s.execute("PRAGMA busy_timeout=5000");
-        s.execute("PRAGMA journal_mode=WAL");
-        s.execute("PRAGMA synchronous=FULL");
-        s.execute("PRAGMA foreign_keys=ON");
-      }
-      String check = quickCheck(c);
-      if (!"ok".equals(check)) {
-        throw new StateStoreException(
-            "state store "
-                + abs
-                + " failed PRAGMA quick_check: "
-                + check
-                + "; "
-                + corruptionRemediation(abs));
-      }
-      Migrations.apply(c, clock);
+      initialise(c, clock, abs);
     } catch (SQLException | RuntimeException e) {
       try {
         c.close();
@@ -103,6 +93,66 @@ public final class StateStore implements AutoCloseable {
       throw new StateStoreException("cannot initialise state store " + abs, e);
     }
     return new StateStore(c, abs, clock);
+  }
+
+  /**
+   * Pragmas, integrity check and migrations, retried while another process is doing the same
+   * (review 5.4). Switching a fresh database to WAL takes an exclusive lock, and two jrsctl
+   * processes opening one home at the same moment - the console and a {@code runs list}, say - used
+   * to leave one of them with SQLITE_BUSY and no store at all. Every statement here is idempotent,
+   * so the whole sequence can simply be run again.
+   */
+  private static void initialise(Connection c, Clock clock, Path abs) throws SQLException {
+    SQLException lastBusy = null;
+    for (int attempt = 1; attempt <= OPEN_ATTEMPTS; attempt++) {
+      try {
+        try (Statement s = c.createStatement()) {
+          s.execute("PRAGMA busy_timeout=" + BUSY_TIMEOUT_MS);
+          s.execute("PRAGMA journal_mode=WAL");
+          s.execute("PRAGMA synchronous=FULL");
+          s.execute("PRAGMA foreign_keys=ON");
+        }
+        String check = quickCheck(c);
+        if (!"ok".equals(check)) {
+          throw new StateStoreException(
+              "state store "
+                  + abs
+                  + " failed PRAGMA quick_check: "
+                  + check
+                  + "; "
+                  + corruptionRemediation(abs));
+        }
+        Migrations.apply(c, clock);
+        return;
+      } catch (SQLException e) {
+        if (!busy(e) || attempt == OPEN_ATTEMPTS) {
+          throw e;
+        }
+        lastBusy = e;
+        LOG.debug("state store {} is busy on open, attempt {}", abs, attempt);
+        sleepQuietly();
+      }
+    }
+    throw lastBusy;
+  }
+
+  /** True for the two codes SQLite uses while another connection holds the write lock. */
+  private static boolean busy(SQLException e) {
+    for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+      String message = t.getMessage() == null ? "" : t.getMessage();
+      if (message.contains("SQLITE_BUSY") || message.contains("SQLITE_LOCKED")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void sleepQuietly() {
+    try {
+      Thread.sleep(OPEN_RETRY_MILLIS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   public Path file() {
