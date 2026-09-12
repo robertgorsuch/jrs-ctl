@@ -2,11 +2,11 @@ package com.jaspersoft.jrsctl.ops.retention;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.state.Customization;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;

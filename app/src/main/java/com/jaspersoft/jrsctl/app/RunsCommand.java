@@ -1,17 +1,18 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunIds;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.LockHeldException;
-import com.jaspersoft.jrsctl.core.state.RunLock;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
-import com.jaspersoft.jrsctl.core.state.Transition;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.IOException;
@@ -136,7 +137,7 @@ final class RunsCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         TextTable table = new TextTable();
         table.row(
             ansi.dim("RUN"),
@@ -413,7 +414,7 @@ final class RunsCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         List<String> lines = new ArrayList<>();
         if (!result.removed().isEmpty()) {
           TextTable table = new TextTable();

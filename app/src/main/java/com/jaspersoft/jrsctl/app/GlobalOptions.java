@@ -45,8 +45,30 @@ public final class GlobalOptions {
               + " anything: pair it with --yes to run a plan unattended.")
   boolean nonInteractive;
 
-  @Option(names = "--no-color", description = "Disable ANSI colour in text output.")
+  /** When to colour text output (review 3.5). */
+  public enum Color {
+    AUTO,
+    ALWAYS,
+    NEVER
+  }
+
+  @Option(
+      names = "--color",
+      paramLabel = "<when>",
+      description =
+          "Colour text output: auto (a terminal that understands ANSI), always, never."
+              + " Default: ${DEFAULT-VALUE}.")
+  Color color = Color.AUTO;
+
+  @Option(names = "--no-color", description = "Disable ANSI colour in text output (--color=never).")
   boolean noColor;
+
+  @Option(
+      names = "--ascii",
+      description =
+          "Use ASCII only in text output; the default uses tick and arrow glyphs when the output"
+              + " encoding can carry them.")
+  boolean ascii;
 
   @Option(names = "--json", description = "Emit the result as JSON instead of text.")
   boolean json;
@@ -75,6 +97,16 @@ public final class GlobalOptions {
 
   public boolean noColor() {
     return noColor;
+  }
+
+  /** {@code --color} with {@code --no-color} folded in as {@code never} (review 3.5). */
+  public Color color() {
+    return noColor ? Color.NEVER : color;
+  }
+
+  /** True when the operator asked for ASCII-only output (review 3.5). */
+  public boolean ascii() {
+    return ascii;
   }
 
   public boolean json() {

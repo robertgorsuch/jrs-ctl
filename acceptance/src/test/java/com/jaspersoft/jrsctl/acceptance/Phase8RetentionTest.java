@@ -12,14 +12,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -276,11 +276,15 @@ class Phase8RetentionTest {
   }
 
   private static Cli.Result jrsctl(String... args) throws Exception {
-    String[] all = new String[args.length + 3];
+    // --ascii as well as --no-color: since review 3.5 the two are separate decisions, so a
+    // UTF-8 terminal without colour still gets the tick glyphs. Assertions on the words need
+    // to ask for the words.
+    String[] all = new String[args.length + 4];
     System.arraycopy(args, 0, all, 0, args.length);
     all[args.length] = "--home";
     all[args.length + 1] = home.toString();
     all[args.length + 2] = "--no-color";
+    all[args.length + 3] = "--ascii";
     return cli.run(all);
   }
 

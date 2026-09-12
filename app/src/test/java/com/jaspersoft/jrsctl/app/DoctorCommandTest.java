@@ -133,6 +133,7 @@ class DoctorCommandTest {
         InitCommandTest.run(
             "doctor",
             "--no-color",
+            "--ascii",
             "--home",
             home.toString(),
             "--passphrase-file",

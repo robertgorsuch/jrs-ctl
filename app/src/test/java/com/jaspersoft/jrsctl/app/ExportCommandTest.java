@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,7 +58,7 @@ class ExportCommandTest {
   private InitCommandTest.Run export(String... extra) {
     List<String> args = new ArrayList<>(List.of("export", "--out", out.toString()));
     args.addAll(List.of(extra));
-    args.addAll(List.of("--home", home.toString(), "--no-color"));
+    args.addAll(List.of("--home", home.toString(), "--no-color", "--ascii"));
     return InitCommandTest.run(args.toArray(String[]::new));
   }
 

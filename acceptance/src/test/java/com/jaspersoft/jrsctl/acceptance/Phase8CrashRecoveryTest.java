@@ -262,6 +262,40 @@ class Phase8CrashRecoveryTest {
     assertThat(pendingRuns(f)).isEmpty();
   }
 
+  /**
+   * Review finding 5.4 and spec §14 Phase 1: the run lock is held across processes, not just across
+   * threads. Two jars, one home: the second must refuse with exit 9 and name the holder, and must
+   * not have touched anything.
+   */
+  @Test
+  @Order(5)
+  void a_second_process_against_one_home_exits_9_while_the_first_holds_the_run_lock()
+      throws Exception {
+    Fixture f = new Fixture("two-processes");
+
+    Cli.Running first = f.startExport(f.output);
+    try {
+      f.waitForInvocation(1, first);
+
+      Cli.Result second = f.jrsctl(exportArgs(f.outDir.resolve("second.zip")));
+
+      second.assertExit(9);
+      assertThat(second.stdout() + second.stderr())
+          .as("the refusal names the process to wait for")
+          .containsIgnoringCase("lock");
+      assertThat(Files.exists(f.outDir.resolve("second.zip")))
+          .as("the refused process wrote nothing")
+          .isFalse();
+    } finally {
+      f.release(1);
+      first.result(120);
+    }
+
+    assertThat(lockIsFree(f.home.resolve("runs.lock")))
+        .as("the lock is released when the first process ends")
+        .isTrue();
+  }
+
   // ---------------------------------------------------------------- crash mechanics
 
   /**
@@ -682,11 +716,12 @@ class Phase8CrashRecoveryTest {
     }
 
     private String[] withGlobals(String... args) {
-      String[] all = new String[args.length + 3];
+      String[] all = new String[args.length + 4];
       System.arraycopy(args, 0, all, 0, args.length);
       all[args.length] = "--home";
       all[args.length + 1] = home.toString();
       all[args.length + 2] = "--no-color";
+      all[args.length + 3] = "--ascii";
       return all;
     }
 

@@ -211,7 +211,9 @@ Every command supports the following global options:
 * `--home <dir>`: Overrides the default `JRSCTL_HOME` path.
 * `--set <key>=<value>`: Overrides specific configuration settings dynamically.
 * `--passphrase-file <path>`: Specifies file holding passphrase for `secrets.enc`.
-* `--no-color`: Disables ANSI terminal colors.
+* `--color <when>`: `auto` (default), `always` or `never`; `auto` colours only where the terminal interprets ANSI escapes.
+* `--no-color`: The same as `--color=never`.
+* `--ascii`: ASCII-only status icons, for a console whose code page cannot carry the tick and arrow glyphs.
 
 ### Standard Exit Codes
 

@@ -1,13 +1,5 @@
-package com.jaspersoft.jrsctl.core.state;
+package com.jaspersoft.jrsctl.core.engine;
 
-import com.jaspersoft.jrsctl.core.engine.CheckResult;
-import com.jaspersoft.jrsctl.core.engine.Context;
-import com.jaspersoft.jrsctl.core.engine.Plan;
-import com.jaspersoft.jrsctl.core.engine.RunOptions;
-import com.jaspersoft.jrsctl.core.engine.RunOutcome;
-import com.jaspersoft.jrsctl.core.engine.Runner;
-import com.jaspersoft.jrsctl.core.engine.Step;
-import com.jaspersoft.jrsctl.core.engine.StepState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,16 +15,16 @@ import java.util.Objects;
  */
 public final class Recovery {
 
-  private final StateStore store;
+  private final Journal store;
   private final Runner runner;
 
-  public Recovery(StateStore store, Runner runner) {
+  public Recovery(Journal store, Runner runner) {
     this.store = Objects.requireNonNull(store, "store");
     this.runner = Objects.requireNonNull(runner, "runner");
   }
 
   /** Runs without a terminal state, oldest first. */
-  public static List<RunRecord> pendingRuns(StateStore store) {
+  public static List<RunRecord> pendingRuns(Journal store) {
     return store.pendingRuns();
   }
 

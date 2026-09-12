@@ -1,7 +1,7 @@
 package com.jaspersoft.jrsctl.app.console;
 
-import com.jaspersoft.jrsctl.app.RunService;
 import com.jaspersoft.jrsctl.core.engine.Context;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
@@ -11,7 +11,7 @@ import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
-import com.jaspersoft.jrsctl.core.state.LockHeldException;
+import com.jaspersoft.jrsctl.ops.RunService;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -40,7 +40,9 @@ import org.slf4j.LoggerFactory;
  * reported synchronously; every event of a run is appended, redacted, to {@code
  * runs/<runId>/events.jsonl} for the support bundle; the terminal event and outcome stay available
  * after the thread ends; {@link #shutdown()} cancels through each run's single {@link
- * com.jaspersoft.jrsctl.core.engine.CancellationToken} and waits up to 30 s.
+ * com.jaspersoft.jrsctl.core.engine.CancellationToken} and waits up to 30 s. Once shutdown has
+ * begun no new run is accepted: a launch is refused with a reason rather than started against a
+ * console that is about to stop (review 4.9).
  */
 public final class RunManager {
 
@@ -64,6 +66,7 @@ public final class RunManager {
   private final Redactor redactor;
   private final Map<String, LiveRun> known = new ConcurrentHashMap<>();
   private final Object launchLock = new Object();
+  private volatile boolean closing;
 
   public RunManager(RunService runs) {
     this.runs = Objects.requireNonNull(runs, "runs");
@@ -105,8 +108,14 @@ public final class RunManager {
     return true;
   }
 
-  /** Cancels every live run and waits for it to finish or compensate. */
+  /** True once {@link #shutdown()} has begun; no further run is accepted. */
+  public boolean closing() {
+    return closing;
+  }
+
+  /** Refuses new runs, cancels every live run and waits for it to finish or compensate. */
   public void shutdown() {
+    closing = true;
     List<LiveRun> live = new ArrayList<>();
     for (LiveRun run : known.values()) {
       if (run.running()) {
@@ -128,6 +137,9 @@ public final class RunManager {
 
   private Launch launch(String runId, Plan plan, Body body) {
     synchronized (launchLock) {
+      if (closing) {
+        return new Refused("the console is shutting down; no new run is accepted");
+      }
       Optional<LiveRun> busy = running();
       if (busy.isPresent()) {
         return new LockHeld(busy.get().runId(), Long.toString(ProcessHandle.current().pid()));

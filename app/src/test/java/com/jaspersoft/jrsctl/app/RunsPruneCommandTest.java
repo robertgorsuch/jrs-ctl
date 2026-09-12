@@ -4,15 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.RunLock;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,7 +81,7 @@ class RunsPruneCommandTest {
   private InitCommandTest.Run prune(String... extra) {
     List<String> args = new ArrayList<>(List.of("runs", "prune"));
     args.addAll(List.of(extra));
-    args.addAll(List.of("--home", home.toString(), "--no-color"));
+    args.addAll(List.of("--home", home.toString(), "--no-color", "--ascii"));
     return InitCommandTest.run(args.toArray(String[]::new));
   }
 
@@ -196,7 +196,8 @@ class RunsPruneCommandTest {
             "backups.maxSnapshots=1",
             "--home",
             home.toString(),
-            "--no-color");
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(old.dir()).doesNotExist();
@@ -224,7 +225,8 @@ class RunsPruneCommandTest {
             "backups.maxSnapshots=1",
             "--home",
             home.toString(),
-            "--no-color");
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).isEqualTo(ExitCodes.FAILED_ROLLED_BACK);
     assertThat(old.manifestFile()).exists();

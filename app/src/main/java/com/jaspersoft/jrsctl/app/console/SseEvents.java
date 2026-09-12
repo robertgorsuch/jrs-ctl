@@ -1,13 +1,13 @@
 package com.jaspersoft.jrsctl.app.console;
 
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.engine.StepState;
+import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.json.Json;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
-import com.jaspersoft.jrsctl.core.state.Transition;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;

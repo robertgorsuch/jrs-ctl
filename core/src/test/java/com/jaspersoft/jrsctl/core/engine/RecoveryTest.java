@@ -1,16 +1,8 @@
-package com.jaspersoft.jrsctl.core.state;
+package com.jaspersoft.jrsctl.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.jaspersoft.jrsctl.core.engine.CheckResult;
-import com.jaspersoft.jrsctl.core.engine.EngineFixture;
-import com.jaspersoft.jrsctl.core.engine.Plan;
-import com.jaspersoft.jrsctl.core.engine.RunOptions;
-import com.jaspersoft.jrsctl.core.engine.RunOutcome;
-import com.jaspersoft.jrsctl.core.engine.StepFailure;
-import com.jaspersoft.jrsctl.core.engine.StepResult;
-import com.jaspersoft.jrsctl.core.engine.StepState;
 import com.jaspersoft.jrsctl.core.event.Event;
 import java.nio.file.Path;
 import java.util.List;

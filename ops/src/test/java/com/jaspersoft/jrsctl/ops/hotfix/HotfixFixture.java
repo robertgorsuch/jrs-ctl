@@ -129,7 +129,8 @@ public final class HotfixFixture implements AutoCloseable {
     Files.createDirectories(root.resolve("drivers"));
     this.fake =
         FakeServices.in(
-            root.resolve("home"), Platforms.osFamily(System.getProperty("os.name", "")));
+            root.resolve("home"),
+            Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow());
     fake.platform.realFiles = true;
     fake.env.put("HF_KEY", Ed25519.encodePrivate(keyPair.getPrivate()));
     fake.env.put("DB_PW", "db-secret");

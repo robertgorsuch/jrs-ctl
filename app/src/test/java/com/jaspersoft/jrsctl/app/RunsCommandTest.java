@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
+import com.jaspersoft.jrsctl.ops.PlanJson;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +59,7 @@ class RunsCommandTest {
             planId,
             PlanRegistry.HOTFIX_APPLY,
             PlanRegistry.applyArgs(bundle, false),
-            PlanPrinter.toJson(plan),
+            PlanJson.toJson(plan),
             plan.fingerprint().value(),
             T0,
             T0.plus(Duration.ofMinutes(30)),
@@ -104,7 +106,7 @@ class RunsCommandTest {
     }
 
     InitCommandTest.Run text =
-        InitCommandTest.run("runs", "list", "--home", home.toString(), "--no-color");
+        InitCommandTest.run("runs", "list", "--home", home.toString(), "--no-color", "--ascii");
     InitCommandTest.Run json =
         InitCommandTest.run("runs", "list", "--json", "--home", home.toString());
 
@@ -124,7 +126,8 @@ class RunsCommandTest {
     }
 
     InitCommandTest.Run text =
-        InitCommandTest.run("runs", "show", "r-1", "--home", home.toString(), "--no-color");
+        InitCommandTest.run(
+            "runs", "show", "r-1", "--home", home.toString(), "--no-color", "--ascii");
     InitCommandTest.Run json =
         InitCommandTest.run("runs", "show", "r-1", "--json", "--home", home.toString());
 
@@ -188,7 +191,15 @@ class RunsCommandTest {
 
     InitCommandTest.Run run =
         InitCommandTest.run(
-            "runs", "recover", "r-2", "--resume", "--yes", "--home", home.toString(), "--no-color");
+            "runs",
+            "recover",
+            "r-2",
+            "--resume",
+            "--yes",
+            "--home",
+            home.toString(),
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(fake.executed)
@@ -216,7 +227,8 @@ class RunsCommandTest {
             "--yes",
             "--home",
             home.toString(),
-            "--no-color");
+            "--no-color",
+            "--ascii");
 
     assertThat(run.code()).as(run.out() + run.err()).isEqualTo(ExitCodes.FAILED_ROLLED_BACK);
     assertThat(fake.executed).isEmpty();

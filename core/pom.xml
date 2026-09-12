@@ -13,6 +13,12 @@
   <name>jrsctl :: core</name>
   <description>Config, secrets, platform abstraction, state store, snapshots, compat matrix, redaction, events, engine</description>
 
+  <properties>
+    <!-- The engine, the state store and the platform seam: every mutation goes
+         through here, so 80 percent of its lines are exercised by a test. -->
+    <jacoco.line.minimum>0.80</jacoco.line.minimum>
+  </properties>
+
   <dependencies>
     <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
     <dependency><groupId>com.fasterxml.jackson.dataformat</groupId><artifactId>jackson-dataformat-yaml</artifactId></dependency>

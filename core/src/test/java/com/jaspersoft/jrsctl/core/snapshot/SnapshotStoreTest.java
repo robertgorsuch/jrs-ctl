@@ -147,6 +147,11 @@ class SnapshotStoreTest {
     }
 
     @Override
+    public Optional<String> lockInspectionLimit() {
+      return real.lockInspectionLimit();
+    }
+
+    @Override
     public Permissions capturePermissions(Path path) throws IOException {
       return real.capturePermissions(path);
     }

@@ -10,6 +10,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -21,9 +22,24 @@ import org.slf4j.LoggerFactory;
  */
 class LogFileTest {
 
+  private String savedLogFile;
+
+  @BeforeEach
+  void remember() {
+    savedLogFile = System.getProperty(LogFile.PROPERTY);
+  }
+
   @AfterEach
   void restore() {
     System.clearProperty(LogFile.CONSOLE_LEVEL_PROPERTY);
+    // configure() sets the log-file property for the whole JVM. Leaving it set made whichever
+    // test ran next in this fork read another test's log path, which is why the support-bundle
+    // test failed on Ubuntu and passed on Windows: surefire's order differs by file system.
+    if (savedLogFile == null) {
+      System.clearProperty(LogFile.PROPERTY);
+    } else {
+      System.setProperty(LogFile.PROPERTY, savedLogFile);
+    }
     reloadLogback();
   }
 

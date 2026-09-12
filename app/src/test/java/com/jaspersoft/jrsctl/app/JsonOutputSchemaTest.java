@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.crypto.Ed25519;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.PassphraseSource;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
@@ -16,7 +17,8 @@ import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
+import com.jaspersoft.jrsctl.ops.PlanJson;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
@@ -327,7 +329,7 @@ class JsonOutputSchemaTest {
               "plan-1",
               PlanRegistry.HOTFIX_APPLY,
               PlanRegistry.applyArgs(bundle, false),
-              PlanPrinter.toJson(plan),
+              PlanJson.toJson(plan),
               plan.fingerprint().value(),
               T0,
               T0.plus(Duration.ofMinutes(30)),
@@ -356,7 +358,7 @@ class JsonOutputSchemaTest {
               "plan-2",
               PlanRegistry.HOTFIX_APPLY,
               PlanRegistry.applyArgs(bundle, false),
-              PlanPrinter.toJson(plan),
+              PlanJson.toJson(plan),
               plan.fingerprint().value(),
               T0,
               T0.plus(Duration.ofMinutes(30)),

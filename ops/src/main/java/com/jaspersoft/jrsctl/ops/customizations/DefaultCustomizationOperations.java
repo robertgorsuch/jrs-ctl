@@ -122,7 +122,7 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
           "delete that directory by hand",
           e);
     }
-    store.executeUpdate("DELETE FROM snapshots WHERE run_id='" + runId + "'");
+    store.deleteSnapshotsOf(runId);
     store.audit(actor(), AUDIT_UNREGISTERED, file.toString());
     return true;
   }

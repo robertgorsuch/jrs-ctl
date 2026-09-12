@@ -15,9 +15,9 @@ Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-cha
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `core` | config + schema, secrets, `Platform`, state store (SQLite = journal), snapshots, compat matrix, redaction, sealed `Event`s, engine (`Plan`, `Step`, `Runner`, retry, cancel, `EventBus`), run lock | — |
+| `core` | config + schema, secrets, `Platform`, snapshots, compat matrix, redaction, sealed `Event`s, engine (`Plan`, `Step`, `Runner`, retry, cancel, `EventBus`, `Journal`, run lock, `Recovery`), state store (SQLite, implements `Journal`) | — |
 | `jrs` | REST v2 client, `RestJrsAdapter` (capability-driven, one impl), probes, `ExportImportStrategy` (`Rest`, `VendorCli`), vendor-tool wrappers, keystore inspection | `core` |
-| `ops` | `hotfix`, `export`, `import`, `upgrade`, `customizations` → `Plan`; `init`, `doctor`, `smoke` → report | `core`, `jrs` |
+| `ops` | `hotfix`, `export`, `import`, `upgrade`, `customizations` → `Plan`; `init`, `doctor`, `smoke` → report; plan rebuilding and run glue both front ends share (`PlanRegistry`, `RunService`, `PlanJson`) | `core`, `jrs` |
 | `app` | picocli commands, `--json`, progress renderer, Javalin console + SSE + static UI, support bundle, `Main` | `ops` |
 | `dist` | jlink image, portable ZIP/tar.gz, SBOM, checksums; signing runs in CI only | `app` |
 | `acceptance` | `PhaseNXxxTest` tagged `phaseN`, run against the shaded jar | all |
@@ -37,6 +37,8 @@ Package root `com.jaspersoft.jrsctl.<module>`.
 - Ambiguity → safer option + ADR in `docs/decisions/NNNN-title.md`, then continue.
 
 ## Conventions
+
+`core.engine` must not import `core.state`: the engine names the journal it needs and the store implements it (`Phase0SkeletonTest` fails on a new import). Coverage floors live in each module's pom as `jacoco.line.minimum` and run in `verify`.
 
 Java 21; records + sealed interfaces; pattern-matching `switch` with no `default` over sealed types; no `null` returns from public APIs (`Optional` or sealed result). One-paragraph Javadoc stating invariants on every public class. Tests `should_<behaviour>_when_<condition>`. Conventional Commits, one logical change per commit, branch per phase.
 

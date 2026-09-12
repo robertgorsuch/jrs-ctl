@@ -1,8 +1,13 @@
 package com.jaspersoft.jrsctl.ops.doctor;
 
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.engine.Recovery;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
+import com.jaspersoft.jrsctl.core.platform.LinuxInit;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
@@ -12,9 +17,6 @@ import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.selfcheck.SelfCheck;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.Recovery;
-import com.jaspersoft.jrsctl.core.state.RunLock;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StateStoreException;
 import com.jaspersoft.jrsctl.ops.ReportItem;
@@ -178,6 +180,54 @@ final class LocalChecks {
           "cannot query the service: " + e.getMessage(),
           "check service.kind, service.name and service.scriptPath in config.yaml");
     }
+  }
+
+  /** Report name of the service-manager check (review 3.2). */
+  static final String SERVICE_MANAGER = "service-manager";
+
+  /**
+   * What supervises services on this host (review 3.2). A Linux box whose process 1 is not systemd
+   * is named, so an operator does not discover during a hotfix that the supervisor restarted the
+   * server behind a {@code catalina.sh} stop.
+   */
+  static ReportItem serviceManager(Services s) {
+    // the check is about the machine doctor runs on, not the platform the configuration names
+    if (Platforms.osFamily(System.getProperty("os.name", "")).orElse(null)
+        == Platform.OsFamily.WINDOWS) {
+      return ReportItem.pass(SERVICE_MANAGER, "Windows service control manager");
+    }
+    return serviceManagerItem(s.config().service().kind(), LinuxInit.detect());
+  }
+
+  static ReportItem serviceManagerItem(Optional<ServiceConfig.Kind> kind, LinuxInit.Detected init) {
+    if (init.systemd()) {
+      return ReportItem.pass(SERVICE_MANAGER, init.detail());
+    }
+    if (init.kind() == LinuxInit.Kind.UNKNOWN) {
+      return ReportItem.warn(
+          SERVICE_MANAGER,
+          init.detail(),
+          "confirm how this host starts Tomcat; service.kind is taken on trust while process 1"
+              + " cannot be read");
+    }
+    if (kind.filter(k -> k == ServiceConfig.Kind.SYSTEMD).isPresent()) {
+      return ReportItem.fail(
+          SERVICE_MANAGER,
+          "service.kind is systemd but " + init.detail(),
+          "set service.kind to the way this host really starts Tomcat, or to manual");
+    }
+    if (init.supervised()) {
+      return ReportItem.warn(
+          SERVICE_MANAGER,
+          init.detail(),
+          "a script stop bypasses the supervisor, which may restart the server mid-run; stop the"
+              + " server through its supervisor or set service.kind to manual");
+    }
+    return ReportItem.warn(
+        SERVICE_MANAGER,
+        init.detail(),
+        "confirm how this host starts Tomcat; with no service manager a script stop is the only"
+            + " way and nothing will restart the server for you");
   }
 
   static ReportItem permissions(Services s, Optional<TomcatLayout> layout) {

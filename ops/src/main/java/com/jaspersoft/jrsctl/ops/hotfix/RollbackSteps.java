@@ -149,11 +149,16 @@ final class RollbackSteps {
           problems.add(p + " is locked" + files.lockHolder(p).map(h -> " by " + h).orElse(""));
         }
       }
-      return problems.isEmpty()
-          ? CheckResult.pass()
-          : CheckResult.fail(
-              String.join("; ", problems),
-              "restore the snapshot from a backup or end the process holding the files");
+      if (!problems.isEmpty()) {
+        return CheckResult.fail(
+            String.join("; ", problems),
+            "restore the snapshot from a backup or end the process holding the files");
+      }
+      // review 3.3: a blind scan is a warning, not a pass
+      return files
+          .lockInspectionLimit()
+          .map(limit -> CheckResult.warn("no locked file found, but " + limit))
+          .orElseGet(CheckResult::pass);
     }
 
     @Override

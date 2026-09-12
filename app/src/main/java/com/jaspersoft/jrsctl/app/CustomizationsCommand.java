@@ -190,7 +190,7 @@ final class CustomizationsCommand implements Runnable {
           out.flush();
           return ExitCodes.SUCCESS;
         }
-        Ansi ansi = Ansi.forStdout(global.noColor(), Env.vars());
+        Ansi ansi = Ansi.forStdout(global, Env.vars());
         TextTable table = new TextTable();
         table.row(ansi.dim("PATH"), ansi.dim("ORIGINAL SHA256"), ansi.dim("REGISTERED"));
         for (Customization c : all) {

@@ -61,6 +61,9 @@ public final class FakePlatform implements Platform {
    */
   public Optional<Path> failReplaceOf = Optional.empty();
 
+  /** When set, lock detection reports itself blind (review 3.3). */
+  public Optional<String> lockInspectionLimit = Optional.empty();
+
   public ServiceController.State serviceState = ServiceController.State.RUNNING;
   public final FakeServiceController controller = new FakeServiceController(this, "fake service");
 
@@ -71,7 +74,7 @@ public final class FakePlatform implements Platform {
     this.os = os;
     this.home = home;
     this.hostFiles =
-        Platforms.osFamily(System.getProperty("os.name", "")) == OsFamily.WINDOWS
+        Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow() == OsFamily.WINDOWS
             ? new WindowsFileOps()
             : new LinuxFileOps();
     this.detector =
@@ -152,6 +155,11 @@ public final class FakePlatform implements Platform {
       @Override
       public Optional<String> lockHolder(Path file) {
         return realFiles ? hostFiles.lockHolder(file) : Optional.empty();
+      }
+
+      @Override
+      public Optional<String> lockInspectionLimit() {
+        return lockInspectionLimit;
       }
 
       @Override

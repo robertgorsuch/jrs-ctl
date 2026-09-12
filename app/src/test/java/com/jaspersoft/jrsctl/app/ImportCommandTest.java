@@ -8,6 +8,7 @@ import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.exim.DefaultExportImportOperations;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import java.nio.charset.StandardCharsets;
@@ -58,7 +59,7 @@ class ImportCommandTest {
   private InitCommandTest.Run importOf(String... extra) {
     List<String> args = new ArrayList<>(List.of("import", archive.toString()));
     args.addAll(List.of(extra));
-    args.addAll(List.of("--home", home.toString(), "--no-color"));
+    args.addAll(List.of("--home", home.toString(), "--no-color", "--ascii"));
     return InitCommandTest.run(args.toArray(String[]::new));
   }
 

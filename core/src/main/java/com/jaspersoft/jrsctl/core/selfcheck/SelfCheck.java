@@ -1,8 +1,11 @@
 package com.jaspersoft.jrsctl.core.selfcheck;
 
 import com.jaspersoft.jrsctl.core.Version;
+import com.jaspersoft.jrsctl.core.platform.NativeTempDir;
+import com.jaspersoft.jrsctl.core.platform.Platforms;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Verifies the tool itself (spec §12.3): runtime version, presence of bundled resources, and, in
@@ -29,6 +32,12 @@ public final class SelfCheck {
     }
   }
 
+  /** Name of the item that reports whether this host is the pair ADR-0002 supports. */
+  public static final String PLATFORM = "platform";
+
+  /** Name of the item that reports where the SQLite native library is unpacked and run. */
+  public static final String NATIVE_TEMP = "native-temp";
+
   private static final int REQUIRED_JAVA = 21;
 
   private final List<Check> checks = new ArrayList<>();
@@ -43,6 +52,9 @@ public final class SelfCheck {
     checks.add(SelfCheck::runtimeVersion);
     checks.add(SelfCheck::versionResource);
     checks.add(SelfCheck::configSchemaResource);
+    checks.add(
+        () -> platform(System.getProperty("os.name", ""), System.getProperty("os.arch", "")));
+    checks.add(() -> nativeTemp(NativeTempDir.current()));
   }
 
   public SelfCheck add(Check check) {
@@ -62,6 +74,34 @@ public final class SelfCheck {
       items.add(item);
     }
     return new Report(List.copyOf(items));
+  }
+
+  /**
+   * Reports the host operating system and architecture, failing when they are outside ADR-0002 so a
+   * macOS, BSD or ARM64 machine is named rather than silently treated as Linux (review 3.1).
+   */
+  public static Item platform(String osName, String osArch) {
+    Optional<String> refusal = Platforms.unsupportedReason(osName, osArch);
+    return refusal
+        .map(r -> new Item(PLATFORM, Status.FAIL, r))
+        .orElseGet(() -> new Item(PLATFORM, Status.PASS, osName + " " + osArch));
+  }
+
+  /**
+   * Where the SQLite driver unpacks its native library, failing when that directory is on a {@code
+   * noexec} mount, which turns every stateful command into an {@code UnsatisfiedLinkError} (review
+   * 3.4).
+   */
+  public static Item nativeTemp(java.nio.file.Path dir) {
+    Optional<String> noexec = NativeTempDir.noexecReason(dir);
+    return noexec
+        .map(
+            r ->
+                new Item(
+                    NATIVE_TEMP,
+                    Status.FAIL,
+                    r + "; set -Dorg.sqlite.tmpdir to a directory that allows execution"))
+        .orElseGet(() -> new Item(NATIVE_TEMP, Status.PASS, dir.toString()));
   }
 
   private static Item runtimeVersion() {

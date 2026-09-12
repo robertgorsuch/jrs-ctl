@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.app;
+package com.jaspersoft.jrsctl.ops;
 
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import java.util.Locale;
@@ -9,15 +9,15 @@ import java.util.Optional;
  * the two spellings accepted here are the ones the operator guide and the console send; anything
  * else is a usage error (exit 1) raised before any bootstrap happens.
  */
-final class StrategyFlag {
+public final class StrategyFlag {
 
-  static final String REST = "rest";
-  static final String VENDOR = "vendor";
+  public static final String REST = "rest";
+  public static final String VENDOR = "vendor";
 
   private StrategyFlag() {}
 
   /** Empty for a null or blank flag (automatic selection). */
-  static Optional<ExportImportStrategy.Kind> parse(String value) {
+  public static Optional<ExportImportStrategy.Kind> parse(String value) {
     if (value == null || value.isBlank()) {
       return Optional.empty();
     }
@@ -31,7 +31,7 @@ final class StrategyFlag {
   }
 
   /** The flag spelling of a kind, for stored arguments and JSON. */
-  static String render(ExportImportStrategy.Kind kind) {
+  public static String render(ExportImportStrategy.Kind kind) {
     return switch (kind) {
       case REST -> REST;
       case VENDOR_CLI -> VENDOR;

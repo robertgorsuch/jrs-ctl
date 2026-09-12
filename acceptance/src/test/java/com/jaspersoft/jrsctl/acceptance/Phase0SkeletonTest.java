@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
@@ -188,6 +189,30 @@ class Phase0SkeletonTest {
     assertThat(hook).contains("--cached").contains("spotlessFiles");
     assertThat(Files.readString(root.resolve("scripts/mvn.cmd"))).contains("core.hooksPath");
     assertThat(Files.readString(root.resolve("scripts/mvn.sh"))).contains("core.hooksPath");
+  }
+
+  /**
+   * Roadmap item 16: the engine names the journal it needs ({@code engine.Journal}) and the state
+   * package implements it, so the dependency runs one way only. An import of {@code core.state}
+   * from {@code core.engine} puts the cycle back and makes the Runner untestable without SQLite.
+   */
+  @Test
+  void engine_package_never_imports_the_state_package() throws Exception {
+    Path engine = repoRoot().resolve("core/src/main/java/com/jaspersoft/jrsctl/core/engine");
+    List<String> offenders = new ArrayList<>();
+    try (Stream<Path> listing = Files.list(engine)) {
+      for (Path file : listing.filter(p -> p.toString().endsWith(".java")).toList()) {
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+          if (line.startsWith("import com.jaspersoft.jrsctl.core.state.")) {
+            offenders.add(file.getFileName() + ": " + line.strip());
+          }
+        }
+      }
+    }
+
+    assertThat(offenders)
+        .as("core.engine must not depend on core.state; the port is engine.Journal")
+        .isEmpty();
   }
 
   private static Path repoRoot() {

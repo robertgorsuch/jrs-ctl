@@ -20,6 +20,30 @@ class PreflightLockTest {
 
   @TempDir Path tmp;
 
+  /**
+   * Review finding 3.3: on a host where jrsctl cannot read other accounts' open handles, "no locked
+   * file found" is a warning, not a pass, in both the preflight notes and the swap check.
+   */
+  @Test
+  void should_warn_when_lock_detection_cannot_see_other_accounts() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      f.fake.platform.lockInspectionLimit =
+          java.util.Optional.of("cannot inspect open handles of 42 of 90 processes as jrsctl");
+      Plan plan = f.ops().planApply(f.buildWebInf(), new ApplyOptions(false));
+      Context ctx = f.ctx("r-blind");
+      HotfixFixture.step(plan, "verify-signature").precheck(ctx);
+      f.fake.platform.serviceState = ServiceController.State.STOPPED;
+
+      CheckResult preflight = HotfixFixture.step(plan, "preflight").precheck(ctx);
+      CheckResult swap = HotfixFixture.step(plan, "atomic-swap").precheck(ctx);
+
+      assertThat(preflight).isInstanceOf(CheckResult.Warn.class);
+      assertThat(((CheckResult.Warn) preflight).message()).contains("lock detection limited");
+      assertThat(swap).isInstanceOf(CheckResult.Warn.class);
+      assertThat(((CheckResult.Warn) swap).message()).contains("cannot inspect open handles");
+    }
+  }
+
   @Test
   void should_fail_preflight_when_target_locked_and_service_stopped() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {

@@ -7,6 +7,8 @@ import com.jaspersoft.jrsctl.app.console.OperationCatalog;
 import com.jaspersoft.jrsctl.app.console.PlanBuilder;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -111,11 +113,18 @@ public final class ConsoleCommand implements Callable<Integer> {
           out.println("Press Ctrl-C to stop, or type 'stop' and Enter.");
           out.flush();
         }
-        boolean shouldOpen = open != null ? open : Terminal.present();
-        if (shouldOpen) {
+        if (shouldOpenBrowser(services, out)) {
           openBrowser(services.platform(), server.launchUrl());
         }
-        Thread hook = new Thread(server::close, "jrsctl-console-shutdown");
+        // review 4.9: the hook also closes the bootstrap, so Ctrl-C closes the state store and
+        // releases the run lock instead of leaving them to the exiting JVM
+        Thread hook =
+            new Thread(
+                () -> {
+                  server.close();
+                  boot.close();
+                },
+                "jrsctl-console-shutdown");
         Runtime.getRuntime().addShutdownHook(hook);
         try {
           waitForStop();
@@ -155,6 +164,39 @@ public final class ConsoleCommand implements Callable<Integer> {
           }
         };
     return new OperationCatalog(builder, () -> HotfixOps.open(services));
+  }
+
+  /**
+   * Whether to hand a launch code to a browser. Opening the browser puts the code on a command line
+   * that any local account can read, so it is only done where the home the token lives in is
+   * private to this account; on a shared home the operator is asked to open the printed URL instead
+   * (review 4.1). An explicit {@code --open} overrides the refusal, since the operator may know the
+   * machine better than its permission bits do.
+   */
+  private boolean shouldOpenBrowser(Services services, PrintWriter out) {
+    if (open != null) {
+      return open;
+    }
+    if (!Terminal.present()) {
+      return false;
+    }
+    java.nio.file.Path home = services.home().root();
+    try {
+      if (!services.platform().files().isOwnerOnly(home)) {
+        out.println(
+            "not opening a browser: "
+                + home
+                + " is reachable by other accounts on this machine, and opening one would put the"
+                + " launch code on a command line they can read. Open the URL above instead, or"
+                + " pass --open.");
+        out.flush();
+        return false;
+      }
+    } catch (IOException e) {
+      LOG.debug("cannot tell whether {} is private: {}", home, e.getMessage());
+      return false;
+    }
+    return true;
   }
 
   /** Blocks until "stop" is read from standard input; on end of input, blocks until Ctrl-C. */

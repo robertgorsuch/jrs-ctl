@@ -1,9 +1,9 @@
 package com.jaspersoft.jrsctl.app.console;
 
-import com.jaspersoft.jrsctl.app.RunService;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import io.javalin.Javalin;
 import io.javalin.compression.CompressionStrategy;
@@ -13,6 +13,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
@@ -22,8 +23,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntSupplier;
 import org.eclipse.jetty.http.HttpVersion;
@@ -49,6 +48,10 @@ public final class ConsoleServer implements AutoCloseable {
   static final String CSP =
       "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';"
           + " connect-src 'self'";
+
+  /** How long a launch code is worth anything (review 4.1). */
+  public static final Duration LAUNCH_CODE_TTL = Duration.ofSeconds(10);
+
   private static final Logger LOG = LoggerFactory.getLogger(ConsoleServer.class);
 
   private final Services services;
@@ -56,14 +59,6 @@ public final class ConsoleServer implements AutoCloseable {
   private final RunService runs;
   private final OperationCatalog catalog;
   private final RunManager manager;
-  private final ScheduledExecutorService heartbeats =
-      Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            Thread t = new Thread(r, "jrsctl-sse-heartbeat");
-            t.setDaemon(true);
-            return t;
-          });
-
   private final ConcurrentMap<String, Instant> launchCodes = new ConcurrentHashMap<>();
 
   private Optional<Javalin> app = Optional.empty();
@@ -118,8 +113,7 @@ public final class ConsoleServer implements AutoCloseable {
     ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, boundPort);
     ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, boundPort);
     SupportBundle bundle = new SupportBundle(services, views, doctor);
-    ConsoleApi api =
-        new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle, heartbeats);
+    ConsoleApi api = new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle);
     Javalin javalin =
         Javalin.create(
             c -> {
@@ -197,16 +191,28 @@ public final class ConsoleServer implements AutoCloseable {
     return baseUrl() + "/#token=" + t.text();
   }
 
-  /** Issues a single-use, short-TTL launch code to open the browser securely. */
+  /**
+   * Issues a single-use launch code to open the browser with (review 4.1). The code, not the token,
+   * is what the browser command line carries, and it is worth having for {@link #LAUNCH_CODE_TTL}
+   * at most: any local account can read another account's command line, so the window in which a
+   * stolen code is worth anything has to be short enough that the browser, not a watcher, wins the
+   * race. Only one code is ever outstanding: issuing a second invalidates the first, so a second
+   * {@code console} launch cannot leave an older code usable.
+   */
   public String issueLaunchCode() {
     byte[] random = new byte[16];
     new SecureRandom().nextBytes(random);
     String code = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
-    launchCodes.put(code, Instant.now().plusSeconds(30));
+    launchCodes.clear();
+    launchCodes.put(code, Instant.now().plus(LAUNCH_CODE_TTL));
     return code;
   }
 
-  /** Exchanges a valid, unexpired launch code for the active console bearer token. */
+  /**
+   * Exchanges a valid, unexpired launch code for the active console bearer token. The code is
+   * consumed, so it is worth one exchange; a wrong guess consumes only itself, since clearing the
+   * outstanding code on a bad guess would let any local process stop the browser launching.
+   */
   public Optional<String> exchangeLaunchCode(String code) {
     if (code == null || code.isBlank()) {
       return Optional.empty();
@@ -216,6 +222,11 @@ public final class ConsoleServer implements AutoCloseable {
       return Optional.empty();
     }
     return token.map(ConsoleToken::text);
+  }
+
+  /** True when no launch code is outstanding. */
+  public boolean launchCodeOutstanding() {
+    return !launchCodes.isEmpty();
   }
 
   /** The launch URL with a single-use, short-TTL launch code in the fragment. */
@@ -254,6 +265,10 @@ public final class ConsoleServer implements AutoCloseable {
       return;
     }
     closed = true;
+    // review 4.9: refuse new runs, cancel the live ones and wait for their compensation before
+    // the listener goes away, so a browser watching a run sees the cancellation rather than a
+    // dropped connection and an unexplained pending run
+    manager.shutdown();
     app.ifPresent(
         a -> {
           try {
@@ -262,8 +277,6 @@ public final class ConsoleServer implements AutoCloseable {
             LOG.warn("console listener did not stop cleanly: {}", e.getMessage());
           }
         });
-    manager.shutdown();
-    heartbeats.shutdownNow();
     token.ifPresent(ConsoleToken::close);
     LOG.info("console stopped");
   }

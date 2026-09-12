@@ -43,10 +43,10 @@
     <project.build.outputTimestamp>2026-09-11T00:00:00Z</project.build.outputTimestamp>
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
-    <picocli.version>4.7.6</picocli.version>
+    <picocli.version>4.7.7</picocli.version>
     <javalin.version>7.2.3</javalin.version>
     <jackson.version>2.22.2</jackson.version>
-    <slf4j.version>2.0.13</slf4j.version>
+    <slf4j.version>2.0.19</slf4j.version>
     <logback.version>1.5.19</logback.version>
     <logstash-logback.version>7.4</logstash-logback.version>
     <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
@@ -58,21 +58,26 @@
     <semver4j.version>5.3.0</semver4j.version>
 
     <!-- Test dependencies -->
-    <junit.version>5.10.2</junit.version>
+    <junit.version>5.14.4</junit.version>
     <assertj.version>3.27.7</assertj.version>
-    <wiremock.version>3.6.0</wiremock.version>
-    <testcontainers.version>1.19.8</testcontainers.version>
+    <wiremock.version>3.13.2</wiremock.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
     <jqwik.version>1.8.4</jqwik.version>
-    <mockito.version>5.12.0</mockito.version>
+    <mockito.version>5.23.0</mockito.version>
 
     <!-- Build plugins -->
     <errorprone.version>2.28.0</errorprone.version>
     <google-java-format.version>1.22.0</google-java-format.version>
     <spotless.version>2.43.0</spotless.version>
     <surefire.version>3.2.5</surefire.version>
+    <versions-plugin.version>2.18.0</versions-plugin.version>
     <surefire.forkCount>1C</surefire.forkCount>
     <surefire.reuseForks>true</surefire.reuseForks>
     <jacoco.version>0.8.12</jacoco.version>
+    <!-- No floor by default: app is mostly picocli wiring the acceptance suite drives through the
+         real jar, and dist and acceptance produce no coverage of their own. core and ops set
+         their own minimum (roadmap item 18). -->
+    <jacoco.line.minimum>0.00</jacoco.line.minimum>
     <!-- 9.2.0 (2024) cannot reach today's NVD even with an API key (403); 13.0.0 can. -->
     <dependency-check.version>13.0.0</dependency-check.version>
 
@@ -175,6 +180,12 @@
             <trimStackTrace>false</trimStackTrace>
             <forkCount>${surefire.forkCount}</forkCount>
             <reuseForks>${surefire.reuseForks}</reuseForks>
+            <systemPropertyVariables>
+              <!-- review 3.4: a test JVM stays alive after a case that opens a state store, and
+                   Windows will not delete the loaded native library, so the copy must land in the
+                   build directory rather than inside a @TempDir home. -->
+              <org.sqlite.tmpdir>${project.build.directory}</org.sqlite.tmpdir>
+            </systemPropertyVariables>
           </configuration>
         </plugin>
         <plugin>
@@ -195,6 +206,19 @@
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-deploy-plugin</artifactId><version>3.1.2</version></plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.5.0</version></plugin>
         <plugin><groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.3.0</version></plugin>
+        <!-- review 5.1: `mvn versions:display-dependency-updates` and `:display-plugin-updates`
+             answer "what is stale?" on a developer machine, without waiting for Dependabot to
+             open a pull request. Nothing is ever bumped automatically; the ruleset only keeps
+             pre-release versions out of the report. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>versions-maven-plugin</artifactId>
+          <version>${versions-plugin.version}</version>
+          <configuration>
+            <rulesUri>file://${maven.multiModuleProjectDirectory}/build/version-rules.xml</rulesUri>
+            <generateBackupPoms>false</generateBackupPoms>
+          </configuration>
+        </plugin>
         <plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.0</version></plugin>
         <plugin>
           <groupId>com.diffplug.spotless</groupId>
@@ -227,6 +251,30 @@
               <id>report</id>
               <phase>verify</phase>
               <goals><goal>report</goal></goals>
+            </execution>
+            <!-- Roadmap item 18: a line-coverage floor on the two modules that decide what
+                 happens to an operator's server. The number is a property so each module can
+                 state its own and the value is visible in one place; a module that sets
+                 jacoco.line.minimum to 0.00 is opting out and has to say why. -->
+            <execution>
+              <id>check</id>
+              <phase>verify</phase>
+              <goals><goal>check</goal></goals>
+              <configuration>
+                <haltOnFailure>true</haltOnFailure>
+                <rules>
+                  <rule>
+                    <element>BUNDLE</element>
+                    <limits>
+                      <limit>
+                        <counter>LINE</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>${jacoco.line.minimum}</minimum>
+                      </limit>
+                    </limits>
+                  </rule>
+                </rules>
+              </configuration>
             </execution>
           </executions>
         </plugin>

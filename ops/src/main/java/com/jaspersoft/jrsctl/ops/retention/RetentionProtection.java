@@ -1,10 +1,10 @@
 package com.jaspersoft.jrsctl.ops.retention;
 
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.state.Customization;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.util.LinkedHashMap;
 import java.util.Map;

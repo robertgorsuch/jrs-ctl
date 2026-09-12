@@ -79,7 +79,7 @@ final class InitCommand implements Callable<Integer> {
       }
       TextTable table = new TextTable();
       for (InitReport.Detected d : report.values()) {
-        table.row(d.key(), d.value(), Ansi.forStdout(global.noColor(), Env.vars()).dim(d.source()));
+        table.row(d.key(), d.value(), Ansi.forStdout(global, Env.vars()).dim(d.source()));
       }
       for (String line : table.lines()) {
         out.println(redactor.redact(line));

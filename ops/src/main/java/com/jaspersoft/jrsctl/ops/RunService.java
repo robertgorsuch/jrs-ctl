@@ -1,12 +1,14 @@
-package com.jaspersoft.jrsctl.app;
+package com.jaspersoft.jrsctl.ops;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.Recovery;
 import com.jaspersoft.jrsctl.core.engine.RunIds;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.event.EventSink;
@@ -14,12 +16,9 @@ import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.core.state.Recovery;
-import com.jaspersoft.jrsctl.core.state.RunRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
-import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.exim.DeferredJrsAdapter;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,6 +60,11 @@ public final class RunService {
     return Recovery.pendingRuns(store());
   }
 
+  /** Who is executing a run in another process right now, if anyone (review 5.4). */
+  public Optional<com.jaspersoft.jrsctl.core.engine.RunLock.Holder> lockHolder() {
+    return com.jaspersoft.jrsctl.core.engine.RunLock.heldBy(services.home().runLock());
+  }
+
   /** Expires stale plans, stores {@code plan} with the TTL and returns the stored row. */
   public StoredPlan storePlan(Plan plan, String operation, String argsJson) {
     StateStore store = store();
@@ -71,7 +75,7 @@ public final class RunService {
             plan.planId(),
             operation,
             argsJson,
-            PlanPrinter.toJson(plan),
+            PlanJson.toJson(plan),
             plan.fingerprint().value(),
             now,
             now.plus(PLAN_TTL),

@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.JrsctlHomeResolver;
+import com.jaspersoft.jrsctl.core.platform.NativeTempDir;
 import com.jaspersoft.jrsctl.core.platform.OperatorPrompt;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
@@ -66,6 +67,13 @@ final class Bootstrap implements AutoCloseable {
             .home()
             .map(h -> new JrsctlHome(h.toAbsolutePath().normalize()))
             .orElseGet(() -> JrsctlHomeResolver.resolve(env, platform));
+    // review 4.1: the home holds secrets.enc, console.token, state.db and the snapshots, so a
+    // home jrsctl creates is private to its owner from the start. An existing home is left as the
+    // operator set it up; it is only read, never re-permissioned.
+    createHome(platform, home);
+    // review 3.4: the SQLite driver runs its native library from java.io.tmpdir, which a
+    // CIS-hardened Linux host mounts noexec; the home is the tool's own writable directory
+    NativeTempDir.use(home.nativeTemp());
     Config config = new ConfigLoader().load(home, env, options.set());
 
     List<PassphraseSource> sources = new ArrayList<>();
@@ -98,6 +106,29 @@ final class Bootstrap implements AutoCloseable {
             clock,
             interactive);
     return new Bootstrap(services, store, secretStore);
+  }
+
+  /** Creates a missing home directory owner-only; an existing one is left alone (review 4.1). */
+  static void createHome(Platform platform, JrsctlHome home) {
+    java.nio.file.Path root = home.root();
+    if (java.nio.file.Files.isDirectory(root)) {
+      return;
+    }
+    try {
+      if (platform.os() == Platform.OsFamily.LINUX
+          && java.nio.file.FileSystems.getDefault()
+              .supportedFileAttributeViews()
+              .contains("posix")) {
+        java.nio.file.Files.createDirectories(
+            root,
+            java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+      } else {
+        java.nio.file.Files.createDirectories(root);
+      }
+    } catch (java.io.IOException e) {
+      LOG.debug("cannot create {}: {}", root, e.getMessage());
+    }
   }
 
   Services services() {

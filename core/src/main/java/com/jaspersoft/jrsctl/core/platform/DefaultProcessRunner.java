@@ -30,15 +30,20 @@ public final class DefaultProcessRunner implements ProcessRunner {
   private static final Logger LOG = LoggerFactory.getLogger(DefaultProcessRunner.class);
   private static final Duration PUMP_DRAIN_GRACE = Duration.ofSeconds(5);
 
-  private final Charset outputCharset;
+  private final java.util.function.Supplier<Charset> outputCharset;
 
-  /** Decodes process output with the platform's native encoding. */
+  /**
+   * Decodes process output with the encoding the host's console programs write: on Windows the OEM
+   * console code page, elsewhere {@code native.encoding} (review 3.5). The Windows answer is
+   * resolved on the first run, not at construction, so nothing is probed at start-up.
+   */
   public DefaultProcessRunner() {
-    this(nativeCharset());
+    this.outputCharset = WindowsCodePage::consoleCharset;
   }
 
   public DefaultProcessRunner(Charset outputCharset) {
-    this.outputCharset = requireNonNull(outputCharset, "outputCharset");
+    requireNonNull(outputCharset, "outputCharset");
+    this.outputCharset = () -> outputCharset;
   }
 
   /**
@@ -140,7 +145,8 @@ public final class DefaultProcessRunner implements ProcessRunner {
 
   private void drain(
       InputStream in, OutputLine.Stream stream, Consumer<OutputLine> onLine, Object lock) {
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, outputCharset))) {
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(in, outputCharset.get()))) {
       String line;
       while ((line = reader.readLine()) != null) {
         OutputLine output = new OutputLine(stream, line);

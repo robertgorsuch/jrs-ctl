@@ -47,10 +47,13 @@
   </dependencies>
 
   <profiles>
-    <!-- Platform facts; the same pom builds windows-x64 on Windows and linux-x64 elsewhere (ADR-0002). -->
+    <!-- Platform facts; the same pom builds windows-x64 on Windows x86-64 and linux-x64 on Linux
+         x86-64 (ADR-0002). Neither profile activates on any other host (macOS, ARM64), so the
+         archive can never carry a foreign runtime under a supported label (review 3.6); the
+         enforcer rule in the dist profile and RuntimeModules then stop the build with the reason. -->
     <profile>
       <id>dist-windows</id>
-      <activation><os><family>windows</family></os></activation>
+      <activation><os><family>windows</family><arch>amd64</arch></os></activation>
       <properties>
         <dist.platform>windows-x64</dist.platform>
         <dist.archive.ext>zip</dist.archive.ext>
@@ -61,7 +64,7 @@
     </profile>
     <profile>
       <id>dist-linux</id>
-      <activation><os><family>!windows</family></os></activation>
+      <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
       <properties>
         <dist.platform>linux-x64</dist.platform>
         <dist.archive.ext>tar.gz</dist.archive.ext>
@@ -75,6 +78,27 @@
       <id>dist</id>
       <build>
         <plugins>
+          <!-- 0. refuse to package on a host outside ADR-0002 (review 3.6) -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-enforcer-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>enforce-dist-host</id>
+                <goals><goal>enforce</goal></goals>
+                <configuration>
+                  <rules>
+                    <requireProperty>
+                      <property>dist.platform</property>
+                      <regex>(windows|linux)-x64</regex>
+                      <regexMessage>the portable archive is built on Windows or Linux x86-64 only (ADR-0002); this host is ${os.name} ${os.arch}</regexMessage>
+                      <message>the portable archive is built on Windows or Linux x86-64 only (ADR-0002); this host is ${os.name} ${os.arch}</message>
+                    </requireProperty>
+                  </rules>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
           <!-- 1. compile the build helpers (packaging pom has no compile binding by default) -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>

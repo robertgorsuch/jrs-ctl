@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.core.state;
+package com.jaspersoft.jrsctl.core.engine;
 
 /**
  * Raised when {@code runs.lock} is held by another run (spec §5.5); the CLI maps it to exit code 9.

@@ -215,19 +215,35 @@ final class ProgressRenderer implements EventSink {
     SKIP
   }
 
+  /**
+   * Review 3.5: colour and glyphs are separate decisions. A code page that cannot carry the tick
+   * and arrows gets the ASCII word, even in a terminal that does colour; a colourless terminal that
+   * can carry them still gets them.
+   */
   private String icon(Icon icon) {
-    if (!ansi.enabled()) {
-      return String.format(Locale.ROOT, "%-5s", icon.name());
+    if (!ansi.unicode()) {
+      String word = String.format(Locale.ROOT, "%-5s", icon.name());
+      return ansi.enabled() ? colour(icon) + word + Ansi.RESET : word;
     }
     String glyph =
         switch (icon) {
-          case OK -> Ansi.GREEN + "✔" + Ansi.RESET;
-          case FAIL -> Ansi.RED + "✖" + Ansi.RESET;
-          case RETRY -> Ansi.YELLOW + "↻" + Ansi.RESET;
-          case UNDO -> Ansi.YELLOW + "↩" + Ansi.RESET;
-          case SKIP -> Ansi.DIM + "-" + Ansi.RESET;
+          case OK -> "✔";
+          case FAIL -> "✖";
+          case RETRY -> "↻";
+          case UNDO -> "↩";
+          case SKIP -> "-";
         };
-    return glyph + "    ";
+    String body = ansi.enabled() ? colour(icon) + glyph + Ansi.RESET : glyph;
+    return body + "    ";
+  }
+
+  private static String colour(Icon icon) {
+    return switch (icon) {
+      case OK -> Ansi.GREEN;
+      case FAIL -> Ansi.RED;
+      case RETRY, UNDO -> Ansi.YELLOW;
+      case SKIP -> Ansi.DIM;
+    };
   }
 
   private void phaseHeader(String phase) {

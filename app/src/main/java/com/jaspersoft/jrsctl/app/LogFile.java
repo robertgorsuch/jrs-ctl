@@ -13,9 +13,9 @@ import java.util.Map;
  * {@link com.jaspersoft.jrsctl.core.platform.Platform} uses, so the log and the state store cannot
  * end up in different homes.
  */
-final class LogFile {
+public final class LogFile {
 
-  static final String PROPERTY = "jrsctl.log.file";
+  public static final String PROPERTY = "jrsctl.log.file";
 
   /**
    * Threshold of logback's console appender: {@code OFF} with {@code --json}, else {@code WARN}.
