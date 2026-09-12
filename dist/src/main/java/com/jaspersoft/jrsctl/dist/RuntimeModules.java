@@ -38,6 +38,15 @@ public final class RuntimeModules {
               + " <runtime-dir>");
       System.exit(1);
     }
+    String arch = System.getProperty("os.arch", "");
+    if (!supportedArch(arch)) {
+      System.err.println(
+          "the runtime image is built on x86-64 only (ADR-0002); this host is "
+              + System.getProperty("os.name", "")
+              + " "
+              + arch);
+      System.exit(1);
+    }
     Path jar = Path.of(args[0]);
     List<String> fixed = List.of(args[1].split(","));
     List<String> excluded = List.of(args[2].split(","));
@@ -143,6 +152,14 @@ public final class RuntimeModules {
         Files.delete(p);
       }
     }
+  }
+
+  /**
+   * True for the one architecture ADR-0002 packages: {@code amd64} / {@code x86_64} (review 3.6).
+   */
+  static boolean supportedArch(String osArch) {
+    String a = osArch.toLowerCase(java.util.Locale.ROOT);
+    return a.equals("amd64") || a.equals("x86_64") || a.equals("x64");
   }
 
   static boolean isWindows() {

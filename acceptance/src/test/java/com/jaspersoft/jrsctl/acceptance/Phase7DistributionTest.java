@@ -56,6 +56,27 @@ class Phase7DistributionTest {
                 + " first, or run the acceptance with -Pdist");
   }
 
+  /**
+   * Review finding 3.6: the {@code dist-linux} profile used to activate on anything that is not
+   * Windows, so a macOS or ARM64 builder produced an archive labelled {@code linux-x64} carrying
+   * that host's runtime. Each profile now names the operating system and the architecture, and the
+   * packaging build refuses a host that matches neither. No image needed: this reads the pom.
+   */
+  @Test
+  void dist_profiles_activate_only_on_the_two_hosts_adr_0002_supports() throws Exception {
+    String pom = Files.readString(repoRoot().resolve("dist/pom.xml"), StandardCharsets.UTF_8);
+
+    assertThat(pom)
+        .as("a !windows activation labels a macOS or ARM build linux-x64")
+        .doesNotContain("<family>!windows</family>");
+    assertThat(pom).contains("<os><family>windows</family><arch>amd64</arch></os>");
+    assertThat(pom).contains("<os><name>Linux</name><arch>amd64</arch></os>");
+    assertThat(pom)
+        .as("the packaging build must refuse a host that activated neither profile")
+        .contains("<property>dist.platform</property>")
+        .contains("(windows|linux)-x64");
+  }
+
   @Test
   void manifest_lists_every_file_with_a_matching_sha256() throws Exception {
     assumeImageBuilt();
