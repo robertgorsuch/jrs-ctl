@@ -1,0 +1,29 @@
+{
+  "id" : "<runId>",
+  "op" : "hotfix.apply",
+  "target" : "JRS-TEST",
+  "startedAt" : "<instant>",
+  "finishedAt" : null,
+  "durationMs" : 0,
+  "outcome" : "running",
+  "rollbackAvailable" : false,
+  "supportBundleAvailable" : true,
+  "title" : "apply hotfix JRS-TEST",
+  "subtitle" : "<runId> · test",
+  "backups" : "",
+  "steps" : [ {
+    "id" : "quick",
+    "phase" : "apply",
+    "title" : "Step quick",
+    "why" : "",
+    "status" : "succeeded",
+    "durationMs" : 0
+  }, {
+    "id" : "slow",
+    "phase" : "apply",
+    "title" : "Step slow",
+    "why" : "",
+    "status" : "running",
+    "durationMs" : null
+  } ]
+}

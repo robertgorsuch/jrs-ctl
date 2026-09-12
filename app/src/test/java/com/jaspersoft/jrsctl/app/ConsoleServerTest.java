@@ -859,9 +859,11 @@ class ConsoleServerTest {
 
   /**
    * A plan builder whose second step blocks until cancelled (when {@code args.block} is true) and
-   * logs a registered secret, so cancellation and redaction can be observed over HTTP.
+   * logs a registered secret, so cancellation and redaction can be observed over HTTP. Package-
+   * private so {@code ConsoleWireGoldenTest} can reuse the same in-flight-run mechanism rather than
+   * inventing a second one.
    */
-  private static final class BlockingPlans implements PlanBuilder {
+  static final class BlockingPlans implements PlanBuilder {
 
     volatile boolean blocking;
     final List<String> compensated = new java.util.concurrent.CopyOnWriteArrayList<>();

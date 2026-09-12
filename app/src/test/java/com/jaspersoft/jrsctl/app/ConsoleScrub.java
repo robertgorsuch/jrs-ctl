@@ -38,6 +38,13 @@ final class ConsoleScrub {
    */
   private static final List<String> VERSIONED = List.of("version", "matrixVersion");
 
+  /**
+   * String keys holding a process id, replaced by {@code <pid>} when non-empty because {@code pid}
+   * is the test JVM's own process id and varies run to run; {@code held == false} never carries
+   * this key, so there is no empty-string case to preserve, unlike {@link #VERSIONED}.
+   */
+  private static final List<String> PID = List.of("pid");
+
   private ConsoleScrub() {}
 
   /** A copy of {@code node} with volatile values replaced; {@code home} becomes {@code <home>}. */
@@ -112,6 +119,9 @@ final class ConsoleScrub {
     }
     if (node.isTextual() && VERSIONED.contains(key) && !node.asText().isEmpty()) {
       return TextNode.valueOf("<version>");
+    }
+    if (node.isTextual() && PID.contains(key) && !node.asText().isEmpty()) {
+      return TextNode.valueOf("<pid>");
     }
     if (node.isTextual()) {
       return TextNode.valueOf(text(node.asText(), home));

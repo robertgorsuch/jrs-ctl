@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.jaspersoft.jrsctl.app.console.OperationCatalog;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
@@ -171,6 +172,61 @@ class ConsoleWireGoldenTest {
                       "JRS-8.2.0-HF-0003", otherFile, "add", Optional.empty(), Optional.empty())));
 
       assertGolden("hotfixes-installed", console.get("/api/hotfixes"), home);
+    }
+  }
+
+  /**
+   * Captures {@code health.lock} held ({@code runId} and {@code pid} both present) and {@code
+   * /api/runs/{id}} showing {@code outcome: "running"} with a null {@code finishedAt}, by reusing
+   * {@link ConsoleServerTest.BlockingPlans}, the same fake the cancel test uses to hold a run
+   * mid-flight, rather than inventing a second blocking mechanism.
+   */
+  @Test
+  void should_match_the_golden_when_a_run_is_in_flight() throws Exception {
+    Path home = tmp.resolve("home");
+    ConsoleServerTest.BlockingPlans plans = new ConsoleServerTest.BlockingPlans();
+    FakeHotfixOperations fake = new FakeHotfixOperations();
+    try (ConsoleFixture console =
+        ConsoleFixture.start(
+            home, Clock.systemUTC(), services -> new OperationCatalog(plans, () -> fake))) {
+      HttpResponse<String> planned =
+          console.post("/api/plan", "{\"op\":\"hotfix.apply\",\"args\":{\"block\":true}}");
+      String planId = Json.mapper().readTree(planned.body()).get("planId").asText();
+      HttpResponse<String> started =
+          console.post("/api/run", "{\"planId\":\"" + planId + "\",\"confirm\":true}");
+      String runId = Json.mapper().readTree(started.body()).get("runId").asText();
+      waitForBlocking(plans);
+
+      assertGolden("health-run-in-flight", console.get("/api/health"), home);
+      assertGolden("runs-show-running", console.get("/api/runs/" + runId), home);
+
+      console.post("/api/runs/" + runId + "/cancel", "");
+      waitForTerminal(console, runId);
+    }
+  }
+
+  /**
+   * Captures {@code health.pendingRuns[0].stepId} as {@code null} for a pending run that has no
+   * transitions yet, seeded through the public {@link com.jaspersoft.jrsctl.core.state.StateStore}
+   * API reached via {@link ConsoleFixture#store()}, the same way the hotfix goldens seed rows.
+   */
+  @Test
+  void should_match_the_golden_when_a_pending_run_has_no_transitions() throws Exception {
+    Path home = tmp.resolve("home");
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      console.store().recordRunStart("r-no-steps", "hotfix.apply", Optional.empty(), Instant.now());
+      assertGolden("health-pending-no-steps", console.get("/api/health"), home);
+    }
+  }
+
+  /** Polls until {@code plans}'s blocking step has started, so the run is reliably mid-flight. */
+  private static void waitForBlocking(ConsoleServerTest.BlockingPlans plans) throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (!plans.blocking) {
+      if (System.nanoTime() >= deadline) {
+        throw new AssertionError("the run never reached its blocking step");
+      }
+      Thread.sleep(20);
     }
   }
 

@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.app.console.ConsoleOptions;
 import com.jaspersoft.jrsctl.app.console.ConsoleServer;
+import com.jaspersoft.jrsctl.app.console.OperationCatalog;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * A real console listener on a free port over a temporary home, for tests that need the HTTP
@@ -38,6 +40,15 @@ final class ConsoleFixture implements AutoCloseable {
 
   /** Writes a minimal configuration into {@code home} and starts a console over it. */
   static ConsoleFixture start(Path home, Clock clock) throws IOException {
+    return start(home, clock, ConsoleCommand::catalog);
+  }
+
+  /**
+   * Same as {@link #start(Path, Clock)} but lets a test swap in its own {@link OperationCatalog},
+   * such as one built on a blocking {@code PlanBuilder} to hold a run in flight.
+   */
+  static ConsoleFixture start(Path home, Clock clock, Function<Services, OperationCatalog> catalog)
+      throws IOException {
     Files.createDirectories(home);
     Files.writeString(
         home.resolve("config.yaml"),
@@ -66,7 +77,7 @@ final class ConsoleFixture implements AutoCloseable {
             services,
             new ConsoleOptions(Optional.empty(), Optional.of(0)),
             new RunService(services),
-            ConsoleCommand.catalog(services));
+            catalog.apply(services));
     server.start();
     return new ConsoleFixture(boot, server, server.token().orElseThrow().text());
   }
