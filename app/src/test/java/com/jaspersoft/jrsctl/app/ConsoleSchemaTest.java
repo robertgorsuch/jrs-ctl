@@ -34,7 +34,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ConsoleSchemaTest {
 
   /** Resolves every {@code https://jaspersoft.com/jrsctl/...} reference from the classpath. */
-  private static final JsonSchemaFactory FACTORY =
+  static final JsonSchemaFactory FACTORY =
       JsonSchemaFactory.getInstance(
           SpecVersion.VersionFlag.V202012,
           b -> b.schemaLoaders(l -> l.schemas(ConsoleSchemaTest::schemaText)));
@@ -80,7 +80,7 @@ class ConsoleSchemaTest {
     }
   }
 
-  private static String schemaText(String iri) {
+  static String schemaText(String iri) {
     Optional<InputStream> in = JsonSchemas.open(iri);
     if (in.isEmpty()) {
       return null;

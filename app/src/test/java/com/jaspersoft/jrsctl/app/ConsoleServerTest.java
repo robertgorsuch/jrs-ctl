@@ -27,6 +27,8 @@ import com.jaspersoft.jrsctl.ops.PlanJson;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.networknt.schema.JsonSchema;
+import com.networknt.schema.SchemaLocation;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -172,18 +174,30 @@ class ConsoleServerTest {
     return Json.mapper().readTree(response.body());
   }
 
+  /** Fails when a live response does not match the schema published for its endpoint. */
+  private static JsonNode validated(String endpoint, HttpResponse<String> response)
+      throws Exception {
+    assertThat(response.statusCode()).as(endpoint).isEqualTo(200);
+    JsonNode doc = json(response);
+    String schemaName = JsonSchemas.forEndpoint(endpoint).orElseThrow();
+    JsonSchema schema =
+        ConsoleSchemaTest.FACTORY.getSchema(SchemaLocation.of(JsonSchemas.iri(schemaName)));
+    assertThat(schema.validate(doc)).as(endpoint).isEmpty();
+    return doc;
+  }
+
   private String planId(String op, String args) throws Exception {
     HttpResponse<String> planned =
         post("/api/plan", "{\"op\":\"" + op + "\",\"args\":" + args + "}");
     assertThat(planned.statusCode()).as(planned.body()).isEqualTo(200);
-    return json(planned).get("planId").asText();
+    return validated("POST /api/plan", planned).get("planId").asText();
   }
 
   private String startRun(String planId) throws Exception {
     HttpResponse<String> started =
         post("/api/run", "{\"planId\":\"" + planId + "\",\"confirm\":true}");
     assertThat(started.statusCode()).as(started.body()).isEqualTo(200);
-    return json(started).get("runId").asText();
+    return validated("POST /api/run", started).get("runId").asText();
   }
 
   /** Reads the SSE stream to its end and returns the event names in order. */
@@ -297,8 +311,7 @@ class ConsoleServerTest {
   void should_answer_health_with_readme_keys_when_token_given() throws Exception {
     startDefault();
     HttpResponse<String> response = get("/api/health");
-    assertThat(response.statusCode()).isEqualTo(200);
-    JsonNode health = json(response);
+    JsonNode health = validated("GET /api/health", response);
     assertThat(health.get("tool").get("version").asText()).isNotBlank();
     assertThat(health.get("tool").get("matrixVersion").asText()).isNotBlank();
     assertThat(health.get("bind").asText()).isEqualTo("127.0.0.1:" + server.port());
@@ -312,7 +325,7 @@ class ConsoleServerTest {
   @Test
   void should_answer_server_identity_when_server_reachable() throws Exception {
     startDefault();
-    JsonNode s = json(get("/api/server"));
+    JsonNode s = validated("GET /api/server", get("/api/server"));
     assertThat(s.get("product").asText()).isEqualTo("JasperReports Server");
     assertThat(s.get("version").asText()).isEqualTo("8.2.0");
     assertThat(s.get("edition").asText()).isEqualTo("PRO");
@@ -329,7 +342,7 @@ class ConsoleServerTest {
       throws Exception {
     TestAdapterFactory.unreachable = true;
     startDefault();
-    JsonNode s = json(get("/api/server"));
+    JsonNode s = validated("GET /api/server", get("/api/server"));
     assertThat(s.get("reachable").asBoolean()).isFalse();
     assertThat(s.get("baseUrl").asText()).isEqualTo("http://localhost:8089/jasperserver-pro");
     assertThat(s.get("installDir").asText()).isNotBlank();
@@ -339,16 +352,16 @@ class ConsoleServerTest {
   @Test
   void should_answer_doctor_and_hotfixes_in_readme_shapes() throws Exception {
     startDefault();
-    JsonNode doctor = json(get("/api/doctor"));
+    JsonNode doctor = validated("GET /api/doctor", get("/api/doctor"));
     assertThat(doctor.get("ranAt").asText()).isNotBlank();
     assertThat(doctor.get("counts").has("pass")).isTrue();
     assertThat(doctor.get("items").size()).isGreaterThan(5);
     JsonNode first = doctor.get("items").get(0);
     assertThat(first.has("id") && first.has("status") && first.has("title") && first.has("detail"))
         .isTrue();
-    JsonNode hotfixes = json(get("/api/hotfixes"));
+    JsonNode hotfixes = validated("GET /api/hotfixes", get("/api/hotfixes"));
     assertThat(hotfixes.get("hotfixes").isArray()).isTrue();
-    JsonNode health = json(get("/api/health"));
+    JsonNode health = validated("GET /api/health", get("/api/health"));
     assertThat(health.get("doctor").get("ranAt").asText()).isEqualTo(doctor.get("ranAt").asText());
   }
 
@@ -360,7 +373,7 @@ class ConsoleServerTest {
     HttpResponse<String> response =
         post("/api/plan", "{\"op\":\"hotfix.verify\",\"args\":" + argsFor(bundle) + "}");
     assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
-    JsonNode body = json(response);
+    JsonNode body = validated("POST /api/plan", response);
     String planId = body.get("planId").asText();
     assertThat(planId).startsWith("verify-");
     JsonNode plan = body.get("plan");
@@ -402,7 +415,7 @@ class ConsoleServerTest {
     assertThat(fake.executed).containsExactlyElementsOf(FakeHotfixOperations.APPLY_STEPS);
 
     waitUntil(() -> !server.runs().find(runId).orElseThrow().running());
-    JsonNode detail = json(get("/api/runs/" + runId));
+    JsonNode detail = validated("GET /api/runs/{id}", get("/api/runs/" + runId));
     assertThat(detail.get("outcome").asText()).isEqualTo("succeeded");
     assertThat(detail.get("op").asText()).isEqualTo("hotfix.apply");
     assertThat(detail.get("target").asText()).isEqualTo(FakeHotfixOperations.ID);
@@ -416,7 +429,7 @@ class ConsoleServerTest {
     assertThat(replay.get(0)).isEqualTo("StepPending");
     assertThat(replay.get(replay.size() - 1)).isEqualTo("RunSucceeded");
 
-    JsonNode runs = json(get("/api/runs"));
+    JsonNode runs = validated("GET /api/runs", get("/api/runs"));
     assertThat(runs.get("runs").get(0).get("id").asText()).isEqualTo(runId);
     assertThat(runs.get("runs").get(0).get("supportBundleAvailable").asBoolean()).isTrue();
     try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
@@ -473,7 +486,7 @@ class ConsoleServerTest {
     String runId = startRun(planId);
     waitUntil(() -> plans.blocking);
 
-    JsonNode running = json(get("/api/runs/" + runId));
+    JsonNode running = validated("GET /api/runs/{id}", get("/api/runs/" + runId));
     assertThat(running.get("outcome").asText()).isEqualTo("running");
     assertThat(running.get("steps").get(1).get("status").asText()).isEqualTo("running");
 
@@ -483,7 +496,7 @@ class ConsoleServerTest {
     assertThat(names.get(names.size() - 1)).isEqualTo("RunCancelled");
     assertThat(plans.compensated).contains("quick", "slow");
     waitUntil(() -> !server.runs().find(runId).orElseThrow().running());
-    JsonNode detail = json(get("/api/runs/" + runId));
+    JsonNode detail = validated("GET /api/runs/{id}", get("/api/runs/" + runId));
     assertThat(detail.get("outcome").asText()).isEqualTo("cancelled");
     assertThat(detail.get("failure").get("cause").asText()).contains("cancelled");
     HttpResponse<String> again = post("/api/runs/" + runId + "/cancel", "");
@@ -496,7 +509,11 @@ class ConsoleServerTest {
     startDefault();
     String applyRun = startRun(planId("hotfix.apply", argsFor(bundle)));
     waitUntil(() -> !server.runs().find(applyRun).orElseThrow().running());
-    assertThat(json(get("/api/runs/" + applyRun)).get("rollbackAvailable").asBoolean()).isFalse();
+    assertThat(
+            validated("GET /api/runs/{id}", get("/api/runs/" + applyRun))
+                .get("rollbackAvailable")
+                .asBoolean())
+        .isFalse();
     try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
       store.recordHotfixInstalled(
           new com.jaspersoft.jrsctl.core.state.HotfixInstalled(
@@ -509,8 +526,12 @@ class ConsoleServerTest {
               Instant.now()),
           List.of());
     }
-    assertThat(json(get("/api/runs/" + applyRun)).get("rollbackAvailable").asBoolean()).isTrue();
-    JsonNode hotfixes = json(get("/api/hotfixes"));
+    assertThat(
+            validated("GET /api/runs/{id}", get("/api/runs/" + applyRun))
+                .get("rollbackAvailable")
+                .asBoolean())
+        .isTrue();
+    JsonNode hotfixes = validated("GET /api/hotfixes", get("/api/hotfixes"));
     assertThat(hotfixes.get("hotfixes").get(0).get("state").asText()).isEqualTo("installed");
     assertThat(hotfixes.get("hotfixes").get(0).get("blockedBy").isArray()).isTrue();
 
@@ -523,7 +544,7 @@ class ConsoleServerTest {
     assertThat(fake.lastRollbackId).contains(FakeHotfixOperations.ID);
     assertThat(fake.executed).contains("restore-snapshot", "record-rolled-back");
     waitUntil(() -> !server.runs().find(rollbackRun).orElseThrow().running());
-    assertThat(json(get("/api/runs/" + rollbackRun)).get("op").asText())
+    assertThat(validated("GET /api/runs/{id}", get("/api/runs/" + rollbackRun)).get("op").asText())
         .isEqualTo("hotfix.rollback");
   }
 
@@ -577,11 +598,11 @@ class ConsoleServerTest {
           "RUNNING",
           Optional.empty());
     }
-    JsonNode health = json(get("/api/health"));
+    JsonNode health = validated("GET /api/health", get("/api/health"));
     assertThat(health.get("pendingRuns").get(0).get("id").asText()).isEqualTo("r-pending");
     assertThat(health.get("pendingRuns").get(0).get("stepId").asText())
         .isEqualTo("validate-manifest");
-    JsonNode before = json(get("/api/runs/r-pending"));
+    JsonNode before = validated("GET /api/runs/{id}", get("/api/runs/r-pending"));
     assertThat(before.get("outcome").asText()).isEqualTo("interrupted");
     assertThat(before.get("rollbackAvailable").asBoolean()).isTrue();
     assertThat(before.get("steps").get(0).get("status").asText()).isEqualTo("succeeded");
@@ -598,7 +619,8 @@ class ConsoleServerTest {
         .doesNotContain("verify-signature")
         .contains("validate-manifest", "record-installed");
     waitUntil(() -> !server.runs().find("r-pending").orElseThrow().running());
-    assertThat(json(get("/api/runs/r-pending")).get("outcome").asText()).isEqualTo("succeeded");
+    assertThat(validated("GET /api/runs/{id}", get("/api/runs/r-pending")).get("outcome").asText())
+        .isEqualTo("succeeded");
     HttpResponse<String> again = post("/api/runs/r-pending/resume", "");
     assertThat(again.statusCode()).isEqualTo(409);
   }
@@ -833,8 +855,8 @@ class ConsoleServerTest {
                 .GET()
                 .build(),
             HttpResponse.BodyHandlers.ofString());
-    assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(json(response).get("tool").get("version").asText()).isNotBlank();
+    assertThat(validated("GET /api/health", response).get("tool").get("version").asText())
+        .isNotBlank();
   }
 
   private static String pem(String type, byte[] der) {
