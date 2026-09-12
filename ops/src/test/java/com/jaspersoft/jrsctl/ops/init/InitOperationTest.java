@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
+import com.jaspersoft.jrsctl.core.platform.LinuxInit;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.ops.FakeLayout;
@@ -62,6 +63,69 @@ class InitOperationTest {
                   v.key().equals("database.type")
                       && v.source().contains("default_master.properties"))
           .noneMatch(v -> v.value().contains("Sup3rSecret"));
+    }
+  }
+
+  /** Review finding 3.2: a supervised host is named and systemctl is never probed. */
+  @Test
+  void should_name_the_supervisor_and_skip_systemctl_when_process_one_is_not_systemd()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    LinuxInit.Detected supervisord =
+        new LinuxInit.Detected(
+            LinuxInit.Kind.SUPERVISOR, Optional.of("supervisord"), "supervisord is process 1");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.on(
+          List.of("systemctl"),
+          FakePlatform.Response.ok("jasperreportsTomcat.service loaded active running"));
+      InitOperation init =
+          new InitOperation(fake.build(), () -> Optional.of("jasperserver"), () -> supervisord);
+
+      InitReport report = init.detect(Optional.of(install));
+      Config config = init.toConfig(report);
+
+      assertThat(config.service().kind()).contains(ServiceConfig.Kind.CTLSCRIPT);
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals(InitOperation.SERVICE_MANAGER)
+                      && v.value().equals("supervisor")
+                      && v.source().contains("supervisord"))
+          .anyMatch(
+              v ->
+                  v.key().equals(InitOperation.SERVICE_MANAGER)
+                      && v.value().equals("warning")
+                      && v.source().contains("may restart the server mid-run"));
+    }
+  }
+
+  /** Review finding 3.2: an unreadable /proc still lets the systemd probe decide. */
+  @Test
+  void should_record_no_service_manager_when_process_one_cannot_be_read() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    LinuxInit.Detected unknown =
+        new LinuxInit.Detected(
+            LinuxInit.Kind.UNKNOWN,
+            Optional.empty(),
+            "cannot read /proc/1/comm; no service" + " manager detected");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.on(
+          List.of("systemctl"),
+          FakePlatform.Response.ok("jasperreportsTomcat.service loaded active running"));
+      InitOperation init =
+          new InitOperation(fake.build(), () -> Optional.of("jasperserver"), () -> unknown);
+
+      InitReport report = init.detect(Optional.of(install));
+      Config config = init.toConfig(report);
+
+      assertThat(config.service().kind()).contains(ServiceConfig.Kind.SYSTEMD);
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals(InitOperation.SERVICE_MANAGER)
+                      && v.source().contains("no service manager detected"))
+          .noneMatch(
+              v -> v.key().equals(InitOperation.SERVICE_MANAGER) && v.value().equals("warning"));
     }
   }
 

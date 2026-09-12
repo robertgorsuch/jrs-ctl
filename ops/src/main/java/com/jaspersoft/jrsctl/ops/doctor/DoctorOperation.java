@@ -33,6 +33,7 @@ public final class DoctorOperation {
           "capabilities",
           "layout",
           "service",
+          LocalChecks.SERVICE_MANAGER,
           "permissions",
           "disk",
           "keystore",
@@ -83,6 +84,7 @@ public final class DoctorOperation {
     Optional<TomcatLayout> layout = LocalChecks.layout(services);
     items.add(guard("layout", s -> LocalChecks.layout(s, layout)));
     items.add(guard("service", LocalChecks::service));
+    items.add(guard(LocalChecks.SERVICE_MANAGER, LocalChecks::serviceManager));
     items.add(guard("permissions", s -> LocalChecks.permissions(s, layout)));
     items.add(guard("disk", LocalChecks::disk));
     items.add(

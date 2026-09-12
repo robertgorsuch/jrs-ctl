@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.init;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.platform.LinuxInit;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
@@ -48,16 +49,28 @@ public final class InitOperation {
       Pattern.compile("^\\s*SERVICE_NAME:\\s*(\\S.*?)\\s*$");
   private static final String SOURCE_DEFAULT = "default";
 
+  /** Report key carrying what supervises services on this host (review 3.2). */
+  static final String SERVICE_MANAGER = "service.manager";
+
   private final Services services;
   private final Supplier<Optional<String>> tomcatOwner;
+  private final Supplier<LinuxInit.Detected> linuxInit;
 
   public InitOperation(Services services) {
     this(services, InitOperation::owningUserOfTomcat);
   }
 
   InitOperation(Services services, Supplier<Optional<String>> tomcatOwner) {
+    this(services, tomcatOwner, LinuxInit::detect);
+  }
+
+  InitOperation(
+      Services services,
+      Supplier<Optional<String>> tomcatOwner,
+      Supplier<LinuxInit.Detected> linuxInit) {
     this.services = Objects.requireNonNull(services, "services");
     this.tomcatOwner = Objects.requireNonNull(tomcatOwner, "tomcatOwner");
+    this.linuxInit = Objects.requireNonNull(linuxInit, "linuxInit");
   }
 
   /** Detects the installation; {@code installDirHint} is tried before the platform candidates. */
@@ -229,10 +242,22 @@ public final class InitOperation {
 
   private Config.Service probeService(TomcatLayout layout, List<InitReport.Detected> values) {
     Platform platform = services.platform();
+    // review 3.2: name the Linux service manager instead of assuming systemd, and never probe
+    // systemctl on a host that process 1 says is supervised some other way
+    Optional<LinuxInit.Detected> init =
+        platform.os() == Platform.OsFamily.LINUX ? Optional.of(linuxInit.get()) : Optional.empty();
+    init.ifPresent(
+        d ->
+            values.add(
+                new InitReport.Detected(
+                    SERVICE_MANAGER, d.kind().name().toLowerCase(Locale.ROOT), d.detail())));
     Optional<String> managed =
         switch (platform.os()) {
           case WINDOWS -> windowsService(platform.processes());
-          case LINUX -> systemdUnit(platform.processes());
+          case LINUX ->
+              init.orElseThrow().supervised()
+                  ? Optional.empty()
+                  : systemdUnit(platform.processes());
         };
     ServiceConfig.Kind managedKind =
         switch (platform.os()) {
@@ -263,10 +288,12 @@ public final class InitOperation {
         };
     Path ctlscript = layout.installDir().resolve("ctlscript" + ext);
     if (Files.isRegularFile(ctlscript)) {
+      warnIfSupervised(init, values);
       return scriptService(ServiceConfig.Kind.CTLSCRIPT, ctlscript, values);
     }
     Path catalina = layout.tomcatDir().resolve("bin").resolve("catalina" + ext);
     if (Files.isRegularFile(catalina)) {
+      warnIfSupervised(init, values);
       return scriptService(ServiceConfig.Kind.CATALINA, catalina, values);
     }
     values.add(
@@ -279,6 +306,25 @@ public final class InitOperation {
         Optional.empty(),
         Optional.empty(),
         Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS);
+  }
+
+  /**
+   * Records that a script stop can be undone by the supervisor that owns process 1, so the operator
+   * sees it before confirming the proposed configuration (review 3.2).
+   */
+  private static void warnIfSupervised(
+      Optional<LinuxInit.Detected> init, List<InitReport.Detected> values) {
+    init.filter(LinuxInit.Detected::supervised)
+        .ifPresent(
+            d ->
+                values.add(
+                    new InitReport.Detected(
+                        SERVICE_MANAGER,
+                        "warning",
+                        "a script stop bypasses "
+                            + d.pid1().orElse(d.kind().name().toLowerCase(Locale.ROOT))
+                            + ", which may restart the server mid-run; set service.kind to manual"
+                            + " or stop the server through its supervisor")));
   }
 
   private static Config.Service scriptService(
