@@ -237,8 +237,11 @@ async function readSseStream(body, onEvent, isClosed) {
  *
  * onStatus(kind, detail): 'open' | 'reconnecting' (delay ms) | 'ended' | 'error' (ApiError).
  * Returns { close(), done() } — call done() after a terminal event so a server-side close is
- * not treated as a drop.
+ * not treated as a drop. After MAX_RECONNECTS consecutive failures the stream gives up and
+ * reports 'ended' rather than retrying for ever (review 4.7).
  */
+const MAX_RECONNECTS = 8;
+
 export function events(runId, onEvent, onStatus) {
   if (backend) return backend.events(runId, onEvent, onStatus);
   const state = { closed: false, terminal: false, abort: null, attempt: 0 };
@@ -278,6 +281,13 @@ export function events(runId, onEvent, onStatus) {
 
   function scheduleReconnect() {
     state.attempt += 1;
+    // review 4.7: give up rather than reconnect for ever. A console that is gone, or a run this
+    // console no longer knows, must not leave a tab polling the listener until it is closed.
+    if (state.attempt > MAX_RECONNECTS) {
+      status('ended');
+      state.closed = true;
+      return;
+    }
     const delay = Math.min(30000, 1000 * 2 ** (state.attempt - 1));
     status('reconnecting', delay);
     setTimeout(connect, delay);

@@ -27,8 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +44,7 @@ import org.slf4j.LoggerFactory;
 final class ConsoleApi {
 
   static final long HEARTBEAT_SECONDS = 15;
+  private static final long HEARTBEAT_NANOS = HEARTBEAT_SECONDS * 1_000_000_000L;
   private static final Logger LOG = LoggerFactory.getLogger(ConsoleApi.class);
   private static final String JSON = "application/json";
   private static final String ACTOR = "console";
@@ -58,7 +57,6 @@ final class ConsoleApi {
   private final ConsoleViews views;
   private final DoctorCache doctor;
   private final SupportBundle bundle;
-  private final ScheduledExecutorService heartbeats;
   private final Redactor redactor;
 
   ConsoleApi(
@@ -69,8 +67,7 @@ final class ConsoleApi {
       OperationCatalog catalog,
       ConsoleViews views,
       DoctorCache doctor,
-      SupportBundle bundle,
-      ScheduledExecutorService heartbeats) {
+      SupportBundle bundle) {
     this.server = Objects.requireNonNull(server, "server");
     this.services = Objects.requireNonNull(services, "services");
     this.runs = Objects.requireNonNull(runs, "runs");
@@ -79,7 +76,6 @@ final class ConsoleApi {
     this.views = Objects.requireNonNull(views, "views");
     this.doctor = Objects.requireNonNull(doctor, "doctor");
     this.bundle = Objects.requireNonNull(bundle, "bundle");
-    this.heartbeats = Objects.requireNonNull(heartbeats, "heartbeats");
     this.redactor = services.redactor();
   }
 
@@ -92,6 +88,9 @@ final class ConsoleApi {
     app.post("/api/run", this::run);
     app.get("/api/runs", ctx -> json(ctx, 200, views.runList()));
     app.get("/api/runs/{id}", ctx -> json(ctx, 200, views.runDetail(runOf(ctx))));
+    // review 4.7: Javalin commits 200 text/event-stream before the SSE handler runs, so an
+    // unknown run has to be refused here, where a 404 document can still be written
+    app.before("/api/runs/{id}/events", this::requireKnownRun);
     app.sse("/api/runs/{id}/events", this::events);
     app.post("/api/runs/{id}/cancel", this::cancel);
     app.post("/api/runs/{id}/rollback", this::rollback);
@@ -113,7 +112,9 @@ final class ConsoleApi {
     app.error(
         404,
         ctx -> {
-          if (ctx.path().startsWith("/api/")) {
+          // only for a path no route matched: a handler that refused with its own reason has
+          // already written it, and replacing that with "not found" loses which run was unknown
+          if (ctx.path().startsWith("/api/") && (ctx.result() == null || ctx.result().isBlank())) {
             json(ctx, 404, Map.of("error", "not found"));
           }
         });
@@ -127,11 +128,17 @@ final class ConsoleApi {
     if (code.isBlank()) {
       throw ConsoleHttpException.badRequest("code is required");
     }
-    String token =
-        server
-            .exchangeLaunchCode(code)
-            .orElseThrow(() -> new ConsoleHttpException(401, "invalid or expired launch code"));
-    ctx.status(200).contentType(JSON).result(Json.write(Map.of("token", token)));
+    Optional<String> token = server.exchangeLaunchCode(code);
+    // review 4.1: a refused exchange is the signal that someone other than the browser read the
+    // launch code off a command line, so it belongs in the audit table, with the peer but never
+    // the code itself
+    audit(
+        token.isPresent() ? "console.launch.exchanged" : "console.launch.refused",
+        "from " + ctx.ip());
+    if (token.isEmpty()) {
+      throw new ConsoleHttpException(401, "invalid or expired launch code");
+    }
+    ctx.status(200).contentType(JSON).result(Json.write(Map.of("token", token.get())));
   }
 
   private void index(Context ctx) {
@@ -320,17 +327,17 @@ final class ConsoleApi {
 
   // ---- event stream ---------------------------------------------------------------------------
 
-  private void events(SseClient client) {
-    String runId = client.ctx().pathParam("id");
-    StateStore store = runs.store();
-    if (store.run(runId).isEmpty()) {
+  private void requireKnownRun(Context ctx) {
+    String runId = ctx.pathParam("id");
+    if (runs.store().run(runId).isEmpty()) {
       throw ConsoleHttpException.notFound("unknown run " + runId);
     }
+  }
+
+  private void events(SseClient client) {
+    String runId = client.ctx().pathParam("id");
     client.keepAlive();
     SseSession session = new SseSession(client, redactor);
-    ScheduledFuture<?> heartbeat =
-        heartbeats.scheduleAtFixedRate(
-            session::heartbeat, HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS);
     Thread writer =
         new Thread(
             () -> {
@@ -339,7 +346,6 @@ final class ConsoleApi {
               } catch (RuntimeException e) {
                 LOG.debug("event stream for {} ended: {}", runId, e.getMessage());
               } finally {
-                heartbeat.cancel(false);
                 session.close();
               }
             },
@@ -348,7 +354,6 @@ final class ConsoleApi {
     client.onClose(
         () -> {
           session.markClosed();
-          heartbeat.cancel(false);
           writer.interrupt();
         });
     writer.start();
@@ -375,7 +380,19 @@ final class ConsoleApi {
         session.send(terminal.get());
         return;
       }
+      long lastWrite = System.nanoTime();
       while (!session.closed()) {
+        // review 4.7: the session heartbeats from its own writer, so a stalled browser can no
+        // longer block a shared scheduler and stop every other session's heartbeat
+        if (System.nanoTime() - lastWrite >= HEARTBEAT_NANOS) {
+          session.heartbeat();
+          lastWrite = System.nanoTime();
+        }
+        if (session.lagged()) {
+          LOG.debug("closing the event stream for {}: the client stopped reading", runId);
+          session.closeLagged();
+          return;
+        }
         if (live.isEmpty()) {
           Optional<RunManager.LiveRun> now =
               manager.find(runId).filter(RunManager.LiveRun::running);
@@ -387,6 +404,7 @@ final class ConsoleApi {
         Event next = session.poll(1, TimeUnit.SECONDS);
         if (next != null) {
           session.send(next);
+          lastWrite = System.nanoTime();
           if (SseEvents.terminal(next)) {
             return;
           }
@@ -412,6 +430,7 @@ final class ConsoleApi {
           for (Event e : SseEvents.replay(runId, fresh, titles)) {
             session.send(e);
           }
+          lastWrite = System.nanoTime();
         }
         RunRecord current = store.run(runId).orElseThrow();
         if (current.terminalState().isPresent()) {
@@ -441,11 +460,14 @@ final class ConsoleApi {
 
   private void supportBundle(Context ctx) throws IOException {
     RunRecord run = runOf(ctx);
+    // review 4.8: the live doctor run and the server probe happen here, before a header is
+    // committed, so a failure is an error document rather than a truncated zip delivered as 200
+    SupportBundle.Prepared prepared = bundle.prepare(run);
     ctx.status(200);
     ctx.contentType("application/zip");
     ctx.header(
         "Content-Disposition", "attachment; filename=\"" + run.runId() + "-support-bundle.zip\"");
-    bundle.write(run, ctx.outputStream());
+    bundle.write(prepared, ctx.outputStream());
   }
 
   // ---- helpers --------------------------------------------------------------------------------
