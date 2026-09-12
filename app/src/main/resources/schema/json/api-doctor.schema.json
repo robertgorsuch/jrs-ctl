@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-doctor.schema.json",
+  "title": "GET /api/doctor (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ranAt", "counts", "items", "exitCode"],
+  "properties": {
+    "ranAt": { "type": "string" },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "warn", "fail", "skip"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "status", "title", "detail", "remediation"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "status": { "enum": ["PASS", "WARN", "FAIL", "SKIP"] },
+          "title": { "type": "string" },
+          "detail": { "type": "string" },
+          "remediation": { "type": "string" }
+        }
+      }
+    },
+    "exitCode": { "type": "integer", "minimum": 0 }
+  }
+}

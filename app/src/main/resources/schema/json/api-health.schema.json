@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-health.schema.json",
+  "title": "GET /api/health (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tool", "bind", "networkMode", "lastRun", "lock", "pendingRuns", "snapshots"],
+  "properties": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "matrixVersion"],
+      "properties": {
+        "version": { "type": "string" },
+        "matrixVersion": { "type": "string" }
+      }
+    },
+    "bind": { "type": "string" },
+    "networkMode": { "enum": ["isolated", "public"] },
+    "lastRun": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "op", "outcome", "finishedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "op": { "type": "string" },
+        "outcome": { "$ref": "https://jaspersoft.com/jrsctl/api-runs.schema.json#/$defs/outcome" },
+        "finishedAt": { "type": ["string", "null"] }
+      }
+    },
+    "lock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["held"],
+      "properties": {
+        "held": { "type": "boolean" },
+        "runId": { "type": "string" },
+        "pid": { "type": "string" }
+      }
+    },
+    "pendingRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "op", "startedAt", "stepId"],
+        "properties": {
+          "id": { "type": "string" },
+          "op": { "type": "string" },
+          "startedAt": { "type": "string" },
+          "stepId": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "bytes", "retentionDays"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "retentionDays": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "doctor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "warn", "fail", "ranAt", "attention"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "ranAt": { "type": "string" },
+        "attention": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "title", "detail"],
+            "properties": {
+              "status": { "enum": ["WARN", "FAIL"] },
+              "title": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

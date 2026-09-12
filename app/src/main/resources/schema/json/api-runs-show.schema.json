@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-runs-show.schema.json",
+  "title": "GET /api/runs/{id} (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "op", "target", "startedAt", "finishedAt", "durationMs", "outcome",
+               "rollbackAvailable", "supportBundleAvailable", "title", "subtitle", "backups",
+               "steps"],
+  "properties": {
+    "id": { "type": "string" },
+    "op": { "type": "string" },
+    "target": { "type": "string" },
+    "startedAt": { "type": "string" },
+    "finishedAt": { "type": ["string", "null"] },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "outcome": { "$ref": "https://jaspersoft.com/jrsctl/api-runs.schema.json#/$defs/outcome" },
+    "rollbackAvailable": { "type": "boolean" },
+    "supportBundleAvailable": { "type": "boolean" },
+    "title": { "type": "string" },
+    "subtitle": { "type": "string" },
+    "backups": { "type": "string" },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "phase", "title", "why", "status", "durationMs"],
+        "properties": {
+          "id": { "type": "string" },
+          "phase": { "type": "string" },
+          "title": { "type": "string" },
+          "why": { "type": "string" },
+          "status": {
+            "enum": ["pending", "running", "succeeded", "failed", "skipped", "rolled_back",
+                     "rollback_failed"]
+          },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepId", "cause", "backups", "nextAction"],
+      "properties": {
+        "stepId": { "type": "string" },
+        "cause": { "type": "string" },
+        "backups": { "type": "array", "items": { "type": "string" } },
+        "nextAction": { "type": "string" }
+      }
+    }
+  }
+}

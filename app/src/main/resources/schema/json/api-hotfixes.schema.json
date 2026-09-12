@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-hotfixes.schema.json",
+  "title": "GET /api/hotfixes (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hotfixes"],
+  "properties": {
+    "hotfixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "installedAt", "files", "state", "blockedBy"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "installedAt": { "type": "string" },
+          "files": { "type": "integer", "minimum": 0 },
+          "state": { "enum": ["installed", "rolled_back"] },
+          "blockedBy": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

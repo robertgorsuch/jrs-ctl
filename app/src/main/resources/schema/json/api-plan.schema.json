@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-plan.schema.json",
+  "title": "POST /api/plan (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planId", "plan"],
+  "properties": {
+    "planId": { "type": "string" },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "title", "fingerprint", "validUntil", "summary", "steps"],
+      "properties": {
+        "op": { "type": "string" },
+        "title": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "validUntil": { "type": "string" },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filesTouched", "service", "backups", "rollbackPoints", "strategy",
+                       "downtime", "warnings"],
+          "properties": {
+            "filesTouched": { "type": "string" },
+            "resourcesTouched": { "type": "string" },
+            "service": { "type": "string" },
+            "backups": { "type": "string" },
+            "rollbackPoints": { "type": "string" },
+            "strategy": { "type": "string" },
+            "downtime": { "type": "string" },
+            "warnings": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "phase", "title", "why"],
+            "properties": {
+              "id": { "type": "string" },
+              "phase": { "type": "string" },
+              "title": { "type": "string" },
+              "why": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

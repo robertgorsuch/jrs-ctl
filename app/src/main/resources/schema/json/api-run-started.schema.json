@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-run-started.schema.json",
+  "title": "POST /api/run, /api/runs/{id}/rollback, /api/runs/{id}/resume (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId"],
+  "properties": {
+    "runId": { "type": "string" }
+  }
+}

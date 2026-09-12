@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-server.schema.json",
+  "title": "GET /api/server (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["product", "version", "edition", "tenancy", "database", "baseUrl", "installDir",
+               "service", "keystore", "networkMode", "reachable"],
+  "properties": {
+    "product": { "type": "string" },
+    "version": { "type": "string" },
+    "edition": { "type": "string" },
+    "tenancy": { "enum": ["", "multi-tenant", "single-tenant"] },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendor", "version"],
+      "properties": {
+        "vendor": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "baseUrl": { "type": "string" },
+    "installDir": { "type": "string" },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "state"],
+      "properties": {
+        "kind": { "type": "string" },
+        "name": { "type": "string" },
+        "state": { "type": "string" }
+      }
+    },
+    "keystore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "user"],
+      "properties": {
+        "present": { "type": "boolean" },
+        "user": { "type": "string" }
+      }
+    },
+    "networkMode": { "enum": ["isolated", "public"] },
+    "reachable": { "type": "boolean" }
+  }
+}

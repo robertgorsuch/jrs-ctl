@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-runs.schema.json",
+  "title": "GET /api/runs (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runs"],
+  "properties": {
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/runItem" } }
+  },
+  "$defs": {
+    "outcome": {
+      "enum": ["succeeded", "failed", "failed_rolled_back", "rollback_incomplete", "cancelled",
+               "running", "interrupted"]
+    },
+    "runItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "op", "target", "startedAt", "finishedAt", "durationMs", "outcome",
+                   "rollbackAvailable", "supportBundleAvailable"],
+      "properties": {
+        "id": { "type": "string" },
+        "op": { "type": "string" },
+        "target": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "finishedAt": { "type": ["string", "null"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "rollbackAvailable": { "type": "boolean" },
+        "supportBundleAvailable": { "type": "boolean" }
+      }
+    }
+  }
+}
