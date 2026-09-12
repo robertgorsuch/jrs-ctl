@@ -1,0 +1,23 @@
+{
+  "product" : "JasperReports Server",
+  "version" : "",
+  "edition" : "",
+  "tenancy" : "",
+  "database" : {
+    "vendor" : "",
+    "version" : ""
+  },
+  "baseUrl" : "http://localhost:8089/jasperserver-pro",
+  "installDir" : "<home>",
+  "service" : {
+    "kind" : "manual",
+    "name" : "",
+    "state" : "stopped"
+  },
+  "keystore" : {
+    "present" : false,
+    "user" : ""
+  },
+  "networkMode" : "isolated",
+  "reachable" : false
+}

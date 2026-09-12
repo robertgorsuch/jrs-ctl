@@ -1,0 +1,29 @@
+{
+  "tool" : {
+    "version" : "<string>",
+    "matrixVersion" : "<string>"
+  },
+  "bind" : "<string>",
+  "networkMode" : "<string>",
+  "lastRun" : null,
+  "lock" : {
+    "held" : "<bool>"
+  },
+  "pendingRuns" : [ ],
+  "snapshots" : {
+    "count" : "<int>",
+    "bytes" : "<int>",
+    "retentionDays" : "<int>"
+  },
+  "doctor" : {
+    "pass" : "<int>",
+    "warn" : "<int>",
+    "fail" : "<int>",
+    "ranAt" : "<string>",
+    "attention" : [ {
+      "status" : "<string>",
+      "title" : "<string>",
+      "detail" : "<string>"
+    } ]
+  }
+}
