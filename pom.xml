@@ -175,6 +175,12 @@
             <trimStackTrace>false</trimStackTrace>
             <forkCount>${surefire.forkCount}</forkCount>
             <reuseForks>${surefire.reuseForks}</reuseForks>
+            <systemPropertyVariables>
+              <!-- review 3.4: a test JVM stays alive after a case that opens a state store, and
+                   Windows will not delete the loaded native library, so the copy must land in the
+                   build directory rather than inside a @TempDir home. -->
+              <org.sqlite.tmpdir>${project.build.directory}</org.sqlite.tmpdir>
+            </systemPropertyVariables>
           </configuration>
         </plugin>
         <plugin>

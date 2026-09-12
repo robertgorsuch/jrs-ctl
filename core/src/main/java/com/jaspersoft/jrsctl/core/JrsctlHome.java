@@ -29,6 +29,14 @@ public record JrsctlHome(Path root) {
     return root.resolve("runs");
   }
 
+  /**
+   * Where native libraries are unpacked and run. Its own directory rather than {@link #runs()} so
+   * nothing that walks run directories meets a stray shared library (review 3.4).
+   */
+  public Path nativeTemp() {
+    return root.resolve("tmp");
+  }
+
   public Path runDir(String runId) {
     return runs().resolve(runId);
   }
