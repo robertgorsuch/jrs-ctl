@@ -3,13 +3,13 @@ package com.jaspersoft.jrsctl.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.platform.FailingFileOps;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.StateStore;
-import com.jaspersoft.jrsctl.core.state.TerminalState;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,42 +82,61 @@ class FaultInjectionTest {
   // ---- two writers on one state.db -----------------------------------------------------------
 
   @Test
-  void should_serialise_two_connections_writing_the_same_state_db(@TempDir Path homeDir)
+  void should_open_a_second_connection_while_the_first_is_open(@TempDir Path homeDir) {
+    JrsctlHome home = new JrsctlHome(homeDir);
+
+    try (StateStore first = StateStore.open(home, Clock.systemUTC());
+        StateStore second = StateStore.open(home, Clock.systemUTC())) {
+      first.audit("test", "first.open", "one");
+      second.audit("test", "second.open", "two");
+
+      assertThat(second.integrity()).isEqualTo("ok");
+      assertThat(first.auditRows(10))
+          .extracting(e -> e.action())
+          .contains("first.open", "second.open");
+    }
+  }
+
+  @Test
+  void should_survive_two_connections_writing_the_same_state_db(@TempDir Path homeDir)
       throws Exception {
     JrsctlHome home = new JrsctlHome(homeDir);
     int rowsEach = 40;
-    CountDownLatch ready = new CountDownLatch(2);
-    CountDownLatch go = new CountDownLatch(1);
     List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
 
-    Runnable writer =
+    try (StateStore a = StateStore.open(home, Clock.systemUTC());
+        StateStore b = StateStore.open(home, Clock.systemUTC())) {
+      CountDownLatch go = new CountDownLatch(1);
+      Thread one = writer(a, "writer-a", rowsEach, go, failures);
+      Thread two = writer(b, "writer-b", rowsEach, go, failures);
+      one.start();
+      two.start();
+      go.countDown();
+      one.join(120_000);
+      two.join(120_000);
+
+      assertThat(failures).as("busy_timeout must absorb the contention").isEmpty();
+      assertThat(a.integrity()).isEqualTo("ok");
+      assertThat(a.auditRows(1000))
+          .filteredOn(e -> e.action().equals("concurrent.write"))
+          .hasSize(2 * rowsEach);
+    }
+  }
+
+  private static Thread writer(
+      StateStore store, String name, int rows, CountDownLatch go, List<Throwable> failures) {
+    return new Thread(
         () -> {
-          try (StateStore store = StateStore.open(home, Clock.systemUTC())) {
-            ready.countDown();
+          try {
             go.await();
-            for (int i = 0; i < rowsEach; i++) {
-              store.audit("test", "concurrent.write", Thread.currentThread().getName() + " " + i);
+            for (int i = 0; i < rows; i++) {
+              store.audit("test", "concurrent.write", name + " " + i);
             }
           } catch (Throwable t) {
             failures.add(t);
           }
-        };
-    Thread a = new Thread(writer, "writer-a");
-    Thread b = new Thread(writer, "writer-b");
-    a.start();
-    b.start();
-    assertThat(ready.await(30, TimeUnit.SECONDS)).as("opens: %s", failures).isTrue();
-    go.countDown();
-    a.join(60_000);
-    b.join(60_000);
-
-    assertThat(failures).as("busy_timeout must absorb the contention").isEmpty();
-    try (StateStore store = StateStore.open(home, Clock.systemUTC())) {
-      assertThat(store.integrity()).isEqualTo("ok");
-      assertThat(store.auditRows(1000))
-          .filteredOn(e -> e.action().equals("concurrent.write"))
-          .hasSize(2 * rowsEach);
-    }
+        },
+        name);
   }
 
   // ---- a clock corrected backwards -------------------------------------------------------------

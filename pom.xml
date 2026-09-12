@@ -74,6 +74,10 @@
     <surefire.forkCount>1C</surefire.forkCount>
     <surefire.reuseForks>true</surefire.reuseForks>
     <jacoco.version>0.8.12</jacoco.version>
+    <!-- No floor by default: app is mostly picocli wiring the acceptance suite drives through the
+         real jar, and dist and acceptance produce no coverage of their own. core and ops set
+         their own minimum (roadmap item 18). -->
+    <jacoco.line.minimum>0.00</jacoco.line.minimum>
     <!-- 9.2.0 (2024) cannot reach today's NVD even with an API key (403); 13.0.0 can. -->
     <dependency-check.version>13.0.0</dependency-check.version>
 
@@ -247,6 +251,30 @@
               <id>report</id>
               <phase>verify</phase>
               <goals><goal>report</goal></goals>
+            </execution>
+            <!-- Roadmap item 18: a line-coverage floor on the two modules that decide what
+                 happens to an operator's server. The number is a property so each module can
+                 state its own and the value is visible in one place; a module that sets
+                 jacoco.line.minimum to 0.00 is opting out and has to say why. -->
+            <execution>
+              <id>check</id>
+              <phase>verify</phase>
+              <goals><goal>check</goal></goals>
+              <configuration>
+                <haltOnFailure>true</haltOnFailure>
+                <rules>
+                  <rule>
+                    <element>BUNDLE</element>
+                    <limits>
+                      <limit>
+                        <counter>LINE</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>${jacoco.line.minimum}</minimum>
+                      </limit>
+                    </limits>
+                  </rule>
+                </rules>
+              </configuration>
             </execution>
           </executions>
         </plugin>
