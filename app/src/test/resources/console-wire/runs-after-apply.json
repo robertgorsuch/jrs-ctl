@@ -1,0 +1,13 @@
+{
+  "runs" : [ {
+    "id" : "<runId>",
+    "op" : "hotfix.apply",
+    "target" : "JRS-8.2.0-HF-0001",
+    "startedAt" : "<instant>",
+    "finishedAt" : "<instant>",
+    "durationMs" : 0,
+    "outcome" : "succeeded",
+    "rollbackAvailable" : false,
+    "supportBundleAvailable" : true
+  } ]
+}

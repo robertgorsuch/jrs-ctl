@@ -1,0 +1,23 @@
+{
+  "tool" : {
+    "version" : "<version>",
+    "matrixVersion" : "<version>"
+  },
+  "bind" : "127.0.0.1:<port>",
+  "networkMode" : "isolated",
+  "lastRun" : {
+    "id" : "<runId>",
+    "op" : "hotfix.apply",
+    "outcome" : "succeeded",
+    "finishedAt" : "<instant>"
+  },
+  "lock" : {
+    "held" : false
+  },
+  "pendingRuns" : [ ],
+  "snapshots" : {
+    "count" : 0,
+    "bytes" : 0,
+    "retentionDays" : 30
+  }
+}

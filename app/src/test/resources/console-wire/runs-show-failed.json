@@ -1,0 +1,63 @@
+{
+  "id" : "<runId>",
+  "op" : "hotfix.apply",
+  "target" : "JRS-8.2.0-HF-0001",
+  "startedAt" : "<instant>",
+  "finishedAt" : "<instant>",
+  "durationMs" : 0,
+  "outcome" : "failed_rolled_back",
+  "rollbackAvailable" : false,
+  "supportBundleAvailable" : true,
+  "title" : "apply hotfix JRS-8.2.0-HF-0001",
+  "subtitle" : "<runId> · snapshot",
+  "backups" : "snapshots\\snap-1",
+  "steps" : [ {
+    "id" : "verify-signature",
+    "phase" : "verify",
+    "title" : "Verify signature",
+    "why" : "key customer",
+    "status" : "succeeded",
+    "durationMs" : 0
+  }, {
+    "id" : "validate-manifest",
+    "phase" : "verify",
+    "title" : "Validate manifest",
+    "why" : "",
+    "status" : "succeeded",
+    "durationMs" : 0
+  }, {
+    "id" : "snapshot",
+    "phase" : "backup",
+    "title" : "Snapshot files",
+    "why" : "1 file",
+    "status" : "succeeded",
+    "durationMs" : 0
+  }, {
+    "id" : "stage-files",
+    "phase" : "apply",
+    "title" : "Stage files",
+    "why" : "staging under runs/",
+    "status" : "rolled_back",
+    "durationMs" : 0
+  }, {
+    "id" : "atomic-swap",
+    "phase" : "apply",
+    "title" : "Atomic swap",
+    "why" : "",
+    "status" : "rolled_back",
+    "durationMs" : 0
+  }, {
+    "id" : "record-installed",
+    "phase" : "record",
+    "title" : "Record installed",
+    "why" : "",
+    "status" : "pending",
+    "durationMs" : null
+  } ],
+  "failure" : {
+    "stepId" : "atomic-swap",
+    "cause" : "simulated failure of atomic-swap",
+    "backups" : [ ],
+    "nextAction" : "fix the cause and plan again; rolled back to phase apply"
+  }
+}

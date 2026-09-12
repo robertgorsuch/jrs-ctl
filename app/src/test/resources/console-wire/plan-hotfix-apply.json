@@ -1,0 +1,49 @@
+{
+  "planId" : "fake-apply-<uuid>",
+  "plan" : {
+    "op" : "hotfix.apply",
+    "title" : "Plan: apply hotfix JRS-8.2.0-HF-0001",
+    "fingerprint" : "sha256:<hex>",
+    "validUntil" : "<instant>",
+    "summary" : {
+      "filesTouched" : "1 file: webapps\\jasperserver-pro\\scripts\\jrsctl-fix.js",
+      "service" : "No service restart",
+      "backups" : "snapshots\\snap-1",
+      "rollbackPoints" : "apply: snapshot snap-1",
+      "strategy" : "snapshot",
+      "downtime" : "No downtime expected.",
+      "warnings" : [ "no service restart needed" ]
+    },
+    "steps" : [ {
+      "id" : "verify-signature",
+      "phase" : "verify",
+      "title" : "Verify signature",
+      "why" : "key customer"
+    }, {
+      "id" : "validate-manifest",
+      "phase" : "verify",
+      "title" : "Validate manifest",
+      "why" : ""
+    }, {
+      "id" : "snapshot",
+      "phase" : "backup",
+      "title" : "Snapshot files",
+      "why" : "1 file"
+    }, {
+      "id" : "stage-files",
+      "phase" : "apply",
+      "title" : "Stage files",
+      "why" : "staging under runs/"
+    }, {
+      "id" : "atomic-swap",
+      "phase" : "apply",
+      "title" : "Atomic swap",
+      "why" : ""
+    }, {
+      "id" : "record-installed",
+      "phase" : "record",
+      "title" : "Record installed",
+      "why" : ""
+    } ]
+  }
+}

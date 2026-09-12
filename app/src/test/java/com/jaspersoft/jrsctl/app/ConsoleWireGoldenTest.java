@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,6 +45,96 @@ class ConsoleWireGoldenTest {
     } finally {
       TestAdapterFactory.unreachable = false;
     }
+  }
+
+  @Test
+  void should_match_the_golden_when_a_hotfix_run_succeeds() throws Exception {
+    Path home = tmp.resolve("home");
+    Path bundle = tmp.resolve("hf.zip");
+    Files.writeString(bundle, "zip");
+    FakeHotfixOperations fake = new FakeHotfixOperations();
+    HotfixOps.factory = services -> fake;
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      HttpResponse<String> planned =
+          console.post(
+              "/api/plan",
+              "{\"op\":\"hotfix.apply\",\"args\":{\"bundle\":\""
+                  + bundle.toString().replace("\\", "\\\\")
+                  + "\"}}");
+      assertGolden("plan-hotfix-apply", planned, home);
+      String planId = Json.mapper().readTree(planned.body()).get("planId").asText();
+
+      HttpResponse<String> started =
+          console.post("/api/run", "{\"planId\":\"" + planId + "\",\"confirm\":true}");
+      assertGolden("run-started", started, home);
+      String runId = Json.mapper().readTree(started.body()).get("runId").asText();
+      waitForTerminal(console, runId);
+
+      assertGolden("runs-after-apply", console.get("/api/runs"), home);
+      assertGolden("runs-show-succeeded", console.get("/api/runs/" + runId), home);
+      assertGolden("health-after-apply", console.get("/api/health"), home);
+      assertGolden("hotfixes-installed", console.get("/api/hotfixes"), home);
+    } finally {
+      HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
+    }
+  }
+
+  @Test
+  void should_match_the_golden_when_a_hotfix_run_fails() throws Exception {
+    Path home = tmp.resolve("home");
+    Path bundle = tmp.resolve("hf.zip");
+    Files.writeString(bundle, "zip");
+    FakeHotfixOperations fake = new FakeHotfixOperations();
+    fake.failStep = Optional.of("atomic-swap");
+    HotfixOps.factory = services -> fake;
+    try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
+      HttpResponse<String> planned =
+          console.post(
+              "/api/plan",
+              "{\"op\":\"hotfix.apply\",\"args\":{\"bundle\":\""
+                  + bundle.toString().replace("\\", "\\\\")
+                  + "\"}}");
+      String planId = Json.mapper().readTree(planned.body()).get("planId").asText();
+      HttpResponse<String> started =
+          console.post("/api/run", "{\"planId\":\"" + planId + "\",\"confirm\":true}");
+      String runId = Json.mapper().readTree(started.body()).get("runId").asText();
+      waitForTerminal(console, runId);
+      assertGolden("runs-show-failed", console.get("/api/runs/" + runId), home);
+    } finally {
+      HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
+    }
+  }
+
+  /**
+   * Polls until {@code runId} leaves {@code running}, then until the console's own run lock clears.
+   * The two settle a moment apart: the state store's terminal write happens inside {@code
+   * RunManager}'s worker body, while the in-process "a run is live" flag {@code /api/health}'s
+   * {@code lock} reports from is only cleared once that body returns. Waiting for both keeps a
+   * golden captured right after the run from reading the lock mid-release.
+   */
+  private static void waitForTerminal(ConsoleFixture console, String runId) throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+    while (System.nanoTime() < deadline) {
+      String outcome =
+          Json.mapper().readTree(console.get("/api/runs/" + runId).body()).get("outcome").asText();
+      if (!outcome.equals("running")) {
+        waitForLockRelease(console, deadline);
+        return;
+      }
+      Thread.sleep(50);
+    }
+    throw new AssertionError("run " + runId + " never reached a terminal state");
+  }
+
+  private static void waitForLockRelease(ConsoleFixture console, long deadline) throws Exception {
+    while (System.nanoTime() < deadline) {
+      JsonNode health = Json.mapper().readTree(console.get("/api/health").body());
+      if (!health.path("lock").path("held").asBoolean(false)) {
+        return;
+      }
+      Thread.sleep(50);
+    }
+    throw new AssertionError("the run lock was never released");
   }
 
   static void assertGolden(String name, HttpResponse<String> response, Path home)
