@@ -62,7 +62,7 @@
     <assertj.version>3.27.7</assertj.version>
     <wiremock.version>3.13.2</wiremock.version>
     <testcontainers.version>1.21.4</testcontainers.version>
-    <jqwik.version>1.8.4</jqwik.version>
+    <jqwik.version>1.10.1</jqwik.version>
     <mockito.version>5.23.0</mockito.version>
 
     <!-- Build plugins -->
