@@ -45,6 +45,11 @@ drives the packaged jar the way an operator would.
   `scripts\mvn.cmd clean verify`. An incremental build reuses compiled classes for unchanged
   sources, so a deprecation that the new dependency introduces under `-Werror` shows up in CI's
   fresh checkout and not on your machine.
+- What is stale: `scripts\mvn.cmd -N versions:display-dependency-updates` and
+  `scripts\mvn.cmd -N versions:display-plugin-updates`. The ruleset in `build/version-rules.xml`
+  keeps pre-release versions out of the report. Nothing is ever bumped automatically; Dependabot
+  opens the pull requests and a human decides, and a major version is its own change with its own
+  gate.
 - Format before committing: `scripts\mvn.cmd spotless:apply`. The pre-commit hook in `.githooks`
   runs the Spotless check on the staged Java files only; the build scripts set
   `core.hooksPath` to `.githooks` the first time they run, so the hook is active after one
