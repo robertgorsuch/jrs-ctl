@@ -1,9 +1,11 @@
 package com.jaspersoft.jrsctl.core.engine;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Crash recovery for pending runs (spec §5.5, §6.6): lists runs without a terminal state, rebuilds
@@ -67,6 +69,10 @@ public final class Recovery {
   public RunOutcome resume(Plan plan, String runId, Context ctx, RunOptions opts) {
     requirePending(runId);
     Map<String, StepState> journal = journal(runId);
+    List<String> unknown = unknownSteps(plan, journal);
+    if (!unknown.isEmpty()) {
+      return planDrifted(runId, unknown);
+    }
     Context runCtx = forRun(ctx, runId);
     if (journal.containsValue(StepState.ROLLED_BACK)
         || journal.containsValue(StepState.ROLLBACK_FAILED)) {
@@ -102,8 +108,41 @@ public final class Recovery {
   public RunOutcome rollback(Plan plan, String runId, Context ctx) {
     requirePending(runId);
     Map<String, StepState> journal = journal(runId);
+    List<String> unknown = unknownSteps(plan, journal);
+    if (!unknown.isEmpty()) {
+      return planDrifted(runId, unknown);
+    }
     return runner.rollback(
         plan, forRun(ctx, runId), journal, "operator requested rollback of run " + runId);
+  }
+
+  /**
+   * Journaled step ids the rebuilt plan does not carry (assessment item E3): the plan is rebuilt
+   * from its stored arguments, and an installation that changed in between (a customization
+   * registered under WEB-INF adds stop/start steps, say) yields ids the journal never saw, so the
+   * resume index and the rollback targets would line up against the wrong steps.
+   */
+  static List<String> unknownSteps(Plan plan, Map<String, StepState> journal) {
+    Set<String> known = new HashSet<>();
+    for (Step step : plan.steps()) {
+      known.add(step.id());
+    }
+    return journal.keySet().stream().filter(id -> !known.contains(id)).sorted().toList();
+  }
+
+  private static RunOutcome planDrifted(String runId, List<String> unknown) {
+    return new RunOutcome.PrecheckFailed(
+        unknown.get(0),
+        "run "
+            + runId
+            + " journaled steps the rebuilt plan does not contain ("
+            + String.join(", ", unknown)
+            + "); the installation or its configuration changed since the run started, so the"
+            + " stored plan cannot be replayed",
+        "put the installation back the way it was when the run started and recover again, or"
+            + " restore what `jrsctl runs show "
+            + runId
+            + "` lists by hand");
   }
 
   private void requirePending(String runId) {

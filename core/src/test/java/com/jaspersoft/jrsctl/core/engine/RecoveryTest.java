@@ -207,6 +207,50 @@ class RecoveryTest {
         .endsWith("s2:FAILED", "s2:ROLLED_BACK", "s1:ROLLED_BACK");
   }
 
+  /**
+   * The plan is rebuilt from its stored arguments; an installation that changed in between (a
+   * customization registered under WEB-INF adds stop/start steps) yields step ids the journal never
+   * saw, and resume or rollback would line up against the wrong steps (item E3).
+   */
+  @Test
+  void should_refuse_recovery_when_the_rebuilt_plan_lacks_a_journaled_step() {
+    journalInterruptedAt("s1", "s2");
+    Plan drifted =
+        EngineFixture.plan("p1", fx.step("s1", "apply"), fx.step("stop-service", "apply"));
+
+    RunOutcome resumed = recovery.resume(drifted, RUN, fx.context(RUN), RunOptions.DEFAULT);
+    RunOutcome rolledBack = recovery.rollback(drifted, RUN, fx.context(RUN));
+
+    for (RunOutcome outcome : List.of(resumed, rolledBack)) {
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      assertThat(((RunOutcome.PrecheckFailed) outcome).message()).contains("s2");
+      assertThat(outcome.exitCode()).isEqualTo(2);
+    }
+    assertThat(fx.trace).isEmpty();
+    assertThat(fx.store.pendingRuns()).hasSize(1);
+  }
+
+  /**
+   * A step whose compensation failed before the crash is compensated again, not skipped: skipping
+   * it ended the run as ROLLED_BACK (exit 3) with its partial change standing (item E4).
+   */
+  @Test
+  void should_retry_a_failed_compensation_when_rolling_back_a_pending_run() {
+    journalInterruptedAt("s1", "s2");
+    fx.store.appendTransition(
+        RUN, "s2", "apply", Optional.of("RUNNING"), "FAILED", Optional.of("half swapped"));
+    fx.store.appendTransition(
+        RUN, "s2", "apply", Optional.of("FAILED"), "ROLLBACK_FAILED", Optional.of("disk full"));
+    Plan plan = EngineFixture.plan("p1", fx.step("s1", "apply"), fx.step("s2", "apply"));
+
+    RunOutcome outcome = recovery.rollback(plan, RUN, fx.context(RUN));
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(fx.trace).containsExactly("comp:s2", "comp:s1");
+    assertThat(fx.store.transitions(RUN).stream().map(t -> t.stepId() + ":" + t.toState()))
+        .endsWith("s2:ROLLBACK_FAILED", "s2:ROLLED_BACK", "s1:ROLLED_BACK");
+  }
+
   @Test
   void should_skip_irreversible_steps_and_report_exit_4_when_a_rollback_compensation_fails() {
     journalInterruptedAt("s1", "s2", "s3", "s4");

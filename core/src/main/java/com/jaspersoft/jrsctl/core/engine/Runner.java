@@ -248,7 +248,13 @@ public final class Runner {
       List<Integer> targets = new ArrayList<>(succeededMutating);
       for (int i = 0; i < steps.size(); i++) {
         StepState st = states.get(steps.get(i).id());
-        if ((st == StepState.RUNNING || st == StepState.FAILED) && steps.get(i).mutating()) {
+        // A step whose compensation already failed once is tried again, not skipped: skipping it
+        // ended the run as ROLLED_BACK with its partial change standing (assessment item E4).
+        // Compensations are idempotent (spec §6), so the retry is safe; a second failure ends the
+        // run as rollback-incomplete, exit 4, naming the step.
+        boolean pending =
+            st == StepState.RUNNING || st == StepState.FAILED || st == StepState.ROLLBACK_FAILED;
+        if (pending && steps.get(i).mutating()) {
           targets.add(i);
         }
       }
