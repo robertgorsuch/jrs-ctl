@@ -16,11 +16,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -251,13 +254,13 @@ public final class InitOperation {
             values.add(
                 new InitReport.Detected(
                     SERVICE_MANAGER, d.kind().name().toLowerCase(Locale.ROOT), d.detail())));
-    Optional<String> managed =
+    Optional<ManagedService> managed =
         switch (platform.os()) {
-          case WINDOWS -> windowsService(platform.processes());
+          case WINDOWS -> windowsService(platform.processes(), layout.tomcatDir());
           case LINUX ->
               init.orElseThrow().supervised()
                   ? Optional.empty()
-                  : systemdUnit(platform.processes());
+                  : systemdUnit(platform.processes(), layout.tomcatDir());
         };
     ServiceConfig.Kind managedKind =
         switch (platform.os()) {
@@ -273,11 +276,21 @@ public final class InitOperation {
       values.add(
           new InitReport.Detected(
               "service.kind", Config.Service.kindToYaml(managedKind), "detected via " + probeName));
+      ManagedService service = managed.get();
       values.add(
-          new InitReport.Detected("service.name", managed.get(), "detected via " + probeName));
+          new InitReport.Detected(
+              "service.name",
+              service.name(),
+              "detected via "
+                  + probeName
+                  + (service.pathConfirmed()
+                      ? "; its executable is under " + layout.tomcatDir()
+                      : "; chosen by name only, its executable could not be confirmed under "
+                          + layout.tomcatDir()
+                          + " (check it before the first stop)")));
       return new Config.Service(
           Optional.of(managedKind),
-          managed,
+          Optional.of(service.name()),
           Optional.empty(),
           Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS);
     }
@@ -340,7 +353,14 @@ public final class InitOperation {
         Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS);
   }
 
-  private static Optional<String> windowsService(ProcessRunner runner) {
+  /**
+   * A managed service found by name, and whether its executable was confirmed to live under the
+   * detected Tomcat directory. On a host with a second Tomcat a name alone can pick the wrong one,
+   * and a hotfix would then stop the wrong server (assessment item P4).
+   */
+  record ManagedService(String name, boolean pathConfirmed) {}
+
+  private static Optional<ManagedService> windowsService(ProcessRunner runner, Path tomcatDir) {
     List<String> names = new ArrayList<>();
     run(
         runner,
@@ -351,10 +371,12 @@ public final class InitOperation {
             names.add(m.group(1));
           }
         });
-    return pickServiceName(names);
+    // `sc qc` prints BINARY_PATH_NAME, the service executable (procrun's tomcatNw.exe under the
+    // Tomcat directory for a Tomcat service).
+    return choose(names, name -> mentions(query(runner, List.of("sc.exe", "qc", name)), tomcatDir));
   }
 
-  private static Optional<String> systemdUnit(ProcessRunner runner) {
+  private static Optional<ManagedService> systemdUnit(ProcessRunner runner, Path tomcatDir) {
     List<String> names = new ArrayList<>();
     run(
         runner,
@@ -366,33 +388,78 @@ public final class InitOperation {
             names.add(space < 0 ? stripped : stripped.substring(0, space));
           }
         });
-    return pickServiceName(names);
+    return choose(
+        names,
+        name ->
+            mentions(
+                query(
+                    runner,
+                    List.of("systemctl", "show", name, "-p", "ExecStart", "-p", "ExecStop")),
+                tomcatDir));
+  }
+
+  private static List<String> query(ProcessRunner runner, List<String> command) {
+    List<String> lines = new ArrayList<>();
+    run(runner, command, lines::add);
+    return lines;
+  }
+
+  /** Whether any line names a path under {@code tomcatDir}, either separator, either case. */
+  static boolean mentions(List<String> lines, Path tomcatDir) {
+    String dir =
+        tomcatDir
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace('/', '\\')
+            .toLowerCase(Locale.ROOT);
+    return lines.stream()
+        .map(l -> l.replace('/', '\\').toLowerCase(Locale.ROOT))
+        .anyMatch(l -> l.contains(dir));
   }
 
   /**
-   * Prefers the application-server service: a name mentioning both jasper and tomcat (the bundled
-   * installer registers {@code jasperreportsTomcat} next to {@code jasperreportsPostgreSQL}), then
-   * any tomcat, then any jasper name that is not the database service.
+   * The best-ranked candidate whose executable is confirmed, else the best-ranked one, unconfirmed.
    */
+  static Optional<ManagedService> choose(List<String> names, Predicate<String> confirmed) {
+    List<String> ranked = rankServiceNames(names);
+    for (String name : ranked) {
+      if (confirmed.test(name)) {
+        return Optional.of(new ManagedService(name, true));
+      }
+    }
+    return ranked.stream().findFirst().map(name -> new ManagedService(name, false));
+  }
+
   static Optional<String> pickServiceName(List<String> names) {
+    return rankServiceNames(names).stream().findFirst();
+  }
+
+  /**
+   * Prefers the application-server service: names mentioning both jasper and tomcat (the bundled
+   * installer registers {@code jasperreportsTomcat} next to {@code jasperreportsPostgreSQL}), then
+   * any tomcat, then any jasper name that is not the database service; each name once.
+   */
+  static List<String> rankServiceNames(List<String> names) {
     List<String> lower = names.stream().map(n -> n.toLowerCase(Locale.ROOT)).toList();
+    Set<String> ranked = new LinkedHashSet<>();
     for (int i = 0; i < names.size(); i++) {
       if (lower.get(i).contains("jasper") && lower.get(i).contains("tomcat")) {
-        return Optional.of(names.get(i));
+        ranked.add(names.get(i));
       }
     }
     for (int i = 0; i < names.size(); i++) {
       if (lower.get(i).contains("tomcat")) {
-        return Optional.of(names.get(i));
+        ranked.add(names.get(i));
       }
     }
     for (int i = 0; i < names.size(); i++) {
       String n = lower.get(i);
       if (n.contains("jasper") && !n.contains("postgres") && !n.contains("sql")) {
-        return Optional.of(names.get(i));
+        ranked.add(names.get(i));
       }
     }
-    return Optional.empty();
+    return List.copyOf(ranked);
   }
 
   private static void run(

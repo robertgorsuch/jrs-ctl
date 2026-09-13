@@ -140,6 +140,13 @@ class InitOperationTest {
               "DISPLAY_NAME: Print Spooler",
               "SERVICE_NAME: jasperreportsTomcat",
               "DISPLAY_NAME: JasperReports Server Tomcat"));
+      fake.platform.on(
+          List.of("sc.exe", "qc"),
+          FakePlatform.Response.ok(
+              "SERVICE_NAME: jasperreportsTomcat",
+              "        BINARY_PATH_NAME   : \""
+                  + install.resolve("tomcat").resolve("bin").resolve("tomcat9.exe")
+                  + "\" //RS//jasperreportsTomcat"));
       InitOperation init = new InitOperation(fake.build(), Optional::empty);
 
       InitReport report = init.detect(Optional.of(install));
@@ -147,12 +154,44 @@ class InitOperationTest {
 
       assertThat(config.service().kind()).contains(ServiceConfig.Kind.WINDOWS_SERVICE);
       assertThat(config.service().name()).contains("jasperreportsTomcat");
+      assertThat(report.values())
+          .filteredOn(v -> v.key().equals("service.name"))
+          .singleElement()
+          .satisfies(v -> assertThat(v.source()).contains("its executable is under"));
       assertThat(config.server().baseUrl())
           .contains(URI.create("http://localhost:8080/jasperserver-pro"));
       assertThat(config.server().tomcatDir())
           .contains(install.toAbsolutePath().normalize().resolve("tomcat"));
       assertThat(config.server().runAsUser()).isEmpty();
       assertThat(fake.platform.invocations).anyMatch(c -> c.get(0).equals("sc.exe"));
+    }
+  }
+
+  /**
+   * A second Tomcat on the host: the service picked by name alone is kept, but the report says its
+   * executable was not confirmed under the detected Tomcat directory (assessment item P4).
+   */
+  @Test
+  void should_flag_a_service_chosen_by_name_when_its_executable_is_elsewhere() throws Exception {
+    Path install = FakeLayout.windows(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.WINDOWS)) {
+      fake.platform.on(
+          List.of("sc.exe", "query"),
+          FakePlatform.Response.ok("SERVICE_NAME: Tomcat9", "DISPLAY_NAME: Apache Tomcat 9"));
+      fake.platform.on(
+          List.of("sc.exe", "qc"),
+          FakePlatform.Response.ok(
+              "SERVICE_NAME: Tomcat9",
+              "        BINARY_PATH_NAME   : \"C:\\other\\tomcat\\bin\\tomcat9.exe\" //RS//Tomcat9"));
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.of(install));
+
+      assertThat(report.config().service().name()).contains("Tomcat9");
+      assertThat(report.values())
+          .filteredOn(v -> v.key().equals("service.name"))
+          .singleElement()
+          .satisfies(v -> assertThat(v.source()).contains("chosen by name only"));
     }
   }
 
