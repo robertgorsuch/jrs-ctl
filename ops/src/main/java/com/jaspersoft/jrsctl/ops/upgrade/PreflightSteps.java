@@ -16,7 +16,6 @@ import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
-import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,10 +25,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Phase A of spec §10.2: doctor, target package verification and the {@code samedb} database backup
- * gate. Invariants: none of these steps mutates anything ({@code mutating() == false}); a failing
- * condition is reported from {@code precheck}, so the run ends with exit code 2 and the "nothing
- * changed" outcome; {@code execute} only logs what was verified.
+ * Phase A of spec §10.2: doctor, target package verification and the database backup gate, which
+ * both modes pass through (ADR-0012). Invariants: none of these steps mutates anything ({@code
+ * mutating() == false}); a failing condition is reported from {@code precheck}, so the run ends
+ * with exit code 2 and the "nothing changed" outcome; {@code execute} only logs what was verified.
  */
 final class PreflightSteps {
 
@@ -38,10 +37,14 @@ final class PreflightSteps {
   static final String CONFIRM_DB_BACKUP = "confirm-db-backup";
   static final String AUDIT_DB_BACKUP_CONFIRMED = "upgrade.db-backup-confirmed";
 
-  /** Gate message of spec §10.1; the CLI prints the same sentence when the flag is missing. */
+  /**
+   * Gate message of spec §10.1 (ADR-0012); the CLI prints the same sentence when the flag is
+   * missing.
+   */
   static final String DB_BACKUP_GATE =
-      "--mode samedb migrates the repository database in place and jrsctl cannot undo that;"
-          + " back up the database yourself and pass --db-backup-confirmed";
+      "the vendor upgrade changes the repository database (samedb migrates it in place, newdb"
+          + " drops and recreates it) and jrsctl cannot undo that; back up the database yourself"
+          + " and pass --db-backup-confirmed";
 
   /**
    * Doctor items whose FAIL is judged against the current server, not the target: the compat and
@@ -301,14 +304,12 @@ final class PreflightSteps {
 
     @Override
     public String detail() {
-      return "samedb only: requires --db-backup-confirmed (audited)";
+      return "both modes change the repository database: requires --db-backup-confirmed (audited;"
+          + " ADR-0012)";
     }
 
     @Override
     public CheckResult precheck(Context ctx) {
-      if (in.options().mode() != Mode.SAMEDB) {
-        return CheckResult.pass();
-      }
       if (!in.options().dbBackupConfirmed()) {
         return CheckResult.fail(DB_BACKUP_GATE, "re-run with --db-backup-confirmed");
       }
@@ -321,7 +322,8 @@ final class PreflightSteps {
           .audit(
               rt.actor(),
               AUDIT_DB_BACKUP_CONFIRMED,
-              "samedb upgrade to "
+              in.options().mode().vendorSuffix()
+                  + " upgrade to "
                   + in.options().toVersion()
                   + " in run "
                   + ctx.runId()

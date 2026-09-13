@@ -23,9 +23,10 @@ import picocli.CommandLine.Spec;
 /**
  * {@code jrsctl upgrade} (spec §10.4): plans and runs a vendor upgrade, and {@code upgrade rollback
  * <runId> --to-point B|C} restores the backups of an earlier upgrade run. Invariants: {@code --mode
- * newdb} is the default; {@code --mode samedb} without {@code --db-backup-confirmed} exits 2 before
- * anything is planned and prints the spec §10.1 gate; the plan is always shown and confirmed
- * through {@link PlanExecutor} like every mutating command; an unsupported upgrade path exits 6.
+ * newdb} is the default; either mode without {@code --db-backup-confirmed} exits 2 before anything
+ * is planned and prints the spec §10.1 gate (ADR-0012: both modes change the repository database in
+ * a way jrsctl cannot undo); the plan is always shown and confirmed through {@link PlanExecutor}
+ * like every mutating command; an unsupported upgrade path exits 6.
  */
 @Command(
     name = "upgrade",
@@ -60,13 +61,16 @@ final class UpgradeCommand implements Callable<Integer> {
       names = "--mode",
       paramLabel = "newdb|samedb",
       defaultValue = "newdb",
-      description = "newdb (default) creates a new repository database; samedb migrates in place.")
+      description =
+          "newdb (default) drops and recreates the repository database from the full export;"
+              + " samedb migrates its schema in place. jrsctl can undo neither.")
   String mode;
 
   @Option(
       names = "--db-backup-confirmed",
       description =
-          "samedb only: confirm that the repository database has been backed up (audited).")
+          "Required in both modes: confirm that the repository database has been backed up"
+              + " (audited).")
   boolean dbBackupConfirmed;
 
   @Option(
@@ -104,8 +108,9 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.USAGE, "--mode must be newdb or samedb");
     }
-    if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed) {
-      return ExitCodes.fail(out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage());
+    if (!dbBackupConfirmed) {
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
     }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
@@ -127,9 +132,16 @@ final class UpgradeCommand implements Callable<Integer> {
     }
   }
 
-  static String gateMessage() {
-    return "--mode samedb migrates the repository database in place and jrsctl cannot undo that;"
-        + " back up the database yourself and pass --db-backup-confirmed";
+  static String gateMessage(UpgradeOperations.Mode mode) {
+    String change =
+        switch (mode) {
+          case SAMEDB -> "--mode samedb migrates the repository database in place";
+          case NEWDB ->
+              "--mode newdb drops and recreates the repository database from the full export";
+        };
+    return change
+        + " and jrsctl cannot undo that; back up the database yourself and pass"
+        + " --db-backup-confirmed";
   }
 
   static int report(PrintWriter out, PrintWriter err, boolean json, UpgradeException e) {

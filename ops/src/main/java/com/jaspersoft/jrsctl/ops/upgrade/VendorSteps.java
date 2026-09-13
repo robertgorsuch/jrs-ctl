@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.Durability;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
+import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.MasterProperties;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
@@ -31,8 +32,11 @@ import java.util.Optional;
  * vendor run is the point-B restore of spec §10.1. Two markers in the run directory keep the script
  * from running twice: an attempt marker written and forced to disk <em>before</em> the script is
  * launched, and a done marker written after it reports success. A resume that finds the attempt
- * marker without the done marker cannot know whether {@code js-upgrade-samedb} already migrated the
- * repository database, which jrsctl cannot undo (spec §10.1), so it refuses rather than guess.
+ * marker without the done marker cannot know whether the vendor script already changed the
+ * repository database ({@code js-upgrade-samedb} migrates it in place, {@code js-upgrade-newdb}
+ * drops and recreates it from the point-B full export; ADR-0012), which jrsctl cannot undo (spec
+ * §10.1), so it refuses rather than guess. {@code js-upgrade-newdb} is always given the point-B
+ * full export as its argument: the vendor wrapper refuses to run without one.
  */
 final class VendorSteps {
 
@@ -50,8 +54,17 @@ final class VendorSteps {
   /** Vendor script names of spec §10.2 step 10, tried first when the package ships them. */
   static final String SCRIPT_PREFIX = "js-upgrade-";
 
-  /** Ant target names used through {@code js-ant} when no wrapper script exists. */
-  static final String ANT_TARGET_PREFIX = "upgrade-";
+  /**
+   * Ant target the vendor wrapper itself selects ({@code bin/do-js-upgrade}: {@code
+   * upgrade-minimal-<ce|pro>} with {@code -Dstrategy=standard|inDatabase}), used through {@code
+   * js-ant} when a package ships no wrapper script.
+   */
+  static final String ANT_TARGET_PREFIX = "upgrade-minimal-";
+
+  /** The {@code -Dstrategy} value {@code do-js-upgrade} passes for each mode. */
+  static final String STRATEGY_NEWDB = "standard";
+
+  static final String STRATEGY_SAMEDB = "inDatabase";
 
   private VendorSteps() {}
 
@@ -182,7 +195,46 @@ final class VendorSteps {
     }
 
     String antTarget() {
-      return ANT_TARGET_PREFIX + in.options().mode().vendorSuffix();
+      return ANT_TARGET_PREFIX + edition();
+    }
+
+    /** {@code ce} or {@code pro}: from the server identity, else from the webapp name. */
+    String edition() {
+      ServerIdentity.Edition edition =
+          in.identity().map(ServerIdentity::edition).orElse(ServerIdentity.Edition.UNKNOWN);
+      return switch (edition) {
+        case CE -> "ce";
+        case PRO -> "pro";
+        case UNKNOWN -> in.webappName().endsWith("-pro") ? "pro" : "ce";
+      };
+    }
+
+    String strategy() {
+      return switch (in.options().mode()) {
+        case NEWDB -> STRATEGY_NEWDB;
+        case SAMEDB -> STRATEGY_SAMEDB;
+      };
+    }
+
+    /** The point-B full export, the one argument {@code js-upgrade-newdb} requires (ADR-0012). */
+    private Path fullExport(Context ctx) {
+      return in.snapshots(ctx).fullExport().toAbsolutePath().normalize();
+    }
+
+    /** Arguments for the vendor wrapper: the full export for newdb, nothing for samedb. */
+    List<String> wrapperArgs(Context ctx) {
+      return switch (in.options().mode()) {
+        case NEWDB -> List.of(fullExport(ctx).toString());
+        case SAMEDB -> List.of();
+      };
+    }
+
+    /** What the wrapper would pass to {@code js-ant}, for a package that ships no wrapper. */
+    List<String> antArgs(Context ctx) {
+      return switch (in.options().mode()) {
+        case NEWDB -> List.of("-Dstrategy=" + STRATEGY_NEWDB, "-DimportFile=" + fullExport(ctx));
+        case SAMEDB -> List.of("-Dstrategy=" + STRATEGY_SAMEDB);
+      };
     }
 
     private Path marker(Context ctx) {
@@ -210,9 +262,14 @@ final class VendorSteps {
 
     @Override
     public String detail() {
+      boolean newdb = in.options().mode() == UpgradeOperations.Mode.NEWDB;
       return scriptName()
+          + (newdb ? " <point-B full export>" : "")
           + " if shipped, else js-ant "
           + antTarget()
+          + " -Dstrategy="
+          + strategy()
+          + (newdb ? " -DimportFile=<point-B full export>" : "")
           + "; JAVA_HOME="
           + rt.config().vendor().javaHome().map(Path::toString).orElse("<unset>")
           + "; timeout "
@@ -223,7 +280,9 @@ final class VendorSteps {
     /*
      * Not irreversible: the vendor script cannot be undone in place, but spec §10.1 defines its
      * undo as the restore of rollback point B, and that is exactly what compensate() performs.
-     * For --mode samedb the database migration stays; the plan summary says so in plain text.
+     * The repository database change stays in both modes (samedb migrates it, newdb drops and
+     * recreates it; ADR-0012); the plan summary says so in plain text and the run does not start
+     * without --db-backup-confirmed.
      */
     @Override
     public boolean irreversible() {
@@ -239,6 +298,14 @@ final class VendorSteps {
       if (rt.config().vendor().javaHome().isEmpty()) {
         return CheckResult.fail(
             "vendor.javaHome is not set", "set vendor.javaHome to the JDK the target needs");
+      }
+      if (in.options().mode() == UpgradeOperations.Mode.NEWDB
+          && !Files.isRegularFile(fullExport(ctx))) {
+        return CheckResult.fail(
+            "the point-B full export "
+                + fullExport(ctx)
+                + " is missing; js-upgrade-newdb rebuilds the repository database from it",
+            "resume the run so the backup phase writes it, or start the upgrade again");
       }
       return CheckResult.pass();
     }
@@ -273,17 +340,24 @@ final class VendorSteps {
         run =
             rt.tools()
                 .run(
-                    new VendorTools.Invocation(withWrapper, scriptName(), List.of(), javaHome),
+                    new VendorTools.Invocation(
+                        withWrapper, scriptName(), wrapperArgs(ctx), javaHome),
                     out,
                     Logs.scope(ctx, this));
       } else {
+        List<String> antArgs = antArgs(ctx);
         Logs.info(
             rt,
             ctx,
             out,
             this,
-            "no " + wrapper.getFileName() + " in the package; using js-ant " + antTarget());
-        run = rt.tools().ant(b, antTarget(), List.of(), javaHome, out, Logs.scope(ctx, this));
+            "no "
+                + wrapper.getFileName()
+                + " in the package; using js-ant "
+                + antTarget()
+                + " "
+                + String.join(" ", antArgs));
+        run = rt.tools().ant(b, antTarget(), antArgs, javaHome, out, Logs.scope(ctx, this));
       }
       return switch (run) {
         case VendorRun.Completed c -> c.ok() ? done(ctx, out) : failed(ctx, c);
@@ -313,17 +387,18 @@ final class VendorSteps {
     }
 
     /**
-     * Refuses a resume that cannot tell whether the migration ran. For {@code --mode samedb} the
-     * script rewrites the repository schema in place, and running it twice is not idempotent, so
-     * the operator has to look at the buildomatic log and say which side of the crash they are on.
+     * Refuses a resume that cannot tell whether the database change ran. {@code samedb} rewrites
+     * the repository schema in place and {@code newdb} drops and recreates the database; neither is
+     * idempotent, so the operator has to look at the buildomatic log and say which side of the
+     * crash they are on.
      */
     private StepResult interrupted(Context ctx) {
       return Failures.recoverable(
           scriptName()
               + " was started in run "
               + ctx.runId()
-              + " and never reported back; whether the repository database was already migrated is"
-              + " unknown",
+              + " and never reported back; whether the repository database was already changed"
+              + " (migrated by samedb, dropped and recreated by newdb) is unknown",
           "read the buildomatic log under "
               + in.target().dir()
               + "; if the upgrade did not run, delete "

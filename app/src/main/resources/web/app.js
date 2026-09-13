@@ -876,12 +876,12 @@ const OPS = {
     fields: () => [
       field('Target version', textInput('to', { mono: true, required: true, placeholder: '8.2.1' })),
       field('Upgrade package', textInput('package', { mono: true, required: true, placeholder: 'C:\\packages\\TIB_js-jrs_8.2.1_bin.zip' })),
-      radioRow('mode', 'Mode', [['samedb', 'samedb (upgrade the schema in place)'], ['newdb', 'newdb (new database, old one untouched)']], 'samedb'),
-      checkField('dbBackupConfirmed', 'I have a database backup', 'jrsctl does not back up the database. Required for samedb.'),
+      radioRow('mode', 'Mode', [['samedb', 'samedb (upgrade the schema in place)'], ['newdb', 'newdb (drop and recreate the database from the full export)']], 'samedb'),
+      checkField('dbBackupConfirmed', 'I have a database backup', 'jrsctl does not back up the database and cannot undo either mode. Required.'),
       checkField('reapplyHotfixes', 'Re-apply installed hotfixes where still applicable', null, true),
     ],
     args: (v) => ({ to: v.to, package: v.package, mode: v.mode, dbBackupConfirmed: !!v.dbBackupConfirmed, reapplyHotfixes: !!v.reapplyHotfixes }),
-    validate: (v) => (!v.to || !v.package ? 'Enter the target version and the package path.' : v.mode === 'samedb' && !v.dbBackupConfirmed ? 'Confirm the database backup before a samedb upgrade.' : null),
+    validate: (v) => (!v.to || !v.package ? 'Enter the target version and the package path.' : !v.dbBackupConfirmed ? 'Confirm the database backup before an upgrade; jrsctl cannot undo the database change in either mode.' : null),
   },
 };
 

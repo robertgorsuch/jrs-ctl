@@ -333,6 +333,34 @@ class Phase5UpgradeTest {
             + target
             + "/\" || exit 1\n"
             + "exit 0\n");
+    // The wrappers a real package ships, with the vendor's argument contract (ADR-0012):
+    // js-upgrade-newdb refuses to run without an existing export file.
+    write(
+        buildomatic.resolve("js-upgrade-newdb.bat"),
+        "@echo off\r\n"
+            + "if \"%~1\"==\"\" (echo JasperReports Server import file[path-to-file-and-filename]"
+            + " expected as input & exit /b 1)\r\n"
+            + "if not exist \"%~1\" (echo import file %~1 does not exist & exit /b 1)\r\n"
+            + "call \"%~dp0js-ant.bat\" upgrade-minimal-pro -Dstrategy=standard"
+            + " \"-DimportFile=%~1\"\r\n"
+            + "exit /b %errorlevel%\r\n");
+    write(
+        buildomatic.resolve("js-upgrade-newdb.sh"),
+        "#!/bin/sh\n"
+            + "if [ -z \"$1\" ]; then echo \"JasperReports Server import file expected as"
+            + " input\"; exit 1; fi\n"
+            + "if [ ! -f \"$1\" ]; then echo \"import file $1 does not exist\"; exit 1; fi\n"
+            + "exec \"$(dirname \"$0\")/js-ant.sh\" upgrade-minimal-pro -Dstrategy=standard"
+            + " \"-DimportFile=$1\"\n");
+    write(
+        buildomatic.resolve("js-upgrade-samedb.bat"),
+        "@echo off\r\n"
+            + "call \"%~dp0js-ant.bat\" upgrade-minimal-pro -Dstrategy=inDatabase\r\n"
+            + "exit /b %errorlevel%\r\n");
+    write(
+        buildomatic.resolve("js-upgrade-samedb.sh"),
+        "#!/bin/sh\n"
+            + "exec \"$(dirname \"$0\")/js-ant.sh\" upgrade-minimal-pro -Dstrategy=inDatabase\n");
   }
 
   private static Path fakePackage(Path pkg) throws IOException {
@@ -446,21 +474,39 @@ class Phase5UpgradeTest {
 
   @Test
   @Order(1)
-  void upgrade_plan_prints_the_five_phases_and_the_newdb_rollback_line() throws Exception {
-    Cli.Result plan =
+  void upgrade_plan_prints_the_five_phases_and_the_newdb_database_warning() throws Exception {
+    // newdb drops and recreates the repository database (ADR-0012), so it is gated like samedb.
+    Cli.Result refused =
         jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--plan")
+            .assertExit(2);
+    assertThat(refused.stderr())
+        .contains("--db-backup-confirmed")
+        .contains("drops and recreates")
+        .contains("cannot undo");
+
+    Cli.Result plan =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--db-backup-confirmed",
+                "--plan")
             .assertExit(0);
 
     assertThat(plan.stdout())
         .contains("Plan  upgrade")
         .contains("preflight")
+        .contains("confirm the operator backed up")
         .contains("backup")
         .contains("vendor-upgrade")
         .contains("reconcile")
         .contains("verify")
-        .contains("complete file and connection restore")
+        .contains("js-upgrade-newdb drops and recreates the repository database")
+        .contains("Rollback restores files only")
         .contains("nothing has changed");
-    assertThat(plan.stdout()).doesNotContain("Rollback restores files only");
+    assertThat(plan.stdout()).doesNotContain("complete file and connection restore");
     assertThat(webapp.resolve(MARKER)).doesNotExist();
     assertThat(webapp.resolve("version.txt")).hasContent("8.2.0");
   }
@@ -505,8 +551,17 @@ class Phase5UpgradeTest {
   @Test
   @Order(3)
   void upgrade_yes_runs_the_vendor_script_and_keeps_point_b_backups() throws Exception {
+    // The package's js-upgrade-newdb refuses to run without an existing export file, so a green
+    // run proves jrsctl passed the point-B full export (ADR-0012).
     Cli.Result run =
-        jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--yes")
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--db-backup-confirmed",
+                "--yes")
             .assertExit(0);
 
     assertThat(run.stdout()).contains("succeeded");

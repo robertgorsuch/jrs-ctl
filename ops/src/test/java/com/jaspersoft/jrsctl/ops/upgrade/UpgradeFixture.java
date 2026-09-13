@@ -201,7 +201,7 @@ public final class UpgradeFixture implements AutoCloseable {
             + "if exist \"%~dp0..\\"
             + FAIL_AFTER_COPY
             + "\" (echo BUILD FAILED after copying the webapp & exit /b 3)\r\n"
-            + "echo %1 >> \"%~dp0..\\js-ant.log\"\r\n"
+            + "echo %* >> \"%~dp0..\\js-ant.log\"\r\n"
             + "exit /b 0\r\n");
     write(
         buildomatic.resolve("js-ant.sh"),
@@ -213,12 +213,60 @@ public final class UpgradeFixture implements AutoCloseable {
             + "if [ -f \"$(dirname \"$0\")/../"
             + FAIL_AFTER_COPY
             + "\" ]; then echo \"BUILD FAILED after copying the webapp\"; exit 3; fi\n"
-            + "echo \"$1\" >> \"$(dirname \"$0\")/../js-ant.log\"\n"
+            + "echo \"$@\" >> \"$(dirname \"$0\")/../js-ant.log\"\n"
             + "exit 0\n");
     exportScripts(buildomatic);
     write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
     write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
+    vendorWrappers(buildomatic);
     executable(buildomatic);
+  }
+
+  /**
+   * The wrappers a real package ships, with the argument contract of the vendor's {@code
+   * bin/do-js-upgrade} (ADR-0012): {@code js-upgrade-newdb} refuses to run without an existing
+   * export file and hands {@code js-ant} the same target and properties the vendor script would;
+   * {@code js-upgrade-samedb} takes no argument.
+   */
+  private static void vendorWrappers(Path buildomatic) throws IOException {
+    write(
+        buildomatic.resolve("js-upgrade-newdb.bat"),
+        "@echo off\r\n"
+            + "if \"%~1\"==\"\" (echo JasperReports Server import file[path-to-file-and-filename]"
+            + " expected as input & exit /b 1)\r\n"
+            + "if not exist \"%~1\" (echo import file %~1 does not exist & exit /b 1)\r\n"
+            + "call \"%~dp0js-ant.bat\" upgrade-minimal-pro -Dstrategy=standard"
+            + " \"-DimportFile=%~1\"\r\n"
+            + "exit /b %errorlevel%\r\n");
+    write(
+        buildomatic.resolve("js-upgrade-newdb.sh"),
+        "#!/bin/sh\n"
+            + "if [ -z \"$1\" ]; then echo \"JasperReports Server import file expected as"
+            + " input\"; exit 1; fi\n"
+            + "if [ ! -f \"$1\" ]; then echo \"import file $1 does not exist\"; exit 1; fi\n"
+            + "exec \"$(dirname \"$0\")/js-ant.sh\" upgrade-minimal-pro -Dstrategy=standard"
+            + " \"-DimportFile=$1\"\n");
+    write(
+        buildomatic.resolve("js-upgrade-samedb.bat"),
+        "@echo off\r\n"
+            + "call \"%~dp0js-ant.bat\" upgrade-minimal-pro -Dstrategy=inDatabase\r\n"
+            + "exit /b %errorlevel%\r\n");
+    write(
+        buildomatic.resolve("js-upgrade-samedb.sh"),
+        "#!/bin/sh\n"
+            + "exec \"$(dirname \"$0\")/js-ant.sh\" upgrade-minimal-pro -Dstrategy=inDatabase\n");
+  }
+
+  /** Turns the package into one that ships no {@code js-upgrade-*} wrapper, only {@code js-ant}. */
+  public void removeVendorWrappers() throws IOException {
+    for (String name :
+        List.of(
+            "js-upgrade-newdb.bat",
+            "js-upgrade-newdb.sh",
+            "js-upgrade-samedb.bat",
+            "js-upgrade-samedb.sh")) {
+      Files.deleteIfExists(packageDir.resolve("buildomatic").resolve(name));
+    }
   }
 
   private static void executable(Path dir) throws IOException {

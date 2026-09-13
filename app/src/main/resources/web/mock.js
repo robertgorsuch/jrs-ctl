@@ -244,7 +244,7 @@ function buildPlan(op, args) {
           strategy: 'Vendor buildomatic ' + mode,
           downtime: 'Running stops the server for roughly 20 to 40 minutes.',
           warnings: [
-            mode === 'samedb' && !a.dbBackupConfirmed ? 'Confirm that a database backup exists before running a samedb upgrade. jrsctl does not back up the database.' : null,
+            !a.dbBackupConfirmed ? 'Confirm that a database backup exists before running an upgrade. jrsctl does not back up the database and cannot undo the change in either mode.' : null,
             a.reapplyHotfixes ? 'Installed hotfixes are re-applied only where the manifest says they still apply to ' + (a.to || '8.2.1') + '.' : 'Installed hotfixes will not be re-applied.',
           ].filter(Boolean) },
         steps: stripSim(UPGRADE_STEPS), sim: { steps: UPGRADE_STEPS, id: a.to || '8.2.1' },

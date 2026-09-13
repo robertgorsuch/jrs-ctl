@@ -33,6 +33,7 @@ class UpgradePlanTest {
           .containsExactly(
               "doctor",
               "verify-target-package",
+              "confirm-db-backup",
               "full-export-stop-service",
               "full-export",
               "full-export-start-service",
@@ -55,7 +56,11 @@ class UpgradePlanTest {
       assertThat(plan.summary().strategy()).isEqualTo("vendor-cli");
       assertThat(plan.summary().warnings())
           .contains(DefaultUpgradeOperations.NEWDB_WARNING)
+          .contains(DefaultUpgradeOperations.FILES_ONLY_WARNING)
           .doesNotContain(DefaultUpgradeOperations.SAMEDB_WARNING);
+      assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").detail())
+          .contains("js-upgrade-newdb <point-B full export>")
+          .contains("-DimportFile=<point-B full export>");
       assertThat(plan.summary().rollbackPointsByPhase())
           .containsKeys("preflight", "backup", "vendor-upgrade", "reconcile", "verify");
       assertThat(plan.summary().rollbackPointsByPhase().get("verify"))
@@ -84,7 +89,9 @@ class UpgradePlanTest {
       assertThat(plan.summary().warnings())
           .contains(
               "Rollback restores files only. Restore the database from your own backup before"
-                  + " running rollback.");
+                  + " running rollback.")
+          .contains(DefaultUpgradeOperations.SAMEDB_WARNING)
+          .doesNotContain(DefaultUpgradeOperations.NEWDB_WARNING);
       assertThat(plan.summary().target()).endsWith("(samedb)");
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").title())
           .contains("js-upgrade-samedb");
@@ -106,6 +113,39 @@ class UpgradePlanTest {
 
       assertThat(result).isInstanceOf(CheckResult.Fail.class);
       assertThat(((CheckResult.Fail) result).message()).contains("--db-backup-confirmed");
+    }
+  }
+
+  @Test
+  void should_fail_confirm_db_backup_precheck_when_newdb_not_confirmed() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  new UpgradeOptions(
+                      UpgradeFixture.NEW_VERSION, f.packageDir, Mode.NEWDB, false, false));
+
+      CheckResult result = UpgradeFixture.step(plan, "confirm-db-backup").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("--db-backup-confirmed")
+          .contains("drops and recreates");
+    }
+  }
+
+  @Test
+  void should_fail_run_vendor_upgrade_precheck_when_newdb_and_full_export_missing()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result = UpgradeFixture.step(plan, "run-vendor-upgrade").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("full-export")
+          .contains("js-upgrade-newdb rebuilds the repository database from it");
     }
   }
 

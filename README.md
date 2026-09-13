@@ -33,7 +33,7 @@ Designed for operational safety in enterprise and air-gapped environments, `jrsc
 
 ### 4. Server Upgrades & Customization Tracking
 * **Upgrade Orchestration (`jrsctl upgrade`, `jrsctl upgrade rollback`)**: Automates JasperReports Server version upgrades using vendor `buildomatic` scripts, enforcing pre-upgrade backups (export catalog, keystore, webapp, configurations).
-* **Safe Database Modes**: Defaults to isolated new-database mode for full file and connection rollback, and requires explicit confirmation (`--db-backup-confirmed`) for same-database upgrades.
+* **Honest Database Modes**: `newdb` (default) has the vendor script drop and recreate the repository database from the full export; `samedb` migrates its schema in place. jrsctl can undo neither, so both modes require an explicit, audited confirmation (`--db-backup-confirmed`) that a database backup exists, and rollback restores files only.
 * **Customization Registry (`jrsctl customizations register|unregister|list|diff`)**: Tracks site-specific themes, plugins, and configuration files across upgrades, performing three-way diffs to re-apply changes or surface conflicts.
 * **Post-Upgrade Hotfix Reconciliation**: Classifies previously installed hotfixes as superseded or re-applicable against the target release.
 

@@ -41,25 +41,31 @@ import java.util.Optional;
  * Builds the upgrade and rollback plans of spec §10. Invariants: planning reads the installation,
  * the target package and the state store but mutates neither the server nor the installation (it
  * may re-pack a hotfix bundle copy under {@code runs/upgrade-reapply/} for embedding); the upgrade
- * plan always carries the five phases in spec order and the {@code samedb} warning sentence of spec
- * §10.1 when that mode is chosen; an upgrade path the compat matrix does not list is refused at
- * planning time with exit code 6 whenever the server is reachable; the fingerprint covers the
- * server identity, the target package contents, the resolved configuration and the target version
- * and mode.
+ * plan always carries the five phases in spec order, the {@code confirm-db-backup} step and the
+ * files-only rollback sentence of spec §10.1 in both modes (ADR-0012: {@code newdb} drops and
+ * recreates the repository database, so neither mode's database change can be undone by jrsctl); an
+ * upgrade path the compat matrix does not list is refused at planning time with exit code 6
+ * whenever the server is reachable; the fingerprint covers the server identity, the target package
+ * contents, the resolved configuration and the target version and mode.
  */
 public final class DefaultUpgradeOperations implements UpgradeOperations {
 
   static final String STRATEGY = "vendor-cli";
   static final String REAPPLY_DIR = "upgrade-reapply";
 
-  /** Spec §10.1, quoted verbatim. */
-  public static final String SAMEDB_WARNING =
+  /** Spec §10.1, quoted verbatim; carried by every upgrade and rollback plan (ADR-0012). */
+  public static final String FILES_ONLY_WARNING =
       "Rollback restores files only. Restore the database from your own backup before running"
           + " rollback.";
 
+  public static final String SAMEDB_WARNING =
+      "js-upgrade-samedb migrates the existing repository database schema in place; jrsctl cannot"
+          + " undo that migration.";
+
   public static final String NEWDB_WARNING =
-      "Rollback to point B is a complete file and connection restore: webapp, keystore,"
-          + " configuration and the connection back to the old database.";
+      "js-upgrade-newdb drops and recreates the repository database named in"
+          + " default_master.properties, then imports the point-B full export into it; jrsctl"
+          + " cannot undo that (ADR-0012).";
 
   static final String PASSWORD_WARNING =
       "database passwords are not copied into the target default_master.properties (spec §7.4);"
@@ -131,14 +137,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           case SAMEDB -> SAMEDB_WARNING;
           case NEWDB -> NEWDB_WARNING;
         });
+    warnings.add(FILES_ONLY_WARNING);
     warnings.add(PASSWORD_WARNING);
 
     List<Step> steps = new ArrayList<>();
     steps.add(new PreflightSteps.Doctor(rt, in));
     steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
-    if (options.mode() == Mode.SAMEDB) {
-      steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
-    }
+    steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
     steps.add(ServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
     steps.add(new BackupSteps.FullExport(rt, in));
     steps.add(ServiceSteps.start(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-start-service"));
@@ -316,7 +321,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     steps.add(ServiceSteps.waitForServer(rt, Phases.ROLLBACK, RestoreSteps.WAIT_FOR_SERVER));
     steps.add(new RestoreSteps.RecordRollback(rt, in));
     List<String> warnings = new ArrayList<>();
-    warnings.add(SAMEDB_WARNING);
+    warnings.add(FILES_ONLY_WARNING);
     warnings.add(
         "point C restores the same point-B artefacts (spec §10.2: rollback point C = restore B)");
     Optional<String> mode = readMode(set);
@@ -325,10 +330,15 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
             warnings.add(
                 "the upgrade ran in "
                     + m
-                    + " mode"
+                    + " mode; "
                     + (m.equals(Mode.NEWDB.name())
-                        ? "; the restored configuration points back at the old database"
-                        : "")));
+                        ? "the vendor script dropped and recreated the repository database, which"
+                            + " this rollback does not restore: restore it from your own backup, or"
+                            + " re-import "
+                            + set.fullExport()
+                            + " with the restored buildomatic's js-import"
+                        : "the vendor script migrated the repository database in place, which"
+                            + " this rollback does not restore")));
     Map<String, String> rollbackPoints = new LinkedHashMap<>();
     rollbackPoints.put(
         Phases.ROLLBACK,

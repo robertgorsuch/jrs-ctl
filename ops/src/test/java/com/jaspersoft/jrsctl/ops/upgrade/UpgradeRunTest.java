@@ -64,7 +64,14 @@ class UpgradeRunTest {
       assertThat(UpgradeFixture.read(f.webappDir.resolve("version.txt"))).isEqualTo("9.0.0");
       assertThat(f.sha(f.webappDir.resolve("scripts").resolve("app.js")))
           .isNotEqualTo(oldWebappHash);
-      assertThat(UpgradeFixture.read(f.vendorLog)).contains("upgrade-newdb");
+      // The package ships js-upgrade-newdb, whose fake enforces the vendor's contract: it refuses
+      // to run without an existing export file (ADR-0012), so reaching here proves the point-B
+      // full export was passed.
+      assertThat(UpgradeFixture.read(f.vendorLog))
+          .contains("upgrade-minimal-pro")
+          .contains("-Dstrategy=standard")
+          .contains("-DimportFile=" + set.fullExport().toAbsolutePath().normalize());
+      assertThat(f.logs()).noneMatch(m -> m.contains("using js-ant"));
       Path staged = f.packageDir.resolve("buildomatic").resolve("default_master.properties");
       String master = UpgradeFixture.read(staged);
       assertThat(master)
@@ -79,6 +86,25 @@ class UpgradeRunTest {
       assertThat(f.store().auditRows(20)).anyMatch(a -> a.action().equals("upgrade.completed"));
       assertThat(f.fake.platform.controller.events).contains("stop", "start");
       assertThat(f.logs()).anyMatch(m -> m.contains("JRS-8.2.0-HF-0001 -> SUPERSEDED"));
+    }
+  }
+
+  @Test
+  void should_pass_the_vendor_strategy_and_export_to_js_ant_when_package_ships_no_wrapper()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.removeVendorWrappers();
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-ant", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-up-ant", f.os);
+      assertThat(f.logs()).anyMatch(m -> m.contains("using js-ant upgrade-minimal-pro"));
+      assertThat(UpgradeFixture.read(f.vendorLog))
+          .contains("upgrade-minimal-pro")
+          .contains("-Dstrategy=standard")
+          .contains("-DimportFile=" + set.fullExport().toAbsolutePath().normalize());
     }
   }
 
@@ -299,8 +325,14 @@ class UpgradeRunTest {
               "start-service",
               "wait-for-server",
               "record-rollback");
-      assertThat(back.summary().warnings()).contains(DefaultUpgradeOperations.SAMEDB_WARNING);
-      assertThat(back.summary().warnings()).anyMatch(w -> w.contains("point C"));
+      assertThat(back.summary().warnings())
+          .contains(DefaultUpgradeOperations.FILES_ONLY_WARNING)
+          .anyMatch(w -> w.contains("point C"))
+          .anyMatch(
+              w ->
+                  w.contains("NEWDB mode")
+                      && w.contains("dropped and recreated")
+                      && w.contains("full-export.zip"));
       RunOutcome outcome = f.run(back, "r-rb-4", RunOptions.DEFAULT);
 
       assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);

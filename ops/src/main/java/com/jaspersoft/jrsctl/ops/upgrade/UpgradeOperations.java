@@ -9,8 +9,8 @@ import java.util.Objects;
  * the installation (it may read the target package and the state store); every returned {@link
  * Plan} carries the five phases of spec §10.2 in order ({@code preflight}, {@code backup}, {@code
  * vendor-upgrade}, {@code reconcile}, {@code verify}) for an upgrade, or the single {@code
- * rollback} phase for a rollback; a {@code samedb} plan always carries the spec §10.1 warning that
- * rollback restores files only.
+ * rollback} phase for a rollback; every plan carries the spec §10.1 warning that rollback restores
+ * files only, because the vendor script changes the repository database in both modes (ADR-0012).
  */
 public interface UpgradeOperations {
 
@@ -20,7 +20,11 @@ public interface UpgradeOperations {
   /** Operation id recorded in the run journal for a rollback to point B or C. */
   String ROLLBACK_OPERATION = "upgrade.rollback";
 
-  /** How the vendor script treats the repository database (spec §10.1). */
+  /**
+   * How the vendor script treats the repository database (spec §10.1, ADR-0012): {@code samedb}
+   * migrates its schema in place, {@code newdb} drops it and recreates it from the point-B full
+   * export. Neither can be undone by jrsctl, so both require {@code --db-backup-confirmed}.
+   */
   enum Mode {
     NEWDB,
     SAMEDB;
@@ -60,8 +64,9 @@ public interface UpgradeOperations {
       packageDir = packageDir.toAbsolutePath().normalize();
     }
 
+    /** A {@code newdb} upgrade with the database backup confirmed, as every run requires. */
     public static UpgradeOptions newdb(String toVersion, Path packageDir) {
-      return new UpgradeOptions(toVersion, packageDir, Mode.NEWDB, false, false);
+      return new UpgradeOptions(toVersion, packageDir, Mode.NEWDB, true, false);
     }
   }
 

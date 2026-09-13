@@ -532,15 +532,16 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.1 Modes and rollback semantics
 
-- `--mode newdb` is the **default**. The vendor script creates a new repository database; the existing database is never modified. Rollback to point B is a complete restore: webapp, keystore, config, and the connection back to the old database.
-- `--mode samedb` migrates the existing database schema in place. **jrsctl cannot undo that migration**; database backup is out of scope (§1.3). `samedb` therefore requires `--db-backup-confirmed` (audited), `doctor` records the operator's confirmation, and the Plan summary states in plain text: "Rollback restores files only. Restore the database from your own backup before running rollback."
+- `--mode newdb` is the **default**. The vendor's `js-upgrade-newdb` **drops the repository database named in `default_master.properties`, recreates it with the target schema and imports the point-B full export into it** (its own `upgrade-newdb.help` lists those steps; ADR-0012). jrsctl cannot undo that. `RunVendorUpgrade` passes the point-B full export as the script's argument; the vendor wrapper refuses to run without one.
+- `--mode samedb` migrates the existing database schema in place. jrsctl cannot undo that migration either.
+- Database backup is out of scope (§1.3). **Both modes therefore require `--db-backup-confirmed`** (audited with the mode), `doctor` records the operator's confirmation, and the Plan summary states in plain text: "Rollback restores files only. Restore the database from your own backup before running rollback." Rollback to point B restores webapp, keystore, configuration and buildomatic; after a `newdb` run the rollback plan names the point-B `full-export.zip` as the repository-level backup the operator may re-import with the restored buildomatic's `js-import`.
 
 ### 10.2 Orchestration plan
 
 **Phase A — preflight**
 1. `Doctor` (must pass).
 2. `VerifyTargetPackage` — target JRS distribution present, checksum verified, version in compat matrix as a supported upgrade path from current, `vendor.javaHome` matches the target's requirement.
-3. `ConfirmDbBackup` — `samedb` only; fails without `--db-backup-confirmed`.
+3. `ConfirmDbBackup` — both modes (ADR-0012); fails without `--db-backup-confirmed`.
 
 **Phase B — backup** (rollback point B)
 4. `FullExport` (vendor strategy; includes service stop/start).
@@ -551,7 +552,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 **Phase C — vendor upgrade** (rollback point C = restore B)
 8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file.
 9. `StopService`.
-10. `RunVendorUpgrade` — `js-upgrade-newdb` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`.
+10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
 11. `StartService` + `WaitForServer`.
 
 **Phase D — reconcile** (report-first; nothing mutates without confirmation)
@@ -680,7 +681,7 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 - REST async export/import round-trip on WireMock; vendor strategy with a fake `js-export`/`js-import` script including the service stop; `vendor.javaHome` passed as `JAVA_HOME`; keystore resolved from `runAsUser`'s home; keystore mismatch detected and blocked; pre-import snapshot and best-effort rollback verified; the Plan summary carries the best-effort wording.
 
 **Phase 5 — Upgrade**
-- Full orchestration with fake vendor scripts for both modes; `samedb` refused without `--db-backup-confirmed`; `newdb` rollback to point B restores webapp, keystore, config and DB connection settings; hotfix reapply classification (`REAPPLICABLE`/`SUPERSEDED`) and confirmation gating; customization 3-way comparison auto-applies only the no-conflict case; smoke gate.
+- Full orchestration with fake vendor scripts for both modes, the fake `js-upgrade-newdb` refusing to run without an existing export file; either mode refused without `--db-backup-confirmed`; rollback to point B restores webapp, keystore, config and buildomatic; hotfix reapply classification (`REAPPLICABLE`/`SUPERSEDED`) and confirmation gating; customization 3-way comparison auto-applies only the no-conflict case; smoke gate.
 
 **Phase 6 — Console**
 - All endpoints implemented behind the token; `Host` header check; plan TTL and fingerprint refusal; SSE replays transitions then streams live; UI renders a run end-to-end in a headless browser test; support bundle contains no secrets; cancel and rollback from UI.

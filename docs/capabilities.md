@@ -24,7 +24,7 @@ Source: `docs/spec.md` Draft 1.1 (2026-09-08).
 
 ### Version upgrades
 - Orchestrates the vendor buildomatic upgrade scripts on the server's own Java.
-- New-database mode by default so rollback is a complete file and connection restore. Same-database mode is allowed only with an explicit, audited confirmation that a database backup exists.
+- Two vendor modes, `newdb` (drop and recreate the repository database from the full export; the default) and `samedb` (migrate the schema in place); jrsctl can undo neither, so either runs only with an explicit, audited confirmation that a database backup exists, and rollback restores files only (ADR-0012).
 - Backup phase before any change: full export, keystore, webapp and buildomatic archive, configuration files.
 - After the upgrade, classifies each installed hotfix as re-applicable or superseded and re-applies only on confirmation.
 - Registered customizations are compared three ways (original, customized, new) and re-applied automatically only when the new file is unchanged; conflicts are reported with a diff.
