@@ -23,9 +23,12 @@ import java.util.Optional;
 /**
  * The steps of the rollback plan (spec §8.3) other than the service steps. Invariants: {@code
  * RestoreSnapshot} snapshots the current files first so that its own compensation can put the
- * hotfix back; hashes are verified before and after the restore; {@code RunSqlRollback} exists only
- * when the installed run's bundle copy still holds rollback scripts; {@code RecordRolledBack} flips
- * the state-store row and its compensation flips it back.
+ * hotfix back; hashes are verified before and after the restore; the plan is built from the
+ * installed run's bundle copy (planning refuses without it), so {@code RunSqlRollback} exists
+ * exactly when that manifest holds rollback scripts, and the service is stopped when the manifest
+ * says {@code restart: required} or any owned file lies under {@code WEB-INF/lib} or {@code
+ * WEB-INF/classes}, the same rule apply follows; {@code RecordRolledBack} flips the state-store row
+ * and its compensation flips it back.
  */
 final class RollbackSteps {
 
@@ -59,9 +62,14 @@ final class RollbackSteps {
       return hotfix.id();
     }
 
-    /** True when any owned path lies under WEB-INF/lib or WEB-INF/classes. */
+    /**
+     * True when the manifest declares {@code restart: required} or any owned path lies under
+     * WEB-INF/lib or WEB-INF/classes: what the hotfix needed to be applied, it needs to be undone
+     * (assessment item H2).
+     */
     boolean needsServiceStop() {
-      return files.stream().anyMatch(f -> HotfixPaths.requiresServiceStop(f.path().toString()));
+      return manifest.map(m -> m.restart() == Manifest.Restart.REQUIRED).orElse(false)
+          || files.stream().anyMatch(f -> HotfixPaths.requiresServiceStop(f.path().toString()));
     }
 
     /** Rollback scripts, newest first. */

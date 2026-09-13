@@ -288,9 +288,22 @@ public final class DefaultHotfixOperations implements HotfixOperations {
           new RollbackSteps.Input(hotfix, files, manifest, bundleDir, sql, phase, suffix);
       boolean irreversible =
           manifest.map(m -> m.rollback() == Manifest.Rollback.IRREVERSIBLE).orElse(false);
+      // Without the manifest the SQL rollback scripts and the restart requirement are unknown, and
+      // a rollback that silently skipped them would report success with database changes or live
+      // classes left behind (assessment item H1). Refuse, as planRollback for an upgrade refuses a
+      // half-gone point B.
       if (manifest.isEmpty()) {
-        warnings.add(
-            id + ": no bundle copy under " + bundleDir + "; SQL rollback scripts unavailable");
+        throw new HotfixException(
+            HotfixException.PRECHECK,
+            id
+                + ": no readable bundle copy under "
+                + bundleDir
+                + "; its manifest names the SQL rollback scripts and says whether the service must"
+                + " be restarted, so a rollback without it cannot be complete",
+            "restore "
+                + bundleDir
+                + " from a backup of the jrsctl home, or roll the hotfix back by hand from "
+                + rt.home().snapshots().resolve(hotfix.installedRunId()));
       }
       if (irreversible) {
         warnings.add(

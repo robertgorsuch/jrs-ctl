@@ -479,7 +479,8 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 ### 8.3 Rollback plan
 
 - Rollback is LIFO per file: if any file owned by hotfix N is also owned by a later installed hotfix, rollback of N is refused with the list of blocking hotfix ids. `--cascade` rolls back the blocking hotfixes first, newest to oldest, in one Plan.
-- Steps: `StopService` (if any WEB-INF file) → `RestoreSnapshot` (verify hashes before and after) → `RunSqlRollback` (if present) → `StartService` + `WaitForServer` → `RecordRolledBack`.
+- The plan is built from the manifest in the installing run's bundle copy (`runs/<installRunId>/bundle/`); without it the SQL rollback scripts and the restart requirement are unknown, so planning refuses (exit 2) rather than roll back partially.
+- Steps: `StopService` (if the manifest says `restart: required` or any file lies under WEB-INF/lib or WEB-INF/classes, the rule apply follows) → `RestoreSnapshot` (verify hashes before and after) → `RunSqlRollback` (when the manifest holds rollback scripts and is not `irreversible`) → `StartService` + `WaitForServer` → `RecordRolledBack`.
 
 ### 8.4 Commands
 

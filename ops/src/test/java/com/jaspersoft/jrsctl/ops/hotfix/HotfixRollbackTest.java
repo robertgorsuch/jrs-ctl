@@ -129,6 +129,57 @@ class HotfixRollbackTest {
   }
 
   @Test
+  void should_refuse_rollback_when_the_installed_runs_bundle_copy_is_gone() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planApply(f.buildWebInf(), SIGNED), "r-apply"))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Path manifest = f.fake.home.runDir("r-apply").resolve("bundle").resolve("manifest.json");
+      assertThat(manifest).exists();
+      Files.delete(manifest);
+
+      assertThatThrownBy(() -> f.ops().planRollback(HotfixFixture.ID, PLAIN))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("no readable bundle copy")
+          .satisfies(e -> assertThat(((HotfixException) e).exitCode()).isEqualTo(2));
+      assertThat(f.ops().list())
+          .singleElement()
+          .extracting(h -> h.state())
+          .isEqualTo(HotfixState.INSTALLED);
+    }
+  }
+
+  @Test
+  void should_stop_the_service_when_the_manifest_requires_a_restart_for_a_file_outside_web_inf()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      String manifest =
+          HotfixFixture.NONE_MANIFEST.replace("\"restart\": \"none\"", "\"restart\": \"required\"");
+      Path bundle =
+          f.build(
+              f.bundleDir(
+                  "restart-script",
+                  manifest,
+                  Map.of("payload/" + HotfixFixture.SCRIPT, HotfixFixture.SCRIPT_BYTES)));
+      assertThat(f.run(f.ops().planApply(bundle, SIGNED), "r-apply"))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      f.fake.platform.controller.events.clear();
+
+      Plan plan = f.ops().planRollback(HotfixFixture.ID, PLAIN);
+
+      assertThat(HotfixFixture.ids(plan))
+          .containsExactly(
+              "stop-service",
+              "restore-snapshot",
+              "start-service",
+              "wait-for-server",
+              "record-rolled-back");
+      assertThat(plan.summary().serviceRestart()).isTrue();
+      assertThat(f.run(plan, "r-rollback")).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.fake.platform.controller.events).containsExactly("stop", "start");
+    }
+  }
+
+  @Test
   void should_refuse_rollback_when_id_unknown_or_not_installed() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
       assertThatThrownBy(() -> f.ops().planRollback("JRS-1.0.0-HF-9999", PLAIN))
