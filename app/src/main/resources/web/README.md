@@ -10,7 +10,7 @@ serves this directory from the JAR at `/` and the API at `/api/*` (spec §13).
 | `console.css` | Layout and components; uses only tokens from `brand.css` |
 | `api.js` | Fetch wrapper with bearer token, SSE-over-fetch event stream |
 | `mock.js` | In-memory sample backend for development (`?mock=1`) |
-| `app.js` | Hash router and the six views |
+| `app.js` | Hash router and the core views (dashboard, new operation, run, history, doctor, hotfixes); the pages added on 2026-09-12 are one module each under `views/` (smoke, customizations, snapshots, config) with shared pieces under `components/` |
 
 ## Developing without a server
 
@@ -45,7 +45,7 @@ The Java side should therefore print a URL of the form
 
 ## API contract assumed by `app.js`
 
-Endpoints are exactly spec §13.1 plus `GET /api/hotfixes` and `POST /api/runs/{id}/resume`.
+Endpoints are exactly the routes spec §13.1 lists, which since 2026-09-12 include `GET /api/hotfixes`, `POST /api/runs/{id}/resume` and the smoke, customizations, snapshots, config, selfcheck, keys and repository routes documented below.
 Errors: any non-2xx with an optional JSON body `{message}`; 401 switches the UI to the token
 panel; 409/410 from `POST /api/run` are shown as a toast (lock held, fingerprint changed,
 TTL expired); 421 for a rejected Host header.

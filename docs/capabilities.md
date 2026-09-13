@@ -37,8 +37,8 @@ Source: `docs/spec.md` Draft 1.1 (2026-09-08).
 - `selfcheck` verifies the runtime image, configuration, key ring and state schema.
 
 ### Local web console
-- Dashboard, new-operation form that produces a plan for confirmation, live run view with step tree and log pane, history, doctor view.
-- Cancel and rollback from the browser. Support bundle download with secrets redacted.
+- Dashboard, new-operation form that produces a plan for confirmation, live run view with step tree and log pane, history, doctor and hotfix views; smoke-test, customization (register, unregister, diff), snapshot (list, prune), effective-configuration and repository-browsing pages. Every API document is a typed record with a published JSON Schema.
+- Cancel, rollback and resume from the browser. Support bundle download with secrets redacted.
 - Loopback by default with a per-launch token; non-loopback requires TLS and a password. No external resources, so it works offline.
 
 ### Secrets and keys

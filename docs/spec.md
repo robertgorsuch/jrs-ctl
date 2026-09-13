@@ -647,11 +647,26 @@ All endpoints require the bearer token (§11.2).
 | POST | `/api/runs/{id}/rollback` | rollback where available |
 | GET | `/api/runs/{id}/support-bundle` | zip of plan, transitions (JSONL), logs, server info, state excerpt (redacted). Everything that can fail, the live doctor run included, is computed before the response is committed, so a failure is an error document rather than a truncated zip delivered as 200; the log is the file named by `jrsctl.log.file` and both the log and the event stream are tailed |
 | GET | `/api/doctor` | run doctor, return report |
+| POST | `/api/auth/launch` | exchange a single-use launch code for the bearer token (§11.2) |
+| POST | `/api/runs/{id}/resume` | resume a pending run from its interrupted step |
+| GET | `/api/hotfixes` | installed, superseded and rolled-back hotfixes |
+| GET, POST | `/api/smoke` | last smoke report; `{mutating}` runs the probes and returns the report |
+| GET | `/api/customizations` | registered customizations |
+| GET | `/api/customizations/diff?path=` | three-way comparison of one registered customization |
+| POST | `/api/customizations/register`, `/api/customizations/unregister` | `{path}`, confined to the installation and Tomcat directories |
+| GET | `/api/snapshots` | snapshot sets with their retention protection |
+| POST | `/api/snapshots/prune` | `{dryRun}` retention pruning, the same pass `runs prune` makes |
+| GET | `/api/config` | effective configuration as `config show` prints it (redacted) |
+| GET | `/api/selfcheck` | selfcheck report |
+| GET | `/api/keys` | trusted key ring |
+| GET | `/api/repository/tree?path=` | one level of the repository folder tree, from the server |
+
+Every response document is an immutable record in `app.console` with a JSON Schema under `schema/json/api-*.schema.json`; the schema tests validate the live responses against them.
 
 ### 13.2 UI
 
 - Static single-page app, vanilla JS + minimal CSS, no build step, served from the JAR. No external CDN references (isolated mode).
-- Views: Dashboard (server identity, health, pending runs), New Operation (form → plan → confirm), Run (step tree with live status, elapsed, log pane, cancel, rollback), History, Doctor.
+- Views: Dashboard (server identity, health, pending runs), New Operation (form → plan → confirm), Run (step tree with live status, elapsed, log pane, cancel, rollback, resume), History, Doctor, Hotfixes; and since 2026-09-12 Smoke, Customizations (register, unregister, diff), Snapshots (list, prune), Config and a repository browser, one module per page.
 - Step status colors and icons must be distinguishable without color (icon + text).
 
 ### 13.3 Approved dependencies
