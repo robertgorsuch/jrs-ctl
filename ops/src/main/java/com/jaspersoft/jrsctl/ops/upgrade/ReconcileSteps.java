@@ -105,7 +105,9 @@ final class ReconcileSteps {
             "cannot read the upgraded server's identity: " + e.getMessage(),
             "check the server; the run is rolled back to point B");
       }
-      List<HotfixReconciler.Classification> all = HotfixReconciler.classify(rt, in, identity);
+      // After the vendor upgrade the installation is the new webapp, so it is judged as is.
+      List<HotfixReconciler.Classification> all =
+          HotfixReconciler.classify(rt, in, identity, HotfixReconciler.installed(in.paths()));
       if (all.isEmpty()) {
         Logs.info(rt, ctx, out, this, "no installed hotfixes to reconcile");
       }

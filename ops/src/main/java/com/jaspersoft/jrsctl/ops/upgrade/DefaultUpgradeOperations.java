@@ -240,7 +240,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       return;
     }
     ServerIdentity target = PreflightSteps.targetIdentity(identity.get(), in.options().toVersion());
-    for (HotfixReconciler.Classification c : HotfixReconciler.classify(rt, in, target)) {
+    // Judged against the package's webapp, not the running one: apply already deleted what the
+    // hotfix replaced there, so the installed tree would call every such hotfix superseded (U4).
+    HotfixReconciler.NewWebapp packaged =
+        HotfixReconciler.inPackage(in.target(), in.webappName(), in.paths());
+    for (HotfixReconciler.Classification c : HotfixReconciler.classify(rt, in, target, packaged)) {
       if (c.status() != HotfixReconciler.Status.REAPPLICABLE) {
         warnings.add(c.describe());
         continue;

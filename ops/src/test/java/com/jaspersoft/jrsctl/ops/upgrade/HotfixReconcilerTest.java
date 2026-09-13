@@ -7,10 +7,14 @@ import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,7 +61,12 @@ class HotfixReconcilerTest {
       HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
 
       HotfixReconciler.Classification c =
-          HotfixReconciler.classify(f.runtime(), paths, installed("HF-A", "r-a"), TARGET);
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              installed("HF-A", "r-a"),
+              TARGET,
+              HotfixReconciler.installed(paths));
 
       assertThat(c.status()).isEqualTo(HotfixReconciler.Status.REAPPLICABLE);
       assertThat(c.reasons()).isEmpty();
@@ -73,7 +82,12 @@ class HotfixReconcilerTest {
       HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
 
       HotfixReconciler.Classification c =
-          HotfixReconciler.classify(f.runtime(), paths, installed("HF-B", "r-b"), TARGET);
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              installed("HF-B", "r-b"),
+              TARGET,
+              HotfixReconciler.installed(paths));
 
       assertThat(c.status()).isEqualTo(HotfixReconciler.Status.SUPERSEDED);
       assertThat(c.reasons()).anyMatch(r -> r.contains("9.0.0") && r.contains("applies.versions"));
@@ -87,10 +101,80 @@ class HotfixReconcilerTest {
       HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
 
       HotfixReconciler.Classification c =
-          HotfixReconciler.classify(f.runtime(), paths, installed("HF-C", "r-c"), TARGET);
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              installed("HF-C", "r-c"),
+              TARGET,
+              HotfixReconciler.installed(paths));
 
       assertThat(c.status()).isEqualTo(HotfixReconciler.Status.SUPERSEDED);
       assertThat(c.reasons()).anyMatch(r -> r.contains("foo-1.jar") && r.contains("absent"));
+    }
+  }
+
+  /**
+   * Apply deletes the files a hotfix replaces, so at plan time the running webapp never holds them;
+   * the question is whether the target package ships them (assessment item U4).
+   */
+  @Test
+  void should_judge_replaces_targets_against_the_package_webapp_when_planning() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      bundle(f, "r-e", manifest("HF-E", "\">=8.0.0 <10.0.0\"", "\"foo-1.jar\""));
+      UpgradeFixture.write(
+          f.packageDir
+              .resolve("jasperserver-pro")
+              .resolve("WEB-INF")
+              .resolve("lib")
+              .resolve("foo-1.jar"),
+          "vendor");
+      HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
+      TargetPackage pkg = TargetPackage.inspect(f.packageDir, f.runtime().locator());
+      HotfixInstalled hotfix = installed("HF-E", "r-e");
+
+      HotfixReconciler.Classification asInstalled =
+          HotfixReconciler.classify(
+              f.runtime(), paths, hotfix, TARGET, HotfixReconciler.installed(paths));
+      HotfixReconciler.Classification asPackaged =
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              hotfix,
+              TARGET,
+              HotfixReconciler.inPackage(pkg, "jasperserver-pro", paths));
+
+      assertThat(asInstalled.status()).isEqualTo(HotfixReconciler.Status.SUPERSEDED);
+      assertThat(asInstalled.reasons()).anyMatch(r -> r.contains("foo-1.jar"));
+      assertThat(asPackaged.status()).isEqualTo(HotfixReconciler.Status.REAPPLICABLE);
+    }
+  }
+
+  /** A real distribution ships the webapp as a war, not unpacked. */
+  @Test
+  void should_look_for_replaces_targets_inside_the_packages_war_when_planning() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      bundle(f, "r-w", manifest("HF-W", "\">=8.0.0 <10.0.0\"", "\"foo-1.jar\""));
+      Path pkg = Files.createDirectories(f.root.resolve("pkg-war"));
+      try (ZipOutputStream zip =
+          new ZipOutputStream(Files.newOutputStream(pkg.resolve("jasperserver-pro.war")))) {
+        zip.putNextEntry(new ZipEntry("WEB-INF/lib/foo-1.jar"));
+        zip.write("vendor".getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+      }
+      HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
+      TargetPackage war = TargetPackage.inspect(pkg, f.runtime().locator());
+      assertThat(war.warFile()).isPresent();
+      assertThat(war.webappDir()).isEmpty();
+
+      HotfixReconciler.Classification c =
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              installed("HF-W", "r-w"),
+              TARGET,
+              HotfixReconciler.inPackage(war, "jasperserver-pro", paths));
+
+      assertThat(c.status()).isEqualTo(HotfixReconciler.Status.REAPPLICABLE);
     }
   }
 
@@ -100,7 +184,12 @@ class HotfixReconcilerTest {
       HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
 
       HotfixReconciler.Classification c =
-          HotfixReconciler.classify(f.runtime(), paths, installed("HF-D", "r-gone"), TARGET);
+          HotfixReconciler.classify(
+              f.runtime(),
+              paths,
+              installed("HF-D", "r-gone"),
+              TARGET,
+              HotfixReconciler.installed(paths));
 
       assertThat(c.status()).isEqualTo(HotfixReconciler.Status.SUPERSEDED);
       assertThat(c.bundleAvailable()).isFalse();
@@ -128,7 +217,8 @@ class HotfixReconcilerTest {
           HotfixReconciler.classify(
               f.runtime(),
               in,
-              PreflightSteps.targetIdentity(FakeJrsAdapter.identity("8.2.0"), "9.0.0"));
+              PreflightSteps.targetIdentity(FakeJrsAdapter.identity("8.2.0"), "9.0.0"),
+              HotfixReconciler.installed(in.paths()));
 
       assertThat(all)
           .extracting(c -> c.hotfix().id() + ":" + c.status())
