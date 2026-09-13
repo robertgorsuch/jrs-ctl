@@ -536,8 +536,7 @@ class ConsoleServerTest {
     assertThat(hotfixes.get("hotfixes").get(0).get("blockedBy").isArray()).isTrue();
 
     HttpResponse<String> rollback = post("/api/runs/" + applyRun + "/rollback", "");
-    assertThat(rollback.statusCode()).as(rollback.body()).isEqualTo(200);
-    String rollbackRun = json(rollback).get("runId").asText();
+    String rollbackRun = validated("POST /api/runs/{id}/rollback", rollback).get("runId").asText();
     assertThat(rollbackRun).isNotEqualTo(applyRun);
     List<String> names = eventNames(rollbackRun);
     assertThat(names.get(names.size() - 1)).isEqualTo("RunSucceeded");
@@ -611,8 +610,8 @@ class ConsoleServerTest {
     assertThat(blocked.statusCode()).isEqualTo(409);
 
     HttpResponse<String> resumed = post("/api/runs/r-pending/resume", "");
-    assertThat(resumed.statusCode()).as(resumed.body()).isEqualTo(200);
-    assertThat(json(resumed).get("runId").asText()).isEqualTo("r-pending");
+    assertThat(validated("POST /api/runs/{id}/resume", resumed).get("runId").asText())
+        .isEqualTo("r-pending");
     List<String> names = eventNames("r-pending");
     assertThat(names.get(names.size() - 1)).isEqualTo("RunSucceeded");
     assertThat(fake.executed)

@@ -114,6 +114,8 @@ public final class JsonSchemas {
     m.put("POST /api/run", "api-run-started.schema.json");
     m.put("GET /api/runs", "api-runs.schema.json");
     m.put("GET /api/runs/{id}", "api-runs-show.schema.json");
+    m.put("POST /api/runs/{id}/rollback", "api-run-started.schema.json");
+    m.put("POST /api/runs/{id}/resume", "api-run-started.schema.json");
     m.put("GET /api/doctor", "api-doctor.schema.json");
     m.put("GET /api/hotfixes", "api-hotfixes.schema.json");
     return Collections.unmodifiableMap(m);
