@@ -6,7 +6,7 @@
 
   <groupId>com.jaspersoft.jrsctl</groupId>
   <artifactId>jrsctl-parent</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>1.2.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>jrsctl</name>
@@ -40,7 +40,7 @@
          signature attests something that can be rebuilt. Bump it with each release. The jlink
          runtime image is not reproducible (ADR-0003), which is why the manifest and the signature
          cover the archive rather than the image alone. -->
-    <project.build.outputTimestamp>2026-09-11T00:00:00Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-09-13T15:37:30Z</project.build.outputTimestamp>
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.7</picocli.version>

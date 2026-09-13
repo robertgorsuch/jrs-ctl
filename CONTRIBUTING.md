@@ -124,7 +124,7 @@ drives the packaged jar the way an operator would.
 ## Cutting a release
 
 The pom stays at a `-SNAPSHOT` version on `main`; a release is a tag, never a version bump by
-hand.
+hand. The only hand bump is the move to the next `-SNAPSHOT` after a tag (step 6).
 
 1. Make sure `main` is green in CI on both operating systems and the dependency audit passed.
 2. Bump `project.build.outputTimestamp` in the root pom to the release date (reproducible archives),
@@ -137,6 +137,10 @@ hand.
    containing `-` is published as a pre-release.
 5. Never upload hand-built archives to a release and never rename a SNAPSHOT build: the `release`
    job is the only path that produces signed artefacts.
+6. Once the tag is pushed, move `main` to the next development version:
+   `scripts/mvn.sh versions:set -DnewVersion=X.Y+1.0-SNAPSHOT -DgenerateBackupPoms=false`, then
+   commit. Otherwise every development build, its archive name and any support bundle claims a
+   version older than the one just shipped.
 
 Every action in the workflows is pinned to a commit and every job has a timeout;
 `Phase0SkeletonTest` fails when either slips, and Dependabot's github-actions updates keep the
