@@ -85,7 +85,13 @@ abstract class AbstractPlatform implements Platform {
     requireNonNull(cfg, "cfg");
     return switch (cfg.kind()) {
       case WINDOWS_SERVICE -> new WindowsServiceController(runner, required(cfg.name(), "name"));
-      case SYSTEMD -> new SystemdServiceController(runner, required(cfg.name(), "name"));
+      case SYSTEMD ->
+          new SystemdServiceController(
+              runner,
+              required(cfg.name(), "name"),
+              tomcats,
+              installDir,
+              PollingServiceController.DEFAULT_POLL_INTERVAL);
       case CTLSCRIPT, CATALINA ->
           new ScriptServiceController(runner, cfg.kind(), required(cfg.scriptPath(), "scriptPath"));
       case MANUAL -> new ManualServiceController(runner, prompt, installDir);

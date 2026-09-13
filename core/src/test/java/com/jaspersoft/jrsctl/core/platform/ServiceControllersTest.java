@@ -70,6 +70,50 @@ class ServiceControllersTest {
         .hasMessageContaining("root");
   }
 
+  /**
+   * A unit with KillMode=none reports inactive while the JVM is still going down; the controller
+   * says stopping until the Tomcat process is gone (assessment item H5).
+   */
+  @Test
+  void should_report_stopping_while_the_tomcat_jvm_outlives_an_inactive_systemd_unit(
+      @TempDir Path install) {
+    List<TomcatProcessFinder.TomcatProcess> running =
+        List.of(FakeTomcatProcessFinder.tomcatUnder(install));
+    FakeTomcatProcessFinder finder = new FakeTomcatProcessFinder(List.of(running, List.of()));
+    FakeProcessRunner runner =
+        new FakeProcessRunner()
+            .on(List.of("systemctl", "is-active", "jasperserver"), Response.failing(3, "inactive"));
+    SystemdServiceController controller =
+        new SystemdServiceController(runner, "jasperserver", finder, Optional.of(install), POLL);
+
+    assertThat(controller.state()).isEqualTo(State.STOPPING);
+    assertThat(controller.state()).isEqualTo(State.STOPPED);
+  }
+
+  /** The script kinds fail fast like sc.exe and systemctl do (review 1.12; assessment item P3). */
+  @Test
+  void should_fail_fast_when_the_stop_script_cannot_run(@TempDir Path install) {
+    Path script = install.resolve("ctlscript.sh");
+    List<TomcatProcessFinder.TomcatProcess> running =
+        List.of(FakeTomcatProcessFinder.tomcatUnder(install));
+    FakeTomcatProcessFinder finder =
+        new FakeTomcatProcessFinder(List.of(running, running, running, running, running));
+    FakeProcessRunner runner =
+        new FakeProcessRunner()
+            .on(
+                List.of(script.toString(), "stop", "tomcat"),
+                Response.failing(126, "ctlscript.sh: Permission denied"));
+    ScriptServiceController controller =
+        new ScriptServiceController(runner, ServiceConfig.Kind.CTLSCRIPT, script, finder, POLL);
+
+    long started = System.nanoTime();
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.stop(TIMEOUT))
+        .isInstanceOf(ServiceControlException.class)
+        .hasMessageContaining("Permission denied")
+        .hasMessageContaining("executable");
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
+  }
+
   @Test
   void should_stop_waiting_when_cancelled_while_a_service_stops() {
     FakeProcessRunner runner =

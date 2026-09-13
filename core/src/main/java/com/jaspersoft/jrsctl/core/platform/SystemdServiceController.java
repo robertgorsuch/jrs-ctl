@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.core.platform;
 
 import static java.util.Objects.requireNonNull;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -18,14 +19,27 @@ import java.util.function.BooleanSupplier;
 public final class SystemdServiceController extends PollingServiceController {
 
   private final String unit;
+  private final TomcatProcessFinder processes;
+  private final Optional<Path> installDir;
 
   public SystemdServiceController(ProcessRunner runner, String unit) {
-    this(runner, unit, DEFAULT_POLL_INTERVAL);
+    this(runner, unit, TomcatProcesses.INSTANCE, Optional.empty(), DEFAULT_POLL_INTERVAL);
   }
 
   SystemdServiceController(ProcessRunner runner, String unit, Duration pollInterval) {
+    this(runner, unit, TomcatProcesses.INSTANCE, Optional.empty(), pollInterval);
+  }
+
+  SystemdServiceController(
+      ProcessRunner runner,
+      String unit,
+      TomcatProcessFinder processes,
+      Optional<Path> installDir,
+      Duration pollInterval) {
     super(runner, pollInterval);
     this.unit = requireNonNull(unit, "unit");
+    this.processes = requireNonNull(processes, "processes");
+    this.installDir = requireNonNull(installDir, "installDir");
   }
 
   @Override
@@ -35,7 +49,14 @@ public final class SystemdServiceController extends PollingServiceController {
       return State.UNKNOWN;
     }
     // is-active exits non-zero for every state but active; the text is what matters
-    return parseState(query.get().text());
+    State parsed = parseState(query.get().text());
+    if (parsed == State.STOPPED && TomcatState.of(processes, installDir) == State.RUNNING) {
+      // A unit with KillMode=none (common in hand-written units whose ExecStop is shutdown.sh)
+      // reports inactive while the JVM is still going down; until it is gone the files under
+      // WEB-INF are not free to swap, so the state is "stopping" (assessment item H5).
+      return State.STOPPING;
+    }
+    return parsed;
   }
 
   static State parseState(List<String> lines) {

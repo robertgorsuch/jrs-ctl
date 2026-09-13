@@ -20,6 +20,10 @@ import java.util.function.BooleanSupplier;
  */
 public final class ScriptServiceController extends PollingServiceController {
 
+  private static final String SCRIPT_REMEDIATION =
+      "check that the script exists, is executable by this account, and stops or starts Tomcat"
+          + " when run by hand";
+
   private final ServiceConfig.Kind kind;
   private final Path script;
   private final Path watchedDir;
@@ -77,7 +81,9 @@ public final class ScriptServiceController extends PollingServiceController {
     if (state() == State.STOPPED) {
       return State.STOPPED;
     }
-    invoke(command("stop"), timeout);
+    // Fails fast when the script could not run or refused (review 1.12 gave sc.exe and systemctl
+    // this; the script kinds waited out the whole timeout instead; assessment item P3).
+    control(command("stop"), timeout, State.STOPPED, SCRIPT_REMEDIATION);
     return await(State.STOPPED, remaining(start, timeout), cancelled);
   }
 
@@ -92,7 +98,7 @@ public final class ScriptServiceController extends PollingServiceController {
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
-    invoke(command("start"), timeout);
+    control(command("start"), timeout, State.RUNNING, SCRIPT_REMEDIATION);
     return await(State.RUNNING, remaining(start, timeout), cancelled);
   }
 
