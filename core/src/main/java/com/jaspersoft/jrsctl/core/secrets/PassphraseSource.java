@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.core.secrets;
 
+import com.jaspersoft.jrsctl.core.platform.FileOps;
 import java.io.Console;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -46,14 +47,33 @@ public sealed interface PassphraseSource
     }
   }
 
-  /** The file named by {@code --passphrase-file}; trailing line terminators are ignored. */
-  record FromFile(Path path) implements PassphraseSource {
+  /**
+   * The file named by {@code --passphrase-file}; trailing line terminators are ignored. Refused
+   * unless the file is owner-only according to {@link FileOps#isOwnerOnly}, the gate every {@code
+   * file:} secret reference passes (assessment item S2): this is the master secret of {@code
+   * secrets.enc}, so it is the last credential that may sit in a world-readable file.
+   */
+  record FromFile(Path path, FileOps files) implements PassphraseSource {
     public FromFile {
       Objects.requireNonNull(path, "path");
+      Objects.requireNonNull(files, "files");
     }
 
     @Override
     public Optional<Secret> read() {
+      boolean ownerOnly;
+      try {
+        ownerOnly = files.isOwnerOnly(path);
+      } catch (IOException e) {
+        throw new SecretException("cannot read passphrase file " + path + ": " + e.getMessage(), e);
+      }
+      if (!ownerOnly) {
+        throw new SecretException(
+            "passphrase file "
+                + path
+                + " is readable by other users; restrict it to the owner only (chmod 600 on Linux;"
+                + " remove ACL entries other than the owner and Administrators on Windows)");
+      }
       char[] chars;
       try {
         chars = SecretFiles.readChars(path);
@@ -127,11 +147,12 @@ public sealed interface PassphraseSource
   }
 
   /** {@code JRSCTL_PASSPHRASE}, then {@code --passphrase-file}, then the console. */
-  static PassphraseSource standard(Map<String, String> env, Optional<Path> passphraseFile) {
+  static PassphraseSource standard(
+      Map<String, String> env, Optional<Path> passphraseFile, FileOps files) {
     List<PassphraseSource> chain =
         passphraseFile
             .<List<PassphraseSource>>map(
-                p -> List.of(new FromEnv(env), new FromFile(p), new FromConsole()))
+                p -> List.of(new FromEnv(env), new FromFile(p, files), new FromConsole()))
             .orElseGet(() -> List.of(new FromEnv(env), new FromConsole()));
     return new Chain(chain);
   }

@@ -77,7 +77,9 @@ final class Bootstrap implements AutoCloseable {
     Config config = new ConfigLoader().load(home, env, options.set());
 
     List<PassphraseSource> sources = new ArrayList<>();
-    options.passphraseFile().ifPresent(f -> sources.add(new PassphraseSource.FromFile(f)));
+    options
+        .passphraseFile()
+        .ifPresent(f -> sources.add(new PassphraseSource.FromFile(f, platform.files())));
     sources.add(new PassphraseSource.FromEnv(env));
     if (interactive) {
       sources.add(new PassphraseSource.FromConsole());

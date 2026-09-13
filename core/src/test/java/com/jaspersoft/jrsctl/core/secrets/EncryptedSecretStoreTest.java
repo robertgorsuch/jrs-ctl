@@ -235,7 +235,10 @@ class EncryptedSecretStoreTest {
     EncryptedSecretStore noPassphrase =
         new EncryptedSecretStore(
             tmp.resolve("secrets.enc"),
-            PassphraseSource.standard(java.util.Map.of(), java.util.Optional.empty()),
+            PassphraseSource.standard(
+                java.util.Map.of(),
+                java.util.Optional.empty(),
+                org.mockito.Mockito.mock(com.jaspersoft.jrsctl.core.platform.FileOps.class)),
             "host-a");
 
     assertThat(noPassphrase.list()).isEmpty();
