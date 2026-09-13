@@ -17,14 +17,14 @@ import java.util.regex.Pattern;
 /**
  * Removes secrets from any text that leaves the process (spec §5.8). Two mechanisms: values
  * {@linkplain #register registered} at runtime are replaced in their raw, standard Base64 (padded
- * and unpadded) and URL-encoded forms, and well-known patterns ({@code password=}, {@code
- * Authorization:}, {@code JSESSIONID=}, {@code Bearer <token>}, keystore passwords, the console
- * token) are masked even when nobody registered the value. Invariants: thread-safe; longer values
- * are replaced before shorter ones so a secret that contains another is never left half-masked;
- * replacement repeats until no registered form remains, so a mask boundary can never re-create a
- * secret; values shorter than four characters are ignored because masking them would destroy the
- * surrounding text. Registered values are held as strings for matching, which is the one place the
- * process keeps a secret in immutable memory; the set is never exposed.
+ * and unpadded), URL-encoded and JSON-string-escaped forms, and well-known patterns ({@code
+ * password=}, {@code Authorization:}, {@code JSESSIONID=}, {@code Bearer <token>}, keystore
+ * passwords, the console token) are masked even when nobody registered the value. Invariants:
+ * thread-safe; longer values are replaced before shorter ones so a secret that contains another is
+ * never left half-masked; replacement repeats until no registered form remains, so a mask boundary
+ * can never re-create a secret; values shorter than four characters are ignored because masking
+ * them would destroy the surrounding text. Registered values are held as strings for matching,
+ * which is the one place the process keeps a secret in immutable memory; the set is never exposed.
  */
 public final class Redactor {
 
@@ -147,11 +147,18 @@ public final class Redactor {
 
   private static List<String> formsOf(String value) {
     byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-    List<String> out = new ArrayList<>(4);
+    List<String> out = new ArrayList<>(5);
     out.add(value);
     out.add(Base64.getEncoder().encodeToString(bytes));
     out.add(Base64.getEncoder().withoutPadding().encodeToString(bytes));
     out.add(URLEncoder.encode(value, StandardCharsets.UTF_8));
+    // The JSON outputs (--json, the console API, the support bundle) serialise first and redact
+    // the text afterwards, so a value holding a quote or a backslash appears there in its escaped
+    // form (assessment item S1). Only those two characters are escaped by default for a string.
+    String json = value.replace("\\", "\\\\").replace("\"", "\\\"");
+    if (!json.equals(value)) {
+      out.add(json);
+    }
     return out;
   }
 }

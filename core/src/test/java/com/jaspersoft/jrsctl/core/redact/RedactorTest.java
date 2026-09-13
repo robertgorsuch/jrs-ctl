@@ -25,6 +25,19 @@ class RedactorTest {
   }
 
   @Test
+  void should_replace_the_json_escaped_form_when_value_holds_a_quote_or_backslash() {
+    String secret = "ab\"cd\\ef";
+    redactor.register(secret);
+    // What Jackson writes for that value inside a JSON string, redacted after serialisation.
+    String serialised = "{\"detail\":\"password ab\\\"cd\\\\ef rejected\"}";
+
+    String out = redactor.redact(serialised);
+
+    assertThat(out).isEqualTo("{\"detail\":\"password [redacted] rejected\"}");
+    assertThat(out).doesNotContain("ab");
+  }
+
+  @Test
   void should_register_from_secret_without_keeping_a_reference_when_secret_is_closed() {
     Secret s = Secret.fromString("hunter22");
     assertThat(redactor.register(s)).isTrue();
