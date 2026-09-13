@@ -39,9 +39,10 @@ Two runs cannot be pending at once, because the second could not have started.
 
 `runs.lock` in the jrsctl home names the process and run that holds it. If that process is still
 alive, wait for it or cancel it with Ctrl-C (it compensates the step in flight and exits 5). If the
-process is gone, the lock is stale: `jrsctl doctor` reports it, and the next mutating command
-removes it after confirming the holder is not running. Do not delete `state.db`; the lock file
-alone is safe to remove when its holder is dead.
+process is gone, the lock is stale: `jrsctl doctor` reports the lock as free (it tries the lock
+rather than trusting the pid in the file), and the next mutating command simply takes it. Do not
+delete `state.db`; the lock file alone is safe to remove when its holder is dead, but nothing
+requires it.
 
 ## Exit 3: "run failed, rolled back"
 
