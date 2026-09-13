@@ -246,11 +246,11 @@ class ConsoleWireGoldenTest {
   @Test
   void should_match_the_golden_when_a_plan_imports_an_archive() throws Exception {
     Path home = tmp.resolve("home");
-    FakeExportImportOperations fake = new FakeExportImportOperations();
-    EximOps.factory = services -> fake;
     Files.createDirectories(home);
     Path archive = home.resolve("import-archive.zip");
     Files.writeString(archive, "zip");
+    FakeExportImportOperations fake = new FakeExportImportOperations();
+    EximOps.factory = services -> fake;
     try (ConsoleFixture console = ConsoleFixture.start(home, Clock.systemUTC())) {
       HttpResponse<String> planned =
           console.post(
