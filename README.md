@@ -11,7 +11,7 @@ Designed for operational safety in enterprise and air-gapped environments, `jrsc
 ### 1. System Diagnostics & Pre-flight Validation
 * **Self-Verification (`jrsctl selfcheck`)**: Validates internal binary integrity, bundled runtime health, SQLite journal schema version, and cryptographic key rings without requiring a target server or configuration file.
 * **Auto-Discovery & Initialization (`jrsctl init`)**: Inspects the host to detect JasperReports Server installations (Tomcat layout, Windows services / systemd units, ports, database configurations, and `default_master.properties`), generating a tailored `config.yaml`.
-* **Diagnostic Engine (`jrsctl doctor`)**: Executes over 20 pre-flight environmental checks—including port availability, directory permissions, database connectivity, keystore consistency, disk space, and compatibility matrix validation—accompanied by actionable remediation guidance.
+* **Diagnostic Engine (`jrsctl doctor`)**: Runs local and server pre-flight checks—configuration, install layout, directory permissions, disk space, network, service control, keystore, database connectivity, the run journal, lock and snapshots, and server identity, authentication and capabilities—accompanied by actionable remediation guidance.
 * **Functional Smoke Testing (`jrsctl smoke`)**: Runs non-destructive end-to-end probes against running JRS instances via REST APIs (login, server info, repository listing, PDF report execution, scheduler) to verify operational readiness.
 
 ### 2. Cryptographic Hotfix Lifecycle
@@ -51,7 +51,7 @@ Designed for operational safety in enterprise and air-gapped environments, `jrsc
 * **Owner-Only Permissions**: Automatically restricts access permissions (`rw-------`) on secret stores, keys, and tokens.
 
 ### 7. Modern Operator Interfaces
-* **Self-Explaining CLI (`--explain`, `jrsctl docs`)**: Provides offline documentation embedded in the binary without requiring external internet access (`jrsctl docs operator-guide`, `jrsctl docs security`, `jrsctl docs hotfix-authoring`).
+* **Self-Explaining CLI (`--explain`, `jrsctl docs`)**: Provides offline documentation embedded in the binary without requiring external internet access (`jrsctl docs operator-guide`, `jrsctl docs security`, `jrsctl docs hotfix-authoring`, `jrsctl docs recovery-runbook`).
 * **Interactive & Scriptable CLI**: Supports interactive prompts, non-interactive CI automation (`--yes`, `--non-interactive`), and machine-readable JSON output (`--json`).
 * **Local Web Console (`jrsctl console`)**: Features an embedded, lightweight web interface (powered by Javalin and Server-Sent Events) for monitoring runs, inspecting plans, and viewing diagnostics in real-time, protected by single-use launch tokens.
 
@@ -112,6 +112,9 @@ sha256sum -c jrsctl-<version>-linux-x64.tar.gz.sha256
 tar -xzf jrsctl-<version>-linux-x64.tar.gz -C /opt/
 ```
 
+### Verifying the signature
+Every release file—each archive, its `.sha256` sidecar, and the SBOM (`jrsctl-<version>-sbom.json`)—has a `<file>.sig` beside it: a Base64 Ed25519 signature by the Jaspersoft publisher key (fingerprint `245731f29b662027`, printed by `jrsctl keys list`). Verify it with the JDK's `Ed25519` provider or any Ed25519 tool; a file whose `.sig` does not verify did not come from the release job. See the installation section of [`docs/operator-guide.md`](docs/operator-guide.md) and [`docs/security.md`](docs/security.md).
+
 The unpacked archive contains:
 * `bin/jrsctl` (Linux) / `bin\jrsctl.cmd` (Windows) — Launcher scripts.
 * `lib/jrsctl.jar` — Core application binary with embedded offline documentation.
@@ -158,7 +161,7 @@ jrsctl hotfix rollback JRS-8.2.0-HF-0004
 jrsctl export --uri /organizations/acme --out acme-export.zip
 
 # Import content archive with update rules
-jrsctl import --file acme-export.zip --update
+jrsctl import acme-export.zip --update
 ```
 
 ### 5. Launching the Web Console
@@ -175,7 +178,8 @@ jrsctl console
 | :--- | :--- | :---: |
 | `jrsctl selfcheck` | Verifies runtime, embedded resources, key ring, and state schema | No |
 | `jrsctl init` | Detects installation parameters and initializes `config.yaml` | No |
-| `jrsctl doctor` | Runs ~20 environmental, compatibility, and permission checks | No |
+| `jrsctl config show` | Prints the effective configuration (flag > env > file > default) as YAML | No |
+| `jrsctl doctor` | Runs local and server pre-flight checks with remediation guidance | No |
 | `jrsctl smoke` | Functional end-to-end REST probes against running instance | No* |
 | `jrsctl hotfix build` | Packages and signs a hotfix bundle from a directory | No |
 | `jrsctl hotfix verify` | Validates bundle signature, hashes, and version applicability | No |
