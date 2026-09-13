@@ -455,7 +455,7 @@ Manifest rules (enforced by `ValidateManifest`):
 ### 8.2 Apply plan (generated Steps)
 
 Phase `verify`:
-1. `VerifySignature` — reject unsigned unless `--allow-unsigned` (audited).
+1. `VerifySignature` — reject unsigned unless `--allow-unsigned` (audited). A signature that is present but verifies against no trusted key is never waived: the bundle names no signer, so an unknown signer cannot be told from a bundle altered after signing; the operator adds the key or the bundle is refused (exit 7).
 2. `ValidateManifest` — schema + applicability vs. detected server + dependency/conflict check vs. state store + **file overlap check** against `hotfix_files` (a file already owned by an installed hotfix that is not in `requires` is a conflict).
 3. `Preflight` — disk space, write access, lock detection, service status, `restart` consistency, database connectivity if SQL present.
 4. `RunPrechecks`.
@@ -478,7 +478,7 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 
 ### 8.3 Rollback plan
 
-- Rollback is LIFO per file: if any file owned by hotfix N is also owned by a later installed hotfix, rollback of N is refused with the list of blocking hotfix ids. `--cascade` rolls back the blocking hotfixes first, newest to oldest, in one Plan.
+- Rollback is LIFO per file and per requirement: if any file owned by hotfix N is also owned by a later installed hotfix, or a later installed hotfix's manifest `requires` N, rollback of N is refused with the list of blocking hotfix ids. `--cascade` rolls back the blocking hotfixes first, newest to oldest, in one Plan.
 - The plan is built from the manifest in the installing run's bundle copy (`runs/<installRunId>/bundle/`); without it the SQL rollback scripts and the restart requirement are unknown, so planning refuses (exit 2) rather than roll back partially.
 - Steps: `StopService` (if the manifest says `restart: required` or any file lies under WEB-INF/lib or WEB-INF/classes, the rule apply follows) → `RestoreSnapshot` (verify hashes before and after) → `RunSqlRollback` (when the manifest holds rollback scripts and is not `irreversible`) → `StartService` + `WaitForServer` → `RecordRolledBack`.
 

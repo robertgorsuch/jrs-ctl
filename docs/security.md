@@ -111,7 +111,7 @@ Review `config-redacted.yaml` for host names and paths you consider sensitive be
 - `keys generate` writes the private key once, owner-only, and never again; it is not kept in the
   home, not in the state store and not in any log. Store it outside version control, or in
   `secrets.enc` via `secrets set <name> --from-file`.
-- `hotfix apply --allow-unsigned` bypasses the signature check for one run and writes an audit row
+- `hotfix apply --allow-unsigned` accepts a bundle that carries no signature for one run and writes an audit row; a signature that is present but fails to verify is refused regardless, since the bundle names no signer and a tampered bundle looks the same as an unknown one
   naming the bundle and the actor. It exists for bundles an operator built themselves; a support
   process should never require it.
 - `secrets.enc` is AES-256-GCM with a PBKDF2-HMAC-SHA256 key derived from the passphrase and a
