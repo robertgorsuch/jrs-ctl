@@ -219,6 +219,18 @@ class StateStoreTest {
         .isInstanceOf(StateStoreException.class);
   }
 
+  /** A run has exactly one terminal state (the Journal contract; assessment item E7). */
+  @Test
+  void should_refuse_a_second_terminal_state_for_the_same_run() {
+    store.recordRunStart("r1", "hotfix apply", Optional.of("p1"), NOW);
+    store.recordRunEnd("r1", NOW.plusSeconds(5), TerminalState.SUCCEEDED, 0);
+
+    assertThatThrownBy(() -> store.recordRunEnd("r1", NOW.plusSeconds(6), TerminalState.FAILED, 4))
+        .isInstanceOf(StateStoreException.class)
+        .hasMessageContaining("already ended as SUCCEEDED");
+    assertThat(store.run("r1").orElseThrow().terminalState()).contains(TerminalState.SUCCEEDED);
+  }
+
   @Test
   void should_throw_when_ending_an_unknown_run() {
     assertThatThrownBy(() -> store.recordRunEnd("nope", NOW, TerminalState.FAILED, 4))

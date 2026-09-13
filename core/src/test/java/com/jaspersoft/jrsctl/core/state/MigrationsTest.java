@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.core.state;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -26,6 +27,25 @@ class MigrationsTest {
    * path key. The migration rewrites the former at millisecond precision and fills the latter, so
    * an existing installation orders and matches correctly after the upgrade.
    */
+  /** A downgraded binary must not read and write a schema it does not know (assessment item E6). */
+  @Test
+  void should_refuse_a_database_written_by_a_newer_build() throws Exception {
+    Path db = tmp.resolve("state.db");
+    try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db)) {
+      Migrations.apply(c, CLOCK, List.of("V001__init.sql"));
+      try (Statement s = c.createStatement()) {
+        s.execute(
+            "INSERT INTO schema_version(version, name, applied_at)"
+                + " VALUES (99, 'V099__future.sql', '2026-09-13T00:00:00Z')");
+      }
+
+      assertThatThrownBy(() -> Migrations.apply(c, CLOCK, List.of("V001__init.sql")))
+          .isInstanceOf(StateStoreException.class)
+          .hasMessageContaining("99")
+          .hasMessageContaining("newer than this build");
+    }
+  }
+
   @Test
   void should_normalise_legacy_timestamps_and_fill_path_keys_when_migrating_from_v1()
       throws Exception {

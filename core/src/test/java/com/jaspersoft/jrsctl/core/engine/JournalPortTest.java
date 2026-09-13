@@ -47,6 +47,28 @@ class JournalPortTest {
         .anySatisfy(next -> assertThat(next).contains("runs recover"));
   }
 
+  /**
+   * The first write is the run's own row. When it fails nothing has been mutated and there is no
+   * row for {@code runs recover} to find, so the outcome is a refusal (exit 2), not the
+   * rollback-incomplete failure a mid-run journal loss gets (assessment item E5).
+   */
+  @Test
+  void should_refuse_with_nothing_changed_when_the_journal_fails_on_run_start(@TempDir Path home) {
+    RecordingJournal journal = new RecordingJournal(1);
+
+    Result result = run(journal, home);
+
+    assertThat(result.outcome())
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(RunOutcome.Failed.class))
+        .satisfies(
+            f -> {
+              assertThat(f.rollbackIncomplete()).isFalse();
+              assertThat(f.exitCode()).isEqualTo(2);
+              assertThat(f.nextAction()).contains("nothing was changed");
+            });
+    assertThat(journal.calls).containsExactly("recordRunStart");
+  }
+
   private record Result(RunOutcome outcome, RecordingSink sink) {}
 
   private static Result run(Journal journal, Path home) {

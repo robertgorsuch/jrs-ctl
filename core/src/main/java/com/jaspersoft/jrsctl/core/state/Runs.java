@@ -47,7 +47,8 @@ final class Runs {
             c -> {
               try (PreparedStatement ps =
                   c.prepareStatement(
-                      "UPDATE runs SET ended_at=?, terminal_state=?, exit_code=? WHERE run_id=?")) {
+                      "UPDATE runs SET ended_at=?, terminal_state=?, exit_code=?"
+                          + " WHERE run_id=? AND terminal_state IS NULL")) {
                 ps.setString(1, Timestamps.encode(endedAt));
                 ps.setString(2, state.name());
                 ps.setInt(3, exitCode);
@@ -56,7 +57,18 @@ final class Runs {
               }
             });
     if (rows == 0) {
-      throw new StateStoreException("unknown run " + runId);
+      // A run has one terminal state (the Journal contract); a second write is a bug upstream,
+      // not something to record silently (assessment item E7).
+      throw run(runId)
+          .map(
+              r ->
+                  new StateStoreException(
+                      "run "
+                          + runId
+                          + " already ended as "
+                          + r.terminalState().map(Enum::name).orElse("?")
+                          + "; a run has exactly one terminal state"))
+          .orElseGet(() -> new StateStoreException("unknown run " + runId));
     }
   }
 

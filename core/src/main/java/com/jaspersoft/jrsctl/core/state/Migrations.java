@@ -42,6 +42,16 @@ final class Migrations {
               + "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
     }
     int current = currentVersion(conn);
+    int latest = scripts.stream().mapToInt(Migrations::versionOf).max().orElse(0);
+    if (current > latest) {
+      // A downgraded binary would otherwise read and write a schema it does not know (item E6).
+      throw new StateStoreException(
+          "state.db is at schema version "
+              + current
+              + ", newer than this build understands ("
+              + latest
+              + "); use the jrsctl that created it, or a newer one");
+    }
     for (String script : scripts) {
       int version = versionOf(script);
       if (version <= current) {

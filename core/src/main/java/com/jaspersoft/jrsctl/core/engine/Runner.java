@@ -72,8 +72,19 @@ public final class Runner {
       return new RunOutcome.FingerprintMismatch(plan.fingerprint().changedKeys(recomputed));
     }
     try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant())) {
-      store.recordRunStart(
-          ctx.runId(), plan.summary().operation(), Optional.of(plan.planId()), clock.instant());
+      try {
+        store.recordRunStart(
+            ctx.runId(), plan.summary().operation(), Optional.of(plan.planId()), clock.instant());
+      } catch (JournalException e) {
+        // Nothing has been mutated and there is no row for runs recover to find, so this is a
+        // refusal (exit 2), not the rollback-incomplete outcome a failure mid-run gets (item E5).
+        return new RunOutcome.Failed(
+            "the run journal could not be written: " + describe(e),
+            false,
+            "run jrsctl doctor; state.db must be writable before anything can run; nothing was"
+                + " changed",
+            List.of());
+      }
       return new Execution(plan, ctx, opts, Map.of()).proceed(0);
     }
   }
