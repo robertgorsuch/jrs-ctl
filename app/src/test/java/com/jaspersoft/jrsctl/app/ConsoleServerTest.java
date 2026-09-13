@@ -15,6 +15,7 @@ import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.PlanSummary;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.Event;
@@ -746,6 +747,22 @@ class ConsoleServerTest {
     assertThat(prune.statusCode()).isEqualTo(200);
     JsonNode pruneDoc = validated("POST /api/snapshots/prune", prune);
     assertThat(pruneDoc.get("remainingCount").asInt()).isGreaterThanOrEqualTo(0);
+  }
+
+  @Test
+  void should_refuse_a_real_prune_with_409_when_the_run_lock_is_held() throws Exception {
+    startDefault();
+    // The lock is held in this JVM, as it is when the console itself is executing a run; the
+    // dry run only reads, the real prune takes the lock the CLI's `runs prune` takes (item S3).
+    try (RunLock held = new RunLock(new JrsctlHome(home), "r-elsewhere", Instant.now())) {
+      HttpResponse<String> dry = post("/api/snapshots/prune", "{\"dryRun\":true}");
+      assertThat(dry.statusCode()).isEqualTo(200);
+
+      HttpResponse<String> prune = post("/api/snapshots/prune", "{\"dryRun\":false}");
+
+      assertThat(prune.statusCode()).isEqualTo(409);
+      assertThat(prune.body()).contains("r-elsewhere");
+    }
   }
 
   @Test

@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app.console;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
@@ -533,6 +534,13 @@ final class ConsoleApi {
     }
     try {
       json(ctx, 200, views.pruneSnapshots(dryRun));
+    } catch (LockHeldException held) {
+      throw ConsoleHttpException.conflict(
+          "the run lock is held by run "
+              + held.holderRunId()
+              + " (pid "
+              + held.holderPid()
+              + "); prune when it has finished");
     } catch (IOException e) {
       throw new ConsoleHttpException(500, "cannot prune snapshots: " + message(e));
     }

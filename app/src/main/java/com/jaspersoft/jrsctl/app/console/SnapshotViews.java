@@ -1,5 +1,8 @@
 package com.jaspersoft.jrsctl.app.console;
 
+import com.jaspersoft.jrsctl.core.engine.LockHeldException;
+import com.jaspersoft.jrsctl.core.engine.RunIds;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotManifest;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
@@ -75,9 +78,22 @@ final class SnapshotViews {
         items);
   }
 
+  /**
+   * A dry run only reads; a real prune takes the run lock the CLI's {@code runs prune} takes, so it
+   * cannot compute retention protection while another process's run has no row yet (spec §5.5;
+   * assessment item S3). A held lock surfaces as {@link LockHeldException} for the API to map.
+   */
   SnapshotsDoc.PruneResult prune(boolean dryRun) throws IOException {
     RetentionPruner pruner = RetentionPruner.of(services);
-    RetentionPruner.Result res = pruner.prune(dryRun);
+    RetentionPruner.Result res;
+    if (dryRun) {
+      res = pruner.prune(true);
+    } else {
+      String lockId = "prune-" + RunIds.next(services.clock());
+      try (RunLock unusedLock = new RunLock(services.home(), lockId, services.clock().instant())) {
+        res = pruner.prune(false);
+      }
+    }
     int remaining = snapshotStore.list().size();
     StateStore store = store();
     RetentionProtection.Protected prot = RetentionProtection.compute(store);
