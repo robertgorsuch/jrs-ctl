@@ -186,8 +186,9 @@ Binary zip. Fetched with the bearer header and handed to the browser as a downlo
 
 ### `GET /api/doctor`
 
-Runs doctor and returns `{ranAt, counts: {pass, warn, fail}, items: [{id, status, title, detail, remediation}]}`
-with `status` in `PASS`, `WARN`, `FAIL`. Same content as `jrsctl doctor --json`.
+Runs doctor and returns `{ranAt, counts: {pass, warn, fail, skip}, items: [{id, name, status, title,
+detail, remediation}], exitCode}` with `status` in `PASS`, `WARN`, `FAIL`, `SKIP`. Same content as
+`jrsctl doctor --json`.
 
 ### `GET /api/hotfixes`
 

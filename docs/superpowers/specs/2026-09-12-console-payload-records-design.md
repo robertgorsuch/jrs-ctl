@@ -1,6 +1,6 @@
 # Console payload records
 
-Design, 2026-09-12. Status: approved, not yet implemented.
+Design, 2026-09-12. Status: implemented.
 
 ## Problem
 
@@ -220,3 +220,42 @@ with a non-empty `blockedBy`. If a branch has no golden, the migration is unguar
 The `app` module has a Jacoco line floor. Records add generated accessors that tests may not
 call, which can move the measured number. Watch it on the first full `verify` rather than at
 the end.
+
+## As built
+
+`api-runs.schema.json` and `api-runs-show.schema.json` do not share the run item through a
+`$ref`, as planned above. `additionalProperties: false` does not compose through `$ref`: a
+schema that referenced the other's run-item definition and then added its own five properties
+would let through any property either schema recognises, not just its own. Each schema instead
+repeats the nine base fields as its own `properties`/`required` list, and the two share only the
+`outcome` enum through `$ref`.
+
+Four README fixes shipped, not three: the three planned server and plan corrections, plus a
+fourth that corrected `/api/health`'s `networkMode` note to `isolated` and `public` (the two
+values the config schema actually allows). A fifth correction, to `GET /api/doctor`, shipped in
+the fix wave after the initial review: the README described `counts: {pass, warn, fail}` and
+`items: [{id, status, title, detail, remediation}]`, but the code has always emitted
+`counts.skip`, `items[].name` and a top-level `exitCode`, and allows `status: SKIP`.
+
+18 golden files shipped, not the eight endpoints originally scoped, because more than one golden
+was needed per endpoint to cover the branches under Risks, and two are structural rather than
+value-exact: `doctor` and the doctor-cached branch of `health` probe the real host and are
+captured as type tokens instead. The extra value-exact goldens cover a held run lock
+(`health-run-in-flight`, `runs-show-running`), a pending run with no transitions yet
+(`health-pending-no-steps`), a pending run read back as `interrupted`
+(`runs-show-interrupted`), a reachable server (`server-reachable`), and an import plan
+(`plan-import`).
+
+The harness normalises more than instants and ids: every backslash in a string value is turned
+into a forward slash before any other scrubbing runs, and `ConsoleWireGoldenTest` also normalises
+`\r\n` to `\n` on both sides of the golden comparison, so goldens compare equal on either OS and
+line-ending convention. A guard test,
+`should_contain_no_backslash_when_any_golden_is_read`, fails the build if a committed golden
+ever regains a raw backslash.
+
+Schema validation covers both value-exact goldens and live responses: `ConsoleSchemaTest`
+validates every value-exact golden against its endpoint's schema (and separately asserts that
+its golden list matches the golden directory, so a new golden cannot go unvalidated by
+omission), and `ConsoleServerTest` validates live responses from a running console for every
+endpoint, including the two structural ones and `POST /api/runs/{id}/rollback` and
+`POST /api/runs/{id}/resume`, which share `api-run-started.schema.json` with `POST /api/run`.
