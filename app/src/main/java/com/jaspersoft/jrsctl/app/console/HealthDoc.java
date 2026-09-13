@@ -25,7 +25,11 @@ record HealthDoc(
   /** The tool's own version and the hotfix compatibility matrix version it targets. */
   record Tool(String version, String matrixVersion) {}
 
-  /** The most recently finished run; {@code finishedAt} is null until its terminal write lands. */
+  /**
+   * The most recently finished run; {@code finishedAt} stays an {@code Optional} serialised as null
+   * when absent for the shape's sake, but {@code lastRun} only ever describes a run that has
+   * already reached a terminal state, so it is set in practice.
+   */
   record LastRun(String id, String op, String outcome, Optional<Instant> finishedAt) {}
 
   /** Whether the run lock is held; {@code runId} and {@code pid} are omitted when it is not. */

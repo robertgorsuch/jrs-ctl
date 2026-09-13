@@ -24,14 +24,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Freezes the JSON of every console endpoint built from the current hand-assembled maps, before the
- * record migration. Invariants: a value-exact golden is captured from the code as it stood before
- * that migration and is never edited by hand afterwards, so a difference is a change to the
- * published wire format and fails the build; {@code doctor} and the doctor-cached branch of {@code
- * health} probe the real machine and would be flaky value-exact, so they are captured in shape mode
- * instead, which still guards key names, key order, nesting and the null-versus-absent distinction.
- * Run with {@code -Dconsole.golden.update=true} to write a missing golden, then read it before
- * committing.
+ * Freezes the wire format of every console document. Invariants: a golden is captured once and
+ * never edited by hand; a difference between the captured text and a fresh response is a change to
+ * the published wire format and fails the build; both sides are compared with {@code \r\n}
+ * normalised to {@code \n} and goldens are written in {@code \n} form, so line endings never cause
+ * a spurious failure; {@code doctor} and the doctor-cached branch of {@code health} probe the real
+ * machine and would be flaky value-exact, so they are captured in shape mode instead, which still
+ * guards key names, key order, nesting and the null-versus-absent distinction. Run with {@code
+ * -Dconsole.golden.update=true} to write a missing golden, then read it before committing.
  */
 class ConsoleWireGoldenTest {
 
@@ -241,7 +241,7 @@ class ConsoleWireGoldenTest {
    * Captures {@code /api/plan} for an {@code import} plan through the fake export/import
    * operations, whose plan summary has a non-empty {@code resourcesTouched}, a non-empty {@code
    * warnings} list and a backup path -- the one risk-section shape {@code plan-hotfix-apply} does
-   * not cover. Captured from the unchanged map code, before the record migration (R15).
+   * not cover.
    */
   @Test
   void should_match_the_golden_when_a_plan_imports_an_archive() throws Exception {
@@ -268,8 +268,7 @@ class ConsoleWireGoldenTest {
    * Captures {@code /api/runs/{id}} for a pending run seeded with no transitions, over a fresh
    * fixture that never runs it live, so the console reads its outcome as {@code interrupted}, which
    * carries {@code rollbackAvailable: true} and a synthetic {@code failure} block -- neither of
-   * which any other golden shows. Captured from the unchanged map code, before the record migration
-   * (R15).
+   * which any other golden shows.
    */
   @Test
   void should_match_the_golden_when_a_pending_run_is_interrupted() throws Exception {

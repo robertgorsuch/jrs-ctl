@@ -24,12 +24,14 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Every console document the golden files hold validates against the schema published for its
- * endpoint. Invariants: each endpoint in {@link JsonSchemas#endpoints()} has at least one golden; a
- * golden that no schema accepts fails the build, so the records, the schemas and the wire cannot
- * drift apart. The two structural goldens ({@code doctor}, {@code health-doctor-cached}) are
- * scrubbed to type tokens rather than values and so cannot be schema-validated; those endpoints are
- * proven live in Task 8 instead.
+ * Every value-exact console golden validates against the schema published for its endpoint.
+ * Invariants: {@link #goldens()} is checked against the golden directory itself (see {@code
+ * should_schema_validate_every_value_exact_golden_when_goldens_are_listed}), so a new value-exact
+ * golden that nobody adds here fails the build instead of silently going unchecked; a golden that
+ * no schema accepts also fails the build, so the records, the schemas and the wire cannot drift
+ * apart. The two structural goldens ({@code doctor}, {@code health-doctor-cached}) are scrubbed to
+ * type tokens rather than values and so cannot be schema-validated here; {@link ConsoleServerTest}
+ * validates those two endpoints against the same schemas using live responses instead.
  */
 class ConsoleSchemaTest {
 
