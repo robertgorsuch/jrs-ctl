@@ -96,6 +96,7 @@ class ConsoleServerTest {
           baseUrl: http://localhost:8089/jasperserver-pro
           webappName: jasperserver-pro
           installDir: %s
+          tomcatDir: %s/apache-tomcat
           auth:
             mode: basic
             username: jasperadmin
@@ -103,7 +104,7 @@ class ConsoleServerTest {
         service:
           kind: manual
         """
-            .formatted(tmp.toString().replace("\\", "/")),
+            .formatted(tmp.toString().replace("\\", "/"), tmp.toString().replace("\\", "/")),
         StandardCharsets.UTF_8);
     Env.override(Map.of("JRS_PASSWORD", "jasperadmin"));
   }
@@ -676,6 +677,109 @@ class ConsoleServerTest {
   }
 
   // ---- refusals and token file ----------------------------------------------------------------
+
+  // ---- smoke, customizations, snapshots, config, repository --------------------------------
+
+  @Test
+  void should_serve_smoke_endpoints_and_match_schema() throws Exception {
+    startDefault();
+    HttpResponse<String> getSmoke = get("/api/smoke");
+    assertThat(getSmoke.statusCode()).isEqualTo(200);
+    JsonNode getSmokeDoc = validated("GET /api/smoke", getSmoke);
+    assertThat(getSmokeDoc.get("items").isArray()).isTrue();
+    assertThat(getSmokeDoc.get("counts").get("pass").asInt()).isGreaterThanOrEqualTo(0);
+
+    HttpResponse<String> postSmoke = post("/api/smoke", "{\"mutating\":false}");
+    assertThat(postSmoke.statusCode()).isEqualTo(200);
+    JsonNode postSmokeDoc = validated("POST /api/smoke", postSmoke);
+    assertThat(postSmokeDoc.get("mutating").asBoolean()).isFalse();
+  }
+
+  @Test
+  void should_serve_customizations_endpoints_and_match_schema() throws Exception {
+    startDefault();
+    Path customFile = tmp.resolve("WEB-INF/classes/custom.properties");
+    Files.createDirectories(customFile.getParent());
+    Files.writeString(customFile, "custom.key=123\n", StandardCharsets.UTF_8);
+
+    HttpResponse<String> listBefore = get("/api/customizations");
+    assertThat(listBefore.statusCode()).isEqualTo(200);
+    JsonNode listDocBefore = validated("GET /api/customizations", listBefore);
+    assertThat(listDocBefore.get("customizations")).isEmpty();
+
+    HttpResponse<String> register =
+        post(
+            "/api/customizations/register",
+            "{\"path\":\"" + customFile.toString().replace("\\", "\\\\") + "\"}");
+    assertThat(register.statusCode()).isEqualTo(200);
+
+    HttpResponse<String> listAfter = get("/api/customizations");
+    assertThat(listAfter.statusCode()).isEqualTo(200);
+    JsonNode listDocAfter = validated("GET /api/customizations", listAfter);
+    assertThat(listDocAfter.get("customizations")).hasSize(1);
+
+    HttpResponse<String> diff =
+        get(
+            "/api/customizations/diff?path="
+                + java.net.URLEncoder.encode(customFile.toString(), StandardCharsets.UTF_8));
+    assertThat(diff.statusCode()).isEqualTo(200);
+    JsonNode diffDoc = validated("GET /api/customizations/diff", diff);
+    assertThat(diffDoc.get("identical").asBoolean()).isTrue();
+
+    HttpResponse<String> unregister =
+        post(
+            "/api/customizations/unregister",
+            "{\"path\":\"" + customFile.toString().replace("\\", "\\\\") + "\"}");
+    assertThat(unregister.statusCode()).isEqualTo(200);
+  }
+
+  @Test
+  void should_serve_snapshots_endpoints_and_match_schema() throws Exception {
+    startDefault();
+    HttpResponse<String> snapshots = get("/api/snapshots");
+    assertThat(snapshots.statusCode()).isEqualTo(200);
+    JsonNode snapshotsDoc = validated("GET /api/snapshots", snapshots);
+    assertThat(snapshotsDoc.get("retentionDays").asInt()).isEqualTo(30);
+    assertThat(snapshotsDoc.get("snapshots").isArray()).isTrue();
+
+    HttpResponse<String> prune = post("/api/snapshots/prune", "{\"dryRun\":true}");
+    assertThat(prune.statusCode()).isEqualTo(200);
+    JsonNode pruneDoc = validated("POST /api/snapshots/prune", prune);
+    assertThat(pruneDoc.get("remainingCount").asInt()).isGreaterThanOrEqualTo(0);
+  }
+
+  @Test
+  void should_serve_config_and_selfcheck_endpoints_and_match_schema() throws Exception {
+    startDefault();
+    HttpResponse<String> config = get("/api/config");
+    assertThat(config.statusCode()).isEqualTo(200);
+    JsonNode configDoc = validated("GET /api/config", config);
+    assertThat(configDoc.get("server").get("baseUrl").asText()).contains("8089");
+    assertThat(configDoc.get("platform").get("jvmVersion").asText()).isNotBlank();
+    assertThat(configDoc.get("keys").isArray()).isTrue();
+    assertThat(configDoc.get("redactedYaml").asText()).contains("[redacted]");
+
+    HttpResponse<String> selfcheck = get("/api/selfcheck");
+    assertThat(selfcheck.statusCode()).isEqualTo(200);
+    JsonNode selfcheckDoc = validated("GET /api/selfcheck", selfcheck);
+    assertThat(selfcheckDoc.get("items").isArray()).isTrue();
+    assertThat(selfcheckDoc.get("items").size()).isGreaterThan(0);
+
+    HttpResponse<String> keys = get("/api/keys");
+    assertThat(keys.statusCode()).isEqualTo(200);
+    JsonNode keysDoc = validated("GET /api/keys", keys);
+    assertThat(keysDoc.isArray()).isTrue();
+  }
+
+  @Test
+  void should_serve_repository_tree_endpoint_and_match_schema() throws Exception {
+    startDefault();
+    HttpResponse<String> tree = get("/api/repository/tree?path=/");
+    assertThat(tree.statusCode()).isEqualTo(200);
+    JsonNode treeDoc = validated("GET /api/repository/tree", tree);
+    assertThat(treeDoc.get("path").asText()).isEqualTo("/");
+    assertThat(treeDoc.get("children").isArray()).isTrue();
+  }
 
   @Test
   void should_refuse_non_loopback_bind_when_tls_disabled() {

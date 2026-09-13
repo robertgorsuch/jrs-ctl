@@ -46,6 +46,11 @@ final class ConsoleViews {
   private final ServerViews serverViews;
   private final RunViews runViews;
   private final HotfixViews hotfixViews;
+  private final SmokeViews smokeViews;
+  private final CustomizationViews customizationViews;
+  private final SnapshotViews snapshotViews;
+  private final ConfigViews configViews;
+  private final RepoViews repoViews;
 
   ConsoleViews(
       Services services, RunManager runs, DoctorCache doctor, String bind, IntSupplier port) {
@@ -57,9 +62,59 @@ final class ConsoleViews {
     this.serverViews = new ServerViews(services, runs, doctor, bind, port);
     this.runViews = new RunViews(services, runs, doctor, bind, port);
     this.hotfixViews = new HotfixViews(services, runs, doctor, bind, port);
+    this.smokeViews = new SmokeViews(services, runs, doctor, bind, port);
+    this.customizationViews = new CustomizationViews(services, runs, doctor, bind, port);
+    this.snapshotViews = new SnapshotViews(services, runs, doctor, bind, port);
+    this.configViews = new ConfigViews(services, runs, doctor, bind, port);
+    this.repoViews = new RepoViews(services, runs, doctor, bind, port);
   }
 
   // ---- delegation to the per-area views (roadmap item 17) ------------------------------------
+
+  SmokeDoc smoke(boolean mutating) {
+    return smokeViews.smoke(mutating);
+  }
+
+  CustomizationsDoc customizations() {
+    return customizationViews.customizations();
+  }
+
+  CustomizationsDoc.DiffDoc customizationDiff(String path) {
+    return customizationViews.diff(path);
+  }
+
+  com.jaspersoft.jrsctl.core.state.Customization registerCustomization(
+      String path, Optional<String> pristineCopy) {
+    return customizationViews.register(path, pristineCopy);
+  }
+
+  boolean unregisterCustomization(String path) {
+    return customizationViews.unregister(path);
+  }
+
+  SnapshotsDoc snapshotList() {
+    return snapshotViews.snapshots();
+  }
+
+  SnapshotsDoc.PruneResult pruneSnapshots(boolean dryRun) throws IOException {
+    return snapshotViews.prune(dryRun);
+  }
+
+  ConfigDoc config() {
+    return configViews.config();
+  }
+
+  com.jaspersoft.jrsctl.core.selfcheck.SelfCheck.Report selfcheck() {
+    return configViews.selfcheck();
+  }
+
+  List<Map<String, Object>> keys() {
+    return configViews.keys();
+  }
+
+  RepoDoc repositoryTree(String path) {
+    return repoViews.tree(path);
+  }
 
   ServerDoc server() {
     return serverViews.server();

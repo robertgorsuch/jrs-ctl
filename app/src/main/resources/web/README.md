@@ -31,7 +31,7 @@ guard this: `WebAssetsTest` (classpath) and `Phase0SkeletonTest` (packaged jar).
 - Without `?mock=1`, if `/api/health` is unreachable the page offers "Use sample data".
 
 Routes: `#/dashboard`, `#/new` (optional `?op=hotfix.rollback&id=...`), `#/runs`,
-`#/runs/<runId>`, `#/doctor`, `#/hotfixes`.
+`#/runs/<runId>`, `#/doctor`, `#/hotfixes`, `#/smoke`, `#/customizations`, `#/snapshots`, `#/config`.
 
 ## Token handling (spec §11.2)
 
@@ -194,6 +194,30 @@ detail, remediation}], exitCode}` with `status` in `PASS`, `WARN`, `FAIL`, `SKIP
 
 `{hotfixes: [{id, title, installedAt, files, state, blockedBy: []}]}` where `files` is a
 count (an array is accepted) and `state` is `installed` or `rolled_back`.
+
+### `GET /api/smoke` and `POST /api/smoke`
+
+Executes smoke tests against the live server and returns `{ranAt, mutating, runId, counts: {pass, warn, fail, skip}, items: [{id, name, status, title, detail, remediation, durationMs}], exitCode}`. `POST /api/smoke` accepts `{"mutating": true}` to execute mutating tests under the run lock.
+
+### `GET /api/customizations` and `GET /api/customizations/diff?path=...`
+
+Lists registered customizations `{customizations: [{path, originalSha256, registeredSha256, currentSha256, snapshotRef, identical, registeredAt}]}`. `GET /api/customizations/diff?path=...` returns line-by-line diff blocks `{path, originalSha256, registeredSha256, currentSha256, identical, lines: [...]}`.
+
+### `POST /api/customizations/register` and `POST /api/customizations/unregister`
+
+Registers a path with `{"path": "...", "pristineCopy": "..."}` or unregisters with `{"path": "..."}`.
+
+### `GET /api/snapshots` and `POST /api/snapshots/prune`
+
+Lists snapshot storage metrics and entries `{totalCount, totalBytes, retentionDays, maxSnapshots, snapshots: [{id, runId, stepId, createdAt, bytes, fileCount, protectionReasons: [...], files: [...]}]}`. `POST /api/snapshots/prune` with `{"dryRun": false}` removes expired unprotected snapshots and returns `{prunedCount, reclaimedBytes, remainingCount, protectedCount}`.
+
+### `GET /api/config` and `GET /api/selfcheck` and `GET /api/keys`
+
+Returns redacted runtime configuration and environment health `{server, platform, keys, redactedYaml}`. `GET /api/selfcheck` returns binary/platform integrity reports. `GET /api/keys` lists active Ed25519 public signing keys and fingerprints.
+
+### `GET /api/repository/tree?path=...`
+
+Returns repository folder hierarchy `{path, children: [{uri, label, resourceType, isFolder, hasChildren}]}` for dynamic folder browsing.
 
 ## Rules kept by this front-end
 

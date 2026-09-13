@@ -18,7 +18,20 @@ class WebAssetsTest {
 
   private static final List<String> ASSETS =
       List.of(
-          "/web/index.html", "/web/console.css", "/web/app.js", "/web/api.js", "/web/brand.css");
+          "/web/index.html",
+          "/web/console.css",
+          "/web/app.js",
+          "/web/api.js",
+          "/web/brand.css",
+          "/web/components/diffViewer.js",
+          "/web/components/repoPicker.js",
+          "/web/components/keyShortcuts.js",
+          "/web/components/logFilter.js",
+          "/web/components/runCompare.js",
+          "/web/views/smokeView.js",
+          "/web/views/customizationsView.js",
+          "/web/views/snapshotsView.js",
+          "/web/views/configView.js");
 
   /** Development-only files that must never be served by a real console. */
   private static final List<String> DEV_ONLY = List.of("/web/mock.js", "/web/README.md");

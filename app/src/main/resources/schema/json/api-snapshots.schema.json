@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-snapshots.schema.json",
+  "title": "Console /api/snapshots (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["totalCount", "totalBytes", "retentionDays", "maxSnapshots", "snapshots"],
+  "properties": {
+    "totalCount": { "type": "integer", "minimum": 0 },
+    "totalBytes": { "type": "integer", "minimum": 0 },
+    "retentionDays": { "type": "integer", "minimum": 0 },
+    "maxSnapshots": { "type": "integer", "minimum": 0 },
+    "snapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runId",
+          "stepId",
+          "createdAt",
+          "bytes",
+          "fileCount",
+          "protectionReasons",
+          "files"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "runId": { "type": "string" },
+          "stepId": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "fileCount": { "type": "integer", "minimum": 0 },
+          "protectionReasons": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "sha256", "bytes"],
+              "properties": {
+                "path": { "type": "string" },
+                "sha256": { "type": "string" },
+                "bytes": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

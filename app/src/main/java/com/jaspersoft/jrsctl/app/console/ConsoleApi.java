@@ -16,6 +16,7 @@ import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.customizations.CustomizationException;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.sse.SseClient;
@@ -98,9 +99,32 @@ final class ConsoleApi {
     app.get("/api/runs/{id}/support-bundle", this::supportBundle);
     app.get("/api/doctor", ctx -> json(ctx, 200, ConsoleViews.doctor(doctor.current())));
     app.get("/api/hotfixes", ctx -> json(ctx, 200, views.hotfixes()));
+    app.get("/api/smoke", ctx -> json(ctx, 200, views.smoke(false)));
+    app.post("/api/smoke", this::smoke);
+    app.get("/api/customizations", ctx -> json(ctx, 200, views.customizations()));
+    app.get("/api/customizations/diff", this::customizationDiff);
+    app.post("/api/customizations/register", this::registerCustomization);
+    app.post("/api/customizations/unregister", this::unregisterCustomization);
+    app.get("/api/snapshots", ctx -> json(ctx, 200, views.snapshotList()));
+    app.post("/api/snapshots/prune", this::pruneSnapshots);
+    app.get("/api/config", ctx -> json(ctx, 200, views.config()));
+    app.get("/api/selfcheck", ctx -> json(ctx, 200, views.selfcheck()));
+    app.get("/api/keys", ctx -> json(ctx, 200, views.keys()));
+    app.get("/api/repository/tree", this::repositoryTree);
     app.exception(
         ConsoleHttpException.class, (e, ctx) -> json(ctx, e.status(), Map.of("error", message(e))));
     app.exception(ConfigException.class, (e, ctx) -> json(ctx, 400, Map.of("error", message(e))));
+    app.exception(
+        CustomizationException.class,
+        (e, ctx) ->
+            json(
+                ctx,
+                400,
+                Map.of(
+                    "error",
+                    message(e),
+                    "remediation",
+                    e.remediation() != null ? e.remediation() : "")));
     app.exception(
         JrsUnreachableException.class, (e, ctx) -> json(ctx, 503, Map.of("error", message(e))));
     app.exception(
@@ -454,6 +478,69 @@ final class ConsoleApi {
         return;
       }
     }
+  }
+
+  // ---- smoke, customizations, snapshots, config, repository --------------------------------
+
+  private void smoke(Context ctx) {
+    boolean mutating = false;
+    if (!ctx.body().isBlank()) {
+      JsonNode body = body(ctx);
+      mutating = body.path("mutating").asBoolean(false);
+    }
+    json(ctx, 200, views.smoke(mutating));
+  }
+
+  private void customizationDiff(Context ctx) {
+    String path = ctx.queryParam("path");
+    if (path == null || path.isBlank()) {
+      throw ConsoleHttpException.badRequest("path parameter is required");
+    }
+    json(ctx, 200, views.customizationDiff(path));
+  }
+
+  private void registerCustomization(Context ctx) {
+    JsonNode body = body(ctx);
+    String path = body.path("path").asText("");
+    if (path.isBlank()) {
+      throw ConsoleHttpException.badRequest("path is required");
+    }
+    Optional<String> pristine =
+        body.hasNonNull("pristineCopy") && !body.path("pristineCopy").asText().isBlank()
+            ? Optional.of(body.path("pristineCopy").asText())
+            : Optional.empty();
+    json(ctx, 200, views.registerCustomization(path, pristine));
+  }
+
+  private void unregisterCustomization(Context ctx) {
+    JsonNode body = body(ctx);
+    String path = body.path("path").asText("");
+    if (path.isBlank()) {
+      throw ConsoleHttpException.badRequest("path is required");
+    }
+    boolean unregistered = views.unregisterCustomization(path);
+    if (!unregistered) {
+      throw ConsoleHttpException.notFound(path + " is not registered");
+    }
+    json(ctx, 200, Map.of("path", path, "unregistered", true));
+  }
+
+  private void pruneSnapshots(Context ctx) {
+    boolean dryRun = false;
+    if (!ctx.body().isBlank()) {
+      JsonNode body = body(ctx);
+      dryRun = body.path("dryRun").asBoolean(false);
+    }
+    try {
+      json(ctx, 200, views.pruneSnapshots(dryRun));
+    } catch (IOException e) {
+      throw new ConsoleHttpException(500, "cannot prune snapshots: " + message(e));
+    }
+  }
+
+  private void repositoryTree(Context ctx) {
+    String path = ctx.queryParam("path");
+    json(ctx, 200, views.repositoryTree(path));
   }
 
   // ---- support bundle -------------------------------------------------------------------------

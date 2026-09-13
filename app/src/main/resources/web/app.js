@@ -4,6 +4,14 @@
 // file never uses innerHTML. Icons are built with createElementNS from static path data.
 
 import { api, loadToken, setToken, getToken, useMock, isMock } from './api.js';
+import { renderSmokeView } from './views/smokeView.js';
+import { renderCustomizationsView } from './views/customizationsView.js';
+import { renderSnapshotsView } from './views/snapshotsView.js';
+import { renderConfigView } from './views/configView.js';
+import { initKeyShortcuts } from './components/keyShortcuts.js';
+import { createRepoPicker } from './components/repoPicker.js';
+import { createLogFilter } from './components/logFilter.js';
+import { createRunCompareModal } from './components/runCompare.js';
 
 /* ======================================================================
    DOM helpers
@@ -239,6 +247,21 @@ function confirmDialog({ title, body, confirmLabel, danger }) {
   });
 }
 
+function openModal(title, bodyNode) {
+  const root = document.getElementById('modal-root');
+  clear(root);
+  const closeBtn = h('button', { class: 'btn', type: 'button', onclick: () => clear(root) }, 'Close');
+  const dialog = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', tabindex: '-1' },
+    h('h2', { class: 'h3' }, title),
+    h('div', null, bodyNode),
+    h('div', { class: 'btn-row' }, closeBtn));
+  dialog.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') { ev.preventDefault(); clear(root); }
+  });
+  root.append(h('div', { class: 'modal-backdrop', onclick: () => clear(root) }), dialog);
+  closeBtn.focus();
+}
+
 /* ======================================================================
    Chrome (rail, top bar) and boot
    ====================================================================== */
@@ -365,6 +388,7 @@ function renderOfflinePanel(e) {
 }
 
 async function boot() {
+  initKeyShortcuts({ h, modal: openModal });
   await loadToken();
   const params = new URLSearchParams(window.location.search);
   if (params.get('mock') === '1' && !isMock()) {
@@ -396,6 +420,46 @@ const ROUTES = [
   { pattern: /^\/runs\/([^/]+)$/, title: 'Runs', nav: 'runs', view: runView },
   { pattern: /^\/doctor$/, title: 'Doctor', nav: 'doctor', view: doctorView },
   { pattern: /^\/hotfixes$/, title: 'Hotfixes', nav: 'hotfixes', view: hotfixesView },
+  {
+    pattern: /^\/smoke$/,
+    title: 'Smoke Test',
+    nav: 'smoke',
+    view: async () => {
+      const v = renderSmokeView({ api, h, icon, chip, toast });
+      if (v.load) await v.load();
+      return v.element;
+    }
+  },
+  {
+    pattern: /^\/customizations$/,
+    title: 'Customizations',
+    nav: 'customizations',
+    view: async () => {
+      const v = renderCustomizationsView({ api, h, icon, chip, modal: openModal, toast });
+      if (v.load) await v.load();
+      return v.element;
+    }
+  },
+  {
+    pattern: /^\/snapshots$/,
+    title: 'Snapshots',
+    nav: 'snapshots',
+    view: async () => {
+      const v = renderSnapshotsView({ api, h, icon, chip, modal: openModal, toast });
+      if (v.load) await v.load();
+      return v.element;
+    }
+  },
+  {
+    pattern: /^\/config$/,
+    title: 'Configuration',
+    nav: 'config',
+    view: async () => {
+      const v = renderConfigView({ api, h, icon, chip, toast });
+      if (v.load) await v.load();
+      return v.element;
+    }
+  },
 ];
 
 let routerStarted = false;
@@ -551,8 +615,47 @@ async function dashboardView() {
   return frag(
     pendingRecoveryBanner(health),
     h('div', { class: 'grid-3' }, serverPanel(server), healthPanel(health), runStatePanel(health)),
+    operationsStationPanel(),
     recentRunsPanel(runs.slice(0, 5)),
     hotfixesPanel(hotfixes, false));
+}
+
+function operationsStationPanel() {
+  return panel(
+    panelHead('Operations Station'),
+    h(
+      'div',
+      { class: 'panel-body grid-2' },
+      h(
+        'div',
+        { class: 'card' },
+        h('h3', null, 'Smoke Testing Station'),
+        h('p', { class: 'secondary' }, 'Execute synthetic health checks against live APIs (login, repository, PDF report generation, scheduler).'),
+        h('a', { class: 'btn link', href: '#/smoke' }, 'Open Smoke Testing ->')
+      ),
+      h(
+        'div',
+        { class: 'card' },
+        h('h3', null, 'Customizations Registry'),
+        h('p', { class: 'secondary' }, 'Inspect modified configuration & JSP files, verify baseline integrity, and view 3-way diffs.'),
+        h('a', { class: 'btn link', href: '#/customizations' }, 'Open Customizations ->')
+      ),
+      h(
+        'div',
+        { class: 'card' },
+        h('h3', null, 'Snapshots & Retention'),
+        h('p', { class: 'secondary' }, 'Inspect disk storage used by pre-mutation rollback archives and trigger retention pruning.'),
+        h('a', { class: 'btn link', href: '#/snapshots' }, 'Open Snapshots ->')
+      ),
+      h(
+        'div',
+        { class: 'card' },
+        h('h3', null, 'Server Configuration'),
+        h('p', { class: 'secondary' }, 'Inspect active target URLs, webapp settings, trusted Ed25519 signing keys, and platform health.'),
+        h('a', { class: 'btn link', href: '#/config' }, 'Open Configuration ->')
+      )
+    )
+  );
 }
 
 function serverPanel(server) {
@@ -719,14 +822,37 @@ const OPS = {
   },
   export: {
     label: 'Export',
-    fields: () => [
-      field('Repository URIs', h('textarea', { name: 'uris', class: 'mono', placeholder: '/organizations/acme\n/public/Samples' }), 'One URI per line. Leave empty with "Full server" for everything.'),
-      checkField('usersRoles', 'Include users and roles'),
-      checkField('accessEvents', 'Include access events'),
-      checkField('fullServer', 'Full server', 'Forces the vendor strategy, which stops the service.'),
-      field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-export)']], 'auto')),
-      field('Output file', textInput('out', { mono: true, required: true, placeholder: 'C:\\exports\\acme.zip' })),
-    ],
+    fields: () => {
+      const urisArea = h('textarea', { name: 'uris', class: 'mono', placeholder: '/organizations/acme\n/public/Samples' });
+      const browseBtn = h('button', {
+        type: 'button',
+        class: 'btn-secondary btn-sm',
+        onclick: () => {
+          const currentUris = urisArea.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+          const picker = createRepoPicker({
+            api,
+            h,
+            icon,
+            initialSelected: currentUris,
+            multiple: true,
+            onSelect: (selected) => {
+              urisArea.value = selected.join('\n');
+            }
+          });
+          openModal('Browse Server Repository', picker.element);
+        }
+      }, icon('download'), ' Browse repository folders...');
+
+      return [
+        field('Repository URIs', urisArea, 'One URI per line. Leave empty with "Full server" for everything.'),
+        h('div', { class: 'btn-row', style: 'margin-bottom: 12px;' }, browseBtn),
+        checkField('usersRoles', 'Include users and roles'),
+        checkField('accessEvents', 'Include access events'),
+        checkField('fullServer', 'Full server', 'Forces the vendor strategy, which stops the service.'),
+        field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-export)']], 'auto')),
+        field('Output file', textInput('out', { mono: true, required: true, placeholder: 'C:\\exports\\acme.zip' })),
+      ];
+    },
     args: (v) => ({ uris: v.uris.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), usersRoles: !!v.usersRoles, accessEvents: !!v.accessEvents,
       fullServer: !!v.fullServer, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out }),
     validate: (v) => (!v.out ? 'Enter the output file.' : !v.fullServer && !v.uris.trim() ? 'Enter at least one URI or choose Full server.' : null),
@@ -918,6 +1044,7 @@ async function runView(ctx) {
     outcome: run.outcome || 'running',
     failure: run.failure || null,
     logCount: 0,
+    logEntries: [],
     paused: false,
   };
   const seed = run.steps || (run.plan && run.plan.steps) || [];
@@ -933,6 +1060,9 @@ async function runView(ctx) {
     try { await api.cancelRun(id); toast('Cancellation requested.', 'warn'); } catch (e) { cancelBtn.disabled = false; reportError(e); }
   } }, 'Cancel run');
   const rollbackBtn = h('button', { class: 'btn danger', type: 'button', onclick: () => rollbackRun(id) }, icon('undo'), 'Roll back');
+  const compareBtn = h('button', { class: 'btn-secondary btn-sm', type: 'button', onclick: () => {
+    createRunCompareModal({ currentRun: model.run, api, h, icon, chip, outcomeChip, stepChip, modal: openModal });
+  } }, icon('refresh'), ' Compare');
   const actions = h('div', { class: 'btn-row' });
   const head = h('div', { class: 'run-head' }, h('span', { class: 'id' }, id), statusHost, elapsed, actions);
   const sub = h('div', { class: 'run-sub' }, h('div', { class: 'title' }, run.title || (opLabel(run.op) + (run.target ? ' ' + run.target : ''))),
@@ -948,6 +1078,21 @@ async function runView(ctx) {
   const logBody = h('div', { class: 'log-body', role: 'log', 'aria-live': 'off', tabindex: '0' });
   const logCountEl = h('span', null, '0 lines');
   const connState = h('span', null, 'connecting');
+  const logFilter = createLogFilter({
+    h,
+    icon,
+    steps: seed,
+    onFilterChange: () => applyLogFilter(),
+  });
+  const copyLogsBtn = h('button', {
+    class: 'btn link small',
+    type: 'button',
+    onclick: () => {
+      const text = model.logEntries.filter((e) => !e.node.hidden).map((e) => e.node.textContent).join('');
+      navigator.clipboard.writeText(text).then(() => toast('Logs copied to clipboard', 'pass')).catch(() => {});
+    },
+  }, icon('download'), 'Copy logs');
+
   const pauseBtn = h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', onclick: () => {
     model.paused = !model.paused;
     pauseBtn.setAttribute('aria-pressed', String(model.paused));
@@ -956,13 +1101,15 @@ async function runView(ctx) {
     if (!model.paused) logBody.scrollTop = logBody.scrollHeight;
   } }, icon('pause'), 'Pause auto-scroll');
   const logPane = h('section', { class: 'log-pane', 'aria-label': 'Live log' },
-    h('div', { class: 'log-head' }, h('span', null, 'Live log'), h('span', null, 'Secrets redacted'), connState, h('span', { class: 'spacer' }), logCountEl, pauseBtn),
+    h('div', { class: 'log-head' }, h('span', null, 'Live log'), h('span', null, 'Secrets redacted'), connState, h('span', { class: 'spacer' }), copyLogsBtn, logCountEl, pauseBtn),
+    logFilter.element,
     logBody);
 
   function renderActions() {
     clear(actions);
     const terminal = model.outcome !== 'running' && model.outcome !== 'pending';
     if (!terminal) actions.append(cancelBtn);
+    if (terminal) actions.append(compareBtn);
     if (terminal && model.run.rollbackAvailable) actions.append(rollbackBtn);
     if (model.run.supportBundleAvailable !== false) actions.append(supportBundleButton(id));
   }
@@ -970,6 +1117,7 @@ async function runView(ctx) {
   function renderSteps() {
     clear(stepsHost);
     const list = model.order.map((k) => model.steps.get(k));
+    logFilter.updateSteps(list);
     for (const g of groupByPhase(list)) {
       stepsHost.append(h('div', { class: 'phase' }, g.phase));
       for (const s of g.steps) {
@@ -1001,15 +1149,25 @@ async function runView(ctx) {
       h('span', { class: 'ts' }, ts ? fmtTime(ts) : '        '), ' ',
       stepId ? [h('span', { class: 'step-id' }, stepId), ' '] : '',
       message, '\n');
+    const entry = { ts, stepId, message, level, node: line };
+    model.logEntries.push(entry);
+    line.hidden = !logFilter.matches(entry);
     logBody.append(line);
     logCountEl.textContent = plural(model.logCount, 'line');
-    if (!model.paused) logBody.scrollTop = logBody.scrollHeight;
+    if (!model.paused && !line.hidden) logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  function applyLogFilter() {
+    for (const entry of model.logEntries) {
+      entry.node.hidden = !logFilter.matches(entry);
+    }
   }
 
   function resetForReplay() {
     for (const s of model.steps.values()) { s.status = 'pending'; s.durationMs = null; }
     clear(logBody);
     model.logCount = 0;
+    model.logEntries = [];
     logCountEl.textContent = '0 lines';
   }
 

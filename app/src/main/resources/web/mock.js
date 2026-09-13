@@ -431,6 +431,26 @@ function startSimulatedRun(plan) {
 
 export function createMockBackend() {
   const plans = new Map();
+  const sampleCustomizations = [
+    {
+      path: 'WEB-INF/classes/jasperreports.properties',
+      originalSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+      registeredSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+      currentSha256: 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+      snapshotRef: 'C:\\ProgramData\\jrsctl\\snapshots\\20260908-142012\\customizations\\jasperreports.properties',
+      identical: false,
+      registeredAt: '2026-09-08T14:20:12Z'
+    },
+    {
+      path: 'WEB-INF/jsp/modules/login/login.jsp',
+      originalSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      registeredSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      currentSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      snapshotRef: 'C:\\ProgramData\\jrsctl\\snapshots\\20260902-101540\\customizations\\login.jsp',
+      identical: true,
+      registeredAt: '2026-09-02T10:15:40Z'
+    }
+  ];
 
   function health() {
     const last = runs[0];
@@ -464,6 +484,195 @@ export function createMockBackend() {
     if (method === 'GET' && path === '/doctor') { await new Promise((r) => setTimeout(r, 900)); return doctorReport(); }
     if (method === 'GET' && path === '/hotfixes') return { hotfixes: hotfixes.map((x) => ({ ...x })) };
     if (method === 'GET' && path === '/runs') return { runs: runs.map(listItem) };
+
+    if ((method === 'GET' || method === 'POST') && path === '/smoke') {
+      await new Promise((r) => setTimeout(r, 800));
+      const mutating = body && body.mutating;
+      return {
+        ranAt: new Date().toISOString(),
+        mutating: !!mutating,
+        runId: mutating ? 'run-smoke-20260912-001' : null,
+        counts: { pass: mutating ? 7 : 6, warn: 0, fail: 0, skip: 0 },
+        items: [
+          { id: 'server', name: 'Server Reachability', status: 'PASS', title: 'Server Reachability', detail: 'GET /rest_v2/serverInfo returned 200 in 62ms', remediation: '', durationMs: 62 },
+          { id: 'auth', name: 'Authentication Probe', status: 'PASS', title: 'Authentication Probe', detail: 'Login as jasperadmin succeeded in 118ms', remediation: '', durationMs: 118 },
+          { id: 'repo', name: 'Repository Query', status: 'PASS', title: 'Repository Query', detail: 'Root folder queried successfully (8 items)', remediation: '', durationMs: 95 },
+          { id: 'report', name: 'PDF Report Execution', status: 'PASS', title: 'PDF Report Execution', detail: 'Generated sample PDF report (48.2 KB) in 320ms', remediation: '', durationMs: 320 },
+          { id: 'sched', name: 'Scheduler State', status: 'PASS', title: 'Scheduler State', detail: 'Quartz scheduler is active and accepting triggers', remediation: '', durationMs: 45 },
+          { id: 'export', name: 'Catalog Export Probe', status: 'PASS', title: 'Catalog Export Probe', detail: 'Roundtrip catalog export probe verified in 210ms', remediation: '', durationMs: 210 },
+          ...(mutating ? [{ id: 'mutating', name: 'Mutating Workflow Test', status: 'PASS', title: 'Mutating Workflow Test', detail: 'Uploaded and verified temp report /temp/jrsctl under run lock', remediation: '', durationMs: 450 }] : [])
+        ],
+        exitCode: 0
+      };
+    }
+
+    if (method === 'GET' && path === '/customizations') {
+      return { customizations: sampleCustomizations.map((c) => ({ ...c })) };
+    }
+
+    if (method === 'GET' && path.startsWith('/customizations/diff')) {
+      const q = new URLSearchParams(path.split('?')[1] || '');
+      const filePath = q.get('path') || 'WEB-INF/classes/jasperreports.properties';
+      return {
+        path: filePath,
+        originalSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+        registeredSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+        currentSha256: 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+        identical: false,
+        lines: [
+          '@@ -12,4 +12,6 @@',
+          ' # Custom query timeout settings',
+          ' net.sf.jasperreports.jdbc.fetch.size=100',
+          '-net.sf.jasperreports.query.timeout=60',
+          '+net.sf.jasperreports.query.timeout=120',
+          '+net.sf.jasperreports.export.pdf.force.svg.shapes=true'
+        ]
+      };
+    }
+
+    if (method === 'POST' && path === '/customizations/register') {
+      const p = body.path;
+      sampleCustomizations.push({
+        path: p,
+        originalSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        registeredSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        currentSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        snapshotRef: 'C:\\ProgramData\\jrsctl\\snapshots\\customizations\\' + p.replace(/[\\/]/g, '_'),
+        identical: true,
+        registeredAt: new Date().toISOString()
+      });
+      return { path: p, originalSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', registeredAt: new Date().toISOString() };
+    }
+
+    if (method === 'POST' && path === '/customizations/unregister') {
+      const p = body.path;
+      const idx = sampleCustomizations.findIndex((c) => c.path === p);
+      if (idx >= 0) sampleCustomizations.splice(idx, 1);
+      return { path: p, unregistered: true };
+    }
+
+    if (method === 'GET' && path === '/snapshots') {
+      return {
+        totalCount: 3,
+        totalBytes: 52428800,
+        retentionDays: 30,
+        maxSnapshots: 50,
+        snapshots: [
+          {
+            id: 'run-20260908-001/snapshot',
+            runId: 'run-20260908-001',
+            stepId: 'snapshot',
+            createdAt: '2026-09-08T14:20:12Z',
+            bytes: 26214400,
+            fileCount: 3,
+            protectionReasons: ['UPGRADE_CHECKPOINT'],
+            files: [
+              { path: 'WEB-INF/lib/jasperserver-api-impl-8.2.0.jar', sha256: '7a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef', bytes: 18432000 },
+              { path: 'WEB-INF/lib/quartz-2.3.2-jrs3.jar', sha256: '3f4e5d6c7b8a90123456789abcdef0123456789abcdef0123456789abcdef012', bytes: 7782400 }
+            ]
+          },
+          {
+            id: 'run-20260902-002/snapshot',
+            runId: 'run-20260902-002',
+            stepId: 'snapshot',
+            createdAt: '2026-09-02T10:15:40Z',
+            bytes: 26214400,
+            fileCount: 2,
+            protectionReasons: ['CUSTOMIZATION_PROTECTED'],
+            files: [
+              { path: 'WEB-INF/classes/quartz.properties', sha256: '9a8b7c6d5e4f30218293a4b5c6d7e8f90123456789abcdef0123456789abcdef', bytes: 4096 }
+            ]
+          }
+        ]
+      };
+    }
+
+    if (method === 'POST' && path === '/snapshots/prune') {
+      return { prunedCount: 1, reclaimedBytes: 12582912, remainingCount: 2, protectedCount: 2 };
+    }
+
+    if (method === 'GET' && path === '/config') {
+      return {
+        server: {
+          baseUrl: SAMPLE_BASE_URL,
+          webappName: 'jasperserver-pro',
+          installDir: 'C:\\Jaspersoft\\jasperreports-server-8.2.0',
+          tomcatDir: 'C:\\Jaspersoft\\jasperreports-server-8.2.0\\apache-tomcat',
+          serviceKind: 'tomcat',
+          authMode: 'basic',
+          username: 'jasperadmin',
+          secretsConfigured: true
+        },
+        platform: {
+          os: 'Windows 11',
+          arch: 'amd64',
+          jvmVersion: '21.0.9+10-LTS',
+          sqliteHealthy: true,
+          writeAccess: true
+        },
+        keys: [
+          { name: 'jaspersoft-2026', fingerprint: 'SHA256:7f3a9c2e1b4d8f0a', bundled: true, algorithm: 'Ed25519' },
+          { name: 'operator-custom', fingerprint: 'SHA256:1a2b3c4d5e6f7a8b', bundled: false, algorithm: 'Ed25519' }
+        ],
+        redactedYaml: 'server:\n  url: http://localhost:8080/jasperserver-pro\n  installDir: C:\\Jaspersoft\\jasperreports-server-8.2.0\n  auth:\n    mode: basic\n    username: jasperadmin\n    passwordRef: ******\n'
+      };
+    }
+
+    if (method === 'GET' && path === '/selfcheck') {
+      return {
+        timestamp: new Date().toISOString(),
+        overallStatus: 'PASS',
+        checks: [
+          { name: 'Binary Checksum', status: 'PASS', detail: 'All jar sha256 hashes match build record' },
+          { name: 'Database Version', status: 'PASS', detail: 'PostgreSQL 15.4 schema matches v8.2' }
+        ]
+      };
+    }
+
+    if (method === 'GET' && path === '/keys') {
+      return [
+        { name: 'jaspersoft-2026', fingerprint: 'SHA256:7f3a9c2e1b4d8f0a', bundled: true, publicKey: 'MCowBQYDK2VwAyEA9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' }
+      ];
+    }
+
+    if (method === 'GET' && path.startsWith('/repository/tree')) {
+      const q = new URLSearchParams(path.split('?')[1] || '');
+      const folder = q.get('path') || '/';
+      if (folder === '/') {
+        return {
+          path: '/',
+          children: [
+            { uri: '/public', label: 'public', resourceType: 'folder', isFolder: true, hasChildren: true },
+            { uri: '/organizations', label: 'organizations', resourceType: 'folder', isFolder: true, hasChildren: true },
+            { uri: '/temp', label: 'temp', resourceType: 'folder', isFolder: true, hasChildren: false }
+          ]
+        };
+      }
+      if (folder === '/public') {
+        return {
+          path: '/public',
+          children: [
+            { uri: '/public/Samples', label: 'Samples', resourceType: 'folder', isFolder: true, hasChildren: true },
+            { uri: '/public/Audit', label: 'Audit', resourceType: 'folder', isFolder: true, hasChildren: false }
+          ]
+        };
+      }
+      if (folder === '/public/Samples') {
+        return {
+          path: '/public/Samples',
+          children: [
+            { uri: '/public/Samples/Reports', label: 'Reports', resourceType: 'folder', isFolder: true, hasChildren: false },
+            { uri: '/public/Samples/Dashboards', label: 'Dashboards', resourceType: 'folder', isFolder: true, hasChildren: false }
+          ]
+        };
+      }
+      return {
+        path: folder,
+        children: [
+          { uri: folder + '/child', label: 'child', resourceType: 'folder', isFolder: true, hasChildren: false }
+        ]
+      };
+    }
     if (method === 'POST' && path === '/plan') {
       const plan = buildPlan(body.op, body.args);
       if (!plan) { const e = new Error('Unknown operation ' + body.op); e.status = 400; throw e; }

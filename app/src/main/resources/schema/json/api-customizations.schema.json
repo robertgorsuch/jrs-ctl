@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-customizations.schema.json",
+  "title": "Console /api/customizations (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["customizations"],
+  "properties": {
+    "customizations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "originalSha256",
+          "registeredSha256",
+          "currentSha256",
+          "snapshotRef",
+          "identical",
+          "registeredAt"
+        ],
+        "properties": {
+          "path": { "type": "string" },
+          "originalSha256": { "type": "string" },
+          "registeredSha256": { "type": "string" },
+          "currentSha256": { "type": "string" },
+          "snapshotRef": { "type": "string" },
+          "identical": { "type": "boolean" },
+          "registeredAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

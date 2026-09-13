@@ -118,6 +118,18 @@ public final class JsonSchemas {
     m.put("POST /api/runs/{id}/resume", "api-run-started.schema.json");
     m.put("GET /api/doctor", "api-doctor.schema.json");
     m.put("GET /api/hotfixes", "api-hotfixes.schema.json");
+    m.put("GET /api/smoke", "api-smoke.schema.json");
+    m.put("POST /api/smoke", "api-smoke.schema.json");
+    m.put("GET /api/customizations", "api-customizations.schema.json");
+    m.put("GET /api/customizations/diff", "api-customizations-diff.schema.json");
+    m.put("POST /api/customizations/register", "customization.schema.json");
+    m.put("POST /api/customizations/unregister", "customizations-unregister.schema.json");
+    m.put("GET /api/snapshots", "api-snapshots.schema.json");
+    m.put("POST /api/snapshots/prune", "api-snapshots-prune.schema.json");
+    m.put("GET /api/config", "api-config.schema.json");
+    m.put("GET /api/selfcheck", "selfcheck.schema.json");
+    m.put("GET /api/keys", "keys-list.schema.json");
+    m.put("GET /api/repository/tree", "api-repository.schema.json");
     return Collections.unmodifiableMap(m);
   }
 

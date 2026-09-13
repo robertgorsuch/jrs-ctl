@@ -332,5 +332,18 @@ export const api = {
   doctor: () => request('GET', '/doctor'),
   // Assumed shape: {hotfixes: [{id, title, installedAt, files, state, blockedBy: []}]}.
   hotfixes: async () => unwrapList(await request('GET', '/hotfixes'), 'hotfixes'),
+  smoke: (mutating = false) => request('POST', '/smoke', { mutating }),
+  getSmoke: () => request('GET', '/smoke'),
+  customizations: () => request('GET', '/customizations'),
+  customizationDiff: (path) => request('GET', '/customizations/diff?path=' + enc(path)),
+  registerCustomization: (path, pristineCopy) =>
+    request('POST', '/customizations/register', { path, pristineCopy }),
+  unregisterCustomization: (path) => request('POST', '/customizations/unregister', { path }),
+  snapshots: () => request('GET', '/snapshots'),
+  pruneSnapshots: (dryRun = false) => request('POST', '/snapshots/prune', { dryRun }),
+  config: () => request('GET', '/config'),
+  selfcheck: () => request('GET', '/selfcheck'),
+  keys: () => request('GET', '/keys'),
+  repositoryTree: (path = '/') => request('GET', '/repository/tree?path=' + enc(path)),
   events,
 };
