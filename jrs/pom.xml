@@ -13,6 +13,12 @@
   <name>jrsctl :: jrs</name>
   <description>REST v2 client, JrsAdapter, capability probes, export/import strategies, vendor-tool wrappers</description>
 
+  <properties>
+    <!-- Measured 81.9 % on 2026-09-13 (Windows); 78 leaves room for the Linux-only arms, as ops does.
+         This module is what talks to the server, so it does not opt out (assessment item B7). -->
+    <jacoco.line.minimum>0.78</jacoco.line.minimum>
+  </properties>
+
   <dependencies>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-core</artifactId></dependency>
     <dependency><groupId>org.wiremock</groupId><artifactId>wiremock</artifactId><scope>test</scope></dependency>

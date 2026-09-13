@@ -42,10 +42,10 @@ jobs:
       - name: Use the tag as the release version (tag builds only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        run: mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
+        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
       - name: Build, unit tests, acceptance (all phases, needs-jrs/needs-docker excluded)
         shell: bash
-        run: mvn -B verify ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
+        run: ./mvnw -B verify ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
 
   integration:
     name: integration (Testcontainers, Linux only)
@@ -60,7 +60,7 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Docker-backed tests
-        run: mvn -B verify -Dexcluded.groups=needs-jrs -Dgroups=needs-docker
+        run: ./mvnw -B verify -Dexcluded.groups=needs-jrs -Dgroups=needs-docker
 
   secret-scan:
     name: secret scan (gitleaks)
@@ -125,7 +125,7 @@ jobs:
         if: steps.nvd.outputs.present == 'true'
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
+        run: ./mvnw -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
       # Saved even when the audit failed on an open advisory (see above), but only when it ran:
       # a run that never opened the database would otherwise write a 500 MB copy of the restored
       # cache under a new key and evict the Maven cache (assessment item B9).
@@ -160,10 +160,10 @@ jobs:
       - name: Use the tag as the release version (tag builds only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        run: mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
+        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
       - name: Build image, archive, checksum, SBOM (ADR-0003, ADR-0008)
         shell: bash
-        run: mvn -B -Pdist -DskipTests package ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
+        run: ./mvnw -B -Pdist -DskipTests package ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
       - name: Portable smoke on Linux (no JAVA_HOME, minimal PATH; ADR-0003 "clean VM" check)
         if: runner.os == 'Linux'
         shell: bash
@@ -199,7 +199,7 @@ jobs:
       - name: Phase 7 acceptance against the built image (reactor up to acceptance, only the phase7 class)
         # bash on both runners: pwsh splits a dotted -D property at the dot ("Unknown lifecycle phase")
         shell: bash
-        run: mvn -B -pl acceptance -am verify -Dphase=7 -Pdist -Dtest=Phase7DistributionTest -Dsurefire.failIfNoSpecifiedTests=false ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
+        run: ./mvnw -B -pl acceptance -am verify -Dphase=7 -Pdist -Dtest=Phase7DistributionTest -Dsurefire.failIfNoSpecifiedTests=false ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: jrsctl-${{ matrix.platform }}
@@ -207,7 +207,15 @@ jobs:
           path: |
             dist/target/jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }}
             dist/target/jrsctl-*-${{ matrix.platform }}.${{ matrix.ext }}.sha256
-            dist/target/jrsctl-*-sbom.json
+      # The SBOM describes the jar, not the platform image, so both legs write the same document
+      # apart from its serial and timestamp. One leg uploads it, so the signed SBOM has a definite
+      # provenance instead of whichever leg the release job's merge downloaded last (item B8).
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: matrix.platform == 'linux-x64'
+        with:
+          name: jrsctl-sbom
+          if-no-files-found: error
+          path: dist/target/jrsctl-*-sbom.json
 
   release:
     name: sign (CI secret) and publish GitHub release
