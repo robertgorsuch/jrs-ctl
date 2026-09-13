@@ -78,6 +78,16 @@ public final class FakeHotfixOperations implements HotfixOperations {
         TITLE);
   }
 
+  /** Part of the apply fingerprint; a test changes it to model a server that moved under a plan. */
+  public volatile String server = "8.2.0 PRO";
+
+  /**
+   * Every apply plan id in order. The command plans once to show the plan and the executor plans
+   * again after the answer to recompute the fingerprint, so the plan that was shown and run is the
+   * first, not {@link #lastPlanId}.
+   */
+  public final List<String> applyPlanIds = new CopyOnWriteArrayList<>();
+
   @Override
   public Plan planApply(Path bundle, ApplyOptions options) {
     planFailure.ifPresent(
@@ -106,11 +116,12 @@ public final class FakeHotfixOperations implements HotfixOperations {
             "snapshot",
             List.of("no service restart needed"));
     lastPlanId = "fake-apply-" + UUID.randomUUID();
+    applyPlanIds.add(lastPlanId);
     return new Plan(
         lastPlanId,
         steps,
         summary,
-        PlanFingerprint.of(Map.of("bundle", bundle.toString(), "server", "8.2.0 PRO")));
+        PlanFingerprint.of(Map.of("bundle", bundle.toString(), "server", server)));
   }
 
   @Override

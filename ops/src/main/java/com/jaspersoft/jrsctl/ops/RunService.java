@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.Recovery;
 import com.jaspersoft.jrsctl.core.engine.RunIds;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
@@ -123,9 +124,22 @@ public final class RunService {
     return new Runner(store(), sink, services.clock(), Sleeper.system());
   }
 
-  /** Executes a fresh, claimed plan; the fingerprint check is the runner's. */
+  /**
+   * Executes a fresh, claimed plan whose fingerprint the caller has already recomputed and compared
+   * (the console rebuilds the stored plan before it calls this).
+   */
   public RunOutcome run(Runner runner, Plan plan, Context ctx, RunOptions options) {
     return runner.run(plan, ctx, plan.fingerprint(), options);
+  }
+
+  /**
+   * Executes a fresh, claimed plan against a fingerprint recomputed now (spec §6.2): the runner
+   * refuses with {@code FingerprintMismatch} when the inputs changed between planning and the
+   * operator's answer (assessment item E2).
+   */
+  public RunOutcome run(
+      Runner runner, Plan plan, Context ctx, PlanFingerprint recomputed, RunOptions options) {
+    return runner.run(plan, ctx, recomputed, options);
   }
 
   /** Continues a pending run from its interrupted step (spec §6.6). */

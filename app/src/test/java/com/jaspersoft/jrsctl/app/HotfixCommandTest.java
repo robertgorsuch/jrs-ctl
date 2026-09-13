@@ -101,7 +101,7 @@ class HotfixCommandTest {
     try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
       assertThat(store.runs(10)).hasSize(1);
       assertThat(store.runs(10).get(0).terminalState()).contains(TerminalState.SUCCEEDED);
-      assertThat(store.loadPlan(fake.lastPlanId).get().consumedByRunId())
+      assertThat(store.loadPlan(fake.applyPlanIds.get(0)).get().consumedByRunId())
           .contains(store.runs(10).get(0).runId());
     }
   }
@@ -135,7 +135,7 @@ class HotfixCommandTest {
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     List<JsonNode> docs = documents(run.out());
-    assertThat(docs.get(0).get("planId").asText()).isEqualTo(fake.lastPlanId);
+    assertThat(docs.get(0).get("planId").asText()).isEqualTo(fake.applyPlanIds.get(0));
     assertThat(docs.get(0).get("steps")).hasSize(6);
     List<String> types = new ArrayList<>();
     for (JsonNode d : docs.subList(1, docs.size() - 1)) {
@@ -203,6 +203,43 @@ class HotfixCommandTest {
 
     assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
     assertThat(fake.executed).isNotEmpty();
+  }
+
+  /**
+   * The answer to the prompt can come minutes after the plan was shown. The fingerprint is
+   * recomputed after it, so a server or file that moved in between is refused with exit 2 and
+   * nothing runs (assessment item E2). The fake's server string is part of its fingerprint; a stdin
+   * that changes it before yielding "y" models exactly that.
+   */
+  @Test
+  void should_refuse_with_exit_2_and_run_nothing_when_the_inputs_change_while_the_prompt_waits() {
+    java.io.InputStream saved = System.in;
+    System.setIn(
+        new java.io.FilterInputStream(
+            new java.io.ByteArrayInputStream(
+                "y\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+          @Override
+          public int read() throws java.io.IOException {
+            fake.server = "8.2.1 PRO";
+            return super.read();
+          }
+
+          @Override
+          public int read(byte[] b, int off, int len) throws java.io.IOException {
+            fake.server = "8.2.1 PRO";
+            return super.read(b, off, len);
+          }
+        });
+    InitCommandTest.Run run;
+    try {
+      run = apply();
+    } finally {
+      System.setIn(saved);
+    }
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.out()).contains("inputs changed since planning").contains("nothing changed");
+    assertThat(fake.executed).isEmpty();
   }
 
   @Test

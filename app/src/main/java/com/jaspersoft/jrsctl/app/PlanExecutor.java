@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
@@ -12,6 +13,7 @@ import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.event.EventBus;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
@@ -33,10 +35,13 @@ import java.util.function.Function;
  * --plan} output can be rebuilt later; nothing runs without {@code --yes} or an explicit
  * confirmation, and a non-interactive caller without {@code --yes} exits 2; the plan is claimed for
  * its run id before the first step so it can never execute twice and survives plan expiry while the
- * run is pending; Ctrl-C cancels through the run's single {@link CancellationToken} and waits up to
- * 30 s for the in-flight step to finish or compensate; the exit code is {@link
- * RunOutcome#exitCode()}, or 9 when the run lock is held. The pending-run gate, plan storage, claim
- * and run context come from {@link RunService}, which the console shares.
+ * run is pending; the fingerprint is recomputed after the operator's answer by rebuilding the plan
+ * from its stored arguments, as the console does, so inputs that changed while the prompt waited
+ * are refused with exit 2 before anything is claimed (spec §6.2); Ctrl-C cancels through the run's
+ * single {@link CancellationToken} and waits up to 30 s for the in-flight step to finish or
+ * compensate; the exit code is {@link RunOutcome#exitCode()}, or 9 when the run lock is held. The
+ * pending-run gate, plan storage, claim and run context come from {@link RunService}, which the
+ * console shares.
  */
 final class PlanExecutor {
 
@@ -60,6 +65,7 @@ final class PlanExecutor {
   private final PrintWriter err;
   private final Ansi ansi;
   private final Redactor redactor;
+  private final PlanRegistry registry;
 
   PlanExecutor(
       Services services,
@@ -69,6 +75,11 @@ final class PlanExecutor {
       Map<String, String> env) {
     this.services = Objects.requireNonNull(services, "services");
     this.runs = new RunService(services);
+    this.registry =
+        new PlanRegistry(
+            () -> HotfixOps.open(services),
+            () -> EximOps.open(services),
+            () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services));
     this.global = Objects.requireNonNull(global, "global");
     this.out = Objects.requireNonNull(out, "out");
     this.err = Objects.requireNonNull(err, "err");
@@ -128,6 +139,20 @@ final class PlanExecutor {
         return ExitCodes.SUCCESS;
       }
     }
+    // spec §6.2: recomputed now, after the answer, by rebuilding the plan from its stored
+    // arguments the way the console does. The CLI used to hand the runner the plan's own
+    // fingerprint, so a target replaced while the prompt waited ran with stale before-hashes
+    // (assessment item E2).
+    PlanFingerprint recomputed;
+    try {
+      recomputed = registry.rebuild(request.operation(), request.argsJson()).fingerprint();
+    } catch (RuntimeException e) {
+      return fail(
+          ExitCodes.PRECHECK_FAILED,
+          "the plan's inputs can no longer be rebuilt: " + String.valueOf(e.getMessage()),
+          Optional.of("plan again"),
+          Map.of());
+    }
     Optional<String> claimed = runs.claim(plan.planId());
     if (claimed.isEmpty()) {
       return fail(
@@ -138,7 +163,7 @@ final class PlanExecutor {
     }
     Context ctx = runs.context(claimed.get());
     RunOptions opts = request.rollbackAll() ? RunOptions.withRollbackAll() : RunOptions.DEFAULT;
-    return run(plan, ctx, runner -> runs.run(runner, plan, ctx, opts));
+    return run(plan, ctx, runner -> runs.run(runner, plan, ctx, recomputed, opts));
   }
 
   /**
