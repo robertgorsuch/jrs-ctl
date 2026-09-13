@@ -15,10 +15,15 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -116,6 +121,32 @@ class ConsoleSchemaTest {
       String name = JsonSchemas.forEndpoint(endpoint).orElseThrow();
       assertThat(JsonSchemas.open(name)).as(endpoint).isPresent();
     }
+  }
+
+  /**
+   * The check above walks the map, so a route registered in {@code ConsoleApi} without a map entry
+   * was never noticed (assessment item B5). This one walks the router: every {@code app.get} and
+   * {@code app.post} on {@code /api} must have a schema, except the support bundle, which is a zip.
+   */
+  @Test
+  void should_map_every_json_route_the_console_registers() throws IOException {
+    Path source =
+        Path.of("src", "main", "java", "com", "jaspersoft", "jrsctl", "app", "console")
+            .resolve("ConsoleApi.java");
+    String text = Files.readString(source, StandardCharsets.UTF_8);
+    Matcher routes = Pattern.compile("app\\.(get|post)\\(\"(/api/[^\"]+)\"").matcher(text);
+    List<String> registered = new ArrayList<>();
+    List<String> missing = new ArrayList<>();
+    while (routes.find()) {
+      String endpoint = routes.group(1).toUpperCase(Locale.ROOT) + " " + routes.group(2);
+      registered.add(endpoint);
+      if (!endpoint.equals("GET /api/runs/{id}/support-bundle")
+          && JsonSchemas.forEndpoint(endpoint).isEmpty()) {
+        missing.add(endpoint);
+      }
+    }
+    assertThat(registered).as("routes found in ConsoleApi.java").hasSizeGreaterThan(20);
+    assertThat(missing).as("routes without a published schema").isEmpty();
   }
 
   static String schemaText(String iri) {

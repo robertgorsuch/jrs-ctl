@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/api-cancelled.schema.json",
+  "title": "POST /api/runs/{id}/cancel (spec §13.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "cancelled"],
+  "properties": {
+    "runId": { "type": "string" },
+    "cancelled": { "type": "boolean" }
+  }
+}

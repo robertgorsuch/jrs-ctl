@@ -494,6 +494,8 @@ class ConsoleServerTest {
 
     HttpResponse<String> cancel = post("/api/runs/" + runId + "/cancel", "");
     assertThat(cancel.statusCode()).as(cancel.body()).isEqualTo(200);
+    assertThat(validated("POST /api/runs/{id}/cancel", cancel).get("cancelled").asBoolean())
+        .isTrue();
     List<String> names = eventNames(runId);
     assertThat(names.get(names.size() - 1)).isEqualTo("RunCancelled");
     assertThat(plans.compensated).contains("quick", "slow");
@@ -869,7 +871,7 @@ class ConsoleServerTest {
                 .build(),
             HttpResponse.BodyHandlers.ofString());
     assertThat(ok.statusCode()).isEqualTo(200);
-    assertThat(json(ok).get("token").asText()).isEqualTo(token);
+    assertThat(validated("POST /api/auth/launch", ok).get("token").asText()).isEqualTo(token);
   }
 
   @Test

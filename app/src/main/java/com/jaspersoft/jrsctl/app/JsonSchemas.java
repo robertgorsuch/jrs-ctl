@@ -116,6 +116,8 @@ public final class JsonSchemas {
     m.put("GET /api/runs/{id}", "api-runs-show.schema.json");
     m.put("POST /api/runs/{id}/rollback", "api-run-started.schema.json");
     m.put("POST /api/runs/{id}/resume", "api-run-started.schema.json");
+    m.put("POST /api/runs/{id}/cancel", "api-cancelled.schema.json");
+    m.put("POST /api/auth/launch", "api-launch-token.schema.json");
     m.put("GET /api/doctor", "api-doctor.schema.json");
     m.put("GET /api/hotfixes", "api-hotfixes.schema.json");
     m.put("GET /api/smoke", "api-smoke.schema.json");
