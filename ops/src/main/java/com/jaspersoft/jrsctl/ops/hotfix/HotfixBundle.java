@@ -39,6 +39,9 @@ public final class HotfixBundle {
   /** Manifests larger than this are refused; a manifest is a few kilobytes of JSON. */
   static final long MAX_MANIFEST_BYTES = 4L << 20;
 
+  /** Ceiling on the unpacked payload of one bundle (item H7); a real hotfix is a few jars. */
+  static final long MAX_BUNDLE_BYTES = 2L << 30;
+
   private static final Pattern ENTRY_NAME = Pattern.compile("[A-Za-z0-9._\\-/]+");
   private static final int BUFFER = 64 * 1024;
 
@@ -76,8 +79,19 @@ public final class HotfixBundle {
 
   /** Unpacks {@code zip} into {@code dir} (created, must be empty or absent) and opens it. */
   public static HotfixBundle extract(Path zip, Path dir) throws IOException {
+    return extract(zip, dir, MAX_BUNDLE_BYTES);
+  }
+
+  /**
+   * As {@link #extract(Path, Path)} with an explicit ceiling on the unpacked payload. The payload
+   * is unpacked under the jrsctl home before the disk-space preflight sizes anything, so a bundle
+   * far larger than any hotfix is refused rather than allowed to fill the volume (assessment item
+   * H7); a genuine hotfix is a few jars, orders of magnitude below the default.
+   */
+  static HotfixBundle extract(Path zip, Path dir, long maxBytes) throws IOException {
     Files.createDirectories(dir);
     boolean manifestSeen = false;
+    long remaining = maxBytes;
     try (InputStream raw = Files.newInputStream(zip);
         ZipInputStream in = new ZipInputStream(raw, StandardCharsets.UTF_8)) {
       ZipEntry entry;
@@ -93,8 +107,8 @@ public final class HotfixBundle {
           throw new IOException("ZIP entry escapes the bundle directory: " + name);
         }
         Files.createDirectories(target.getParent());
-        long limit = name.equals(MANIFEST) ? MAX_MANIFEST_BYTES : Long.MAX_VALUE;
-        copy(in, target, limit, name);
+        long limit = name.equals(MANIFEST) ? Math.min(MAX_MANIFEST_BYTES, remaining) : remaining;
+        remaining -= copy(in, target, limit, name + " (bundle ceiling " + maxBytes + " bytes)");
         manifestSeen |= name.equals(MANIFEST);
       }
     } catch (IllegalArgumentException e) {
@@ -184,7 +198,8 @@ public final class HotfixBundle {
     }
   }
 
-  private static void copy(InputStream in, Path target, long limit, String name)
+  /** Streams one entry to {@code target}; returns the bytes written. */
+  private static long copy(InputStream in, Path target, long limit, String name)
       throws IOException {
     byte[] buffer = new byte[BUFFER];
     long total = 0;
@@ -200,5 +215,6 @@ public final class HotfixBundle {
         out.write(buffer, 0, read);
       }
     }
+    return total;
   }
 }
