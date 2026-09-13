@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,7 +16,9 @@ import java.util.Objects;
 /**
  * Polls {@code GET /rest_v2/import/{id}/state} until the task finishes (spec §7.3). Non-mutating; a
  * {@code FAILED} phase becomes a {@code Recoverable} failure with the server's message, which makes
- * the Runner compensate the phase (i.e. re-import the pre-import snapshot).
+ * the Runner compensate the phase (i.e. re-import the pre-import snapshot). A task that outlives
+ * the poll, or a definitive HTTP error while asking about it, is {@code Fatal} instead: the task
+ * may still be running, and a re-import on top of it would race it (assessment item U3).
  */
 final class PollImport implements Step {
 
@@ -81,23 +84,40 @@ final class PollImport implements Step {
     }
     JrsAdapter adapter = ctx.service(JrsAdapter.class);
     Handles.ImportHandle handle = new Handles.ImportHandle(id);
-    Polling.Outcome outcome =
-        polling.until(
-            ctx,
-            out,
-            this,
-            "import " + id,
-            () -> {
-              Handles.ImportStatus s = adapter.pollImport(handle);
-              return switch (s.phase()) {
-                case INPROGRESS -> new Polling.Tick.Continue(s.message().orElse(""));
-                case READY -> new Polling.Tick.Done();
-                case FAILED ->
-                    new Polling.Tick.Failed(
-                        s.message().orElse("import failed without a message")
-                            + s.errorCode().map(c -> " (" + c + ")").orElse(""));
-              };
-            });
+    Polling.Outcome outcome;
+    try {
+      outcome =
+          polling.until(
+              ctx,
+              out,
+              this,
+              "import " + id,
+              () -> {
+                Handles.ImportStatus s = adapter.pollImport(handle);
+                return switch (s.phase()) {
+                  case INPROGRESS -> new Polling.Tick.Continue(s.message().orElse(""));
+                  case READY -> new Polling.Tick.Done();
+                  case FAILED ->
+                      new Polling.Tick.Failed(
+                          s.message().orElse("import failed without a message")
+                              + s.errorCode().map(c -> " (" + c + ")").orElse(""));
+                };
+              });
+    } catch (RestException e) {
+      // A definitive HTTP error while asking about a task that may still be running: the runner
+      // must not compensate, because the pre-import snapshot would be imported on top of an
+      // import still in flight (assessment item U3).
+      return Failures.fatal(
+          "cannot tell whether import "
+              + id
+              + " is still running: HTTP "
+              + e.status()
+              + " ("
+              + e.getMessage()
+              + ")",
+          "check the import task on the server and verify the repository; nothing is re-imported"
+              + " while the task may still be running");
+    }
     return switch (outcome) {
       case Polling.Outcome.Completed c -> {
         Logs.info(out, ctx, this, "import " + id + " ready after " + c.attempts() + " poll(s)");
@@ -109,11 +129,13 @@ final class PollImport implements Step {
               List.of(),
               "check the jasperserver log for the import task; the pre-import snapshot is"
                   + " re-imported by rollback");
+        // Fatal, not recoverable: the task is still running on the server, and compensating the
+        // import phase would start a second import against it (assessment item U3).
       case Polling.Outcome.TimedOut t ->
-          Failures.recoverable(
+          Failures.fatal(
               "import " + id + " still in progress after " + t.after().toMinutes() + " minutes",
-              List.of(),
-              "wait for the task to finish on the server, then verify the repository");
+              "wait for the task to finish on the server, then verify the repository; the"
+                  + " pre-import snapshot is not re-imported while the task may still be running");
     };
   }
 

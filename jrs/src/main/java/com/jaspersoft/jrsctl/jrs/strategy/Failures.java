@@ -30,6 +30,14 @@ final class Failures {
             cause, List.copyOf(paths), List.of(), List.copyOf(backups), nextAction));
   }
 
+  /**
+   * A failure the runner must not compensate: the server may still be executing the task, so
+   * re-importing the pre-import snapshot now would race it (assessment item U3).
+   */
+  static StepResult fatal(String cause, String nextAction) {
+    return StepResult.failed(StepFailure.fatal(cause, nextAction));
+  }
+
   static StepResult retryable(String cause, List<URI> uris, String nextAction) {
     return StepResult.failed(
         new StepFailure.Retryable(cause, List.of(), List.copyOf(uris), List.of(), nextAction));

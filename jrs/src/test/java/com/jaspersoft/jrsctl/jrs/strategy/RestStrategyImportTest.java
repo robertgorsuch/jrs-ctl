@@ -25,6 +25,7 @@ import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
@@ -179,6 +180,61 @@ class RestStrategyImportTest {
     assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
     assertThat(fx.journal())
         .contains("import.start:SUCCEEDED", "import.poll:SUCCEEDED", "import.verify:SUCCEEDED");
+  }
+
+  /**
+   * A task still running when the poll gives up must not be compensated: the compensation of the
+   * import phase re-imports the pre-import snapshot, which would race the server's own import
+   * (assessment item U3). Exactly one POST /import proves nothing was re-imported.
+   */
+  @Test
+  void should_fail_fatally_and_not_reimport_when_the_import_task_outlives_the_poll_timeout()
+      throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-2\",\"phase\":\"inprogress\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-2/state")))
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"inprogress\"}")));
+    List<Step> steps =
+        new RestStrategy(fx.polling.withTimeout(Duration.ZERO))
+            .importSteps(request(Optional.empty()));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Failed.class);
+    assertThat(((RunOutcome.Failed) outcome).cause()).contains("still in progress");
+    assertThat(((RunOutcome.Failed) outcome).nextAction()).contains("not re-imported");
+    wm.verify(1, postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import"))));
+  }
+
+  @Test
+  void should_fail_fatally_and_not_reimport_when_the_poll_gets_a_definitive_http_error()
+      throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-3\",\"phase\":\"inprogress\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-3/state")))
+            .willReturn(
+                aResponse().withStatus(404).withBody("{\"message\":\"no such import task\"}")));
+    List<Step> steps = new RestStrategy(fx.polling).importSteps(request(Optional.empty()));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Failed.class);
+    assertThat(((RunOutcome.Failed) outcome).cause()).contains("HTTP 404");
+    wm.verify(1, postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import"))));
   }
 
   @Test
