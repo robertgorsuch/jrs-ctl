@@ -268,7 +268,7 @@ Rules:
 ### 5.8 Redaction
 
 - `RedactingFilter` applied to all log appenders, event payloads, console SSE, support bundles, and `--json` output.
-- Patterns: configured secret values in raw, Base64, and URL-encoded forms; `password=`; `Authorization:`; JSESSIONID; bearer tokens; keystore passwords; the console token.
+- Patterns: configured secret values in raw, Base64, URL-encoded and JSON-string-escaped forms (the JSON outputs serialise first and redact afterwards, so a value holding `"` or `\` appears there escaped); `password=`; `Authorization:`; JSESSIONID; bearer tokens; keystore passwords; the console token.
 - Test: any string registered as a secret must not appear in any output stream in any of the three encodings (property-based test with jqwik).
 
 ### 5.9 Event model
@@ -655,7 +655,7 @@ All endpoints require the bearer token (§11.2).
 | GET | `/api/customizations/diff?path=` | three-way comparison of one registered customization |
 | POST | `/api/customizations/register`, `/api/customizations/unregister` | `{path}`, confined to the installation and Tomcat directories |
 | GET | `/api/snapshots` | snapshot sets with their retention protection |
-| POST | `/api/snapshots/prune` | `{dryRun}` retention pruning, the same pass `runs prune` makes |
+| POST | `/api/snapshots/prune` | `{dryRun}` retention pruning, the same pass `runs prune` makes, under the run lock (409 while another run holds it) |
 | GET | `/api/config` | effective configuration as `config show` prints it (redacted) |
 | GET | `/api/selfcheck` | selfcheck report |
 | GET | `/api/keys` | trusted key ring |
