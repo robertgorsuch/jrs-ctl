@@ -15,8 +15,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -34,6 +36,16 @@ import org.junit.jupiter.params.provider.MethodSource;
  * validates those two endpoints against the same schemas using live responses instead.
  */
 class ConsoleSchemaTest {
+
+  /** Where {@link ConsoleWireGoldenTest} writes and reads the golden files. */
+  private static final String DIR = "src/test/resources/console-wire/";
+
+  /**
+   * Golden names that probe the real host and so are captured as type tokens rather than values
+   * ({@link ConsoleWireGoldenTest}); they cannot be schema-validated from a file and are proven
+   * live instead, by {@link ConsoleServerTest}.
+   */
+  private static final Set<String> STRUCTURAL_GOLDENS = Set.of("doctor", "health-doctor-cached");
 
   /** Resolves every {@code https://jaspersoft.com/jrsctl/...} reference from the classpath. */
   static final JsonSchemaFactory FACTORY =
@@ -65,13 +77,37 @@ class ConsoleSchemaTest {
   @MethodSource("goldens")
   void should_validate_the_golden_against_its_schema(String golden, String schemaName)
       throws Exception {
-    JsonNode doc =
-        Json.mapper()
-            .readTree(
-                Files.readString(Path.of("src/test/resources/console-wire/" + golden + ".json")));
+    JsonNode doc = Json.mapper().readTree(Files.readString(Path.of(DIR + golden + ".json")));
     JsonSchema schema = FACTORY.getSchema(SchemaLocation.of(JsonSchemas.iri(schemaName)));
     Set<ValidationMessage> errors = schema.validate(doc);
     assertThat(errors).as(golden + " against " + schemaName).isEmpty();
+  }
+
+  /**
+   * {@link #goldens()} is a hand-maintained list; nothing else ties it to the golden directory, so
+   * a new value-exact golden that nobody adds to it would otherwise pass the build unvalidated.
+   * This lists the directory itself and asserts the two agree, once the known structural goldens
+   * are set aside.
+   */
+  @Test
+  void should_schema_validate_every_value_exact_golden_when_goldens_are_listed()
+      throws IOException {
+    Set<String> onDisk = new TreeSet<>();
+    try (Stream<Path> files = Files.list(Path.of(DIR))) {
+      files
+          .map(p -> p.getFileName().toString())
+          .filter(name -> name.endsWith(".json"))
+          .map(name -> name.substring(0, name.length() - ".json".length()))
+          .forEach(onDisk::add);
+    }
+    onDisk.removeAll(STRUCTURAL_GOLDENS);
+
+    Set<String> listed = new HashSet<>();
+    goldens().forEach(args -> listed.add((String) args.get()[0]));
+
+    assertThat(listed)
+        .as("goldens() must list exactly the value-exact files under " + DIR)
+        .isEqualTo(onDisk);
   }
 
   @Test
