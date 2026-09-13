@@ -230,14 +230,15 @@ public final class ExitCodes {
             cmd.getOut(),
             JsonOut.error(
                 ex.getClass().getSimpleName(),
-                messageOf(ex),
+                Redactor.global().redact(messageOf(ex)),
                 code,
                 Optional.of("see: " + cmd.getCommandSpec().qualifiedName() + " --help"),
                 Map.of()));
         return code;
       }
       PrintWriter err = cmd.getErr();
-      err.println(cmd.getColorScheme().errorText(messageOf(ex)));
+      // A mistyped option can carry a value the pattern rules recognise (assessment item S7).
+      err.println(cmd.getColorScheme().errorText(Redactor.global().redact(messageOf(ex))));
       if (!UnmatchedArgumentException.printSuggestions(ex, err)) {
         cmd.usage(err);
       }

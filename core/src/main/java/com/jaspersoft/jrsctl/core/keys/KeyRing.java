@@ -79,6 +79,9 @@ public final class KeyRing {
   }
 
   public boolean remove(String name) {
+    // The same name rule add() applies: a relative path would otherwise reach any *.pub under
+    // the home (assessment item S5).
+    requireValidName(name);
     if (name.equals(PUBLISHER)) {
       throw new IllegalArgumentException("the publisher key is bundled and cannot be removed");
     }

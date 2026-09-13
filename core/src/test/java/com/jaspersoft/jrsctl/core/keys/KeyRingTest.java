@@ -65,6 +65,15 @@ class KeyRingTest {
   }
 
   @Test
+  void should_refuse_to_remove_a_name_that_is_not_a_key_name() {
+    KeyRing ring = new KeyRing(new JrsctlHome(tmp));
+
+    assertThatThrownBy(() -> ring.remove("../../foo"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("key name");
+  }
+
+  @Test
   void should_list_and_remove_customer_keys_when_present() {
     KeyRing ring = new KeyRing(new JrsctlHome(tmp));
     ring.add("k1", Ed25519.generate().getPublic());
