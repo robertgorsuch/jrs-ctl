@@ -80,15 +80,18 @@ public final class WindowsCodePage {
       return Optional.empty();
     }
     try {
+      // Wait first, then read: reading to end of stream before the timed wait would let a wedged
+      // chcp.com hang the first process run of every command (assessment item P6). Its one line
+      // of output is far below the pipe buffer, so the wait cannot deadlock on a full pipe.
+      if (!process.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        return Optional.empty();
+      }
       String output;
       try (BufferedReader reader =
           new BufferedReader(
               new InputStreamReader(process.getInputStream(), StandardCharsets.US_ASCII))) {
         output = reader.lines().reduce("", (a, b) -> a.isEmpty() ? b : a);
-      }
-      if (!process.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-        process.destroyForcibly();
-        return Optional.empty();
       }
       return codePageOf(output);
     } catch (IOException | RuntimeException e) {
