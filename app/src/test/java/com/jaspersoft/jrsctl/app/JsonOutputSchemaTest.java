@@ -265,6 +265,7 @@ class JsonOutputSchemaTest {
     store.init();
     store.set("jrs", Secret.fromString("pw-for-tests"));
     Files.writeString(dir.resolve("pp.txt"), PASSPHRASE, StandardCharsets.UTF_8);
+    TestFiles.ownerOnly(dir.resolve("pp.txt"));
     Files.writeString(
         jh.configFile(),
         """

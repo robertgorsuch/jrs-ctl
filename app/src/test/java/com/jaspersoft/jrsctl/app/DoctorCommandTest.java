@@ -36,6 +36,7 @@ class DoctorCommandTest {
     store.init();
     store.set("jrs", Secret.fromString("pw-for-tests"));
     Files.writeString(tmp.resolve("pp.txt"), "pp-for-tests", StandardCharsets.UTF_8);
+    TestFiles.ownerOnly(tmp.resolve("pp.txt"));
     Files.writeString(
         jh.configFile(),
         """
