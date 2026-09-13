@@ -131,4 +131,25 @@ class InitCommandTest {
     assertThat(run.out()).contains("\"detectedInstall\" : true").contains("\"values\"");
     assertThat(home.resolve("config.yaml")).doesNotExist();
   }
+
+  @Test
+  void should_exit_2_with_an_error_document_when_json_and_non_interactive_without_yes()
+      throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run =
+        run(
+            "init",
+            "--json",
+            "--non-interactive",
+            "--home",
+            home.toString(),
+            "--install-dir",
+            install.toString());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.out()).contains("\"error\"").contains("confirmation required").contains("--yes");
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+  }
 }

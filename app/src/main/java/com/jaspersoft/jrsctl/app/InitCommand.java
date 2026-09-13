@@ -71,6 +71,17 @@ final class InitCommand implements Callable<Integer> {
           } catch (FileAlreadyExistsException e) {
             return alreadyExists(out, err, e);
           }
+        } else if (global.nonInteractive()) {
+          // spec §12.0: a caller that forbids prompting and gives no --yes is refused with 2, as
+          // the text path and PlanExecutor do (assessment item P2); --json alone stays a report
+          return ExitCodes.fail(
+              out,
+              err,
+              true,
+              ExitCodes.PRECHECK_FAILED,
+              "confirmation required to write "
+                  + target
+                  + "; pass --yes to write without asking (--non-interactive never confirms)");
         } else {
           json.put("written", false);
         }
