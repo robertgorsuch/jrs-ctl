@@ -36,6 +36,15 @@ class DefaultProcessRunnerTest {
         .containsExactly("out-1", "err-1", "out-2", "err-2", "out-3", "err-3");
   }
 
+  /** A launcher is started and left alone; only a failure to start is reported (item P1). */
+  @Test
+  void should_start_without_waiting_when_launching_and_report_only_a_failure_to_start() {
+    String java = ProcessHandle.current().info().command().orElseThrow();
+
+    assertThat(runner.launch(List.of(java, "-version"))).isEmpty();
+    assertThat(runner.launch(List.of("jrsctl-no-such-program-" + System.nanoTime()))).isPresent();
+  }
+
   @Test
   void should_report_timeout_and_kill_child_when_it_outlives_the_budget() {
     List<ProcessRunner.OutputLine> lines = new CopyOnWriteArrayList<>();

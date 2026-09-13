@@ -9,7 +9,9 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -55,6 +57,26 @@ public final class DefaultProcessRunner implements ProcessRunner {
     return name == null
         ? Charset.defaultCharset()
         : Charset.forName(name, Charset.defaultCharset());
+  }
+
+  @Override
+  public Optional<String> launch(List<String> command) {
+    requireNonNull(command, "command");
+    if (command.isEmpty()) {
+      throw new IllegalArgumentException("command must not be empty");
+    }
+    ProcessBuilder builder =
+        new ProcessBuilder(command)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD);
+    try {
+      Process process = builder.start();
+      // No stdin either: the child reads end-of-input instead of waiting on a pipe nobody feeds.
+      process.getOutputStream().close();
+      return Optional.empty();
+    } catch (IOException e) {
+      return Optional.of(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+    }
   }
 
   @Override

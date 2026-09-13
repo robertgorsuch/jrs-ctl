@@ -6,7 +6,6 @@ import com.jaspersoft.jrsctl.app.console.ConsoleServer;
 import com.jaspersoft.jrsctl.app.console.OperationCatalog;
 import com.jaspersoft.jrsctl.app.console.PlanBuilder;
 import com.jaspersoft.jrsctl.core.platform.Platform;
-import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.RunService;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -16,7 +15,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.Charset;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -227,18 +225,16 @@ public final class ConsoleCommand implements Callable<Integer> {
           case WINDOWS -> List.of("rundll32", "url.dll,FileProtocolHandler", url);
           case LINUX -> List.of("xdg-open", url);
         };
+    // Started, not run: xdg-open's generic fallback runs the browser in the foreground and does
+    // not return until it exits, and a kill-on-timeout runner would then kill the browser and
+    // every tab fifteen seconds after opening the console (assessment item P1).
     try {
-      ProcessRunner.Result result =
-          platform
-              .processes()
-              .run(
-                  new ProcessRunner.Request(
-                      command, Optional.empty(), Map.of(), Duration.ofSeconds(15)),
-                  line -> {});
-      if (!result.ok()) {
-        LOG.info(
-            "could not open a browser (exit {}); open the printed URL manually", result.exitCode());
-      }
+      platform
+          .processes()
+          .launch(command)
+          .ifPresent(
+              reason ->
+                  LOG.info("could not open a browser ({}); open the printed URL manually", reason));
     } catch (RuntimeException e) {
       LOG.info("could not open a browser: {}; open the printed URL manually", e.getMessage());
     }
