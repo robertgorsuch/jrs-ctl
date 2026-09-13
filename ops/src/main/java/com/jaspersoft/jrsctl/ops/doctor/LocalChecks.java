@@ -351,15 +351,19 @@ final class LocalChecks {
         "run jrsctl runs recover " + pending.get(0).runId() + " --resume or --rollback");
   }
 
+  /**
+   * Judged by trying the lock, not by the pid text a crashed process left behind (review 5.4,
+   * assessment item E8); a lock this process holds is answered without opening the file (E1).
+   */
   static ReportItem lock(Services s) {
-    Optional<RunLock.Holder> holder = RunLock.readHolder(s.home().runLock());
+    Optional<RunLock.Holder> holder = RunLock.heldBy(s.home().runLock());
     if (holder.isEmpty()) {
       return ReportItem.pass("lock", "run lock free");
     }
     return ReportItem.fail(
         "lock",
         "held by run " + holder.get().runId() + " (pid " + holder.get().pid() + ")",
-        "wait for that jrsctl process to finish; if it is gone, delete " + s.home().runLock());
+        "wait for that jrsctl process to finish");
   }
 
   static ReportItem snapshots(Services s) {

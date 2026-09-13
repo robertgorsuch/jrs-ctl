@@ -4,10 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +39,66 @@ class RunLockTest {
               })
           .hasMessageContaining("r-first");
     }
+  }
+
+  @Test
+  void should_answer_held_by_from_the_registry_when_this_jvm_holds_the_lock() throws Exception {
+    JrsctlHome home = new JrsctlHome(tmp);
+    try (RunLock unusedLock = new RunLock(home, "r-mine", NOW)) {
+      assertThat(RunLock.heldBy(home.runLock())).map(RunLock.Holder::runId).contains("r-mine");
+      assertThat(RunLock.readHolder(home.runLock()))
+          .map(RunLock.Holder::pid)
+          .contains(String.valueOf(ProcessHandle.current().pid()));
+      assertThatThrownBy(() -> new RunLock(home, "r-again", NOW))
+          .isInstanceOf(LockHeldException.class)
+          .hasMessageContaining("r-mine");
+    }
+    assertThat(RunLock.heldBy(home.runLock())).isEmpty();
+  }
+
+  /**
+   * On Linux the run lock is a POSIX record lock, which the kernel drops when any descriptor of the
+   * holding process on that file is closed; a probe that read the lock file through a second handle
+   * therefore released the live run's lock (assessment item E1). The child takes the lock and
+   * probes it the way doctor and the console do; this process then checks from outside that the OS
+   * lock is still there. Same-JVM assertions cannot see this, because the JDK's own lock table
+   * still reports the lock as held after the kernel let it go.
+   */
+  @Test
+  void should_keep_the_os_lock_when_the_holder_probes_its_own_lock_file() throws Exception {
+    JrsctlHome home = new JrsctlHome(tmp);
+    String java = ProcessHandle.current().info().command().orElseThrow();
+    Process child =
+        new ProcessBuilder(
+                java,
+                "-cp",
+                System.getProperty("java.class.path"),
+                RunLockChildHolder.class.getName(),
+                tmp.toString())
+            .redirectErrorStream(true)
+            .start();
+    try (BufferedReader out =
+        new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
+      String first = out.readLine();
+      assertThat(first).as("the child took the lock").isEqualTo("ready r-child");
+      try (FileChannel ch =
+          FileChannel.open(home.runLock(), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        FileLock probe = ch.tryLock(RunLock.LOCK_POSITION, 1, false);
+        if (probe != null) {
+          probe.release();
+        }
+        assertThat(probe)
+            .as("the child still holds the OS lock after reading its own lock file")
+            .isNull();
+      }
+      assertThat(RunLock.heldBy(home.runLock())).map(RunLock.Holder::runId).contains("r-child");
+    } finally {
+      child.getOutputStream().close();
+      if (!child.waitFor(15, TimeUnit.SECONDS)) {
+        child.destroyForcibly();
+      }
+    }
+    assertThat(RunLock.heldBy(home.runLock())).as("released when the child exited").isEmpty();
   }
 
   @Test

@@ -195,7 +195,7 @@ final class ConsoleViews {
         bind + ":" + port.getAsInt(),
         services.config().network().mode().yamlValue(),
         last.map(this::lastRun),
-        lock(store),
+        lock(),
         pending,
         snapshots(),
         doctor.last().map(ConsoleViews::doctorSummary));
@@ -205,7 +205,7 @@ final class ConsoleViews {
     return new HealthDoc.LastRun(run.runId(), run.operation(), outcome(run), run.endedAt());
   }
 
-  private HealthDoc.Lock lock(StateStore store) {
+  private HealthDoc.Lock lock() {
     Optional<RunManager.LiveRun> live = runs.running();
     if (live.isPresent()) {
       return new HealthDoc.Lock(
@@ -213,27 +213,12 @@ final class ConsoleViews {
           Optional.of(live.get().runId()),
           Optional.of(Long.toString(ProcessHandle.current().pid())));
     }
-    Optional<RunLock.Holder> holder = RunLock.readHolder(services.home().runLock());
-    boolean alive =
-        holder
-            .flatMap(
-                h -> {
-                  try {
-                    return ProcessHandle.of(Long.parseLong(h.pid())).map(ProcessHandle::isAlive);
-                  } catch (NumberFormatException e) {
-                    return Optional.<Boolean>empty();
-                  }
-                })
-            .orElse(false);
-    boolean held =
-        alive
-            && holder
-                .map(h -> store.run(h.runId()).map(RunRecord::pending).orElse(true))
-                .orElse(false);
-    return held
-        ? new HealthDoc.Lock(
-            true, holder.map(RunLock.Holder::runId), holder.map(RunLock.Holder::pid))
-        : new HealthDoc.Lock(false, Optional.empty(), Optional.empty());
+    // Judged by trying the lock (review 5.4); a lock this process holds is answered from the
+    // registry without opening the file, which on Linux would release it (assessment item E1).
+    Optional<RunLock.Holder> holder = RunLock.heldBy(services.home().runLock());
+    return holder
+        .map(h -> new HealthDoc.Lock(true, Optional.of(h.runId()), Optional.of(h.pid())))
+        .orElseGet(() -> new HealthDoc.Lock(false, Optional.empty(), Optional.empty()));
   }
 
   private HealthDoc.Snapshots snapshots() {
