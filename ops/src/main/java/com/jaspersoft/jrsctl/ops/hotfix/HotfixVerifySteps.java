@@ -85,17 +85,21 @@ final class HotfixVerifySteps {
       if (signature.valid()) {
         return CheckResult.pass();
       }
-      String what =
-          signature.present()
-              ? "the bundle signature matches no trusted key"
-              : "the bundle carries no SIGNATURE";
+      if (signature.present()) {
+        // The bundle names no signer, so a signature that verifies against no trusted key is
+        // either an unknown signer or a bundle altered after it was signed, and the two cannot be
+        // told apart. Neither is waivable: --allow-unsigned covers a missing signature only (H3).
+        return CheckResult.fail(
+            BundleSignatures.FAILING,
+            "add the signer's public key with `jrsctl keys add <name> <file>`; --allow-unsigned"
+                + " does not waive a signature that fails to verify");
+      }
       if (in.allowUnsigned()) {
-        return CheckResult.warn(what + "; accepted because --allow-unsigned was given");
+        return CheckResult.warn(
+            BundleSignatures.MISSING + "; accepted because --allow-unsigned was given");
       }
       return CheckResult.fail(
-          what,
-          "add the signer's public key with `jrsctl keys add <name> <file>` or re-run with"
-              + " --allow-unsigned");
+          BundleSignatures.MISSING, "have the bundle signed, or re-run with --allow-unsigned");
     }
 
     @Override

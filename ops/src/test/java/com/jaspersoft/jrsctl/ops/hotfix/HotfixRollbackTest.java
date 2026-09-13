@@ -148,6 +148,39 @@ class HotfixRollbackTest {
     }
   }
 
+  /**
+   * A later hotfix that requires this one blocks its rollback like one sharing its files: rolling
+   * the requirement out from under it leaves the store inconsistent (assessment item H6).
+   */
+  @Test
+  void should_block_rollback_when_a_later_hotfix_requires_it() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planApply(f.buildWebInf(), SIGNED), "r-first"))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      String dependent =
+          HotfixFixture.NONE_MANIFEST
+              .replace(
+                  "\"id\": \"" + HotfixFixture.ID + "\"", "\"id\": \"" + HotfixFixture.ID2 + "\"")
+              .replace(
+                  "\"applies\"", "\"requires\": [\"" + HotfixFixture.ID + "\"],\n  \"applies\"");
+      Path bundle =
+          f.build(
+              f.bundleDir(
+                  "dependent",
+                  dependent,
+                  Map.of("payload/" + HotfixFixture.SCRIPT, HotfixFixture.SCRIPT_BYTES)));
+      assertThat(f.run(f.ops().planApply(bundle, SIGNED), "r-second"))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+
+      assertThatThrownBy(() -> f.ops().planRollback(HotfixFixture.ID, PLAIN))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining(HotfixFixture.ID2)
+          .hasMessageContaining("requiring");
+      Plan cascade = f.ops().planRollback(HotfixFixture.ID, CASCADE);
+      assertThat(cascade.summary().target()).isEqualTo(HotfixFixture.ID2 + ", " + HotfixFixture.ID);
+    }
+  }
+
   @Test
   void should_stop_the_service_when_the_manifest_requires_a_restart_for_a_file_outside_web_inf()
       throws IOException {

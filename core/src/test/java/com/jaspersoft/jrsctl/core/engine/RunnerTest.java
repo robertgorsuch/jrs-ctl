@@ -45,6 +45,28 @@ class RunnerTest {
     return fx.store.transitions(RUN).stream().map(t -> t.stepId() + ":" + t.toState()).toList();
   }
 
+  /**
+   * A step that records a mutation made by an earlier phase undoes the whole run when it fails: a
+   * phase-scoped rollback would leave that mutation in place while reporting "rolled back"
+   * (assessment item H4).
+   */
+  @Test
+  void should_undo_earlier_phases_when_a_step_that_rolls_back_all_on_failure_fails() {
+    Plan plan =
+        EngineFixture.plan(
+            "p1",
+            fx.step("s1", "apply"),
+            fx.step("s2", "record")
+                .failureRollsBackAll()
+                .executeReturns(StepResult.failed(StepFailure.recoverable("busy", "retry"))));
+
+    RunOutcome outcome = run(plan);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).rolledBackToPhase()).isEqualTo("apply");
+    assertThat(fx.trace).containsExactly("exec:s1", "exec:s2", "comp:s2", "comp:s1");
+  }
+
   @Test
   void should_roll_back_steps_4_3_2_1_in_order_when_step_4_fails_recoverably() {
     JournalCheckingSink check = new JournalCheckingSink(fx.store);

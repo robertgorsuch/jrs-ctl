@@ -425,7 +425,8 @@ public final class Runner {
     private RunOutcome failed(int index, StepFailure failure, boolean executed) {
       return switch (failure) {
         case StepFailure.Recoverable r -> {
-          int from = opts.rollbackAll() ? 0 : phaseStart(index);
+          boolean whole = opts.rollbackAll() || plan.steps().get(index).rollbackAllOnFailure();
+          int from = whole ? 0 : phaseStart(index);
           List<Integer> targets =
               new ArrayList<>(succeededMutating.stream().filter(i -> i >= from).toList());
           // The step that failed part-way through its work is undone first; one that never ran

@@ -28,6 +28,16 @@ public interface Step {
   }
 
   /** Must be false unless justified in a comment where the step is declared. */
+  /**
+   * True when a failure of this step must undo the whole run, not only its phase: a step that comes
+   * after the mutation it records (the state row of an applied hotfix, say) has nothing of its own
+   * to compensate, so a phase-scoped rollback would leave the earlier phases' work in place while
+   * reporting "rolled back" (assessment item H4).
+   */
+  default boolean rollbackAllOnFailure() {
+    return false;
+  }
+
   default boolean irreversible() {
     return false;
   }

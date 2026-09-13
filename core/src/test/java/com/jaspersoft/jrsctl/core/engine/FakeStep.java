@@ -16,6 +16,7 @@ public final class FakeStep implements Step {
   private final List<String> trace;
   private boolean mutating = true;
   private boolean irreversible = false;
+  private boolean rollbackAllOnFailure = false;
   private RetryPolicy retryPolicy = RetryPolicy.NONE;
   private Function<Context, CheckResult> precheck = ctx -> CheckResult.pass();
   private Function<Context, CheckResult> postcheck = ctx -> CheckResult.pass();
@@ -36,6 +37,16 @@ public final class FakeStep implements Step {
   public FakeStep markIrreversible() {
     this.irreversible = true;
     return this;
+  }
+
+  public FakeStep failureRollsBackAll() {
+    this.rollbackAllOnFailure = true;
+    return this;
+  }
+
+  @Override
+  public boolean rollbackAllOnFailure() {
+    return rollbackAllOnFailure;
   }
 
   public FakeStep retry(RetryPolicy policy) {

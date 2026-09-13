@@ -128,16 +128,22 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     List<String> warnings = new ArrayList<>();
     BundleVerifier.Signature signature = rt.verifier().signature(b);
     if (!signature.valid()) {
+      // --allow-unsigned waives a missing signature only; a present one that fails to verify may
+      // be a tampered bundle and is refused whatever the flag says (assessment item H3).
+      if (signature.present()) {
+        throw new HotfixException(
+            HotfixException.SIGNATURE,
+            BundleSignatures.FAILING,
+            "add the signer's public key with `jrsctl keys add <name> <file>`; --allow-unsigned"
+                + " does not waive a signature that fails to verify");
+      }
       if (!options.allowUnsigned()) {
         throw new HotfixException(
             HotfixException.SIGNATURE,
-            signature.present()
-                ? "the bundle signature matches no trusted key"
-                : "the bundle carries no SIGNATURE",
-            "add the signer's public key with `jrsctl keys add <name> <file>` or re-run with"
-                + " --allow-unsigned");
+            BundleSignatures.MISSING,
+            "have the bundle signed, or re-run with --allow-unsigned");
       }
-      warnings.add("the bundle is not signed by a trusted key; accepted with --allow-unsigned");
+      warnings.add(BundleSignatures.MISSING + "; accepted with --allow-unsigned");
     }
     Manifest manifest =
         switch (validator.validate(b.manifestJson())) {
@@ -212,7 +218,12 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     rollbackPoints.put(
         ApplySteps.APPLY,
         "restore " + snapshotDir + (in.restartRequired() ? ", restart service" : ""));
-    rollbackPoints.put(ApplySteps.RECORD, "state store row marked ROLLED_BACK");
+    rollbackPoints.put(
+        ApplySteps.RECORD,
+        "a failure here undoes the whole apply: restore "
+            + snapshotDir
+            + (in.restartRequired() ? ", restart service" : "")
+            + ", no state store row");
     PlanSummary summary =
         new PlanSummary(
             APPLY_OPERATION,
@@ -266,7 +277,21 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     for (int i = 0; i < installed.size(); i++) {
       order.put(installed.get(i).id(), i);
     }
-    List<String> chain = RollbackChain.of(store, target, order, options.cascade());
+    List<String> chain =
+        RollbackChain.of(
+            store,
+            target,
+            order,
+            options.cascade(),
+            id ->
+                store
+                    .hotfix(id)
+                    .flatMap(
+                        h ->
+                            storedManifest(
+                                rt.home()
+                                    .runDir(h.installedRunId())
+                                    .resolve(ApplyInput.BUNDLE_DIR))));
 
     List<Step> steps = new ArrayList<>();
     List<Path> touched = new ArrayList<>();

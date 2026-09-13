@@ -125,6 +125,16 @@ final class HotfixRecordSteps {
       return StepResult.ok();
     }
 
+    /**
+     * The files are already swapped when this step runs, and its own compensation only flips a row
+     * that may not exist yet; a failure here (SQLITE_BUSY, disk full) therefore undoes the whole
+     * apply, so "rolled back" means the files are back too (assessment item H4).
+     */
+    @Override
+    public boolean rollbackAllOnFailure() {
+      return true;
+    }
+
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
       StateStore store = rt.store();

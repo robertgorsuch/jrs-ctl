@@ -16,6 +16,7 @@ import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations.ApplyOptions;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -96,6 +97,33 @@ class HotfixApplyTest {
           .hasMessageContaining("SIGNATURE")
           .extracting(e -> ((HotfixException) e).exitCode())
           .isEqualTo(7);
+    }
+  }
+
+  /**
+   * The bundle names no signer, so a signature that verifies against no trusted key may be a bundle
+   * altered after signing; --allow-unsigned waives a missing signature only (item H3).
+   */
+  @Test
+  void should_refuse_a_failing_signature_even_when_allow_unsigned_given() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Path signed = f.buildWebInf();
+      byte[] altered =
+          HotfixFixture.WEBINF_MANIFEST
+              .replace("Fix scheduler NPE", "Fix scheduler NPE (altered)")
+              .getBytes(StandardCharsets.UTF_8);
+      Path tampered =
+          Zips.rewrite(
+              signed,
+              f.root.resolve("tampered.zip"),
+              Map.of("manifest.json", Optional.of(altered)),
+              Map.of());
+
+      assertThatThrownBy(() -> f.ops().planApply(tampered, UNSIGNED))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("verifies against no trusted key")
+          .hasMessageContaining("altered after it was signed")
+          .satisfies(e -> assertThat(((HotfixException) e).exitCode()).isEqualTo(7));
     }
   }
 

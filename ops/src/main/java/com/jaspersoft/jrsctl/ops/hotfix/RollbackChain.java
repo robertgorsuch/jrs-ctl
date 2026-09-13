@@ -8,7 +8,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Which hotfixes have to come off, and in what order, to roll one of them back (spec §8.3).
@@ -30,7 +32,11 @@ final class RollbackChain {
    * @throws HotfixException when the target is blocked and {@code cascade} is false
    */
   static List<String> of(
-      StateStore store, HotfixInstalled target, Map<String, Integer> order, boolean cascade) {
+      StateStore store,
+      HotfixInstalled target,
+      Map<String, Integer> order,
+      boolean cascade,
+      Function<String, Optional<Manifest>> manifests) {
     Set<String> selected = new LinkedHashSet<>();
     List<String> pending = new ArrayList<>();
     pending.add(target.id());
@@ -49,6 +55,16 @@ final class RollbackChain {
           blockers.add(other);
         }
       }
+      // A later hotfix whose manifest requires this one blocks it too, not only one sharing its
+      // files: rolling a requirement out from under an installed hotfix leaves the store in a
+      // state ValidateManifest would have refused to install (assessment item H6).
+      for (String other : order.keySet()) {
+        if (!other.equals(id)
+            && order.getOrDefault(other, -1) > position
+            && manifests.apply(other).map(m -> m.requires().contains(id)).orElse(false)) {
+          blockers.add(other);
+        }
+      }
       if (id.equals(target.id())) {
         directBlockers.addAll(blockers);
       }
@@ -59,7 +75,7 @@ final class RollbackChain {
           HotfixException.PRECHECK,
           "rollback of "
               + target.id()
-              + " is blocked by later hotfixes owning the same files: "
+              + " is blocked by later hotfixes owning the same files or requiring it: "
               + String.join(", ", directBlockers),
           "roll those back first, or re-run with --cascade");
     }
