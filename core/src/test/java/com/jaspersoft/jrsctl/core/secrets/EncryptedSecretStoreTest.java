@@ -229,6 +229,27 @@ class EncryptedSecretStoreTest {
     }
   }
 
+  /**
+   * The platform supplies the owner-only restriction; the store applies it before it writes (S6).
+   */
+  @Test
+  void should_restrict_the_file_through_the_platform_before_writing_when_a_restrictor_is_given() {
+    java.util.List<Path> restricted = new java.util.ArrayList<>();
+    EncryptedSecretStore store =
+        new EncryptedSecretStore(
+            tmp.resolve("restricted.enc"),
+            passphrase("pp"),
+            "host",
+            Optional.empty(),
+            restricted::add);
+
+    store.init();
+
+    assertThat(restricted).isNotEmpty();
+    assertThat(restricted).allSatisfy(p -> assertThat(p.getParent()).isEqualTo(tmp));
+    assertThat(tmp.resolve("restricted.enc")).exists();
+  }
+
   @Test
   void should_not_need_passphrase_when_listing_or_removing() {
     store("pp", "host-a").init();

@@ -87,7 +87,10 @@ final class Bootstrap implements AutoCloseable {
     boolean passphraseWithoutPrompt =
         options.passphraseFile().isPresent() || env.containsKey(PASSPHRASE_ENV);
     EncryptedSecretStore secretStore =
-        new EncryptedSecretStore(home.secretsFile(), new PassphraseSource.Chain(sources));
+        new EncryptedSecretStore(
+            home.secretsFile(),
+            new PassphraseSource.Chain(sources),
+            f -> OwnerOnlyFiles.restrictToOwner(platform, f));
     SecretResolver secrets = new SecretResolver(env, platform.files(), secretStore);
     Redactor redactor = Redactor.global();
     registerSecrets(config, secrets, redactor, passphraseWithoutPrompt);

@@ -83,12 +83,28 @@ public final class EncryptedSecretStore {
   private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
   private final SecureRandom random = new SecureRandom();
 
+  private final Restrictor restrictor;
   private byte[] cachedSalt;
   private String cachedIdentity;
   private SecretKey cachedKey;
 
+  /**
+   * Makes a file readable by its owner only, the platform's way. The store itself knows only the
+   * POSIX permission bits; on Windows the owner-only ACL needs the platform's file operations and
+   * {@code icacls}, which the application supplies (assessment item S6).
+   */
+  @FunctionalInterface
+  public interface Restrictor {
+    void restrict(Path file) throws IOException;
+  }
+
   public EncryptedSecretStore(Path file, PassphraseSource passphrase) {
-    this(file, passphrase, hostName(), Optional.of(legacyHostName()));
+    this(file, passphrase, EncryptedSecretStore::posixOwnerOnly);
+  }
+
+  /** As above with the platform's owner-only restriction for the file it writes. */
+  public EncryptedSecretStore(Path file, PassphraseSource passphrase, Restrictor restrictor) {
+    this(file, passphrase, hostName(), Optional.of(legacyHostName()), restrictor);
   }
 
   /** As above with an explicit machine identity (tests, or a deliberately portable store). */
@@ -102,10 +118,20 @@ public final class EncryptedSecretStore {
    */
   public EncryptedSecretStore(
       Path file, PassphraseSource passphrase, String machineId, Optional<String> legacyMachineId) {
+    this(file, passphrase, machineId, legacyMachineId, EncryptedSecretStore::posixOwnerOnly);
+  }
+
+  public EncryptedSecretStore(
+      Path file,
+      PassphraseSource passphrase,
+      String machineId,
+      Optional<String> legacyMachineId,
+      Restrictor restrictor) {
     this.file = Objects.requireNonNull(file, "file");
     this.passphrase = Objects.requireNonNull(passphrase, "passphrase");
     this.machineId = Objects.requireNonNull(machineId, "machineId");
     this.legacyMachineId = Objects.requireNonNull(legacyMachineId, "legacyMachineId");
+    this.restrictor = Objects.requireNonNull(restrictor, "restrictor");
   }
 
   public Path file() {
@@ -410,7 +436,8 @@ public final class EncryptedSecretStore {
         Files.createDirectories(dir);
       }
       tmp = Files.createTempFile(dir, "secrets", ".tmp");
-      restrictToOwner(tmp);
+      // Restricted before a byte is written; the atomic move keeps the permissions (S6).
+      restrictor.restrict(tmp);
       try (Writer out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
         json.writeValue(out, root);
       }
@@ -432,7 +459,10 @@ public final class EncryptedSecretStore {
     }
   }
 
-  private static void restrictToOwner(Path path) throws IOException {
+  /**
+   * The POSIX half of owner-only; a no-op elsewhere, which is why the application supplies its own.
+   */
+  static void posixOwnerOnly(Path path) throws IOException {
     if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
       Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
     }

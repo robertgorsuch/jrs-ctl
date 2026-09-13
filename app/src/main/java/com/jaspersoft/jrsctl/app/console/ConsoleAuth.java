@@ -8,6 +8,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.Locale;
@@ -136,15 +137,30 @@ public final class ConsoleAuth implements Handler {
     } catch (IllegalArgumentException e) {
       return false;
     }
-    String pair = new String(decoded, StandardCharsets.UTF_8);
-    int colon = pair.indexOf(':');
-    if (colon < 0) {
-      return false;
+    // Split on the bytes: the password never becomes a String the collector could keep, and the
+    // decoded copy is zeroed before returning (assessment item S4). The token half is compared as
+    // text; it is a registered secret already and the comparison is constant-time.
+    try {
+      int colon = -1;
+      for (int i = 0; i < decoded.length && colon < 0; i++) {
+        if (decoded[i] == ':') {
+          colon = i;
+        }
+      }
+      if (colon < 0) {
+        return false;
+      }
+      boolean tokenOk = token.matches(new String(decoded, 0, colon, StandardCharsets.UTF_8));
+      byte[] presented = Arrays.copyOfRange(decoded, colon + 1, decoded.length);
+      try {
+        boolean passwordOk = password.map(p -> MessageDigest.isEqual(p, presented)).orElse(false);
+        return tokenOk && passwordOk;
+      } finally {
+        Arrays.fill(presented, (byte) 0);
+      }
+    } finally {
+      Arrays.fill(decoded, (byte) 0);
     }
-    boolean tokenOk = token.matches(pair.substring(0, colon));
-    byte[] presented = pair.substring(colon + 1).getBytes(StandardCharsets.UTF_8);
-    boolean passwordOk = password.map(p -> MessageDigest.isEqual(p, presented)).orElse(false);
-    return tokenOk && passwordOk;
   }
 
   private static Set<String> allowedHosts(String bind) {

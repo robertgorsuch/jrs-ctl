@@ -315,8 +315,17 @@ public final class ConsoleServer implements AutoCloseable {
     try (Secret secret = services.secrets().resolve(ref)) {
       char[] chars = secret.chars();
       try {
-        byte[] bytes = new String(chars).getBytes(StandardCharsets.UTF_8);
-        services.redactor().register(new String(chars));
+        // The redactor takes the Secret itself; the bytes are encoded without a String copy (S4).
+        services.redactor().register(secret);
+        java.nio.charset.CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
+        java.nio.ByteBuffer encoded =
+            java.nio.ByteBuffer.allocate((int) Math.ceil(chars.length * encoder.maxBytesPerChar()));
+        encoder.encode(java.nio.CharBuffer.wrap(chars), encoded, true);
+        encoder.flush(encoded);
+        encoded.flip();
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        Arrays.fill(encoded.array(), (byte) 0);
         return bytes;
       } finally {
         Arrays.fill(chars, '\0');
