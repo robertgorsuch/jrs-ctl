@@ -52,6 +52,53 @@ class Phase0SkeletonTest {
     }
   }
 
+  /**
+   * The release-gate suites ({@code needs-jrs}, {@code needs-docker}; spec §0 rule 10) are excluded
+   * from the default build through surefire's {@code excludedGroups}. surefire 3.6.0 stopped
+   * honouring it on the JUnit Platform (apache/maven-surefire#3468) and the live-server suite ran
+   * in CI trying to pull a Docker image, so this canary reads the unit-test reports the modules
+   * just wrote and fails when any tagged class appears in them (assessment item B1).
+   */
+  @Test
+  void needs_tagged_suites_never_run_in_the_default_build() throws Exception {
+    Path root = repoRoot();
+    List<String> modules = List.of("core", "jrs", "ops", "app");
+    List<String> tagged = new ArrayList<>();
+    for (String module : modules) {
+      Path tests = root.resolve(module).resolve("src").resolve("test").resolve("java");
+      if (!Files.isDirectory(tests)) {
+        continue;
+      }
+      try (Stream<Path> files = Files.walk(tests)) {
+        for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+          if (Files.readString(file, StandardCharsets.UTF_8).contains("@Tag(\"needs-")) {
+            tagged.add(file.getFileName().toString().replace(".java", ""));
+          }
+        }
+      }
+    }
+    assertThat(tagged).as("the release-gate suites exist").isNotEmpty();
+    for (String module : modules) {
+      Path reports = root.resolve(module).resolve("target").resolve("surefire-reports");
+      if (!Files.isDirectory(reports)) {
+        continue;
+      }
+      try (Stream<Path> files = Files.list(reports)) {
+        List<String> ran =
+            files
+                .map(p -> p.getFileName().toString())
+                .filter(name -> tagged.stream().anyMatch(name::contains))
+                .toList();
+        assertThat(ran)
+            .as(
+                "a needs-* suite ran in the default build of "
+                    + module
+                    + "; excludedGroups is not being honoured (surefire regression?)")
+            .isEmpty();
+      }
+    }
+  }
+
   @Test
   void repo_carries_claude_md_and_spec_and_ci_workflow() {
     Path root = repoRoot();

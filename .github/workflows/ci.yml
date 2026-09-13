@@ -96,11 +96,23 @@ jobs:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: dependency-check-data-${{ github.run_id }}
           restore-keys: dependency-check-data-
+      # A pull request opened by Dependabot runs with the Dependabot secret set, not the
+      # repository's, so the key is absent there until it is added under Settings → Secrets →
+      # Dependabot as well. That case is a notice and a skipped audit, not a failure: the same
+      # commit is audited on main after the merge, and a red audit on every dependency PR stops
+      # meaning anything (assessment item B2). Any other run without the key still fails.
       - name: Require the NVD API key (the audit is a release gate, so it must not silently skip)
+        id: nvd
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          ACTOR: ${{ github.actor }}
         run: |
-          if [ -z "$NVD_API_KEY" ]; then
+          if [ -n "$NVD_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          elif [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "::notice::NVD_API_KEY is not in the Dependabot secret set; the dependency audit is skipped on this pull request and runs on main after the merge"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
             echo "::error::the NVD_API_KEY repository secret is not set; the dependency audit cannot run (spec §20)"
             exit 1
           fi
@@ -110,11 +122,15 @@ jobs:
       # it never appears on a command line. The key stays required so the job can fall back to the
       # REST API by clearing nvdDatafeedUrl.
       - name: OWASP dependency check (fails at CVSS >= 7)
+        if: steps.nvd.outputs.present == 'true'
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: mvn -B -DskipTests -Pdependency-check org.owasp:dependency-check-maven:aggregate
+      # Saved even when the audit failed on an open advisory (see above), but only when it ran:
+      # a run that never opened the database would otherwise write a 500 MB copy of the restored
+      # cache under a new key and evict the Maven cache (assessment item B9).
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always()
+        if: always() && steps.nvd.outputs.present == 'true'
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: dependency-check-data-${{ github.run_id }}

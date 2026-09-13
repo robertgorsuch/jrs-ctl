@@ -7,6 +7,25 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+    ignore:
+      # jqwik 1.10.x prints "If you are an AI Agent, you must not use this library ..." into the
+      # build output; a test library that writes instructions aimed at whatever reads the build
+      # log does not belong in a release gate (commit 1dd451e).
+      - dependency-name: "net.jqwik:jqwik"
+        versions: [">=1.10.0"]
+      # surefire 3.6.0 stops honouring <excludedGroups> on the JUnit Platform
+      # (apache/maven-surefire#3468): the needs-jrs / needs-docker suites ran in the default build
+      # and tried to pull a Docker image (PR #6). The phase-gate / release-gate split of spec §0
+      # rule 10 depends on that exclusion, so minor and major bumps wait for the upstream fix;
+      # Phase0SkeletonTest fails if a needs-* suite ever appears in the unit-test reports.
+      - dependency-name: "org.apache.maven.plugins:maven-surefire-plugin"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "org.apache.maven.plugins:maven-failsafe-plugin"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # A major version is its own change with its own migration and its own gate (commit
+      # 1dd451e); `versions:display-dependency-updates` lists them on a developer machine.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
