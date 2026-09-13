@@ -243,7 +243,13 @@ final class LocalChecks {
     for (Path target : targets) {
       if (!Files.isDirectory(target)) {
         readOnly.add(target + " (missing)");
-      } else if (!files.isWritable(target)) {
+        continue;
+      }
+      // The probe creates and deletes a file. Done inside WEB-INF/lib or WEB-INF/classes it is a
+      // write into the live webapp that a reloadable context reacts to, and doctor is read-only
+      // (spec §0); WEB-INF itself carries the same permissions and is not watched (item P7).
+      Path probeDir = layout.get().requiresServiceStop(target) ? target.getParent() : target;
+      if (!files.isWritable(probeDir)) {
         readOnly.add(target.toString());
       }
     }
