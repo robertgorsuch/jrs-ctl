@@ -300,4 +300,77 @@ class RestStrategyImportTest {
     assertThat(result).isInstanceOf(StepResult.Ok.class);
     assertThat(sink.logMessages()).containsExactly(StartImport.ROLLBACK_NOTE);
   }
+
+  @Test
+  void should_fail_fatally_when_poll_import_times_out() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-to/state")))
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"inprogress\"}")));
+    Polling shortPolling =
+        new Polling(
+            Duration.ofMillis(1),
+            Duration.ofMillis(2),
+            Duration.ofMillis(10),
+            Duration.ofSeconds(30),
+            java.time.Clock.systemUTC(),
+            com.jaspersoft.jrsctl.core.engine.Sleeper.none());
+    Step poll = new PollImport(shortPolling);
+    Context ctx = fx.context(rest.config, rest.adapter);
+    Path handleFile = RunFiles.in(ctx, RunFiles.IMPORT_HANDLE);
+    RunFiles.write(handleFile, "imp-to");
+
+    StepResult result = poll.execute(ctx, EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    StepResult.Failed failed = (StepResult.Failed) result;
+    assertThat(failed.failure())
+        .isInstanceOf(com.jaspersoft.jrsctl.core.engine.StepFailure.Fatal.class);
+    assertThat(failed.failure().cause()).contains("imp-to still in progress");
+  }
+
+  @Test
+  void should_fail_fatally_when_poll_import_encounters_rest_error() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-err/state")))
+            .willReturn(aResponse().withStatus(500).withBody("internal error")));
+    Step poll = new PollImport(fx.polling);
+    Context ctx = fx.context(rest.config, rest.adapter);
+    Path handleFile = RunFiles.in(ctx, RunFiles.IMPORT_HANDLE);
+    RunFiles.write(handleFile, "imp-err");
+
+    StepResult result = poll.execute(ctx, EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    StepResult.Failed failed = (StepResult.Failed) result;
+    assertThat(failed.failure())
+        .isInstanceOf(com.jaspersoft.jrsctl.core.engine.StepFailure.Fatal.class);
+    assertThat(failed.failure().cause())
+        .contains("cannot tell whether import imp-err is still running: HTTP 500");
+  }
+
+  @Test
+  void should_fail_recoverably_when_server_reports_failed_import() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-fail/state")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"phase\":\"failed\",\"message\":\"schema mismatch\"}")));
+    Step poll = new PollImport(fx.polling);
+    Context ctx = fx.context(rest.config, rest.adapter);
+    Path handleFile = RunFiles.in(ctx, RunFiles.IMPORT_HANDLE);
+    RunFiles.write(handleFile, "imp-fail");
+
+    StepResult result = poll.execute(ctx, EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    StepResult.Failed failed = (StepResult.Failed) result;
+    assertThat(failed.failure())
+        .isInstanceOf(com.jaspersoft.jrsctl.core.engine.StepFailure.Recoverable.class);
+    assertThat(failed.failure().cause())
+        .contains("server reported import imp-fail failed: schema mismatch");
+  }
 }
