@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.core.engine.RunIds;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
@@ -113,8 +114,21 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           "server unreachable at plan time; the upgrade path is verified by "
               + PreflightSteps.VERIFY_TARGET_PACKAGE);
     }
+    Path installedBuildomatic =
+        UpgradeInput.resolveInstalledBuildomatic(rt.locator(), config, paths);
+    Path packageDir = options.packageDir().toAbsolutePath().normalize();
+    if (installedBuildomatic.startsWith(packageDir)) {
+      throw new UpgradeException(
+          UpgradeException.PRECHECK,
+          "the installed buildomatic directory "
+              + installedBuildomatic
+              + " lies inside the target package "
+              + packageDir,
+          "set server.buildomaticDir to the buildomatic directory of the running installation,"
+              + " not the one of the package being installed");
+    }
     Map<String, String> installedMaster =
-        rt.locator().locate(paths.installDir()).map(Buildomatic::masterProperties).orElse(Map.of());
+        rt.locator().at(installedBuildomatic).map(Buildomatic::masterProperties).orElse(Map.of());
     UpgradeInput in =
         new UpgradeInput(
             options,
@@ -122,7 +136,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
             webappName,
             target,
             identity,
-            VendorSteps.masterOverrides(installedMaster, paths.tomcatDir()));
+            VendorSteps.masterOverrides(installedMaster, paths.tomcatDir()),
+            installedBuildomatic);
     List<String> problems = target.problems(rt.locator().scriptExtension());
     if (!problems.isEmpty()) {
       warnings.add(
@@ -313,8 +328,12 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     Config config = rt.config();
     HotfixPaths paths = paths(config);
+    Path installedBuildomatic =
+        recordedBuildomatic(set)
+            .orElseGet(() -> UpgradeInput.resolveInstalledBuildomatic(rt.locator(), config, paths));
     RestoreSteps.Input in =
-        new RestoreSteps.Input(runId, point, set, paths, webappName(config, paths));
+        new RestoreSteps.Input(
+            runId, point, set, paths, webappName(config, paths), installedBuildomatic);
     List<Step> steps = new ArrayList<>();
     steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
     steps.add(new RestoreSteps.RestoreWebapp(rt, in));
@@ -389,6 +408,27 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       }
     } catch (IOException e) {
       return Optional.empty();
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * The buildomatic directory the upgrade run backed up, as {@code record-upgrade} wrote it into
+   * the point-B manifest; empty for a run that never got that far or a manifest that cannot be
+   * read.
+   */
+  static Optional<Path> recordedBuildomatic(SnapshotSet set) {
+    if (!Files.isRegularFile(set.manifest())) {
+      return Optional.empty();
+    }
+    try {
+      Map<?, ?> manifest =
+          Json.read(Files.readString(set.manifest(), StandardCharsets.UTF_8), Map.class);
+      if (manifest.get("buildomatic") instanceof String recorded && !recorded.isBlank()) {
+        return Optional.of(Path.of(recorded));
+      }
+    } catch (IOException | RuntimeException e) {
+      // an unreadable manifest falls back to resolving the directory from the configuration
     }
     return Optional.empty();
   }

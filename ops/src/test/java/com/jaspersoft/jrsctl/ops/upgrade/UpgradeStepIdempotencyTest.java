@@ -125,7 +125,8 @@ class UpgradeStepIdempotencyTest {
         "jasperserver-pro",
         TargetPackage.inspect(f.packageDir, f.runtime().locator()),
         Optional.of(FakeJrsAdapter.identity("8.2.0")),
-        Map.of());
+        Map.of(),
+        f.installDir.resolve("buildomatic"));
   }
 
   /** A successful upgrade run, followed by changes the operator would see after it. */

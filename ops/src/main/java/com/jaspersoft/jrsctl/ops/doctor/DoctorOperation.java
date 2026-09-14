@@ -89,7 +89,7 @@ public final class DoctorOperation {
     items.add(guard("disk", LocalChecks::disk));
     items.add(
         guard("keystore", s -> probe.dependent("keystore", c -> ServerChecks.keystore(s, c))));
-    items.add(guard("vendor", s -> LocalChecks.vendor(s, layout)));
+    items.add(guard("vendor", LocalChecks::vendor));
     items.add(
         guard(
             "vendor-java",

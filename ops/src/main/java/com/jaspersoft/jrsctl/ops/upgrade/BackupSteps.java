@@ -112,11 +112,12 @@ final class BackupSteps {
 
     @Override
     public CheckResult precheck(Context ctx) {
-      Optional<Buildomatic> b = rt.locator().locate(in.installDir());
+      Optional<Buildomatic> b = rt.locator().at(in.installedBuildomatic());
       if (b.isEmpty()) {
         return CheckResult.fail(
-            "no buildomatic directory under " + in.installDir(),
-            "check server.installDir; the vendor scripts live in <installDir>/buildomatic");
+            "no buildomatic directory at " + in.installedBuildomatic(),
+            "set server.buildomaticDir to the installed buildomatic directory; another volume or"
+                + " a network share is fine");
       }
       if (b.get().scriptFor(Buildomatic.EXPORT_SCRIPT).isEmpty()) {
         return CheckResult.fail(
@@ -148,10 +149,11 @@ final class BackupSteps {
             "cannot prepare " + output + ": " + e.getMessage(),
             "check free space and permissions under " + rt.home().snapshots());
       }
-      Optional<Buildomatic> b = rt.locator().locate(in.installDir());
+      Optional<Buildomatic> b = rt.locator().at(in.installedBuildomatic());
       if (b.isEmpty()) {
         return Failures.recoverable(
-            "buildomatic directory not found under " + in.installDir(), "set server.installDir");
+            "no buildomatic directory at " + in.installedBuildomatic(),
+            "set server.buildomaticDir to the installed buildomatic directory");
       }
       Path part = output.resolveSibling(output.getFileName() + ".part");
       ExportRequest request =

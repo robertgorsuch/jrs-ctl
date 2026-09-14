@@ -14,6 +14,7 @@
         "webappName": { "type": "string", "enum": ["jasperserver", "jasperserver-pro"] },
         "installDir": { "type": "string" },
         "tomcatDir": { "type": "string" },
+        "buildomaticDir": { "type": "string" },
         "runAsUser": { "type": "string" },
         "auth": {
           "type": "object",

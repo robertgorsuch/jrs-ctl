@@ -1,9 +1,11 @@
 package com.jaspersoft.jrsctl.ops.db;
 
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -11,10 +13,10 @@ import java.util.Optional;
 
 /**
  * The resolved {@code database} section: type, URL, credentials reference and the JDBC driver
- * directory (the configured {@code database.driverDir}, else buildomatic's bundled {@code
- * conf_source/db/<db>/jdbc}). Invariants: {@link #from} is empty unless type and URL are both set;
- * the password is resolved only inside {@link #open}, into a {@link Secret} that is closed before
- * the method returns.
+ * directory (the configured {@code database.driverDir}, else {@code conf_source/db/<db>/jdbc} in
+ * the buildomatic directory {@link BuildomaticLocator#resolve} settles on, wherever it lives).
+ * Invariants: {@link #from} is empty unless type and URL are both set; the password is resolved
+ * only inside {@link #open}, into a {@link Secret} that is closed before the method returns.
  */
 public record JdbcSettings(
     Config.DatabaseType type,
@@ -34,7 +36,7 @@ public record JdbcSettings(
   /**
    * Settings from the config; empty when {@code database.type} or {@code database.url} is unset.
    */
-  public static Optional<JdbcSettings> from(Config config) {
+  public static Optional<JdbcSettings> from(Config config, Platform platform) {
     Config.Database db = config.database();
     if (db.type().isEmpty() || db.url().isEmpty()) {
       return Optional.empty();
@@ -44,12 +46,12 @@ public record JdbcSettings(
         db.driverDir()
             .or(
                 () ->
-                    config
-                        .server()
-                        .installDir()
+                    new BuildomaticLocator(platform)
+                        .resolve(config)
+                        .located()
                         .map(
-                            d ->
-                                d.resolve("buildomatic")
+                            b ->
+                                b.dir()
                                     .resolve("conf_source")
                                     .resolve("db")
                                     .resolve(buildomaticDir(type))
@@ -87,10 +89,9 @@ public record JdbcSettings(
             () ->
                 new JdbcException(
                     JdbcException.Kind.IO,
-                    "no JDBC driver directory (database.driverDir or"
-                        + " <installDir>/buildomatic/conf_source/db/"
+                    "no JDBC driver directory (database.driverDir, or conf_source/db/"
                         + buildomaticDir(type)
-                        + "/jdbc)"));
+                        + "/jdbc in the buildomatic directory)"));
     Optional<Secret> password = passwordRef.map(secrets::resolve);
     try {
       return connector.connect(dir, url, username, password);

@@ -38,27 +38,31 @@ final class RestoreSteps {
   static final String AUDIT_ROLLED_BACK = "upgrade.rolled-back";
   static final String PRE_RESTORE_PREFIX = "pre-restore-";
 
-  /** What a rollback plan was built from. */
+  /**
+   * What a rollback plan was built from; {@code installedBuildomatic} is the tree the upgrade run
+   * recorded in its manifest when it has one, so the archive goes back where it came from.
+   */
   record Input(
       String upgradeRunId,
       RollbackPoint point,
       SnapshotSet set,
       HotfixPaths paths,
-      String webappName) {
+      String webappName,
+      Path installedBuildomatic) {
     Input {
       Objects.requireNonNull(upgradeRunId, "upgradeRunId");
       Objects.requireNonNull(point, "point");
       Objects.requireNonNull(set, "set");
       Objects.requireNonNull(paths, "paths");
       Objects.requireNonNull(webappName, "webappName");
+      installedBuildomatic =
+          Objects.requireNonNull(installedBuildomatic, "installedBuildomatic")
+              .toAbsolutePath()
+              .normalize();
     }
 
     Path webappDir() {
       return paths.tomcatDir().resolve("webapps").resolve(webappName);
-    }
-
-    Path installedBuildomatic() {
-      return paths.installDir().resolve(UpgradeInput.BUILDOMATIC);
     }
   }
 

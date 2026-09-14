@@ -334,7 +334,7 @@ final class HotfixVerifySteps {
         }
       }
       if (in.hasSql()) {
-        Optional<JdbcSettings> settings = JdbcSettings.from(rt.config());
+        Optional<JdbcSettings> settings = JdbcSettings.from(rt.config(), rt.services().platform());
         if (settings.isEmpty()) {
           problems.add("database.type and database.url are required for SQL hotfixes");
         } else {

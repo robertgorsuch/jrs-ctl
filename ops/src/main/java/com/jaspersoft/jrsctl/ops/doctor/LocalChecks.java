@@ -19,6 +19,9 @@ import com.jaspersoft.jrsctl.core.selfcheck.SelfCheck;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StateStoreException;
+import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
@@ -148,8 +151,7 @@ final class LocalChecks {
             + l.tomcatDir()
             + ", webapp "
             + l.webappName()
-            + l.httpPort().map(p -> ", http port " + p).orElse("")
-            + (l.buildomaticDir().isPresent() ? ", buildomatic present" : ", no buildomatic"));
+            + l.httpPort().map(p -> ", http port " + p).orElse(""));
   }
 
   static ReportItem service(Services s) {
@@ -237,7 +239,11 @@ final class LocalChecks {
     List<Path> targets = new ArrayList<>();
     targets.add(layout.get().webInfLib());
     targets.add(layout.get().webInfClasses());
-    layout.get().buildomaticDir().ifPresent(targets::add);
+    new BuildomaticLocator(s.platform())
+        .resolve(s.config())
+        .located()
+        .map(Buildomatic::dir)
+        .ifPresent(targets::add);
     FileOps files = s.platform().files();
     List<String> readOnly = new ArrayList<>();
     for (Path target : targets) {
@@ -288,36 +294,46 @@ final class LocalChecks {
     return ReportItem.pass("disk", detail);
   }
 
-  static ReportItem vendor(Services s, Optional<TomcatLayout> layout) {
-    if (layout.isEmpty()) {
-      return ReportItem.skip("vendor", "no install layout", "fix the layout check first");
-    }
-    Optional<Path> buildomatic = layout.get().buildomaticDir();
-    if (buildomatic.isEmpty()) {
-      return ReportItem.fail(
-          "vendor",
-          "no buildomatic directory under " + layout.get().installDir(),
-          "install the buildomatic scripts from the JasperReports Server distribution");
-    }
-    String ext =
-        switch (s.platform().os()) {
-          case WINDOWS -> ".bat";
-          case LINUX -> ".sh";
-        };
-    List<String> missing = new ArrayList<>();
-    for (String script : List.of("js-export", "js-import", "js-ant")) {
-      if (!Files.isRegularFile(buildomatic.get().resolve(script + ext))) {
-        missing.add(script + ext);
-      }
-    }
+  /**
+   * The vendor scripts in the buildomatic directory {@link BuildomaticLocator#resolve} settles on,
+   * which need not be under the install directory (ADR-0013). Skipped only when nothing that could
+   * locate it is configured; an unreachable configured directory or an ambiguous search fails.
+   */
+  static ReportItem vendor(Services s) {
+    BuildomaticLocator locator = new BuildomaticLocator(s.platform());
+    return switch (locator.resolve(s.config())) {
+      case BuildomaticResolution.NotFound missing ->
+          missing.reason() == BuildomaticResolution.Reason.NOT_CONFIGURED
+              ? ReportItem.skip("vendor", missing.detail(), missing.remediation())
+              : ReportItem.fail("vendor", missing.detail(), missing.remediation());
+      case BuildomaticResolution.Found found -> vendorScripts(s, locator, found);
+    };
+  }
+
+  private static ReportItem vendorScripts(
+      Services s, BuildomaticLocator locator, BuildomaticResolution.Found found) {
+    Buildomatic buildomatic = found.buildomatic();
+    String ext = locator.scriptExtension();
+    List<String> missing = buildomatic.missingScripts().stream().map(n -> n + ext).toList();
+    String where = buildomatic.dir() + " (" + found.source() + ")";
     if (!missing.isEmpty()) {
       return ReportItem.fail(
           "vendor",
-          "missing in " + buildomatic.get() + ": " + String.join(", ", missing),
+          "missing in " + where + ": " + String.join(", ", missing),
           "restore the vendor scripts; export/import and upgrade need them");
     }
-    return ReportItem.pass(
-        "vendor", "js-export, js-import, js-ant present in " + buildomatic.get());
+    if (s.platform().os() == Platform.OsFamily.WINDOWS
+        && BuildomaticLocator.isUncPath(buildomatic.dir())) {
+      return ReportItem.warn(
+          "vendor",
+          "js-export, js-import, js-ant present in "
+              + where
+              + ", but cmd.exe cannot use a UNC path as the working directory of the batch"
+              + " wrappers",
+          "map the share to a drive letter for the account that runs jrsctl, or link it with"
+              + " mklink /D, and set server.buildomaticDir to that path");
+    }
+    return ReportItem.pass("vendor", "js-export, js-import, js-ant present in " + where);
   }
 
   /**

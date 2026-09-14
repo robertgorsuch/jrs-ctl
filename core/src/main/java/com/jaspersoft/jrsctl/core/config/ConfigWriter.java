@@ -63,6 +63,7 @@ public final class ConfigWriter {
     c.server().webappName().ifPresent(v -> server.put("webappName", v.yamlValue()));
     path(c.server().installDir(), server, "installDir");
     path(c.server().tomcatDir(), server, "tomcatDir");
+    path(c.server().buildomaticDir(), server, "buildomaticDir");
     c.server().runAsUser().ifPresent(v -> server.put("runAsUser", v));
     ObjectNode auth = server.putObject("auth");
     auth.put("mode", c.server().auth().mode().yamlValue());
@@ -132,6 +133,7 @@ public final class ConfigWriter {
         || s.webappName().isPresent()
         || s.installDir().isPresent()
         || s.tomcatDir().isPresent()
+        || s.buildomaticDir().isPresent()
         || s.runAsUser().isPresent()
         || s.auth().username().isPresent()
         || s.auth().passwordRef().isPresent()

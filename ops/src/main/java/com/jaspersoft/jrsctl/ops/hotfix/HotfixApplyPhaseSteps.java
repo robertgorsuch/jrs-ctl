@@ -343,7 +343,8 @@ final class HotfixApplyPhaseSteps {
 
     @Override
     public CheckResult precheck(Context ctx) {
-      if (in.dbType().isEmpty() || JdbcSettings.from(rt.config()).isEmpty()) {
+      if (in.dbType().isEmpty()
+          || JdbcSettings.from(rt.config(), rt.services().platform()).isEmpty()) {
         return CheckResult.fail(
             "database.type and database.url are not configured",
             "set the database section in config.yaml");

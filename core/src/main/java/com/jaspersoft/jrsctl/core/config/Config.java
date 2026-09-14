@@ -145,12 +145,17 @@ public record Config(
     }
   }
 
-  /** The {@code server:} block. */
+  /**
+   * The {@code server:} block. {@code buildomaticDir} names the installed vendor tree when it does
+   * not sit under {@code installDir} (another volume, a mount, a network share); when set it is
+   * authoritative and never replaced by a discovered directory (ADR-0013).
+   */
   public record Server(
       Optional<URI> baseUrl,
       Optional<WebappName> webappName,
       Optional<Path> installDir,
       Optional<Path> tomcatDir,
+      Optional<Path> buildomaticDir,
       Optional<String> runAsUser,
       Auth auth) {
 
@@ -159,12 +164,14 @@ public record Config(
       Objects.requireNonNull(webappName, "webappName");
       Objects.requireNonNull(installDir, "installDir");
       Objects.requireNonNull(tomcatDir, "tomcatDir");
+      Objects.requireNonNull(buildomaticDir, "buildomaticDir");
       Objects.requireNonNull(runAsUser, "runAsUser");
       Objects.requireNonNull(auth, "auth");
     }
 
     public static Server empty() {
       return new Server(
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),

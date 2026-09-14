@@ -62,8 +62,7 @@ class LocalChecksTest {
 
       assertThat(LocalChecks.permissions(services, Optional.empty()).status())
           .isEqualTo(ReportItem.Status.SKIP);
-      assertThat(LocalChecks.vendor(services, Optional.empty()).status())
-          .isEqualTo(ReportItem.Status.SKIP);
+      assertThat(LocalChecks.vendor(services).status()).isEqualTo(ReportItem.Status.SKIP);
       assertThat(LocalChecks.layout(services, Optional.empty()).status())
           .isEqualTo(ReportItem.Status.FAIL);
     }
@@ -73,19 +72,78 @@ class LocalChecksTest {
   void should_report_the_vendor_scripts_and_notice_a_missing_one() throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));
     try (FakeServices fake = FakeServices.in(tmp.resolve("vendor"))) {
+      fake.yaml(serverYaml("  installDir: " + yamlPath(install) + "\n"));
       Services services = fake.build();
       Optional<TomcatLayout> layout = services.platform().detectTomcat(install);
       assertThat(layout).isPresent();
 
-      assertThat(LocalChecks.vendor(services, layout).status()).isEqualTo(ReportItem.Status.PASS);
+      ReportItem found = LocalChecks.vendor(services);
+      assertThat(found.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(found.detail()).contains("under server.installDir");
 
-      Files.delete(layout.get().buildomaticDir().orElseThrow().resolve("js-import.sh"));
-      ReportItem missing = LocalChecks.vendor(services, layout);
+      Files.delete(install.resolve("buildomatic").resolve("js-import.sh"));
+      ReportItem missing = LocalChecks.vendor(services);
 
       assertThat(missing.status()).isEqualTo(ReportItem.Status.FAIL);
       assertThat(missing.detail()).contains("js-import.sh");
       assertThat(missing.remediation()).contains("vendor scripts");
     }
+  }
+
+  /** ADR-0013: the vendor tree may live on another volume or a share, away from the install. */
+  @Test
+  void should_check_the_vendor_scripts_where_server_buildomatic_dir_points() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path elsewhere = Files.createDirectories(tmp.resolve("vendor-volume")).resolve("buildomatic");
+    Files.move(install.resolve("buildomatic"), elsewhere);
+    try (FakeServices fake = FakeServices.in(tmp.resolve("moved"))) {
+      fake.yaml(
+          serverYaml(
+              "  installDir: "
+                  + yamlPath(install)
+                  + "\n  buildomaticDir: "
+                  + yamlPath(elsewhere)
+                  + "\n"));
+      Services services = fake.build();
+
+      ReportItem vendor = LocalChecks.vendor(services);
+      ReportItem permissions =
+          LocalChecks.permissions(services, services.platform().detectTomcat(install));
+
+      assertThat(vendor.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(vendor.detail()).contains(elsewhere.toString()).contains("server.buildomaticDir");
+      assertThat(permissions.detail()).contains("3 target dirs");
+    }
+  }
+
+  @Test
+  void should_fail_instead_of_falling_back_when_the_configured_buildomatic_dir_is_unreachable()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path unmounted = tmp.resolve("unmounted-share").resolve("buildomatic");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("unreachable"))) {
+      fake.yaml(
+          serverYaml(
+              "  installDir: "
+                  + yamlPath(install)
+                  + "\n  buildomaticDir: "
+                  + yamlPath(unmounted)
+                  + "\n"));
+
+      ReportItem vendor = LocalChecks.vendor(fake.build());
+
+      assertThat(vendor.status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(vendor.detail()).contains("server.buildomaticDir").contains("buildomatic");
+      assertThat(vendor.remediation()).contains("mount");
+    }
+  }
+
+  private static String serverYaml(String keys) {
+    return "server:\n  baseUrl: http://localhost:8081/jasperserver-pro\n" + keys;
+  }
+
+  private static String yamlPath(Path path) {
+    return "'" + path.toAbsolutePath().toString().replace('\\', '/') + "'";
   }
 
   @Test

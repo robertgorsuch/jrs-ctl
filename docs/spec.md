@@ -158,6 +158,7 @@ server:
   webappName: jasperserver-pro          # jasperserver | jasperserver-pro; explicit, not derived
   installDir: /opt/jasperreports-server
   tomcatDir: /opt/jasperreports-server/apache-tomcat
+  buildomaticDir: /mnt/jrs-dist/buildomatic # optional; see 7.4 (another volume, a mount or a share)
   runAsUser: jasperserver               # OS account that runs Tomcat; owns ~/.jrsks and ~/.jrsksp
   auth:
     mode: basic                         # basic (default) | form | token
@@ -173,7 +174,7 @@ database:                               # required only for hotfixes that carry 
   url: jdbc:postgresql://localhost:5432/jasperserver
   username: jasperdb
   passwordRef: env:JRS_DB_PASSWORD
-  driverDir: null                       # default: <installDir>/buildomatic/conf_source/db/<type>/jdbc
+  driverDir: null                       # default: <buildomatic>/conf_source/db/<type>/jdbc (7.4)
 vendor:
   javaHome: /opt/jasperreports-server/java   # JDK used to run buildomatic; never jrsctl's bundled runtime
 network:
@@ -393,7 +394,7 @@ sealed interface ExportImportStrategy permits RestStrategy, VendorCliStrategy {
 
 ### 7.4 Vendor tool wrappers
 
-- Locate `buildomatic/` under `installDir` (or under the upgrade target package). Verify expected scripts exist for the detected version.
+- Locate the installed `buildomatic/` (ADR-0013): `server.buildomaticDir` when set, authoritative even when it cannot be reached (nothing is substituted for it); else `<installDir>/buildomatic`; else a neighbour that holds this platform's `js-ant` and a `default_master.properties`, beside `server.tomcatDir` or `installDir` or inside a `jasperreports-server*` directory under or beside `installDir`, two such neighbours being refused as ambiguous. The upgrade target package's tree is always `<package>/buildomatic`. Verify expected scripts exist for the detected version.
 - Invoke with `ProcessRunner` using `vendor.javaHome` as `JAVA_HOME`, stream stdout/stderr into events (redacted), capture exit code, enforce timeout.
 - Never modify vendor scripts. Property overrides are written to `default_master.properties` **in the buildomatic directory being invoked** (the upgrade target package's copy for upgrades; a run-scoped copy of the installed buildomatic for export/import). The pre-existing file, if any, is snapshotted first and restored by compensation. Open question Q5 (§19) tracks whether `js-ant` accepts an out-of-directory property file; if it does, prefer that.
 
@@ -610,13 +611,14 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
   - candidate install dirs from `Platform.candidateInstallDirs()` (common paths, the working directory of a running Tomcat process, the Windows registry/uninstall entries);
   - `webappName`, `tomcatDir`, `baseUrl` from the Tomcat layout and `server.xml` port;
   - `service.kind` and name by probing Windows services / systemd units / `ctlscript.sh`;
-  - `database` and `vendor.javaHome` prefilled from `buildomatic/default_master.properties` (passwords are never copied; a `passwordRef` placeholder is written);
+  - `buildomaticDir` from `--buildomatic-dir` or the 7.4 search, shown with its source (a hint that cannot be reached is reported, not written);
+  - `database` and `vendor.javaHome` prefilled from that buildomatic directory's `default_master.properties` (passwords are never copied; a `passwordRef` placeholder is written);
   - `runAsUser` from the Tomcat process owner.
 - Every value is shown for confirmation; nothing is written without it unless `--non-interactive`.
 
 ### 12.1 `doctor`
 
-Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present; `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN.
+Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present in the 7.4 buildomatic directory (WARN on a Windows UNC path, which `cmd.exe` refuses as a working directory); `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN.
 
 ### 12.2 `smoke`
 

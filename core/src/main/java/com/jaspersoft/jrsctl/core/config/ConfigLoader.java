@@ -259,6 +259,7 @@ public final class ConfigLoader {
                 .map(v -> yamlEnum("server.webappName", Config.WebappName.class, v)),
             text(server, "installDir").map(v -> path("server.installDir", v)),
             text(server, "tomcatDir").map(v -> path("server.tomcatDir", v)),
+            text(server, "buildomaticDir").map(v -> path("server.buildomaticDir", v)),
             text(server, "runAsUser"),
             new Config.Auth(
                 text(auth, "mode")

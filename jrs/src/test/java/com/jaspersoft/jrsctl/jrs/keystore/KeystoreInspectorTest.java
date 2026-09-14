@@ -136,6 +136,48 @@ class KeystoreInspectorTest {
     assertThat(inspector.homeOf("LocalService")).isEmpty();
   }
 
+  /**
+   * ADR-0013: the installer's properties file is read from a buildomatic tree away from the
+   * install.
+   */
+  @Test
+  void should_read_keystore_init_properties_from_a_configured_buildomatic_dir() throws IOException {
+    Path install = Files.createDirectories(root.resolve("install"));
+    Path share = Files.createDirectories(root.resolve("share").resolve("buildomatic"));
+    Path ksDir = Files.createDirectories(root.resolve("ks-home"));
+    Files.write(ksDir.resolve(".jrsks"), "keystore-bytes".getBytes(StandardCharsets.US_ASCII));
+    Files.writeString(
+        share.resolve("keystore.init.properties"),
+        "ks=" + ksDir.toString().replace("\\", "/") + "\n");
+    Config withInstall = withInstallDir(config(Optional.of("nobody-here")), install);
+    Config.Server s = withInstall.server();
+    Config configured =
+        new Config(
+            new Config.Server(
+                s.baseUrl(),
+                s.webappName(),
+                s.installDir(),
+                s.tomcatDir(),
+                Optional.of(share),
+                s.runAsUser(),
+                s.auth()),
+            withInstall.service(),
+            withInstall.database(),
+            withInstall.vendor(),
+            withInstall.network(),
+            withInstall.console(),
+            withInstall.backups(),
+            withInstall.smoke());
+
+    KeystoreInfo info =
+        new KeystoreInspector(
+                new FakePlatform(Platform.OsFamily.LINUX), configured, homes(root.resolve("me")))
+            .inspect();
+
+    assertThat(info.present()).isTrue();
+    assertThat(info.keystoreFile()).contains(ksDir.resolve(".jrsks"));
+  }
+
   private static Config withInstallDir(Config base, Path installDir) {
     Config.Server s = base.server();
     return new Config(
@@ -144,6 +186,7 @@ class KeystoreInspectorTest {
             s.webappName(),
             Optional.of(installDir),
             s.tomcatDir(),
+            s.buildomaticDir(),
             s.runAsUser(),
             s.auth()),
         base.service(),

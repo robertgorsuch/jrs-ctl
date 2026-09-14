@@ -8,6 +8,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -74,11 +75,11 @@ final class RunJsExport implements Step {
   public StepResult execute(Context ctx, EventSink out) {
     Path output = request.output();
     Path part = RunFiles.partOf(output);
-    Optional<Buildomatic> b = vendor.locate(ctx);
-    if (b.isEmpty()) {
-      return Failures.recoverable(
-          "buildomatic directory not found", List.of(), "set server.installDir");
+    BuildomaticResolution resolved = vendor.resolve(ctx);
+    if (resolved instanceof BuildomaticResolution.NotFound missing) {
+      return Failures.recoverable(missing.detail(), List.of(), missing.remediation());
     }
+    Optional<Buildomatic> b = resolved.located();
     try {
       Path parent = output.toAbsolutePath().getParent();
       if (parent != null) {

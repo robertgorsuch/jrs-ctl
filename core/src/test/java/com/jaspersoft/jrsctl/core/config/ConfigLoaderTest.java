@@ -47,6 +47,7 @@ class ConfigLoaderTest {
           webappName: jasperserver-pro
           installDir: /opt/jrs
           tomcatDir: /opt/jrs/apache-tomcat
+          buildomaticDir: //fileserver/jrs/buildomatic
           runAsUser: jasperserver
           auth:
             mode: form
@@ -85,6 +86,7 @@ class ConfigLoaderTest {
     assertThat(c.server().baseUrl()).contains(URI.create("http://localhost:8080/jasperserver-pro"));
     assertThat(c.server().webappName()).contains(Config.WebappName.JASPERSERVER_PRO);
     assertThat(c.server().installDir()).contains(Path.of("/opt/jrs"));
+    assertThat(c.server().buildomaticDir()).contains(Path.of("//fileserver/jrs/buildomatic"));
     assertThat(c.server().auth().mode()).isEqualTo(Config.AuthMode.FORM);
     assertThat(c.server().auth().passwordRef()).contains(new SecretRef.Env("JRS_PASSWORD"));
     assertThat(c.service().kind()).contains(ServiceConfig.Kind.WINDOWS_SERVICE);

@@ -42,6 +42,14 @@ final class InitCommand implements Callable<Integer> {
       description = "Installation root to inspect first (skips the platform search).")
   Path installDir;
 
+  @Option(
+      names = "--buildomatic-dir",
+      paramLabel = "<dir>",
+      description =
+          "The installed buildomatic directory when it is not under the installation root"
+              + " (another volume, a mount point or a network share).")
+  Path buildomaticDir;
+
   @Option(names = "--force", description = "Overwrite an existing config.yaml.")
   boolean force;
 
@@ -52,7 +60,8 @@ final class InitCommand implements Callable<Integer> {
     Redactor redactor = Redactor.global();
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       InitOperation op = new InitOperation(boot.services());
-      InitReport report = op.detect(Optional.ofNullable(installDir));
+      InitReport report =
+          op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
       Config config = op.toConfig(report);
       Path target = boot.services().home().configFile();
       if (global.json()) {

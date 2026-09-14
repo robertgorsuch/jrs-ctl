@@ -8,6 +8,8 @@ import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
 import java.net.URI;
@@ -78,7 +80,17 @@ public final class InitOperation {
 
   /** Detects the installation; {@code installDirHint} is tried before the platform candidates. */
   public InitReport detect(Optional<Path> installDirHint) {
+    return detect(installDirHint, Optional.empty());
+  }
+
+  /**
+   * As {@link #detect(Optional)}; {@code buildomaticDirHint} is proposed as {@code
+   * server.buildomaticDir} when it is a reachable directory, and without it the directory is
+   * searched for the way {@link BuildomaticLocator#resolve} does (ADR-0013).
+   */
+  public InitReport detect(Optional<Path> installDirHint, Optional<Path> buildomaticDirHint) {
     Objects.requireNonNull(installDirHint, "installDirHint");
+    Objects.requireNonNull(buildomaticDirHint, "buildomaticDirHint");
     Platform platform = services.platform();
     List<InitReport.Detected> values = new ArrayList<>();
     Config defaults = Config.defaults();
@@ -136,7 +148,8 @@ public final class InitOperation {
 
     Config.Service service = probeService(layout, values);
 
-    DefaultMasterProperties master = readDefaultMaster(layout);
+    Optional<Path> buildomaticDir = buildomaticDir(layout, buildomaticDirHint, values);
+    DefaultMasterProperties master = readDefaultMaster(buildomaticDir);
     Config.Database database = database(master, values);
 
     Optional<Path> javaHome = layout.bundledJavaHome();
@@ -157,6 +170,7 @@ public final class InitOperation {
                 Config.YamlValued.fromYaml(Config.WebappName.class, layout.webappName()),
                 Optional.of(layout.installDir()),
                 Optional.of(layout.tomcatDir()),
+                buildomaticDir,
                 runAsUser,
                 new Config.Auth(
                     Config.AuthMode.DEFAULT,
@@ -477,8 +491,50 @@ public final class InitOperation {
     }
   }
 
-  private static DefaultMasterProperties readDefaultMaster(TomcatLayout layout) {
-    Optional<Path> buildomatic = layout.buildomaticDir();
+  /**
+   * The buildomatic directory to propose: the hint when it is reachable, else what the locator
+   * finds from the detected layout. Either way the value and its source go into the report, and an
+   * unreachable hint is reported rather than written.
+   */
+  private Optional<Path> buildomaticDir(
+      TomcatLayout layout, Optional<Path> hint, List<InitReport.Detected> values) {
+    Config defaults = Config.defaults();
+    Config probe =
+        new Config(
+            new Config.Server(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(layout.installDir()),
+                Optional.of(layout.tomcatDir()),
+                hint,
+                Optional.empty(),
+                Config.Auth.defaults()),
+            defaults.service(),
+            defaults.database(),
+            defaults.vendor(),
+            defaults.network(),
+            defaults.console(),
+            defaults.backups(),
+            defaults.smoke());
+    return switch (new BuildomaticLocator(services.platform()).resolve(probe)) {
+      case BuildomaticResolution.Found found -> {
+        Path dir = found.buildomatic().dir();
+        String source = hint.isPresent() ? "from --buildomatic-dir" : "detected " + found.source();
+        values.add(new InitReport.Detected("server.buildomaticDir", dir.toString(), source));
+        yield Optional.of(dir);
+      }
+      case BuildomaticResolution.NotFound missing -> {
+        values.add(
+            new InitReport.Detected(
+                "server.buildomaticDir",
+                "(not detected)",
+                missing.detail() + "; " + missing.remediation()));
+        yield Optional.empty();
+      }
+    };
+  }
+
+  private static DefaultMasterProperties readDefaultMaster(Optional<Path> buildomatic) {
     if (buildomatic.isEmpty()) {
       return DefaultMasterProperties.empty();
     }

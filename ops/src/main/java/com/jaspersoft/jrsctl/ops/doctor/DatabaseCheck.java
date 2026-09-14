@@ -37,17 +37,16 @@ final class DatabaseCheck {
               + " applying a hotfix that carries SQL");
     }
     Config.DatabaseType type = db.type().get();
-    Optional<JdbcSettings> settings = JdbcSettings.from(s.config());
+    Optional<JdbcSettings> settings = JdbcSettings.from(s.config(), s.platform());
     if (settings.isEmpty()) {
       return ReportItem.fail(NAME, "database.url is not configured", "set database.url");
     }
     if (settings.get().driverDir().isEmpty()) {
       return ReportItem.fail(
           NAME,
-          "no JDBC driver directory (database.driverDir or"
-              + " <installDir>/buildomatic/conf_source/db/"
+          "no JDBC driver directory (database.driverDir, or conf_source/db/"
               + JdbcSettings.buildomaticDir(type)
-              + "/jdbc)",
+              + "/jdbc in the buildomatic directory)",
           "set database.driverDir to a directory holding the " + type.yamlValue() + " JDBC jar");
     }
     try (JdbcConnector.Session session = settings.get().open(connector, s.secrets())) {

@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -83,11 +84,11 @@ final class RunJsImport implements Step {
 
   @Override
   public StepResult execute(Context ctx, EventSink out) {
-    Optional<Buildomatic> b = vendor.locate(ctx);
-    if (b.isEmpty()) {
-      return Failures.recoverable(
-          "buildomatic directory not found", List.of(), "set server.installDir");
+    BuildomaticResolution resolved = vendor.resolve(ctx);
+    if (resolved instanceof BuildomaticResolution.NotFound missing) {
+      return Failures.recoverable(missing.detail(), List.of(), missing.remediation());
     }
+    Optional<Buildomatic> b = resolved.located();
     Config config = ctx.service(Config.class);
     // Review finding 2.6: the keystore options are options of the archive import itself, so
     // they ride on this invocation; the preceding ImportSourceKeystore step only holds the backup.

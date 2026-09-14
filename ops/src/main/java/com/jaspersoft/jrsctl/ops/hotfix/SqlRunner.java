@@ -37,7 +37,7 @@ final class SqlRunner {
     if (scripts.isEmpty()) {
       return StepResult.ok();
     }
-    Optional<JdbcSettings> settings = JdbcSettings.from(rt.config());
+    Optional<JdbcSettings> settings = JdbcSettings.from(rt.config(), rt.services().platform());
     if (settings.isEmpty()) {
       return Failures.recoverable(
           "database.type and database.url are not configured",

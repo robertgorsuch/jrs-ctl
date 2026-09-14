@@ -82,6 +82,7 @@ final class StrategyFixture implements AutoCloseable {
             s.webappName(),
             Optional.of(installDir),
             s.tomcatDir(),
+            s.buildomaticDir(),
             s.runAsUser(),
             s.auth());
     Config.Service service =

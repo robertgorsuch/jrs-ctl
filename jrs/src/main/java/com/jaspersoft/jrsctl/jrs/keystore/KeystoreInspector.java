@@ -3,6 +3,8 @@ package com.jaspersoft.jrsctl.jrs.keystore;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
+import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -132,14 +134,17 @@ public final class KeystoreInspector {
    * Review finding 2.5: the installer records the keystore location in {@code
    * buildomatic/keystore.init.properties} ({@code ks}, {@code ksp}), which beats any guess from the
    * account name; the real 10.0.0 install on the development machine points both at the installing
-   * user's profile. Empty when {@code server.installDir} is unset or the file names no location.
+   * user's profile. The buildomatic directory is the one {@link BuildomaticLocator#resolve} settles
+   * on, so a tree on another volume or a share is read too (ADR-0013). Empty when no directory
+   * resolves or the file names no location.
    */
   private Optional<KeystoreInfo> fromInitProperties() {
-    Optional<Path> installDir = config.server().installDir();
-    if (installDir.isEmpty()) {
+    Optional<Path> buildomatic =
+        new BuildomaticLocator(platform).resolve(config).located().map(Buildomatic::dir);
+    if (buildomatic.isEmpty()) {
       return Optional.empty();
     }
-    Path file = installDir.get().resolve("buildomatic").resolve(INIT_PROPERTIES);
+    Path file = buildomatic.get().resolve(INIT_PROPERTIES);
     if (!Files.isRegularFile(file)) {
       return Optional.empty();
     }

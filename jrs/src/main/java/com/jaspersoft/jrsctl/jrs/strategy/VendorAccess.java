@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -16,9 +17,9 @@ import java.util.function.Function;
 /**
  * How a step obtains the vendor-tool wrappers: either fixed instances handed to the strategy at
  * construction ({@link #fixed}) or built from the run context's platform and redactor at execution
- * time ({@link #fromContext}). Invariant: {@link #locate} always resolves {@code buildomatic/}
- * under {@code server.installDir} of the context's {@code Config}, so every step agrees on which
- * vendor tree is invoked.
+ * time ({@link #fromContext}). Invariant: {@link #resolve} always applies {@link
+ * BuildomaticLocator#resolve} to the context's {@code Config}, so every step agrees on which vendor
+ * tree is invoked, wherever it lives (ADR-0013).
  */
 public record VendorAccess(
     Function<Context, BuildomaticLocator> locator, Function<Context, VendorTools> tools) {
@@ -69,8 +70,12 @@ public record VendorAccess(
     return Optional.empty();
   }
 
+  /** The installed tree for the context's configuration, or why there is none. */
+  public BuildomaticResolution resolve(Context ctx) {
+    return locator.apply(ctx).resolve(ctx.service(Config.class));
+  }
+
   public Optional<Buildomatic> locate(Context ctx) {
-    Config config = ctx.service(Config.class);
-    return config.server().installDir().flatMap(dir -> locator.apply(ctx).locate(dir));
+    return resolve(ctx).located();
   }
 }

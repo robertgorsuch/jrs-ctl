@@ -1,7 +1,10 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
@@ -19,7 +22,9 @@ import java.util.Optional;
  * installation layout, the inspected target package and the server identity as seen when the plan
  * was built (empty when the server was unreachable). Invariants: paths are absolute and normalised;
  * {@code masterOverrides} never contains a key whose name contains "pass" (spec §7.4 copies the
- * database settings minus passwords); the record is immutable.
+ * database settings minus passwords); {@code installedBuildomatic} is the tree the locator settled
+ * on at planning time, which may be on another volume or a share (ADR-0013); the record is
+ * immutable.
  */
 record UpgradeInput(
     UpgradeOptions options,
@@ -27,7 +32,8 @@ record UpgradeInput(
     String webappName,
     TargetPackage target,
     Optional<ServerIdentity> identity,
-    Map<String, String> masterOverrides) {
+    Map<String, String> masterOverrides,
+    Path installedBuildomatic) {
 
   static final String BUILDOMATIC = "buildomatic";
 
@@ -38,6 +44,30 @@ record UpgradeInput(
     Objects.requireNonNull(target, "target");
     Objects.requireNonNull(identity, "identity");
     masterOverrides = Map.copyOf(masterOverrides);
+    installedBuildomatic =
+        Objects.requireNonNull(installedBuildomatic, "installedBuildomatic")
+            .toAbsolutePath()
+            .normalize();
+  }
+
+  /**
+   * The installed buildomatic directory for {@code config}. A tree nobody could find keeps the
+   * historical {@code <installDir>/buildomatic}, so the backup precheck names the missing tree; an
+   * unreachable {@code server.buildomaticDir} or an ambiguous search refuses the plan instead,
+   * because backing up or restoring a guessed tree is worse than not starting.
+   */
+  static Path resolveInstalledBuildomatic(
+      BuildomaticLocator locator, Config config, HotfixPaths paths) {
+    return switch (locator.resolve(config)) {
+      case BuildomaticResolution.Found found -> found.buildomatic().dir();
+      case BuildomaticResolution.NotFound missing ->
+          switch (missing.reason()) {
+            case NOT_FOUND, NOT_CONFIGURED -> paths.installDir().resolve(BUILDOMATIC);
+            case CONFIGURED_UNREACHABLE, AMBIGUOUS ->
+                throw new UpgradeException(
+                    UpgradeException.PRECHECK, missing.detail(), missing.remediation());
+          };
+    };
   }
 
   Path installDir() {
@@ -50,10 +80,6 @@ record UpgradeInput(
 
   Path webappDir() {
     return tomcatDir().resolve("webapps").resolve(webappName);
-  }
-
-  Path installedBuildomatic() {
-    return installDir().resolve(BUILDOMATIC);
   }
 
   Optional<Path> targetBuildomatic() {

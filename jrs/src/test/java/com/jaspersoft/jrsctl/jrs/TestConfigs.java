@@ -25,6 +25,7 @@ public final class TestConfigs {
             Optional.of(Config.WebappName.JASPERSERVER_PRO),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
             runAsUser,
             new Config.Auth(
                 mode, Optional.of("jasperadmin"), Optional.of(new SecretRef.Env(PASSWORD_ENV))));
@@ -44,6 +45,7 @@ public final class TestConfigs {
             s.webappName(),
             s.installDir(),
             s.tomcatDir(),
+            s.buildomaticDir(),
             s.runAsUser(),
             Config.Auth.defaults());
     return new Config(

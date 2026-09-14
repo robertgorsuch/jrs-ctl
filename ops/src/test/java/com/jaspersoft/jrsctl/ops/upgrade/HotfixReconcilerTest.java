@@ -211,7 +211,8 @@ class HotfixReconcilerTest {
               "jasperserver-pro",
               TargetPackage.inspect(f.packageDir, f.runtime().locator()),
               Optional.of(FakeJrsAdapter.identity("8.2.0")),
-              java.util.Map.of());
+              java.util.Map.of(),
+              f.installDir.resolve("buildomatic"));
 
       List<HotfixReconciler.Classification> all =
           HotfixReconciler.classify(

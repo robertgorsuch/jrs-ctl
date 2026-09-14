@@ -73,6 +73,7 @@ class ConfigWriterTest {
             Optional.of(Config.WebappName.JASPERSERVER_PRO),
             Optional.of(Path.of("/opt/jrs")),
             Optional.of(Path.of("/opt/jrs/apache-tomcat")),
+            Optional.of(Path.of("/mnt/vendor/buildomatic")),
             Optional.of("jasperserver"),
             new Config.Auth(
                 Config.AuthMode.TOKEN,

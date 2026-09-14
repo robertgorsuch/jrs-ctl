@@ -13,6 +13,7 @@ import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -98,12 +99,11 @@ final class ImportSourceKeystore implements Step {
               + " be resolved");
     }
     Config config = ctx.service(Config.class);
-    Optional<Buildomatic> b = vendor.locate(ctx);
-    if (b.isEmpty()) {
-      return CheckResult.fail(
-          "buildomatic directory not found under server.installDir",
-          "set server.installDir to the JasperReports Server installation root");
+    BuildomaticResolution resolved = vendor.resolve(ctx);
+    if (resolved instanceof BuildomaticResolution.NotFound missing) {
+      return CheckResult.fail(missing.detail(), missing.remediation());
     }
+    Optional<Buildomatic> b = resolved.located();
     if (b.get().scriptFor(Buildomatic.IMPORT_SCRIPT).isEmpty()) {
       return CheckResult.fail(
           "js-import script missing in " + b.get().dir(), "check the installation is complete");
