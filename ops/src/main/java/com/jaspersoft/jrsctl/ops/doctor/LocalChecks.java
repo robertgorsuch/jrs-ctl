@@ -331,7 +331,8 @@ final class LocalChecks {
               + ", but cmd.exe cannot use a UNC path as the working directory of the batch"
               + " wrappers",
           "map the share to a drive letter for the account that runs jrsctl, or link it with"
-              + " mklink /D, and set server.buildomaticDir to that path");
+              + " mklink /D (which needs Administrator or Developer Mode), and set"
+              + " server.buildomaticDir to that path");
     }
     return ReportItem.pass("vendor", "js-export, js-import, js-ant present in " + where);
   }

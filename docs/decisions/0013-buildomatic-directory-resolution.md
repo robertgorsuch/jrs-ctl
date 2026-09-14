@@ -48,8 +48,9 @@ use. On such hosts `doctor` failed `vendor` with "no buildomatic directory under
 6. On Windows, `doctor` warns when the directory is a UNC path: `cmd.exe` refuses a UNC working
    directory and switches to the Windows directory, and the vendor batch wrappers run with the
    buildomatic directory as their working directory. The remediation is a mapped drive letter or a
-   `mklink /D` link, with `server.buildomaticDir` pointing at it. jrsctl does not rewrite the
-   invocation itself (spec §0: never modify or second-guess vendor scripts).
+   `mklink /D` link (creating one needs Administrator or Developer Mode), with
+   `server.buildomaticDir` pointing at it. jrsctl does not rewrite the invocation itself (spec §0:
+   never modify or second-guess vendor scripts).
 
 ## Consequences
 
@@ -60,5 +61,6 @@ use. On such hosts `doctor` failed `vendor` with "no buildomatic directory under
 - `doctor`'s `vendor` item names the rule that found the directory (`server.buildomaticDir`,
   `under server.installDir`, `beside server.installDir`, ...), so an operator can see a discovered
   choice before relying on it.
-- Not verified here: a real UNC share (the development host has none) and whether the 10.0.0
+- Verified read-only on 2026-09-14 against real shares on both operating systems (#31). Not
+  verified: vendor export/import and upgrade with the tree on a share, and whether the 10.0.0
   batch wrappers survive a UNC working directory at all; the warning assumes they do not.
