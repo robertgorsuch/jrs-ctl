@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.jrs.vendor;
 
+import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
@@ -16,11 +17,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -67,16 +70,48 @@ public final class VendorTools {
   private final FileOps files;
   private final Redactor redactor;
   private final Duration timeout;
+  private final Set<String> withheld;
 
   public VendorTools(ProcessRunner runner, FileOps files, Redactor redactor) {
     this(runner, files, redactor, DEFAULT_TIMEOUT);
   }
 
   public VendorTools(ProcessRunner runner, FileOps files, Redactor redactor, Duration timeout) {
+    this(runner, files, redactor, timeout, Set.of());
+  }
+
+  /**
+   * {@code withheld}: the variable names the configuration's {@code env:} secret references read.
+   * They and every {@code JRSCTL_*} variable are removed from the vendor scripts' environment
+   * (issue #47, ADR-0019).
+   */
+  public VendorTools(
+      ProcessRunner runner,
+      FileOps files,
+      Redactor redactor,
+      Duration timeout,
+      Set<String> withheld) {
     this.runner = Objects.requireNonNull(runner, "runner");
     this.files = Objects.requireNonNull(files, "files");
     this.redactor = Objects.requireNonNull(redactor, "redactor");
     this.timeout = Objects.requireNonNull(timeout, "timeout");
+    this.withheld = Set.copyOf(withheld);
+  }
+
+  /**
+   * Inherited names the vendor scripts must not see (issue #47, ADR-0019): every {@code JRSCTL_*}
+   * variable and every name in {@code configured}, compared without regard to case.
+   */
+  static Set<String> withheldNames(Map<String, String> inherited, Set<String> configured) {
+    Set<String> names = new LinkedHashSet<>();
+    String prefix = ConfigLoader.ENV_PREFIX;
+    for (String name : inherited.keySet()) {
+      boolean jrsctl = name.regionMatches(true, 0, prefix, 0, prefix.length());
+      if (jrsctl || configured.stream().anyMatch(name::equalsIgnoreCase)) {
+        names.add(name);
+      }
+    }
+    return Set.copyOf(names);
   }
 
   /** The run and step the streamed log lines belong to. */
@@ -361,7 +396,11 @@ public final class VendorTools {
     ProcessRunner.Result result =
         runner.run(
             new ProcessRunner.Request(
-                command, Optional.of(invocation.buildomatic().dir()), env, timeout),
+                command,
+                Optional.of(invocation.buildomatic().dir()),
+                env,
+                timeout,
+                withheldNames(inherited, withheld)),
             line -> {
               String text = redactor.redact(line.text());
               synchronized (tail) {

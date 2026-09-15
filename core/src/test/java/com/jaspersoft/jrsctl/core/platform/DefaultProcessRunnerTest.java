@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -79,6 +80,24 @@ class DefaultProcessRunnerTest {
             l ->
                 assertThat(Path.of(l.substring("cwd=".length())).toRealPath())
                     .isEqualTo(dir.toRealPath()));
+  }
+
+  /** Issue #47: names in {@code unset} are not inherited; an explicit value still wins. */
+  @Test
+  void should_drop_unset_variables_and_keep_explicit_ones_when_building_the_child_environment() {
+    ProcessRunner.Request request =
+        new ProcessRunner.Request(
+            List.of("x"),
+            Optional.empty(),
+            Map.of("JAVA_HOME", "/jdk"),
+            Duration.ofSeconds(1),
+            Set.of("jrs_password", "JAVA_HOME"));
+
+    Map<String, String> child =
+        DefaultProcessRunner.childEnvironment(
+            Map.of("JRS_PASSWORD", "secret", "PATH", "/bin", "JAVA_HOME", "/old"), request);
+
+    assertThat(child).containsOnly(Map.entry("PATH", "/bin"), Map.entry("JAVA_HOME", "/jdk"));
   }
 
   @Test

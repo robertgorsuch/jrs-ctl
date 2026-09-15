@@ -38,6 +38,30 @@ class ConfigLoaderTest {
     assertThat(c.service().stopTimeoutSeconds()).isEqualTo(180);
   }
 
+  /** Issue #47: every env: reference in the configuration, by variable name. */
+  @Test
+  void should_list_the_env_secret_names_when_references_use_env_file_and_enc() throws IOException {
+    Files.writeString(
+        tmp.resolve("config.yaml"),
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+          auth:
+            passwordRef: env:JRS_PASSWORD
+        database:
+          passwordRef: enc:DB
+        network:
+          proxy:
+            passwordRef: env:PROXY_PW
+        """,
+        StandardCharsets.UTF_8);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThat(c.secretRefs()).hasSize(3);
+    assertThat(c.envSecretNames()).containsExactlyInAnyOrder("JRS_PASSWORD", "PROXY_PW");
+  }
+
   @Test
   void should_read_every_block_when_file_is_complete() throws IOException {
     write(

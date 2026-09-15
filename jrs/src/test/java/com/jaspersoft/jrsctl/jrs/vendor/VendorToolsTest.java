@@ -215,6 +215,21 @@ class VendorToolsTest {
         .isEqualTo("-Djs.cache.provider=ehcache -Xmx1g");
   }
 
+  /** Issue #47: jrsctl's own variables and configured env: secrets never reach buildomatic. */
+  @Test
+  void should_withhold_jrsctl_and_configured_secret_variables_when_running_a_vendor_tool() {
+    Map<String, String> inherited =
+        Map.of(
+            "JRSCTL_PASSPHRASE", "p",
+            "jrsctl_home", "h",
+            "JRS_PASSWORD", "s",
+            "ANT_OPTS", "-Xmx1g",
+            "PATH", "/bin");
+
+    assertThat(VendorTools.withheldNames(inherited, Set.of("jrs_password")))
+        .containsExactlyInAnyOrder("JRSCTL_PASSPHRASE", "jrsctl_home", "JRS_PASSWORD");
+  }
+
   @Test
   void should_pass_java_home_and_buildomatic_working_dir_when_running_export() {
     runner.exit(0, "Export finished");
@@ -244,6 +259,7 @@ class VendorToolsTest {
     assertThat(req.environment()).containsEntry("JAVA_HOME", javaHome.toString());
     assertThat(req.environment().get("PATH")).startsWith(javaHome.resolve("bin").toString());
     assertThat(req.environment().get("JAVA_OPTS")).contains("-Djs.cache.provider=");
+    assertThat(req.unset()).noneMatch(n -> n.equalsIgnoreCase("PATH"));
     assertThat(req.timeout()).isEqualTo(VendorTools.DEFAULT_TIMEOUT);
     assertThat(sink.logMessages()).contains("Export finished");
     assertThat(sink.of(Event.Log.class))

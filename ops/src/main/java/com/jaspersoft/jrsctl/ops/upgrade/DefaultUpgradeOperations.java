@@ -79,7 +79,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         new UpgradeRuntime(
             services,
             new SnapshotStore(services.home(), services.platform().files(), services.clock()),
-            s -> new VendorTools(s.platform().processes(), s.platform().files(), s.redactor()),
+            s ->
+                new VendorTools(
+                    s.platform().processes(),
+                    s.platform().files(),
+                    s.redactor(),
+                    VendorTools.DEFAULT_TIMEOUT,
+                    s.config().envSecretNames()),
             DefaultHotfixOperations::new,
             Sleeper.system()));
   }

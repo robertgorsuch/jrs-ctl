@@ -5,10 +5,13 @@ import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The effective configuration, mirroring {@code config.yaml} key for key (spec §5.1). Invariants:
@@ -51,6 +54,30 @@ public record Config(
         Console.defaults(),
         Backups.defaults(),
         Smoke.empty());
+  }
+
+  /** Every configured secret reference: server, database, proxy, trust store, console. */
+  public List<SecretRef> secretRefs() {
+    List<SecretRef> refs = new ArrayList<>();
+    server().auth().passwordRef().ifPresent(refs::add);
+    database().passwordRef().ifPresent(refs::add);
+    network().proxy().passwordRef().ifPresent(refs::add);
+    network().trustStore().passwordRef().ifPresent(refs::add);
+    console().auth().passwordRef().ifPresent(refs::add);
+    return List.copyOf(refs);
+  }
+
+  /** Variable names of the {@code env:} references among {@link #secretRefs()} (issue #47). */
+  public Set<String> envSecretNames() {
+    Set<String> names = new LinkedHashSet<>();
+    for (SecretRef ref : secretRefs()) {
+      switch (ref) {
+        case SecretRef.Env env -> names.add(env.name());
+        case SecretRef.File unusedFile -> {}
+        case SecretRef.Enc unusedEnc -> {}
+      }
+    }
+    return Set.copyOf(names);
   }
 
   /**

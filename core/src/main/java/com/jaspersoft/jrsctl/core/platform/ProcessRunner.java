@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -14,11 +15,30 @@ import java.util.function.Consumer;
  */
 public interface ProcessRunner {
 
+  /**
+   * {@code unset} names inherited variables the child must not see (issue #47), matched without
+   * regard to case; a name also present in {@code environment} is set to that value.
+   */
   record Request(
       List<String> command,
       Optional<Path> workingDir,
       Map<String, String> environment,
-      Duration timeout) {}
+      Duration timeout,
+      Set<String> unset) {
+
+    public Request {
+      unset = Set.copyOf(unset);
+    }
+
+    /** Inherits this process's whole environment, with {@code environment} on top. */
+    public Request(
+        List<String> command,
+        Optional<Path> workingDir,
+        Map<String, String> environment,
+        Duration timeout) {
+      this(command, workingDir, environment, timeout, Set.of());
+    }
+  }
 
   record Result(int exitCode, boolean timedOut, Duration elapsed) {
     public boolean ok() {

@@ -9,8 +9,10 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -79,6 +81,23 @@ public final class DefaultProcessRunner implements ProcessRunner {
     }
   }
 
+  /**
+   * The child's environment: {@code inherited} without the names in {@code request.unset()}
+   * (compared without regard to case), then the request's own variables on top (issue #47).
+   */
+  static Map<String, String> childEnvironment(
+      Map<String, String> inherited, ProcessRunner.Request request) {
+    Map<String, String> child = new LinkedHashMap<>();
+    for (Map.Entry<String, String> e : inherited.entrySet()) {
+      boolean dropped = request.unset().stream().anyMatch(n -> n.equalsIgnoreCase(e.getKey()));
+      if (!dropped) {
+        child.put(e.getKey(), e.getValue());
+      }
+    }
+    child.putAll(request.environment());
+    return child;
+  }
+
   @Override
   public Result run(Request request, Consumer<OutputLine> onLine) {
     requireNonNull(request, "request");
@@ -90,7 +109,10 @@ public final class DefaultProcessRunner implements ProcessRunner {
     // ProcessBuilder only accepts java.io.File for the directory; this is the single sanctioned
     // use.
     request.workingDir().ifPresent(dir -> builder.directory(dir.toFile()));
-    builder.environment().putAll(request.environment());
+    Map<String, String> env = builder.environment();
+    Map<String, String> wanted = childEnvironment(Map.copyOf(env), request);
+    env.clear();
+    env.putAll(wanted);
 
     long startNanos = System.nanoTime();
     Process process;

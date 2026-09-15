@@ -158,13 +158,7 @@ final class Bootstrap implements AutoCloseable {
   /** Registers every resolvable configured secret so no output stream can leak it. */
   static void registerSecrets(
       Config config, SecretResolver secrets, Redactor redactor, boolean encWithoutPrompt) {
-    List<SecretRef> refs = new ArrayList<>();
-    config.server().auth().passwordRef().ifPresent(refs::add);
-    config.database().passwordRef().ifPresent(refs::add);
-    config.network().proxy().passwordRef().ifPresent(refs::add);
-    config.network().trustStore().passwordRef().ifPresent(refs::add);
-    config.console().auth().passwordRef().ifPresent(refs::add);
-    for (SecretRef ref : refs) {
+    for (SecretRef ref : config.secretRefs()) {
       if (ref instanceof SecretRef.Enc && !encWithoutPrompt) {
         continue;
       }

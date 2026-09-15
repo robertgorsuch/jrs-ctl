@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -43,7 +44,9 @@ public record VendorAccess(
             new VendorTools(
                 ctx.platform().processes(),
                 ctx.platform().files(),
-                ctx.has(Redactor.class) ? ctx.service(Redactor.class) : Redactor.global()));
+                ctx.has(Redactor.class) ? ctx.service(Redactor.class) : Redactor.global(),
+                VendorTools.DEFAULT_TIMEOUT,
+                ctx.has(Config.class) ? ctx.service(Config.class).envSecretNames() : Set.of()));
   }
 
   /**
