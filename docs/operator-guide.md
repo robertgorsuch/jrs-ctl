@@ -479,6 +479,12 @@ Prints the usage synopsis of the tool (no argument) or of one top-level command,
 | 8 | pending recovery required | a previous run has no terminal state; run `jrsctl runs recover <id> --resume|--rollback` |
 | 9 | run lock held | another jrsctl process owns `runs.lock`; the message names its run id and pid |
 
+**Ctrl-C on Windows.** `bin\jrsctl.cmd` is a batch file, so after Ctrl-C `cmd.exe` may ask `Terminate batch job (Y/N)?` when jrsctl has already cancelled and exited 5. The run is finished either way, and the answer changes nothing in it. A scheduler or script that must see exit code 5, and must never block on that question, should start the bundled runtime directly rather than the batch file. `JRSCTL_JAVA_OPTS` is not read in that form, so put any JVM options on the command line:
+
+```
+<install>\runtime\bin\java.exe -jar <install>\lib\jrsctl.jar <command> [options]
+```
+
 ## Error classes and what to do
 
 | You see | It means | Do this |
