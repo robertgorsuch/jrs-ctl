@@ -47,7 +47,7 @@
     <javalin.version>7.2.3</javalin.version>
     <jackson.version>2.22.2</jackson.version>
     <slf4j.version>2.0.19</slf4j.version>
-    <logback.version>1.5.19</logback.version>
+    <logback.version>1.5.38</logback.version>
     <logstash-logback.version>7.4</logstash-logback.version>
     <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
     <json-schema-validator.version>1.4.0</json-schema-validator.version>
@@ -130,6 +130,15 @@
       <dependency><groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>${jackson.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>${junit.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>${assertj.version}</version></dependency>
+      <!-- Test-only transitives of WireMock 3.13.2, pinned to patched releases (Dependabot,
+           2026-09-14: GHSA-hjcp-jmpx-g3qm httpclient5, httpcore5 below 5.4.3). None of them ships
+           in the image. Two advisories cannot be closed this way while WireMock is 3.x, and stay
+           test-only: handlebars 4.5 removed helper.NumberHelper, which WireMock 3.13.2 loads, so
+           handlebars stays at WireMock's 4.3.1; and the Jetty 11 fixes were never published to
+           Maven Central, so Jetty stays at 11.0.26. WireMock 4 (Jetty 12) is still a beta. -->
+      <dependency><groupId>org.apache.httpcomponents.client5</groupId><artifactId>httpclient5</artifactId><version>5.6.4</version></dependency>
+      <dependency><groupId>org.apache.httpcomponents.core5</groupId><artifactId>httpcore5</artifactId><version>5.4.3</version></dependency>
+      <dependency><groupId>org.apache.httpcomponents.core5</groupId><artifactId>httpcore5-h2</artifactId><version>5.4.3</version></dependency>
       <dependency><groupId>org.wiremock</groupId><artifactId>wiremock</artifactId><version>${wiremock.version}</version></dependency>
       <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><version>${testcontainers.version}</version></dependency>
       <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>${testcontainers.version}</version></dependency>
