@@ -164,6 +164,7 @@ server:
     mode: basic                         # basic (default) | form | token
     username: jasperadmin
     passwordRef: env:JRS_PASSWORD       # env:NAME | file:/path | enc:NAME  (see 5.2)
+    tokenLocation: query                # query (default) | header; token mode only (ADR-0018)
 service:
   kind: systemd                         # windows-service | systemd | ctlscript | catalina | manual
   name: jasperreportsTomcat             # windows-service / systemd only
@@ -262,6 +263,7 @@ Rules:
 - `snapshots/<runId>/<stepId>/` containing payload and `manifest.json` with SHA-256 per file, source paths, permissions/ACLs, owner, and timestamp.
 - Verified on creation and again before any restore.
 - Retention pruning respects `backups.*` and never prunes a snapshot referenced by an installed hotfix, by a registered customization, or by the most recent successful upgrade.
+- The run directories `runs/<runId>/` (bundle copies, staging, markers) follow the same rules: one goes only when its run has ended, started before the retention cut-off, and neither it nor the run it is a `<runId>-hf-<slug>` sub-run of is protected; a leftover `hotfix-verify-*` working directory goes by age; no other name under `runs/` is touched. Removed run directories are listed with the removed snapshots; the kept and protected counts stay snapshot counts (#53).
 
 ### 5.7 Compatibility matrix
 
@@ -526,6 +528,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root).
 - Rollback re-imports that snapshot. **This is best-effort**: re-import restores overwritten resources but does not delete resources the failed import created. The Plan summary and the operator guide state this explicitly.
 - A snapshot that is a readable archive with entries but no `index.xml` means none of the resources the import targets existed before it. Its rollback is a logged no-op: there is nothing to put back, and the vendor importer throws on such an archive (#41). A re-import that fails leaves the run rollback-incomplete (exit 4).
+- The REST import start writes `import-started.txt` before `POST /rest_v2/import`. A 408, 429 or 503 answer means the server did not accept the request: the marker is removed and the start is retried. A 502 or 504, an unreachable server, or a marker without a task id on a later execute means the server may have accepted the import: the failure is fatal, nothing is uploaded again and the snapshot is not re-imported (ADR-0017, #44).
 
 ### 9.5 Commands
 
@@ -604,6 +607,10 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 11.4 Least privilege
 
 - `doctor` warns if running elevated without a Step that requires it, and FAILs if `server.runAsUser`'s home is unreadable when keystore access is required.
+- A home jrsctl creates is private to its owner on both operating systems: `rwx------` on Linux, one inheritable owner entry and a protected DACL on Windows. An existing home is left as the operator set it up (#50).
+- The vendor tools do not inherit any `JRSCTL_*` variable nor any variable a configured `env:` secret reference names (ADR-0019, #47).
+- In token mode, `server.auth.tokenLocation: header` sends the pre-authentication token as the `pp` request header instead of a URL parameter (ADR-0018, #45). The form login body is encoded from the password's `char[]` without a `String` copy. The source keystore password of `import --source-keystore` still reaches `js-import` as `--storepass`, the only form the vendor tool accepts, and is visible in the process list while it runs (ADR-0020, #51).
+- The capability probe decides `REST_LOGIN` from the compat matrix for every listed version and sends a login without credentials only to an unlisted one; form login detects the endpoint with the credentialed login itself (#46).
 
 ---
 

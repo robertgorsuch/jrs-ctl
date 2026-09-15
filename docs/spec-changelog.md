@@ -1,5 +1,15 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-15
+
+- §9.4: an import start the server may have accepted is fatal rather than retried. `StartImport` writes `import-started.txt` before the POST; 408, 429 and 503 remove it and stay retryable; a 502 or 504, an unreachable server, or a marker without a task id on a later execute end the run without a second upload and without re-importing the pre-import snapshot over an import that may still be running (ADR-0017, #44).
+- §10.2, §10.3: a restored webapp is unpacked beside Tomcat's `webapps/` (`<tomcat>/.jrsctl-restore-<name>`) instead of inside it, where a Tomcat started after a crash would deploy the staging tree; a staging tree left by an earlier version is removed first (#48). Planning an upgrade with `--reapply-hotfixes` no longer leaves `runs/upgrade-reapply/<slug>.zip` behind: planning deletes the ZIP it builds to plan the apply, and the new step `repack-bundle`, embedded before each re-applied hotfix's steps, writes it when the run reaches reconcile (#49).
+- §5.1, §11.4: new optional key `server.auth.tokenLocation` (`query`, the default, or `header`); `header` sends the pre-authentication token as the `pp` request header, which JasperReports Server reads when `tokenInRequestParam` is `false` or unset (ADR-0018, #45). The form login body is encoded from the password's `char[]`. `--storepass` stays on the `js-import` command line, the only form the vendor tool offers (ADR-0020, #51).
+- §7.4, §11.4: the vendor tools no longer inherit `JRSCTL_*` variables or the variables configured `env:` secret references name; `ProcessRunner.Request` gains the set of names to withhold (ADR-0019, #47).
+- §11.4: a home jrsctl creates on Windows gets one inheritable owner entry and a protected DACL, as a Linux home gets `rwx------`; an existing home is left alone (#50).
+- §12: the capability probe takes `REST_LOGIN` from the compat matrix for listed versions and probes only unlisted ones; form login detects `/rest_v2/login` with the credentialed login and falls back to `j_spring_security_check` on 404, so no supported server receives a login without credentials (#46).
+- §5.6: retention also removes the run directories of ended, unprotected runs older than the cut-off, under the snapshot protection rules (#53).
+
 ## Draft 1.1 amendment — 2026-09-14
 
 - §4, §7.3, §7.4, §8.2, §10.2: the service stop, start and wait steps are one implementation for every plan, including vendor export and import, and live in `jrs` (`jrs.service.ServiceSteps`), where `ops` already imports them (ADR-0015, #43). The vendor strategy had kept its own copy, which recorded a stop only after it succeeded, waited out a refused command and did not refuse an `UNKNOWN` state; a stop that went wrong half-way could leave the server down after a failed vendor export or import. Its wait-for-server now polls `serverInfo` with the §6.5 backoff under the same ten-minute cap, as the other plans do. Step ids are unchanged.

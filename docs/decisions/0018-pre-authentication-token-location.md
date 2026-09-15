@@ -1,7 +1,6 @@
 # ADR-0018: The pre-authentication token can travel as a header
 
-Status: accepted, 2026-09-15. Amends spec §5.1 (the `server.auth` block) and §7.3 (REST client).
-Issue #45.
+Status: accepted, 2026-09-15. Amends spec §5.1 (the `server.auth` block) and §11.4. Issue #45.
 
 ## Context
 
