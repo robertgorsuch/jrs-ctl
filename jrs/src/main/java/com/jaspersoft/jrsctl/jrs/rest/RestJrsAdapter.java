@@ -77,6 +77,7 @@ public final class RestJrsAdapter implements JrsAdapter {
   private Map<Capability, String> probeResults;
   private volatile Optional<Boolean> restLoginExists = Optional.empty();
   private volatile int restLoginStatus;
+  private volatile Optional<String> restLoginFromMatrix = Optional.empty();
   private volatile Optional<Session> session = Optional.empty();
 
   public RestJrsAdapter(
@@ -210,8 +211,17 @@ public final class RestJrsAdapter implements JrsAdapter {
     int s = refuseIfUnauthenticated(client.get(orgs).status(), ORGANIZATIONS);
     decide(Capability.ORGS, s == 200 || s == 204, "GET " + orgs, s, found, details);
 
-    boolean restLogin = restLoginExists();
-    decide(Capability.REST_LOGIN, restLogin, "POST " + REST_LOGIN, restLoginStatus, found, details);
+    boolean restLogin = restLoginExists(id);
+    Optional<String> fromMatrix = restLoginFromMatrix;
+    if (fromMatrix.isPresent()) {
+      if (restLogin) {
+        found.add(Capability.REST_LOGIN);
+      }
+      details.put(Capability.REST_LOGIN, (restLogin ? "present, " : "absent, ") + fromMatrix.get());
+    } else {
+      decide(
+          Capability.REST_LOGIN, restLogin, "POST " + REST_LOGIN, restLoginStatus, found, details);
+    }
 
     boolean known = matrix.find(id.version()).isPresent();
     for (Capability c :
@@ -337,16 +347,25 @@ public final class RestJrsAdapter implements JrsAdapter {
         c, request + " answered HTTP " + status + " (" + (present ? "present" : "absent") + ")");
   }
 
-  private boolean restLoginExists() {
+  private boolean restLoginExists(ServerIdentity id) {
     Optional<Boolean> known = restLoginExists;
     if (known.isPresent()) {
       return known.get();
     }
-    // POST with no credentials: an existing endpoint answers 401/400/403 (or 200 on odd builds),
-    // a server without it answers 404. A GET is unreliable because 10.x answers 404 to GET as well.
-    int s = client.post(REST_LOGIN, "application/x-www-form-urlencoded", "").status();
-    restLoginStatus = s;
-    boolean exists = s != 404 && s < 500;
+    boolean exists;
+    if (matrix.find(id.version()).isPresent()) {
+      // Issue #46: a listed version is decided by the matrix; no login without credentials.
+      exists = expectedCapabilities().contains(Capability.REST_LOGIN);
+      restLoginFromMatrix =
+          Optional.of("per compat matrix for JRS " + id.version() + " " + id.edition());
+    } else {
+      // A version the matrix does not list: POST with no credentials. An existing endpoint answers
+      // 401/400/403 (or 200 on odd builds), a server without it answers 404. A GET is unreliable
+      // because 10.x answers 404 to GET as well.
+      int s = client.post(REST_LOGIN, "application/x-www-form-urlencoded", "").status();
+      restLoginStatus = s;
+      exists = s != 404 && s < 500;
+    }
     restLoginExists = Optional.of(exists);
     return exists;
   }
@@ -381,9 +400,25 @@ public final class RestJrsAdapter implements JrsAdapter {
 
   private Session formLogin(String principal, Credentials credentials) {
     client.clearSession();
-    boolean rest = restLoginExists();
+    Optional<Boolean> known = restLoginExists;
+    boolean rest = known.orElse(true);
+    RestClient.Response r =
+        client.formLogin(rest ? REST_LOGIN : FORM_LOGIN, principal, credentials.password());
+    if (known.isEmpty()) {
+      // Issue #46: the credentialed login itself tells whether /rest_v2/login exists, instead of a
+      // login attempt without credentials; a server without the endpoint answers it 404.
+      if (r.status() == 404) {
+        restLoginStatus = 404;
+        restLoginExists = Optional.of(false);
+        rest = false;
+        client.clearSession();
+        r = client.formLogin(FORM_LOGIN, principal, credentials.password());
+      } else if (r.status() < 500) {
+        restLoginStatus = r.status();
+        restLoginExists = Optional.of(true);
+      }
+    }
     String path = rest ? REST_LOGIN : FORM_LOGIN;
-    RestClient.Response r = client.formLogin(path, principal, credentials.password());
     Optional<String> cookie = client.sessionCookie();
     boolean accepted;
     if (rest) {

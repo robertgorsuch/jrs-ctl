@@ -254,8 +254,8 @@ class RestJrsAdapterRepositoryTest {
     wm.verify(
         getRequestedFor(urlPathEqualTo(f.path("/rest_v2/jobs")))
             .withHeader("Cookie", containing("JSESSIONID=F0RM")));
-    // second call reuses the session, no second login (the credential-less capability probe also
-    // POSTs to /rest_v2/login, so count only real logins)
+    // second call reuses the session, no second login (issue #46: form login sends no
+    // credential-less probe, and only real logins carry j_username)
     f.adapter.schedulerReachable();
     wm.verify(
         1,
@@ -273,7 +273,7 @@ class RestJrsAdapterRepositoryTest {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.FORM);
     wm.stubFor(
         get(urlPathEqualTo(f.path("/rest_v2/login"))).willReturn(aResponse().withStatus(405)));
-    // the credential-less capability probe POSTs here too; it must not consume a login state
+    // a POST without credentials (a probe of an unlisted version) must not consume a login state
     wm.stubFor(
         post(urlPathEqualTo(f.path("/rest_v2/login")))
             .atPriority(10)

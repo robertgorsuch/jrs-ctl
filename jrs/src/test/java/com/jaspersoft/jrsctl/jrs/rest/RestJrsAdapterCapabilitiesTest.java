@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.jrs.rest;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,9 +75,9 @@ class RestJrsAdapterCapabilitiesTest {
     f.probe("/rest_v2/export/jrsctl-probe/state", 405);
     f.probe("/rest_v2/import/jrsctl-probe/state", 501);
     f.probe("/rest_v2/organizations", 404);
-    f.probe("/rest_v2/login", 404);
 
-    assertThat(f.adapter.capabilities()).isEmpty();
+    // 7.1 is listed in the compat matrix, which expects REST_LOGIN (issue #46: not probed)
+    assertThat(f.adapter.capabilities()).containsExactly(Capability.REST_LOGIN);
     assertThat(f.adapter.probeResults())
         .hasEntrySatisfying(
             Capability.ORGS, d -> assertThat(d).contains("HTTP 404").contains("absent"))
@@ -86,6 +87,31 @@ class RestJrsAdapterCapabilitiesTest {
         .containsExactlyInAnyOrder(
             Capability.EXPORT_ASYNC, Capability.IMPORT_ASYNC, Capability.REST_LOGIN);
     wm.verify(0, getRequestedFor(urlPathEqualTo(f.path("/rest_v2/export"))));
+  }
+
+  /** Issue #46: a version the matrix lists needs no credential-less login attempt. */
+  @Test
+  void should_not_post_to_rest_login_when_the_matrix_lists_the_version() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    f.allProbesPresent();
+
+    assertThat(f.adapter.capabilities()).contains(Capability.REST_LOGIN);
+    assertThat(f.adapter.probeResults())
+        .hasEntrySatisfying(
+            Capability.REST_LOGIN, d -> assertThat(d).contains("compat matrix").contains("8.2.0"));
+    wm.verify(0, postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login"))));
+  }
+
+  @Test
+  void should_probe_rest_login_when_the_matrix_does_not_list_the_version() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("11.0.0-PRO");
+    f.allProbesPresent();
+
+    f.adapter.capabilities();
+
+    wm.verify(1, postRequestedFor(urlPathEqualTo(f.path("/rest_v2/login"))));
   }
 
   /**
