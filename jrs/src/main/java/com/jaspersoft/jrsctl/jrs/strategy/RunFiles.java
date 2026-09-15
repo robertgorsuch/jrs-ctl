@@ -18,6 +18,7 @@ final class RunFiles {
 
   static final String EXPORT_HANDLE = "export-handle.txt";
   static final String IMPORT_HANDLE = "import-handle.txt";
+  static final String IMPORT_STARTED = "import-started.txt";
 
   private RunFiles() {}
 

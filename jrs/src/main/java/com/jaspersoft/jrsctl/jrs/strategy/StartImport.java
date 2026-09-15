@@ -17,19 +17,33 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code POST /rest_v2/import} streaming the archive (spec §7.3, §9.4). Repository-mutating and
  * idempotent through the run-scoped {@code import-handle.txt}: a recorded task id is reused instead
- * of uploading again. Compensation is intentionally a no-op that only logs: the repository is
- * restored by the ops layer's {@code PreImportSnapshot} step, which re-imports the snapshot taken
- * before this phase (best effort, spec §9.4); this step cannot undo a server-side import itself.
+ * of uploading again, and an {@code import-started.txt} without a handle means an earlier attempt
+ * may have started an import, which is fatal rather than retried (ADR-0017). Compensation is
+ * intentionally a no-op that only logs: the repository is restored by the ops layer's {@code
+ * PreImportSnapshot} step, which re-imports the snapshot taken before this phase (best effort, spec
+ * §9.4); this step cannot undo a server-side import itself.
  */
 final class StartImport implements Step {
 
   static final String ID = "import.start";
   static final String ROLLBACK_NOTE =
       "repository rollback is handled by the pre-import snapshot step";
+
+  /** Statuses that mean the server did not accept the request, so no import can have started. */
+  private static final Set<Integer> NOT_ACCEPTED = Set.of(408, 429, 503);
+
+  static final String AMBIGUOUS_START =
+      "the server may have accepted the import before its answer was lost; jrsctl does not"
+          + " upload the archive a second time (issue #44)";
+  static final String AMBIGUOUS_NEXT_ACTION =
+      "check the server log and the repository for an import started at this time, let it"
+          + " finish, verify the repository, and re-import the archive by hand only if it did"
+          + " not run";
 
   private final ImportRequest request;
 
@@ -79,33 +93,55 @@ final class StartImport implements Step {
   @Override
   public StepResult execute(Context ctx, EventSink out) {
     Path handleFile = RunFiles.in(ctx, RunFiles.IMPORT_HANDLE);
+    Path startedFile = RunFiles.in(ctx, RunFiles.IMPORT_STARTED);
     try {
       Optional<String> existing = RunFiles.read(handleFile);
       if (existing.isPresent()) {
         Logs.info(out, ctx, this, "reusing import task " + existing.get());
         return StepResult.ok();
       }
+      if (Files.exists(startedFile)) {
+        return Failures.fatal(AMBIGUOUS_START, AMBIGUOUS_NEXT_ACTION);
+      }
+      RunFiles.write(startedFile, request.archive().toString());
       Handles.ImportHandle handle;
       try {
         handle =
             ctx.service(JrsAdapter.class)
                 .startImport(request, request.archive(), ctx.cancel()::isCancelled);
       } catch (JrsUnreachableException e) {
-        return Failures.retryable(
-            "server unreachable: " + e.getMessage(), List.of(e.url()), e.remediation());
+        return Failures.fatal(
+            "server unreachable while starting the import ("
+                + e.getMessage()
+                + "); "
+                + AMBIGUOUS_START,
+            AMBIGUOUS_NEXT_ACTION);
       } catch (RestException e) {
-        if (!e.transientFailure()) {
-          throw e;
+        if (NOT_ACCEPTED.contains(e.status())) {
+          RunFiles.delete(startedFile);
+          return Failures.transientHttp(
+              e, "cannot start the import", Failures.TRANSIENT_REMEDIATION);
         }
-        return Failures.transientHttp(e, "cannot start the import", Failures.TRANSIENT_REMEDIATION);
+        if (e.transientFailure()) {
+          return Failures.fatal(
+              "cannot start the import: HTTP "
+                  + e.status()
+                  + " ("
+                  + e.getMessage()
+                  + "); "
+                  + AMBIGUOUS_START,
+              AMBIGUOUS_NEXT_ACTION);
+        }
+        RunFiles.delete(startedFile);
+        throw e;
       }
       RunFiles.write(handleFile, handle.id());
       Logs.info(out, ctx, this, "import task " + handle.id() + " started");
       return StepResult.ok();
     } catch (IOException e) {
       return Failures.recoverable(
-          "cannot record the import task handle: " + e.getMessage(),
-          List.of(handleFile),
+          "cannot record the import task state: " + e.getMessage(),
+          List.of(handleFile, startedFile),
           "check that " + handleFile.getParent() + " is writable");
     }
   }

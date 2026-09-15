@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.core.engine.StepFailure;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.FakeJrsAdapter;
@@ -283,6 +284,58 @@ class RestStrategyImportTest {
     assertThat(RunFiles.read(RunFiles.in(ctx, RunFiles.IMPORT_HANDLE))).contains("imp-1");
     assertThat(fx.journal())
         .contains("import.start:SUCCEEDED", "import.poll:SUCCEEDED", "import.verify:SUCCEEDED");
+  }
+
+  /** Issue #44: a 502 may come from a proxy after the server accepted the upload. */
+  @Test
+  void should_post_once_and_fail_fatally_when_start_import_gets_a_gateway_error()
+      throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import"))).willReturn(aResponse().withStatus(502)));
+    Step start = new StartImport(request(Optional.empty()));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    StepResult first = start.execute(ctx, EventSink.discard());
+    StepResult again = start.execute(ctx, EventSink.discard());
+
+    assertThat(first)
+        .isInstanceOfSatisfying(
+            StepResult.Failed.class,
+            f -> assertThat(f.failure()).isInstanceOf(StepFailure.Fatal.class));
+    assertThat(again)
+        .isInstanceOfSatisfying(
+            StepResult.Failed.class,
+            f -> assertThat(f.failure()).isInstanceOf(StepFailure.Fatal.class));
+    wm.verify(1, postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import"))));
+    assertThat(RunFiles.in(ctx, RunFiles.IMPORT_STARTED)).exists();
+  }
+
+  /** Issue #44: a 503 is a refusal, so the request never started an import and may be retried. */
+  @Test
+  void should_retry_start_import_when_the_server_refused_it_with_503() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import"))).willReturn(aResponse().withStatus(503)));
+    Step start = new StartImport(request(Optional.empty()));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    StepResult refused = start.execute(ctx, EventSink.discard());
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-2\",\"phase\":\"inprogress\"}")));
+    StepResult accepted = start.execute(ctx, EventSink.discard());
+
+    assertThat(refused)
+        .isInstanceOfSatisfying(
+            StepResult.Failed.class,
+            f -> assertThat(f.failure()).isInstanceOf(StepFailure.Retryable.class));
+    assertThat(accepted).isInstanceOf(StepResult.Ok.class);
+    wm.verify(2, postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import"))));
+    assertThat(RunFiles.read(RunFiles.in(ctx, RunFiles.IMPORT_HANDLE))).contains("imp-2");
   }
 
   @Test
