@@ -139,14 +139,18 @@ class WindowsTomcatProcessesTest {
   }
 
   @Test
-  void should_classify_unreadable_jvms_as_opaque_and_leave_out_everything_else() {
+  void should_classify_unreadable_jvms_as_opaque_and_leave_out_everything_else(
+      @TempDir Path install) {
+    // the wrapper path is built from the host's temp dir: a C:\ literal has no parent on Linux
+    Path tomcat = install.resolve("apache-tomcat").toAbsolutePath().normalize();
+    String wrapper = tomcat.resolve("bin").resolve("tomcat10.exe").toString();
     List<String> lines =
         List.of(
             "",
             row(11, "java.exe", null, null, "8080"),
             row(12, "javaw.exe", "C:\\tools\\java\\bin\\javaw.exe", "javaw -jar ide.jar", "-"),
             row(13, "tomcat10.exe", null, null, "-"),
-            row(14, "tomcat10.exe", "C:\\jrs\\apache-tomcat\\bin\\tomcat10.exe", null, "8005,8081"),
+            row(14, "tomcat10.exe", wrapper, null, "8005,8081"),
             "P not-a-pid java.exe - - -",
             "P 15 java.exe - -",
             "garbage line",
@@ -160,8 +164,7 @@ class WindowsTomcatProcessesTest {
     assertThat(found.get(0).listeningPorts()).containsExactly(8080);
     assertThat(found.get(1).opaque()).isFalse();
     assertThat(found.get(1).listeningPorts()).containsExactlyInAnyOrder(8005, 8081);
-    assertThat(found.get(1).catalinaHome())
-        .contains(Path.of("C:\\jrs\\apache-tomcat").toAbsolutePath().normalize());
+    assertThat(found.get(1).catalinaHome()).contains(tomcat);
   }
 
   @Test
