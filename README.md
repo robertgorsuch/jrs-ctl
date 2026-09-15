@@ -1,284 +1,309 @@
 # jrsctl
 
-`jrsctl` is a dedicated lifecycle management and operations tool for **JasperReports Server (JRS)**. It delivers safe, automated, and auditable server administration—including environmental diagnostics, cryptographic hotfix management, repository content migrations, version upgrades, and credential security.
+**The safe way to look after JasperReports Server.** From Actian Jaspersoft.
 
-Designed for operational safety in enterprise and air-gapped environments, `jrsctl` ships as a self-contained portable package with its own bundled Java runtime, requiring no pre-installed JDK, Python, or external scripting dependencies on the host server.
+jrsctl checks your server's health, installs hotfixes, backs up and moves report content between servers, and upgrades the server to a new version. Before it changes anything it shows you exactly what it will do and asks you to confirm. If something fails partway, it puts things back the way they were.
 
----
-
-## Key Capabilities
-
-### 1. System Diagnostics & Pre-flight Validation
-* **Self-Verification (`jrsctl selfcheck`)**: Validates internal binary integrity, bundled runtime health, SQLite journal schema version, and cryptographic key rings without requiring a target server or configuration file.
-* **Auto-Discovery & Initialization (`jrsctl init`)**: Inspects the host to detect JasperReports Server installations (Tomcat layout, Windows services / systemd units, ports, database configurations, and `default_master.properties`), generating a tailored `config.yaml`.
-* **Diagnostic Engine (`jrsctl doctor`)**: Runs local and server pre-flight checks—configuration, install layout, directory permissions, disk space, network, service control, keystore, database connectivity, the run journal, lock and snapshots, and server identity, authentication and capabilities—accompanied by actionable remediation guidance.
-* **Functional Smoke Testing (`jrsctl smoke`)**: Runs non-destructive end-to-end probes against running JRS instances via REST APIs (login, server info, repository listing, PDF report execution, scheduler) to verify operational readiness.
-
-### 2. Cryptographic Hotfix Lifecycle
-* **Authoring & Verification (`jrsctl hotfix build`, `jrsctl hotfix verify`)**: Packages and cryptographically verifies hotfix bundles using manifest validation, per-file SHA-256 hashes, and Ed25519 digital signatures against trusted public keys.
-* **Plan-Driven Application (`jrsctl hotfix apply`)**:
-  * Evaluates prerequisites, compatibility, and file collisions against installed hotfixes.
-  * Generates an execution plan preview (`--plan`) before applying changes.
-  * Takes automated file-level snapshots prior to replacing or modifying files.
-  * Orchestrates service lifecycle (e.g., stopping Tomcat before updating `WEB-INF/lib` or `WEB-INF/classes`).
-  * Applies idempotent database SQL patches and performs post-apply validation.
-* **Deterministic Rollback (`jrsctl hotfix rollback`)**: Restores original files from versioned snapshots and executes reverse SQL rollback scripts in last-in-first-out (LIFO) order.
-* **Inventory (`jrsctl hotfix list`)**: Lists installed, superseded, and rolled-back hotfixes with timestamps and status.
-
-### 3. Repository Content Import & Export
-* **Resource Migration (`jrsctl export`, `jrsctl import`)**: Exports and imports repository resources, users, roles, organizations, access events, and server configuration catalogs.
-* **Dual-Engine Execution**: Intelligently switches between live REST v2 async APIs (for online exports) and vendor CLI tools (`js-export`/`js-import` / `buildomatic`) with automated service control for full-server operations.
-* **Keystore Fingerprinting**: Tracks cryptographic keystore fingerprints across export catalogs and validates them prior to import, guarding against secret decryption failures.
-* **Pre-Import Snapshots**: Captures affected repository subtrees before import to enable rollback restoration.
-
-### 4. Server Upgrades & Customization Tracking
-* **Upgrade Orchestration (`jrsctl upgrade`, `jrsctl upgrade rollback`)**: Automates JasperReports Server version upgrades using vendor `buildomatic` scripts, enforcing pre-upgrade backups (export catalog, keystore, webapp, configurations).
-* **Honest Database Modes**: `newdb` (default) has the vendor script drop and recreate the repository database from the full export; `samedb` migrates its schema in place. jrsctl can undo neither, so both modes require an explicit, audited confirmation (`--db-backup-confirmed`) that a database backup exists, and rollback restores files only.
-* **Customization Registry (`jrsctl customizations register|unregister|list|diff`)**: Tracks site-specific themes, plugins, and configuration files across upgrades, performing three-way diffs to re-apply changes or surface conflicts.
-* **Post-Upgrade Hotfix Reconciliation**: Classifies previously installed hotfixes as superseded or re-applicable against the target release.
-
-### 5. Operational Resilience & Recovery
-* **Atomic Step Engine**: Breaks down all mutating operations into structured, idempotent steps with defined compensation actions for clean rollbacks upon failure.
-* **Append-Only SQLite Journal (`state.db`)**: Records all operations, step transitions, plan fingerprints, snapshots, and audit events.
-* **Concurrency Locking (`runs.lock`)**: Enforces single-process execution per JRS host to prevent concurrent conflicting operations.
-* **Crash Recovery (`jrsctl runs list|show|recover|prune`)**: Automatically detects interrupted or abandoned runs and safely resumes or rolls back lingering state.
-* **Snapshot Retention Pruning**: Automatically prunes historical snapshots based on retention policies while preserving any snapshot required by active hotfixes, customizations, or pending recoveries.
-
-### 6. Security & Secret Management
-* **Encrypted Secret Store (`jrsctl secrets init|set|remove|list`)**: Protects passwords and tokens in an AES-256-GCM encrypted store (`secrets.enc`) with stable machine/passphrase salt derivation, allowing safe configuration referencing (`enc:SECRET_NAME`).
-* **Trusted Key Ring (`jrsctl keys list|add|remove|generate`)**: Manages trusted public keys used for signature verification of update packages, pinned with the official Jaspersoft publisher key.
-* **Automatic Output Redaction**: Sanitizes console output, JSON streams, log files, and SQLite journal transition records to prevent credential and key leakage.
-* **Owner-Only Permissions**: Automatically restricts access permissions (`rw-------`) on secret stores, keys, and tokens.
-
-### 7. Modern Operator Interfaces
-* **Self-Explaining CLI (`--explain`, `jrsctl docs`)**: Provides offline documentation embedded in the binary without requiring external internet access (`jrsctl docs operator-guide`, `jrsctl docs security`, `jrsctl docs hotfix-authoring`, `jrsctl docs recovery-runbook`).
-* **Interactive & Scriptable CLI**: Supports interactive prompts, non-interactive CI automation (`--yes`, `--non-interactive`), and machine-readable JSON output (`--json`).
-* **Local Web Console (`jrsctl console`)**: Features an embedded, lightweight web interface (powered by Javalin and Server-Sent Events) for monitoring runs, inspecting plans, and viewing diagnostics in real-time, protected by single-use launch tokens.
+It comes as one download with everything it needs inside. There is nothing else to install, and it works on servers with no internet access.
 
 ---
 
-## Platform & Environment Support
+## What you can do with it
 
-| Component | Supported Range / Technologies |
-| :--- | :--- |
-| **JRS Releases** | JasperReports Server 7.1 through 10.x (Community & Commercial / Enterprise) |
-| **Tenancy Models** | Single-tenant and Multi-tenant (Organization-scoped) |
-| **Operating Systems** | Windows x86_64, Linux x86_64 |
-| **Application Servers** | Apache Tomcat (Windows Service, systemd, ctlscript, catalina script, manual) |
-| **Repository Databases** | PostgreSQL, MySQL, Oracle, Microsoft SQL Server, IBM DB2 |
-| **Host Dependencies** | None (Bundles custom Java 21 runtime via `jlink`) |
+| You want to… | Command |
+|---|---|
+| Check the server is healthy | `jrsctl doctor` |
+| Back up reports and folders | `jrsctl export` |
+| Copy content to another server | `jrsctl import` |
+| Install a hotfix, or take one out | `jrsctl hotfix apply` / `jrsctl hotfix rollback` |
+| Upgrade to a new version | `jrsctl upgrade` |
+| Watch everything in a web browser | `jrsctl console` |
 
 ---
 
-## Directory Layout & Storage
+## Before you start
 
-All persistent configuration and runtime state is contained within the **jrsctl home** directory (resolved via `--home <dir>`, `$JRSCTL_HOME` / `%JRSCTL_HOME%`, `%ProgramData%\jrsctl` on Windows, or `/var/lib/jrsctl` / `~/.jrsctl` on Linux):
+- **Run jrsctl on the JasperReports Server machine itself.** It doesn't work over the network.
+- **Use an account that is allowed to stop and start the server.** On Windows, open **Command Prompt** with **Run as administrator**. On Linux, use the account that runs the server, or `root`.
+- **Have the JasperReports Server admin password ready** (the `jasperadmin` account, unless you use a different one).
+- **Supported:** JasperReports Server 7.1 to 10.x, Community and Commercial editions, on Windows or Linux (64-bit).
 
-```
-<JRSCTL_HOME>/
-├── config.yaml              # Installation paths, endpoints, and credentials
-├── state.db                 # SQLite WAL journal (runs, steps, hotfixes, snapshots, audit)
-├── runs.lock                # Host-wide execution concurrency lock
-├── secrets.enc              # AES-256-GCM encrypted credential vault
-├── keys/
-│   └── trusted/             # Trusted Ed25519 public keys (*.pub)
-├── snapshots/               # Verified pre-modification file snapshots
-├── runs/<runId>/            # Temporary execution staging files
-└── logs/
-    └── jrsctl.log           # Redacted JSON audit and operational log
+---
+
+## Quick start
+
+### Step 1: Download and unpack
+
+Download the archive for your system from the [releases page](https://github.com/robertgorsuch/jrs-ctl/releases):
+
+- Windows: `jrsctl-<version>-windows-x64.zip`
+- Linux: `jrsctl-<version>-linux-x64.tar.gz`
+
+Unpack it on the server, then open a terminal in the unpacked folder:
+
+```bat
+:: Windows (Command Prompt, run as administrator)
+tar -xf jrsctl-1.3.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-1.3.0
 ```
 
----
-
-## Installation
-
-Download the portable archive for your platform from the releases page. Verify the checksum sidecar before unpacking:
-
-### Windows (x86_64)
-```powershell
-# Verify SHA-256 checksum
-certutil -hashfile jrsctl-<version>-windows-x64.zip SHA256
-
-# Extract package
-tar -xf jrsctl-<version>-windows-x64.zip -C C:\Jaspersoft\
-```
-
-### Linux (x86_64)
 ```bash
-# Verify SHA-256 checksum
-sha256sum -c jrsctl-<version>-linux-x64.tar.gz.sha256
-
-# Extract package
-tar -xzf jrsctl-<version>-linux-x64.tar.gz -C /opt/
+# Linux
+tar -xzf jrsctl-1.3.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-1.3.0
 ```
 
-### Verifying the signature
-Every release file—each archive, its `.sha256` sidecar, and the SBOM (`jrsctl-<version>-sbom.json`)—has a `<file>.sig` beside it: a Base64 Ed25519 signature by the Jaspersoft publisher key (fingerprint `245731f29b662027`, printed by `jrsctl keys list`). Verify it with the JDK's `Ed25519` provider or any Ed25519 tool; a file whose `.sig` does not verify did not come from the release job. See the installation section of [`docs/operator-guide.md`](docs/operator-guide.md) and [`docs/security.md`](docs/security.md).
+> **How to type the commands.** This guide writes every command as `jrsctl …`.
+> On **Windows** type `bin\jrsctl.cmd …` and on **Linux** type `bin/jrsctl …`.
+> For example, `jrsctl doctor` becomes `bin\jrsctl.cmd doctor` on Windows.
 
-The unpacked archive contains:
-* `bin/jrsctl` (Linux) / `bin\jrsctl.cmd` (Windows) — Launcher scripts.
-* `lib/jrsctl.jar` — Core application binary with embedded offline documentation.
-* `runtime/` — Bundled, isolated Java 21 runtime.
-* `MANIFEST.sha256` — Integrity manifest for all packaged files.
+### Step 2: Check the tool itself
 
----
-
-## Quick Start Guide
-
-### 1. Self-Verification & Environment Detection
 ```bash
-# Verify internal binary and runtime integrity
 jrsctl selfcheck
+```
 
-# Auto-detect JRS installation and create config.yaml
-jrsctl init --install-dir /opt/jasperreports-server-pro
+Every check should pass. This step doesn't touch your server. If one fails, the line names the problem; the download may be damaged, so download it again.
 
-# Run pre-flight health and environmental checks
+### Step 3: Connect jrsctl to your server
+
+Tell jrsctl where JasperReports Server is installed. It finds the rest (ports, service, database) on its own, shows you what it found, and asks before it saves anything.
+
+```bat
+:: Windows
+jrsctl init --install-dir "C:\Jaspersoft\jasperreports-server-pro-9.0.0"
+```
+
+```bash
+# Linux
+jrsctl init --install-dir /opt/jasperreports-server-pro-9.0.0
+```
+
+jrsctl never saves passwords in its settings. It reads them when it runs. Set them in the same terminal before the next step:
+
+```bat
+:: Windows
+set JRS_PASSWORD=your-jasperadmin-password
+set JRS_DB_PASSWORD=your-database-password
+```
+
+```bash
+# Linux
+export JRS_PASSWORD='your-jasperadmin-password'
+export JRS_DB_PASSWORD='your-database-password'
+```
+
+> Prefer not to type passwords each time? Store them encrypted on this machine instead. See [Keep passwords encrypted](#keep-passwords-encrypted) below.
+
+### Step 4: Run a health check
+
+```bash
 jrsctl doctor
 ```
 
-### 2. Applying a Hotfix
+You get a list of checks marked **PASS**, **WARN** or **FAIL**. Every problem comes with a line starting `->` that tells you how to fix it. Fix any **FAIL** items and run `jrsctl doctor` again.
+
+**Run `jrsctl doctor` before every change.** It only reads; it never changes anything.
+
+### Step 5: Do the job
+
+Every command that changes something works the same way:
+
+1. **It shows you the plan:** every step, whether the server will be restarted, and what gets backed up.
+2. **It asks** `Run this plan? [y/N]`. Type `y` to go ahead. Anything else stops, and nothing has changed.
+3. **It runs the steps**, one line per step, then says what happened and what to do next.
+
+Want to see the plan without being asked to run it? Add `--plan` to any command.
+
+The examples below show the most common jobs.
+
+---
+
+## Common jobs
+
+The examples use Windows paths. On Linux, use paths such as `/backups/samples.zip` instead.
+
+### Back up your reports
+
+Back up the whole repository (the server keeps running):
+
 ```bash
-# Preview the execution plan without making changes
-jrsctl hotfix apply /path/to/JRS-8.2.0-HF-0004.zip --plan
+jrsctl export --out C:\Backups\repository-2026-09-15.zip
+```
 
-# Apply the hotfix with automatic snapshots and service management
-jrsctl hotfix apply /path/to/JRS-8.2.0-HF-0004.zip
+Back up just one folder, such as the sample reports:
 
-# List installed hotfixes
+```bash
+jrsctl export --uri /public/Samples --out C:\Backups\samples.zip
+```
+
+Take a complete backup with users, roles and settings. This stops the server while it runs, then starts it again:
+
+```bash
+jrsctl export --full-server --out C:\Backups\full-server.zip
+```
+
+Each backup writes two files: the `.zip` and a small `.zip.jrsctl.json` beside it. **Keep them together.**
+
+### Copy content to another server
+
+On the second server, after completing Steps 1 to 4 there, copy both files across and run:
+
+```bash
+jrsctl import C:\Backups\samples.zip --update
+```
+
+`--update` replaces reports that already exist on this server. Leave it out to keep existing ones untouched. jrsctl takes a backup of this server's copy first, and restores it if the import fails.
+
+> If you see `keystore fingerprint mismatch`, the two servers use different encryption keys. Run `jrsctl import --explain` to see how to bring the other server's key along.
+
+### Install a hotfix
+
+Hotfixes come as a signed `.zip` file. First check the file is genuine and suits your server. This changes nothing:
+
+```bash
+jrsctl hotfix verify C:\Downloads\JRS-9.0.0-HF-0002.zip
+```
+
+Then install it. jrsctl backs up every file it will replace, and stops and restarts the server if the hotfix needs it:
+
+```bash
+jrsctl hotfix apply C:\Downloads\JRS-9.0.0-HF-0002.zip
+```
+
+See what is installed:
+
+```bash
 jrsctl hotfix list
 ```
 
-### 3. Rolling Back a Hotfix
+### Take a hotfix out
+
 ```bash
-# Restore exact snapshot files and execute rollback SQL
-jrsctl hotfix rollback JRS-8.2.0-HF-0004
+jrsctl hotfix rollback JRS-9.0.0-HF-0002
 ```
 
-### 4. Repository Export & Import
-```bash
-# Export specific repository organization to a zip archive
-jrsctl export --uri /organizations/acme --out acme-export.zip
+The original files come back exactly as they were before the hotfix.
 
-# Import content archive with update rules
-jrsctl import acme-export.zip --update
+### Upgrade to a new version
+
+Upgrades are the biggest change jrsctl makes. Please read this first:
+
+- **Back up the database yourself before you start.** jrsctl backs up the server's files, settings, keys and report content, but it can't undo database changes. That's why the command asks you to confirm with `--db-backup-confirmed`.
+- Download and unpack the new JasperReports Server version on the server first.
+- Upgrades go one supported step at a time. For example, from 7.x you go to 8.x first, then to 10.x. jrsctl tells you if a step isn't supported, and stops before changing anything.
+
+Look at the plan first:
+
+```bash
+jrsctl upgrade --to 10.0.0 --package C:\Downloads\jasperreports-server-pro-10.0.0-bin --db-backup-confirmed --plan
 ```
 
-### 5. Launching the Web Console
+When you're happy with it, run the same command without `--plan`. At the end jrsctl tests the upgraded server. If that test fails, it offers to put the old version back:
+
 ```bash
-# Start local embedded console and open browser with single-use launch token
+jrsctl upgrade rollback <run id> --to-point B
+```
+
+Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
+
+### Use the web console
+
+Prefer a browser? Start the console:
+
+```bash
 jrsctl console
 ```
 
----
-
-## Command Reference
-
-| Command | Purpose | Mutates Server |
-| :--- | :--- | :---: |
-| `jrsctl selfcheck` | Verifies runtime, embedded resources, key ring, and state schema | No |
-| `jrsctl init` | Detects installation parameters and initializes `config.yaml` | No |
-| `jrsctl config show` | Prints the effective configuration (flag > env > file > default) as YAML | No |
-| `jrsctl doctor` | Runs local and server pre-flight checks with remediation guidance | No |
-| `jrsctl smoke` | Functional end-to-end REST probes against running instance | No* |
-| `jrsctl hotfix build` | Packages and signs a hotfix bundle from a directory | No |
-| `jrsctl hotfix verify` | Validates bundle signature, hashes, and version applicability | No |
-| `jrsctl hotfix apply` | Applies hotfix bundle with snapshots, service stop/start, and SQL | **Yes** |
-| `jrsctl hotfix rollback` | Reverts installed hotfix files and executes rollback SQL | **Yes** |
-| `jrsctl hotfix list` | Displays inventory of installed, superseded, and rolled-back hotfixes | No |
-| `jrsctl export` | Exports repository catalogs, organizations, users, or full server (`--strategy rest\|vendor`, `--full-server`) | No |
-| `jrsctl import` | Imports repository archive with pre-import subtree snapshot (`--strategy`, `--source-keystore`, `--update`) | **Yes** |
-| `jrsctl upgrade` | Orchestrates version upgrade with backup and validation (`--mode newdb\|samedb`, `--reapply-hotfixes`, `--rollback-all`) | **Yes** |
-| `jrsctl upgrade rollback` | Restores pre-upgrade file snapshots and configuration (`--to-point B\|C`) | **Yes** |
-| `jrsctl customizations` | Registers, unregisters, lists, and diffs local file customizations | No |
-| `jrsctl runs list` | Displays execution history and run states | No |
-| `jrsctl runs show` | Inspects step-by-step execution details of a specific run | No |
-| `jrsctl runs recover` | Resumes or rolls back an interrupted or crashed run (`--resume` or `--rollback`) | **Yes** |
-| `jrsctl runs prune` | Cleans up historical snapshots based on retention policies | No** |
-| `jrsctl secrets` | Manages encrypted credentials in `secrets.enc` (`init`, `set`, `remove`, `list`) | No |
-| `jrsctl keys` | Manages trusted signing public keys (`list`, `add`, `remove`, `generate`) | No |
-| `jrsctl console` | Launches local web monitoring dashboard and API | No |
-| `jrsctl docs` | Displays the embedded operator guide, recovery runbook, security notes and authoring guide | No |
-| `jrsctl help` | Displays synopsis and usage help for any command | No |
-
-*\* `jrsctl smoke --mutating` uploads and executes a transient test report.*\
-*\*\* Prunes local `snapshots/` directory; does not mutate JasperReports Server files.*
-
-### Global Flags
-
-Every command supports the following global options:
-
-* `--plan`: Previews the complete execution step tree without applying any mutations.
-* `--yes`: Answers every confirmation without asking (ideal for CI/CD and scripts). `--non-interactive` only guarantees that nothing prompts; it confirms nothing and exits 2 where a human would be needed, so unattended runs pass `--yes`.
-* `--json`: Emits machine-readable JSON output for integrations.
-* `--explain`: Prints detailed offline help explaining mutations, rollback behavior, flags, and exit codes.
-* `--home <dir>`: Overrides the default `JRSCTL_HOME` path.
-* `--set <key>=<value>`: Overrides specific configuration settings dynamically.
-* `--passphrase-file <path>`: Specifies file holding passphrase for `secrets.enc`.
-* `--color <when>`: `auto` (default), `always` or `never`; `auto` colours only where the terminal interprets ANSI escapes.
-* `--no-color`: The same as `--color=never`.
-* `--ascii`: ASCII-only status icons, for a console whose code page cannot carry the tick and arrow glyphs.
-
-### Standard Exit Codes
-
-| Exit Code | Name / Meaning |
-| :---: | :--- |
-| `0` | **Success**: Command completed successfully. |
-| `1` | **Usage Error**: Invalid arguments or flags. |
-| `2` | **Precheck Failure**: Environment check, validation, or doctor failed; no changes made. |
-| `3` | **Failure (Rolled Back)**: Operation failed and was safely compensated/rolled back. |
-| `4` | **Fatal Failure**: Operation failed and rollback was incomplete; manual intervention required. |
-| `5` | **Cancelled**: Operation was cancelled by operator (e.g., Ctrl+C) and compensated. |
-| `6` | **Unsupported Server**: Detected JRS version/edition is incompatible with target operation. |
-| `7` | **Signature Failure**: Hotfix package signature is invalid or key is untrusted. |
-| `8` | **Pending Recovery**: Previous run crashed or was interrupted; requires `jrsctl runs recover`. |
-| `9` | **Lock Held**: Another `jrsctl` process is currently executing against this home. |
+Your browser opens a private page on this machine, showing server health, installed hotfixes, backups and live progress of every job. Press `Ctrl+C` in the terminal, or type `stop`, to close it.
 
 ---
 
-## Security Architecture
+## If something goes wrong
 
-* **Signature Verification**: Hotfix bundles must be cryptographically signed with Ed25519 keys. Unsigned or mismatched packages fail closed.
-* **Secret Redaction**: Configured passwords, tokens, private keys, and authorization headers are scrubbed before reaching stdout, stderr, log files, JSON output, or `state.db`.
-* **Zero Host Token Exposure**: The web console exchanges ephemeral, single-use launch codes (`#launch=...`) over local APIs to prevent token leakage in host process lists.
-* **Strict File Permissions**: Key rings, tokens, and secret vaults are created with POSIX `0600` / Windows owner-only ACL permissions.
+jrsctl finishes every job by saying what happened and what to do next. The number it ends with tells you the result:
 
----
+| Result | What it means | What to do |
+|:---:|---|---|
+| **0** | Done | Nothing |
+| **2** | A check failed before anything changed | Read the message, fix it, run the command again |
+| **3** | A step failed, and jrsctl put everything back | Read the message, fix the cause, run it again |
+| **4** | A step failed, and jrsctl could not put everything back | Follow the "next action" in the message. `jrsctl docs recovery-runbook` walks you through it |
+| **5** | You cancelled it, and jrsctl put everything back | Nothing |
+| **6** | This server version, or this upgrade step, isn't supported | Nothing changed. Check the supported versions under [Before you start](#before-you-start) |
+| **7** | The hotfix isn't signed by a publisher jrsctl trusts, or the file was altered | Don't install it. Get a genuine copy from Actian Jaspersoft |
+| **8** | An earlier job was interrupted (a crash or power cut) | Run the `jrsctl runs recover …` command it prints, to finish or undo that job |
+| **9** | Another jrsctl job is already running | Wait for it to finish |
 
-## Building from Source
+Other useful commands:
 
-### Prerequisites
-* **Java**: OpenJDK 21 or higher (`JAVA_HOME` targeting JDK 21+).
-* **Maven**: Maven 3.9+ (or use the included Maven Wrapper `./mvnw` / `mvnw.cmd` / `scripts/mvn.*`).
-
-### Build Commands
 ```bash
-# Configure Git pre-commit hook (enforces Google Java Format on commit)
-git config core.hooksPath .githooks
-
-# Run compilation, unit tests, and code formatting checks
-./mvnw test                # or scripts/mvn.sh test / scripts\mvn.cmd test
-
-# Apply Google Java Format styling
-./mvnw spotless:apply
-
-# Package shaded executable JAR, verify acceptance tests, and generate JaCoCo reports
-./mvnw verify
-
-# Run optional OWASP dependency vulnerability audit
-./mvnw verify -Pdependency-check
+jrsctl runs list             # every job that has run, and how it ended
+jrsctl runs show <run id>    # the step-by-step detail of one job
 ```
 
-JaCoCo HTML coverage reports are generated during `verify` in `<module>/target/site/jacoco/index.html`.
+---
+
+## Getting help
+
+Everything is built in and works without internet access:
+
+```bash
+jrsctl help                       # list all commands
+jrsctl hotfix apply --explain     # what a command does, what it changes and how it undoes it
+jrsctl docs operator-guide        # the full operator guide
+jrsctl docs recovery-runbook      # what to do after any failure
+```
+
+The same documents are in [`docs/`](docs/): [operator guide](docs/operator-guide.md), [recovery runbook](docs/recovery-runbook.md), [security notes](docs/security.md), [hotfix authoring](docs/hotfix-authoring.md).
 
 ---
 
-## License
+## Good to know
 
-Copyright (c) 2026 Actian Corporation.
+### Keep passwords encrypted
 
-jrsctl is free software, licensed under the GNU General Public License, version 3 only
-(SPDX `GPL-3.0-only`). The full text is [`LICENSE`](LICENSE); the decision and the reasoning are in
-[ADR-0010](docs/decisions/0010-gpl-3-licence.md). Contributions are accepted under the same
-licence (see `CONTRIBUTING.md`). The libraries bundled in the portable distribution keep their own
-licences, listed in `LICENSE-THIRD-PARTY.txt` inside every archive.
+Instead of setting `JRS_PASSWORD` each time, store the password in jrsctl's encrypted store. The store can only be opened on this machine, with a passphrase you choose:
+
+```bash
+jrsctl secrets init
+jrsctl secrets set JRS_PASSWORD
+jrsctl secrets set JRS_DB_PASSWORD
+```
+
+Each command asks for the value without showing it on screen. Then open `config.yaml` (see below) and change the two password lines from `env:` to `enc:`:
+
+```yaml
+passwordRef: enc:JRS_PASSWORD      # under server.auth (was env:JRS_PASSWORD)
+passwordRef: enc:JRS_DB_PASSWORD   # under database (was env:JRS_DB_PASSWORD)
+```
+
+jrsctl asks for the passphrase when it needs to open the store.
+
+### Where jrsctl keeps its files
+
+Settings, history and backups are kept in one folder, the **jrsctl home**:
+
+- Windows: `C:\ProgramData\jrsctl`
+- Linux: `/var/lib/jrsctl` (or `~/.jrsctl` if that isn't writable)
+
+The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (backups taken before each change) and `logs\jrsctl.log`. Passwords never appear in any of them. Back this folder up along with the server.
+
+### Checking your download
+
+Each release file has a `.sha256` checksum beside it:
+
+- Windows: `certutil -hashfile jrsctl-1.3.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-1.3.0-linux-x64.tar.gz.sha256`
+
+Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
+
+---
+
+## For developers
+
+Building from source, the project rules and how to contribute are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The design is in [`docs/spec.md`](docs/spec.md).
+
+## Licence
+
+Copyright (c) 2026 Actian Corporation. jrsctl is free software, licensed under the GNU General Public License, version 3 only (SPDX `GPL-3.0-only`). See [`LICENSE`](LICENSE) and [ADR-0010](docs/decisions/0010-gpl-3-licence.md). The libraries bundled in the download keep their own licences, listed in `LICENSE-THIRD-PARTY.txt` inside every archive.
