@@ -116,7 +116,10 @@ final class Bootstrap implements AutoCloseable {
     return new Bootstrap(services, store, secretStore);
   }
 
-  /** Creates a missing home directory owner-only; an existing one is left alone (review 4.1). */
+  /**
+   * Creates a missing home directory owner-only on both operating systems (review 4.1, issue #50);
+   * an existing one is left alone.
+   */
   static void createHome(Platform platform, JrsctlHome home) {
     java.nio.file.Path root = home.root();
     if (java.nio.file.Files.isDirectory(root)) {
@@ -133,6 +136,17 @@ final class Bootstrap implements AutoCloseable {
                 java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
       } else {
         java.nio.file.Files.createDirectories(root);
+        if (platform.os() == Platform.OsFamily.WINDOWS) {
+          try {
+            OwnerOnlyFiles.restrictDirectoryToOwner(platform, root);
+          } catch (java.io.IOException e) {
+            LOG.warn(
+                "created {} but could not make it private to its owner: {}; restrict it with"
+                    + " icacls before storing secrets there",
+                root,
+                e.getMessage());
+          }
+        }
       }
     } catch (java.io.IOException e) {
       LOG.debug("cannot create {}: {}", root, e.getMessage());

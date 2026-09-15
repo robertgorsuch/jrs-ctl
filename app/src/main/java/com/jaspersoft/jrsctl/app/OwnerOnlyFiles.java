@@ -105,6 +105,37 @@ public final class OwnerOnlyFiles {
   }
 
   /**
+   * Restricts a directory jrsctl has just created (issue #50): on Windows one entry gives the owner
+   * full control and is inherited by every file and directory created below it, and the DACL is
+   * protected so nothing of the parent's access list flows in; on Linux the mode is {@code
+   * rwx------}.
+   */
+  public static void restrictDirectoryToOwner(Platform platform, Path dir) throws IOException {
+    FileOps files = platform.files();
+    String owner = files.capturePermissions(dir).owner();
+    List<String> entries =
+        switch (platform.os()) {
+          case WINDOWS ->
+              owner.isEmpty()
+                  ? List.of()
+                  : List.of(
+                      "ALLOW|"
+                          + owner
+                          + "|"
+                          + WINDOWS_FULL_CONTROL
+                          + "|FILE_INHERIT,DIRECTORY_INHERIT");
+          case LINUX -> List.of("posix:rwx------");
+        };
+    if (entries.isEmpty()) {
+      throw new IOException("cannot determine the owner of " + dir + " to restrict it");
+    }
+    files.applyPermissions(dir, new FileOps.Permissions(owner, entries));
+    if (platform.os() == Platform.OsFamily.WINDOWS) {
+      dropInheritedEntries(platform, dir);
+    }
+  }
+
+  /**
    * Drops inherited access control entries and marks the DACL protected (review 4.2). Replacing the
    * DACL through the file-attribute view leaves the security descriptor unprotected, so the
    * parent's inheritable entries can be propagated back onto a file holding a secret. Windows has
