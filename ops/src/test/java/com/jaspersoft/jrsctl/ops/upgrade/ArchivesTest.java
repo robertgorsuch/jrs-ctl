@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -290,5 +291,39 @@ class ArchivesTest {
     assertThat(source.resolve("extra.txt")).exists();
     assertThat(aside).doesNotExist();
     assertThat(PointB.undoRestore(source, aside)).isFalse();
+  }
+
+  /** Issue #48: a staging tree under webapps/ is deployable by Tomcat. */
+  @Test
+  void should_stage_beside_webapps_when_the_target_is_a_webapp() {
+    Path tomcat = tmp.resolve("tomcat").toAbsolutePath().normalize();
+    Path install = tmp.resolve("install").toAbsolutePath().normalize();
+
+    assertThat(PointB.stagingFor(tomcat.resolve("webapps").resolve("jasperserver-pro")))
+        .isEqualTo(tomcat.resolve(".jrsctl-restore-jasperserver-pro"));
+    assertThat(PointB.stagingFor(install.resolve("buildomatic")))
+        .isEqualTo(install.resolve(".jrsctl-restore-buildomatic"));
+  }
+
+  @Test
+  void should_leave_only_the_webapp_under_webapps_when_a_restore_finishes() throws Exception {
+    Platform.OsFamily os = Platform.OsFamily.WINDOWS;
+    Path webapps = Files.createDirectories(tmp.resolve("tomcat").resolve("webapps"));
+    Path webapp = Files.createDirectories(webapps.resolve("jasperserver-pro"));
+    Files.writeString(webapp.resolve("v.txt"), "old", StandardCharsets.UTF_8);
+    Path archive = tmp.resolve("webapp.zip");
+    Archives.create(os, webapp, archive, new CancellationToken());
+    Files.writeString(webapp.resolve("v.txt"), "new", StandardCharsets.UTF_8);
+    Path legacy = Files.createDirectories(webapps.resolve(".jasperserver-pro.jrsctl-restore"));
+    Files.writeString(legacy.resolve("left.txt"), "crash", StandardCharsets.UTF_8);
+    Path aside = tmp.resolve("run").resolve("aside").resolve("webapp");
+
+    PointB.restoreDir(os, archive, webapp, aside, new CancellationToken());
+
+    try (Stream<Path> listing = Files.list(webapps)) {
+      assertThat(listing.map(p -> p.getFileName().toString())).containsExactly("jasperserver-pro");
+    }
+    assertThat(webapp.resolve("v.txt")).hasContent("old");
+    assertThat(tmp.resolve("tomcat").resolve(".jrsctl-restore-jasperserver-pro")).doesNotExist();
   }
 }

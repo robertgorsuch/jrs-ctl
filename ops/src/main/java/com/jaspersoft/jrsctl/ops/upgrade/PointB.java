@@ -71,16 +71,38 @@ final class PointB {
     Files.writeString(SnapshotSet.shaFileFor(archive), sha256 + "\n", StandardCharsets.UTF_8);
   }
 
+  /** Pre-1.4.0 staging name, removed when a crash left one behind (issue #48). */
+  private static final String LEGACY_STAGING_SUFFIX = ".jrsctl-restore";
+
   /**
-   * Replaces {@code target} with the contents of {@code archive}: extracts next to the target,
+   * Where {@link #restoreDir} extracts {@code target}'s archive: beside the target's parent when
+   * that parent is Tomcat's {@code webapps} (a directory there is deployable), else beside the
+   * target. Either way it is on the target's file store, so moving it into place stays a rename.
+   */
+  static Path stagingFor(Path target) {
+    Path absolute = target.toAbsolutePath().normalize();
+    Path parent = absolute.getParent();
+    Path home =
+        parent.getFileName() != null
+                && parent.getFileName().toString().equalsIgnoreCase("webapps")
+                && parent.getParent() != null
+            ? parent.getParent()
+            : parent;
+    return home.resolve(".jrsctl-restore-" + absolute.getFileName());
+  }
+
+  /**
+   * Replaces {@code target} with the contents of {@code archive}: extracts to {@link #stagingFor},
    * moves the current target to {@code aside} (unless a previous attempt already did) and renames
    * the extracted tree into place.
    */
   static long restoreDir(
       Platform.OsFamily os, Path archive, Path target, Path aside, CancellationToken cancel)
       throws IOException {
-    Path parent = target.toAbsolutePath().getParent();
-    Path staging = parent.resolve("." + target.getFileName() + ".jrsctl-restore");
+    Path absolute = target.toAbsolutePath().normalize();
+    Trees.deleteRecursively(
+        absolute.getParent().resolve("." + absolute.getFileName() + LEGACY_STAGING_SUFFIX));
+    Path staging = stagingFor(absolute);
     Trees.deleteRecursively(staging);
     long entries = Archives.extract(os, archive, staging, cancel);
     if (Files.exists(target)) {
