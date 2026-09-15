@@ -2,6 +2,17 @@
 
 This guide is for people who write hotfix bundles for JasperReports Server: Jaspersoft support and engineering, and customers who package their own fixes. It covers the bundle format, the manifest and the rules `jrsctl` enforces on it, building and signing a bundle with `jrsctl hotfix build` and `jrsctl keys`, and how to test a bundle before handing it to an operator. The normative text is spec §8 (hotfix subsystem) and §11.1 (bundle signing); the schema is `core/src/main/resources/schema/hotfix-manifest.schema.json`. This guide is embedded in the tool: `jrsctl docs hotfix-authoring`.
 
+## Who does what
+
+A hotfix passes through two roles, usually different people:
+
+| Role | Who | What they do | What they need |
+|---|---|---|---|
+| **Operator** | The administrator of a JasperReports Server | Receives a bundle ZIP and runs `jrsctl hotfix verify`, `hotfix apply`, `hotfix list` and, if needed, `hotfix rollback` | The bundle. Bundles from Actian Jaspersoft verify against the publisher key built into jrsctl, so nothing else is needed. For a bundle signed by anyone else, that author's public key, trusted once with `jrsctl keys add <name> <file>` |
+| **Author** | Jaspersoft support or engineering, or a customer packaging its own fix | Writes `manifest.json`, puts the files under `payload/` (and SQL under `sql/`), builds and signs the bundle with `jrsctl hotfix build`, tests it on staging and hands the ZIP to operators | A signing key, created once with `jrsctl keys generate`; this guide; and the manifest template (see "Starting from the template") |
+
+An operator never writes a manifest and never holds a private key. The rest of this guide is for authors.
+
 ## What a hotfix is, in jrsctl terms
 
 A hotfix is a **signed ZIP bundle** that replaces, adds or deletes files under the server's Tomcat or installation directory, optionally runs SQL against the repository database, and optionally checks the server before and after. `jrsctl hotfix apply` turns it into a plan of idempotent steps with snapshots and compensation; `jrsctl hotfix rollback` undoes it later from those snapshots. Everything an operator sees in the plan (files, service restart, SQL, rollback promise, applicability) comes from the manifest you write, so the manifest is the contract.
@@ -45,6 +56,47 @@ The signature covers `manifest.json` only; the manifest carries the SHA-256 of e
 
 Paths are relative, use `/`, and may not start with `/`, contain `..` or contain `:`. A path under `payload/` is mirrored to the same path under the server's Tomcat directory (`server.tomcatDir`), so `webapps/jasperserver-pro/WEB-INF/lib/foo.jar` lands in Tomcat's `webapps/jasperserver-pro/WEB-INF/lib/`. Use the webapp name the target edition actually has: `jasperserver-pro` for PRO, `jasperserver` for CE; a bundle for both editions needs two file entries or two bundles.
 
+## Starting from the template
+
+The template below is the smallest complete manifest: one library jar that supersedes an older one, a check before and after, a service restart and a snapshot rollback. It is also in the source repository as `docs/templates/hotfix-manifest.json`; this copy is the same text and is available offline through `jrsctl docs hotfix-authoring`.
+
+```json
+{
+  "id": "JRS-10.0.0-HF-0001",
+  "version": "1",
+  "title": "One line that says what the fix does",
+  "description": "What the defect was, the ticket number, and what this bundle changes.",
+  "applies": {
+    "versions": [">=10.0.0 <10.1.0"],
+    "editions": ["PRO"],
+    "tenancy": ["SINGLE", "MULTI"]
+  },
+  "requires": [],
+  "conflicts": [],
+  "files": [
+    {
+      "action": "add",
+      "path": "webapps/jasperserver-pro/WEB-INF/lib/example-library-1.0.1.jar",
+      "replaces": ["example-library-1.0.0.jar"]
+    }
+  ],
+  "restart": "required",
+  "prechecks": [
+    { "type": "fileExists", "path": "webapps/jasperserver-pro/WEB-INF/lib/example-library-1.0.0.jar" }
+  ],
+  "postchecks": [
+    { "type": "http", "url": "/rest_v2/serverInfo", "expect": 200 }
+  ],
+  "rollback": "snapshot"
+}
+```
+
+1. Create an empty directory for the bundle and save the template in it as `manifest.json`.
+2. Set `id`, `title`, `description` and `applies` for your fix (see "Fields" below). `requires`, `conflicts`, `description`, `prechecks` and `postchecks` are optional: delete them if you do not need them.
+3. Replace the example `files` entry with your own, and put each file under `payload/` at the same path, for example `payload/webapps/jasperserver-pro/WEB-INF/lib/example-library-1.0.1.jar`. A jar whose name changes is an `add` that names the old jar in `replaces`; a file that keeps its name is a `replace`. Add `sql` entries if the fix changes the database. Keep `restart` at `required` for anything under `WEB-INF/lib` or `WEB-INF/classes`.
+4. Leave out every `sha256`: `hotfix build` computes them. Put nothing in the directory that the manifest does not list.
+5. Build and sign as described in "Building and signing". `hotfix build` lists every problem in the manifest at once, so run it early and often.
+
 ## The manifest
 
 ```json
@@ -61,7 +113,7 @@ Paths are relative, use `/`, and may not start with `/`, contain `..` or contain
   "requires": ["JRS-10.0.0-HF-0003"],
   "conflicts": [],
   "files": [
-    { "action": "replace", "path": "webapps/jasperserver-pro/WEB-INF/lib/js-scheduler-10.0.0-hf7.jar", "replaces": ["js-scheduler-10.0.0.jar"] },
+    { "action": "add",     "path": "webapps/jasperserver-pro/WEB-INF/lib/js-scheduler-10.0.0-hf7.jar", "replaces": ["js-scheduler-10.0.0.jar"] },
     { "action": "add",     "path": "webapps/jasperserver-pro/WEB-INF/classes/scheduler-fix.properties" },
     { "action": "delete",  "path": "webapps/jasperserver-pro/WEB-INF/lib/js-scheduler-compat-0.9.jar" }
   ],
@@ -119,7 +171,7 @@ The schema has `additionalProperties: false` at every level: a misspelled key is
 | `sha256` | Required for `add` and `replace` (the build fills it in); not allowed for `delete`. |
 | `replaces` | Optional, `replace` and `add` only: plain file names (no directories) of sibling files the new file supersedes, e.g. the old jar name when the version is in the file name. `hotfix apply` removes them from the same directory after snapshotting; the upgrade reconciler uses them to decide whether the hotfix is still `REAPPLICABLE` on the new version. A `delete` entry cannot list `replaces`. |
 
-Library jars with the version in their name are the common case: ship the new jar as `replace` (or `add`) and name the old jar in `replaces`; never ship a jar that would sit next to its older self on the classpath.
+Library jars with the version in their name are the common case: the new jar has a name the server does not have yet, so ship it as `add` and name the old jar in `replaces`, as the template and the example above do. Use `replace` only for a file that keeps its name. Never ship a jar that would sit next to its older self on the classpath.
 
 ### Service restart
 

@@ -2,6 +2,10 @@ package com.jaspersoft.jrsctl.ops.hotfix;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +34,32 @@ class ManifestValidatorTest {
       case ManifestValidator.Result.Valid v -> List.of();
       case ManifestValidator.Result.Invalid i -> i.problems();
     };
+  }
+
+  /**
+   * The documented starter template must stay a manifest {@code hotfix build} accepts once it has
+   * filled in the hashes, and the authoring guide must quote it exactly, so neither can drift.
+   */
+  @Test
+  void should_accept_the_documented_template_when_the_hashes_are_filled_in() throws IOException {
+    Path docs = Path.of("..", "docs");
+    String template =
+        normalised(
+            Files.readString(
+                docs.resolve("templates").resolve("hotfix-manifest.json"), StandardCharsets.UTF_8));
+    String guide =
+        normalised(Files.readString(docs.resolve("hotfix-authoring.md"), StandardCharsets.UTF_8));
+    String built =
+        template.replace(
+            "\"action\": \"add\",", "\"action\": \"add\",\n      \"sha256\": \"" + SHA + "\",");
+
+    assertThat(built).as("the template has an add entry to hash").isNotEqualTo(template);
+    assertThat(problems(built)).isEmpty();
+    assertThat(guide).contains(template.strip());
+  }
+
+  private static String normalised(String text) {
+    return text.replace("\r\n", "\n");
   }
 
   @Test

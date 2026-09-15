@@ -1,0 +1,28 @@
+{
+  "id": "JRS-10.0.0-HF-0001",
+  "version": "1",
+  "title": "One line that says what the fix does",
+  "description": "What the defect was, the ticket number, and what this bundle changes.",
+  "applies": {
+    "versions": [">=10.0.0 <10.1.0"],
+    "editions": ["PRO"],
+    "tenancy": ["SINGLE", "MULTI"]
+  },
+  "requires": [],
+  "conflicts": [],
+  "files": [
+    {
+      "action": "add",
+      "path": "webapps/jasperserver-pro/WEB-INF/lib/example-library-1.0.1.jar",
+      "replaces": ["example-library-1.0.0.jar"]
+    }
+  ],
+  "restart": "required",
+  "prechecks": [
+    { "type": "fileExists", "path": "webapps/jasperserver-pro/WEB-INF/lib/example-library-1.0.0.jar" }
+  ],
+  "postchecks": [
+    { "type": "http", "url": "/rest_v2/serverInfo", "expect": 200 }
+  ],
+  "rollback": "snapshot"
+}
