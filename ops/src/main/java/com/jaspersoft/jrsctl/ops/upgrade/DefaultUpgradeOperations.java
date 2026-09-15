@@ -274,8 +274,17 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               .resolve(REAPPLY_DIR)
               .resolve(HotfixReconciler.slug(c.hotfix().id()) + ".zip");
       try {
-        BundleZips.zip(c.bundleDir().orElseThrow(), zip);
-        Plan apply = rt.hotfixes().planApply(zip, new HotfixOperations.ApplyOptions(false));
+        Path bundleDir = c.bundleDir().orElseThrow();
+        BundleZips.zip(bundleDir, zip);
+        Plan apply;
+        try {
+          apply = rt.hotfixes().planApply(zip, new HotfixOperations.ApplyOptions(false));
+        } finally {
+          // Issue #49: planning is read-only; RepackHotfixBundle writes the ZIP when the run gets
+          // there, and the embedded verify precheck re-checks it.
+          Files.deleteIfExists(zip);
+        }
+        embedded.add(new EmbeddedStep(new RepackHotfixBundle(bundleDir, zip), c.hotfix().id()));
         for (Step s : apply.steps()) {
           embedded.add(new EmbeddedStep(s, c.hotfix().id()));
         }

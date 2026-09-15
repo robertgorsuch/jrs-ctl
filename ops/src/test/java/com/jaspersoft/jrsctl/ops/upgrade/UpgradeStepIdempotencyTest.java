@@ -21,6 +21,7 @@ import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -29,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -387,6 +390,58 @@ class UpgradeStepIdempotencyTest {
 
       assertThat(state(f, "r-hr-c")).isEqualTo(once);
       assertThat(f.store().hotfix("HF-A").orElseThrow().state()).isEqualTo(HotfixState.INSTALLED);
+    }
+  }
+
+  /** Issue #49: the re-pack ZIP is written by a step, so planning leaves nothing behind. */
+  @Test
+  void should_converge_when_repack_hotfix_bundle_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path bundle = Files.createDirectories(tmp.resolve("bundle-copy"));
+      Files.writeString(bundle.resolve("manifest.json"), "{}", StandardCharsets.UTF_8);
+      Files.createDirectories(bundle.resolve("files"));
+      Files.writeString(bundle.resolve("files").resolve("a.txt"), "a", StandardCharsets.UTF_8);
+      Path zip = f.fake.home.runs().resolve("upgrade-reapply").resolve("hf-a.zip");
+      Step step = new RepackHotfixBundle(bundle, zip);
+      Context ctx = f.ctx("r-rp");
+
+      Idempotency.executeOk(step, ctx);
+      Idempotency.executeOk(step, ctx);
+
+      List<String> names = new ArrayList<>();
+      try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
+        for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+          names.add(e.getName());
+        }
+      }
+      assertThat(names).containsExactly("files/a.txt", "manifest.json");
+    }
+  }
+
+  @Test
+  void should_converge_when_repack_hotfix_bundle_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path bundle = Files.createDirectories(tmp.resolve("bundle-copy-c"));
+      Files.writeString(bundle.resolve("manifest.json"), "{}", StandardCharsets.UTF_8);
+      Path zip = f.fake.home.runs().resolve("upgrade-reapply").resolve("hf-c.zip");
+      Step step = new RepackHotfixBundle(bundle, zip);
+      Context ctx = f.ctx("r-rp-c");
+      Idempotency.executeOk(step, ctx);
+
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+
+      assertThat(zip).doesNotExist();
+    }
+  }
+
+  @Test
+  void should_fail_the_precheck_when_the_bundle_copy_is_gone() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Step step =
+          new RepackHotfixBundle(tmp.resolve("missing"), f.fake.home.runs().resolve("x.zip"));
+
+      assertThat(step.precheck(f.ctx("r-rp-m"))).isInstanceOf(CheckResult.Fail.class);
     }
   }
 

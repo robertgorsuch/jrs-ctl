@@ -355,6 +355,12 @@ class IdempotencyCoverageTest {
                   + U
                   + "should_converge_when_plan_hotfix_reapply_compensates_twice"),
           Map.entry(
+              OPS + "upgrade.RepackHotfixBundle",
+              U
+                  + "should_converge_when_repack_hotfix_bundle_executes_twice;"
+                  + U
+                  + "should_converge_when_repack_hotfix_bundle_compensates_twice"),
+          Map.entry(
               OPS + "upgrade.ReconcileSteps$PlanCustomizationReapply",
               U
                   + "should_converge_when_plan_customization_reapply_executes_twice;"
