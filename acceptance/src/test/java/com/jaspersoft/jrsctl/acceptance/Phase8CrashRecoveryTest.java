@@ -147,7 +147,13 @@ class Phase8CrashRecoveryTest {
     for (Fixture f : fixtures) {
       f.stopTomcat();
     }
-    Thread.sleep(3000);
+    // Wait for the stand-in Tomcats to exit instead of a fixed three seconds (issue #34). Orphaned
+    // fake scripts read the abort file on their next poll and deleteBestEffort retries whatever
+    // they still hold, so a slow exit costs time here but never fails the suite.
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+    while (anyTomcatRunning() && Instant.now().isBefore(deadline)) {
+      Thread.sleep(100);
+    }
     if (server != null) {
       server.stop();
     }
@@ -500,6 +506,15 @@ class Phase8CrashRecoveryTest {
       clean = f;
     }
     return clean;
+  }
+
+  private static boolean anyTomcatRunning() {
+    for (Fixture f : fixtures) {
+      if (f.tomcatRunning()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static void waitUntil(String what, Duration timeout, Check condition) throws Exception {
