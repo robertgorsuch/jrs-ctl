@@ -224,6 +224,7 @@ class VendorToolsTest {
         .isEqualTo(VendorTools.exportArgs(r, out));
     assertThat(req.workingDir()).contains(buildomatic.dir());
     assertThat(req.environment()).containsEntry("JAVA_HOME", javaHome.toString());
+    assertThat(req.environment().get("PATH")).startsWith(javaHome.resolve("bin").toString());
     assertThat(req.timeout()).isEqualTo(VendorTools.DEFAULT_TIMEOUT);
     assertThat(sink.logMessages()).contains("Export finished");
     assertThat(sink.of(Event.Log.class))

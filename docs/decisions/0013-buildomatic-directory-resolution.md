@@ -64,3 +64,10 @@ use. On such hosts `doctor` failed `vendor` with "no buildomatic directory under
 - Verified read-only on 2026-09-14 against real shares on both operating systems (#31). Not
   verified: vendor export/import and upgrade with the tree on a share, and whether the 10.0.0
   batch wrappers survive a UNC working directory at all; the warning assumes they do not.
+- Found on the #31 throwaway: a relocated buildomatic loses what the installer puts next to
+  it. `bin\do-js-setup.bat` looks for Ant only at `..\apache-ant` and the export/import
+  wrappers for Java only at `..\java`, both relative to buildomatic; without them the tools run
+  whatever `ant` and `java` are on `PATH` (no Ant at all, or the machine's default JDK, which
+  failed with `UnsupportedClassVersionError` while the wrapper still exited 0). jrsctl now puts
+  `vendor.javaHome/bin` first on `PATH` for vendor tools, and `doctor` warns when no Ant can be
+  found. Raw UNC paths fail at once, as the warning assumed (#32).

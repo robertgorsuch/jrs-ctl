@@ -76,6 +76,10 @@ public final class FakeLayout {
     }
     Files.writeString(
         buildomatic.resolve("default_master.properties"), DEFAULT_MASTER, StandardCharsets.UTF_8);
+    // the installer bundles Ant next to buildomatic, where the vendor setup script looks for it
+    Path antBin = Files.createDirectories(installDir.resolve("apache-ant").resolve("bin"));
+    Files.writeString(antBin.resolve("ant.bat"), "@echo off\r\n", StandardCharsets.UTF_8);
+    Files.writeString(antBin.resolve("ant"), "#!/bin/sh\n", StandardCharsets.UTF_8);
   }
 
   private static void java(Path installDir, String exe) throws IOException {

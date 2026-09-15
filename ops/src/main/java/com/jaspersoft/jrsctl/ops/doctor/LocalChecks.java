@@ -300,18 +300,26 @@ final class LocalChecks {
    * locate it is configured; an unreachable configured directory or an ambiguous search fails.
    */
   static ReportItem vendor(Services s) {
+    return vendor(s, System.getenv());
+  }
+
+  /** As {@link #vendor(Services)}, with {@code env} as the environment the vendor tools inherit. */
+  static ReportItem vendor(Services s, Map<String, String> env) {
     BuildomaticLocator locator = new BuildomaticLocator(s.platform());
     return switch (locator.resolve(s.config())) {
       case BuildomaticResolution.NotFound missing ->
           missing.reason() == BuildomaticResolution.Reason.NOT_CONFIGURED
               ? ReportItem.skip("vendor", missing.detail(), missing.remediation())
               : ReportItem.fail("vendor", missing.detail(), missing.remediation());
-      case BuildomaticResolution.Found found -> vendorScripts(s, locator, found);
+      case BuildomaticResolution.Found found -> vendorScripts(s, locator, found, env);
     };
   }
 
   private static ReportItem vendorScripts(
-      Services s, BuildomaticLocator locator, BuildomaticResolution.Found found) {
+      Services s,
+      BuildomaticLocator locator,
+      BuildomaticResolution.Found found,
+      Map<String, String> env) {
     Buildomatic buildomatic = found.buildomatic();
     String ext = locator.scriptExtension();
     List<String> missing = buildomatic.missingScripts().stream().map(n -> n + ext).toList();
@@ -334,7 +342,20 @@ final class LocalChecks {
               + " mklink /D (which needs Administrator or Developer Mode), and set"
               + " server.buildomaticDir to that path");
     }
-    return ReportItem.pass("vendor", "js-export, js-import, js-ant present in " + where);
+    Optional<Path> ant = locator.ant(buildomatic, env);
+    if (ant.isEmpty()) {
+      return ReportItem.warn(
+          "vendor",
+          "js-export, js-import, js-ant present in "
+              + where
+              + ", but they will find no Ant: there is no apache-ant next to "
+              + buildomatic.dir()
+              + " and no ant on PATH",
+          "copy the distribution's apache-ant folder next to the buildomatic directory, or put"
+              + " Ant's bin directory on PATH for the account that runs jrsctl");
+    }
+    return ReportItem.pass(
+        "vendor", "js-export, js-import, js-ant present in " + where + "; Ant " + ant.get());
   }
 
   /**

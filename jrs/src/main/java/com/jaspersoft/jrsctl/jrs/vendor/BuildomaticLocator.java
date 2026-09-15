@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -39,6 +41,9 @@ public final class BuildomaticLocator {
 
   /** Name prefix of the vendor's unpacked distribution directories. */
   static final String DISTRIBUTION_PREFIX = "jasperreports-server";
+
+  private static final Pattern SEMICOLON = Pattern.compile(";");
+  private static final Pattern COLON = Pattern.compile(":");
 
   static final String SOURCE_CONFIGURED = "server.buildomaticDir";
   static final String SOURCE_UNDER_INSTALL = "under server.installDir";
@@ -135,6 +140,55 @@ public final class BuildomaticLocator {
           .orElseGet(() -> notFound(installDir, tomcatDir));
     }
     return notFound(installDir, tomcatDir);
+  }
+
+  /**
+   * The Ant the vendor wrappers will run: {@code apache-ant} next to the buildomatic directory,
+   * which is the only bundled location {@code bin/do-js-setup} checks (relative to the working
+   * directory, which is buildomatic), else an {@code ant} launcher on the {@code PATH} of {@code
+   * env}; empty when neither exists, in which case {@code js-export} and {@code js-import} fail
+   * with "'ant' is not recognized" (#31). A buildomatic moved away from the installation loses the
+   * bundled Ant unless it is moved with it.
+   */
+  public Optional<Path> ant(Buildomatic buildomatic, Map<String, String> env) {
+    Objects.requireNonNull(buildomatic, "buildomatic");
+    Objects.requireNonNull(env, "env");
+    boolean windows = platform.os() == Platform.OsFamily.WINDOWS;
+    Path parent = buildomatic.dir().getParent();
+    if (parent != null) {
+      Path bundled =
+          parent.resolve("apache-ant").resolve("bin").resolve(windows ? "ant.bat" : "ant");
+      if (Files.isRegularFile(bundled)) {
+        return Optional.of(bundled);
+      }
+    }
+    String path =
+        env.entrySet().stream()
+            .filter(e -> e.getKey().equalsIgnoreCase("PATH"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse("");
+    List<String> launchers = windows ? List.of("ant.bat", "ant.cmd") : List.of("ant");
+    for (String entry : (windows ? SEMICOLON : COLON).split(path, -1)) {
+      String dir = entry.strip();
+      if (dir.length() >= 2 && dir.startsWith("\"") && dir.endsWith("\"")) {
+        dir = dir.substring(1, dir.length() - 1);
+      }
+      if (dir.isEmpty()) {
+        continue;
+      }
+      for (String launcher : launchers) {
+        try {
+          Path candidate = Path.of(dir).resolve(launcher);
+          if (Files.isRegularFile(candidate)) {
+            return Optional.of(candidate);
+          }
+        } catch (InvalidPathException e) {
+          // a PATH entry that is not a valid path cannot hold Ant
+        }
+      }
+    }
+    return Optional.empty();
   }
 
   /** {@code .bat} on Windows, {@code .sh} on Linux. */

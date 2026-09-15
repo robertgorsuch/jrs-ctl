@@ -269,6 +269,23 @@ public final class VendorTools {
     return splits && !quoted && !spaced ? "\"" + arg + "\"" : arg;
   }
 
+  /**
+   * {@code <javaHome>/bin} followed by the inherited {@code PATH} (looked up case-insensitively, as
+   * Windows spells it {@code Path}), joined with {@code ;} for batch wrappers and {@code :} for
+   * shell ones.
+   */
+  static String pathWithJavaFirst(Path javaHome, Map<String, String> inherited, boolean batch) {
+    String separator = batch ? ";" : ":";
+    String bin = javaHome.resolve("bin").toString();
+    String rest =
+        inherited.entrySet().stream()
+            .filter(e -> e.getKey().equalsIgnoreCase(VendorFlags.PATH))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse("");
+    return rest.isBlank() ? bin : bin + separator + rest;
+  }
+
   // ---------------------------------------------------------------- the one launcher
 
   /** Launches the invocation, streaming output as redacted {@link Event.Log} lines. */
@@ -298,7 +315,15 @@ public final class VendorTools {
     for (String arg : invocation.args()) {
       command.add(batch ? quoteForCmd(arg) : arg);
     }
-    Map<String, String> env = Map.of(VendorFlags.JAVA_HOME, invocation.javaHome().get().toString());
+    // The wrappers launch ExportCommand/ImportCommand with the first java on PATH unless a java
+    // folder sits next to buildomatic, so a relocated tree ran on the machine's default JDK (#31).
+    Path javaHome = invocation.javaHome().get();
+    Map<String, String> env =
+        Map.of(
+            VendorFlags.JAVA_HOME,
+            javaHome.toString(),
+            VendorFlags.PATH,
+            pathWithJavaFirst(javaHome, System.getenv(), batch));
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
     EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);

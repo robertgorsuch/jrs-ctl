@@ -395,7 +395,7 @@ sealed interface ExportImportStrategy permits RestStrategy, VendorCliStrategy {
 ### 7.4 Vendor tool wrappers
 
 - Locate the installed `buildomatic/` (ADR-0013): `server.buildomaticDir` when set, authoritative even when it cannot be reached (nothing is substituted for it); else `<installDir>/buildomatic`; else a neighbour that holds this platform's `js-ant` and a `default_master.properties`, beside `server.tomcatDir` or `installDir` or inside a `jasperreports-server*` directory under or beside `installDir`, two such neighbours being refused as ambiguous. The upgrade target package's tree is always `<package>/buildomatic`. Verify expected scripts exist for the detected version.
-- Invoke with `ProcessRunner` using `vendor.javaHome` as `JAVA_HOME`, stream stdout/stderr into events (redacted), capture exit code, enforce timeout.
+- Invoke with `ProcessRunner` using `vendor.javaHome` as `JAVA_HOME` and its `bin` first on `PATH` (the wrappers start the export/import command with the first `java` on `PATH` unless a `java` folder sits next to buildomatic), stream stdout/stderr into events (redacted), capture exit code, enforce timeout.
 - Never modify vendor scripts. Property overrides are written to `default_master.properties` **in the buildomatic directory being invoked** (the upgrade target package's copy for upgrades; a run-scoped copy of the installed buildomatic for export/import). The pre-existing file, if any, is snapshotted first and restored by compensation. Open question Q5 (§19) tracks whether `js-ant` accepts an out-of-directory property file; if it does, prefer that.
 
 ### 7.5 REST client

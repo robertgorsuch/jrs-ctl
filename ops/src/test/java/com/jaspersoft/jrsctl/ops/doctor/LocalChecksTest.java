@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -94,8 +95,10 @@ class LocalChecksTest {
   @Test
   void should_check_the_vendor_scripts_where_server_buildomatic_dir_points() throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));
-    Path elsewhere = Files.createDirectories(tmp.resolve("vendor-volume")).resolve("buildomatic");
+    Path volume = Files.createDirectories(tmp.resolve("vendor-volume"));
+    Path elsewhere = volume.resolve("buildomatic");
     Files.move(install.resolve("buildomatic"), elsewhere);
+    Files.move(install.resolve("apache-ant"), volume.resolve("apache-ant"));
     try (FakeServices fake = FakeServices.in(tmp.resolve("moved"))) {
       fake.yaml(
           serverYaml(
@@ -106,13 +109,42 @@ class LocalChecksTest {
                   + "\n"));
       Services services = fake.build();
 
-      ReportItem vendor = LocalChecks.vendor(services);
+      ReportItem vendor = LocalChecks.vendor(services, Map.of());
       ReportItem permissions =
           LocalChecks.permissions(services, services.platform().detectTomcat(install));
 
       assertThat(vendor.status()).isEqualTo(ReportItem.Status.PASS);
-      assertThat(vendor.detail()).contains(elsewhere.toString()).contains("server.buildomaticDir");
+      assertThat(vendor.detail())
+          .contains(elsewhere.toString())
+          .contains("server.buildomaticDir")
+          .contains("apache-ant");
       assertThat(permissions.detail()).contains("3 target dirs");
+    }
+  }
+
+  /**
+   * #31: the vendor setup script finds its bundled Ant only at {@code ..\apache-ant}, so a
+   * buildomatic moved without it fails every export and import with "ant is not recognized".
+   */
+  @Test
+  void should_warn_when_a_relocated_buildomatic_can_find_no_ant() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path elsewhere = Files.createDirectories(tmp.resolve("bare-volume")).resolve("buildomatic");
+    Files.move(install.resolve("buildomatic"), elsewhere);
+    try (FakeServices fake = FakeServices.in(tmp.resolve("no-ant"))) {
+      fake.yaml(
+          serverYaml(
+              "  installDir: "
+                  + yamlPath(install)
+                  + "\n  buildomaticDir: "
+                  + yamlPath(elsewhere)
+                  + "\n"));
+
+      ReportItem vendor = LocalChecks.vendor(fake.build(), Map.of("PATH", ""));
+
+      assertThat(vendor.status()).isEqualTo(ReportItem.Status.WARN);
+      assertThat(vendor.detail()).contains("no Ant").contains("apache-ant");
+      assertThat(vendor.remediation()).contains("apache-ant").contains("PATH");
     }
   }
 

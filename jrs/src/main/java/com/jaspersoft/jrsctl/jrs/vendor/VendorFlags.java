@@ -51,4 +51,11 @@ public final class VendorFlags {
 
   /** Environment variable buildomatic reads to find its JDK. */
   public static final String JAVA_HOME = "JAVA_HOME";
+
+  /**
+   * Search path; the wrappers start the export/import command with the first {@code java} on it
+   * unless a {@code java} folder sits next to buildomatic, so {@code vendor.javaHome/bin} goes
+   * first.
+   */
+  public static final String PATH = "PATH";
 }
