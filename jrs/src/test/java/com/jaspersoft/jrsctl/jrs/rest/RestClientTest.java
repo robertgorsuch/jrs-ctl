@@ -22,6 +22,8 @@ import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -174,8 +176,10 @@ class RestClientTest {
     wm.verify(
         postRequestedFor(urlEqualTo("/jasperserver-pro/j_spring_security_check"))
             .withHeader("Content-Type", equalTo("application/x-www-form-urlencoded"))
-            .withRequestBody(containing("j_username=jasperadmin"))
-            .withRequestBody(containing("j_password=")));
+            .withRequestBody(
+                equalTo(
+                    "j_username=jasperadmin&j_password="
+                        + URLEncoder.encode(PASSWORD, StandardCharsets.UTF_8))));
     wm.verify(
         getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/jobs"))
             .withHeader("Cookie", containing("JSESSIONID=ABC123")));

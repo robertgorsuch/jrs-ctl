@@ -361,28 +361,29 @@ public final class RestClient {
    */
   public Response formLogin(String path, String username, Secret password) {
     char[] pw = password.chars();
-    String body;
+    byte[] body;
     try {
-      body =
-          "j_username="
-              + URLEncoder.encode(username, StandardCharsets.UTF_8)
-              + "&j_password="
-              + URLEncoder.encode(new String(pw), StandardCharsets.UTF_8);
+      // issue #51: encoded straight from the char[], so no String copy of the password exists
+      body = FormBodies.login(username, pw);
     } finally {
       Arrays.fill(pw, '\0');
     }
     redactor.register(password);
-    Response r =
-        send(
-            "POST",
-            path,
-            JSON,
-            Optional.of("application/x-www-form-urlencoded"),
-            HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8),
-            requestTimeout,
-            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-    sessionCookie().ifPresent(redactor::register);
-    return r;
+    try {
+      Response r =
+          send(
+              "POST",
+              path,
+              JSON,
+              Optional.of("application/x-www-form-urlencoded"),
+              HttpRequest.BodyPublishers.ofByteArray(body),
+              requestTimeout,
+              HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      sessionCookie().ifPresent(redactor::register);
+      return r;
+    } finally {
+      Arrays.fill(body, (byte) 0);
+    }
   }
 
   /** The current {@code JSESSIONID} value held by the cookie manager, if any. */
