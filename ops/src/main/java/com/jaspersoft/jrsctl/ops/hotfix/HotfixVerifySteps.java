@@ -274,6 +274,15 @@ final class HotfixVerifySteps {
             problems.add("payload missing for " + t.manifestPath());
           }
         }
+        // Issue #55: the snapshot keeps only replaced and deleted files and rollback removes added
+        // ones, so an add over an existing file could never be restored.
+        if (t.action() == Manifest.Action.ADD && t.existedBefore()) {
+          problems.add(
+              "add "
+                  + t.manifestPath()
+                  + ": the file already exists on the server and could not be restored on"
+                  + " rollback; ship it as \"replace\"");
+        }
       }
       Path base = in.paths().commonBase();
       // Review finding 1.16: staging, the snapshot and the landing tree may each sit on a volume

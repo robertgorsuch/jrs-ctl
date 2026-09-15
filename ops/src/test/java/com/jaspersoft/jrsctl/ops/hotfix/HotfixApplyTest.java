@@ -154,6 +154,31 @@ class HotfixApplyTest {
     }
   }
 
+  /**
+   * Issue #55: an {@code add} over a file the server already has overwrote it without a snapshot,
+   * so neither the run's compensation nor a later {@code hotfix rollback} could put it back.
+   */
+  @Test
+  void should_refuse_in_preflight_and_keep_the_file_when_an_add_target_already_exists()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      HotfixFixture.write(f.target(HotfixFixture.FIX), "original=1\n");
+      String original = f.sha(HotfixFixture.FIX);
+
+      RunOutcome outcome = f.run(f.ops().planApply(f.buildWebInf(), SIGNED), "r-add-exists");
+
+      assertThat(outcome)
+          .isInstanceOf(RunOutcome.PrecheckFailed.class)
+          .extracting(o -> ((RunOutcome.PrecheckFailed) o).stepId())
+          .isEqualTo("preflight");
+      assertThat(((RunOutcome.PrecheckFailed) outcome).message())
+          .contains(HotfixFixture.FIX)
+          .contains("already exists");
+      assertThat(f.sha(HotfixFixture.FIX)).isEqualTo(original);
+      assertThat(f.fake.platform.controller.events).isEmpty();
+    }
+  }
+
   @Test
   void should_fail_validate_manifest_when_required_hotfix_missing() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
