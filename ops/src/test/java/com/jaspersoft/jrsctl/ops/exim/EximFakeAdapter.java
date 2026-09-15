@@ -54,6 +54,11 @@ final class EximFakeAdapter implements JrsAdapter {
           Optional.empty());
   int exportBytes = 4096;
 
+  /**
+   * When set, the exact archive every download writes instead of {@link #exportBytes} of filler.
+   */
+  byte[] exportArchive;
+
   @Override
   public ServerIdentity identity() {
     return new ServerIdentity(
@@ -90,9 +95,12 @@ final class EximFakeAdapter implements JrsAdapter {
 
   @Override
   public Path downloadExport(Handles.ExportHandle handle, Path target) {
-    byte[] bytes = new byte[exportBytes];
-    bytes[0] = 'P';
-    bytes[1] = 'K';
+    byte[] bytes = exportArchive;
+    if (bytes == null) {
+      bytes = new byte[exportBytes];
+      bytes[0] = 'P';
+      bytes[1] = 'K';
+    }
     try (OutputStream out = Files.newOutputStream(target)) {
       out.write(bytes);
     } catch (IOException e) {

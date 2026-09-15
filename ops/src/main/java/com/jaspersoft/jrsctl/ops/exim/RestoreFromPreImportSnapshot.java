@@ -10,11 +10,15 @@ import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * The rollback anchor of the {@code import} phase (spec §9.4). It is the first step of the phase;
@@ -27,12 +31,16 @@ import java.util.Optional;
  * compensates mutating steps only and this compensation must run whenever any later step of the
  * phase fails; the restore is best effort, as the plan summary says: it restores resources the
  * failed import overwrote but cannot delete resources the failed import created; a restore that
- * fails reports the snapshot path as the backup to re-import by hand.
+ * fails reports the snapshot path as the backup to re-import by hand; a snapshot that is a readable
+ * archive with entries but no {@value #INDEX} holds none of the resources the import targets, so
+ * its compensation is a logged no-op (issue #41): there is nothing to put back, and the vendor
+ * importer throws on such an archive.
  */
 final class RestoreFromPreImportSnapshot implements Step {
 
   static final String ID = "import.snapshot-rollback";
   static final String RESTORE_SUFFIX = "-restore";
+  static final String INDEX = "index.xml";
 
   private final ExportImportStrategy strategy;
   private final Path snapshot;
@@ -99,6 +107,18 @@ final class RestoreFromPreImportSnapshot implements Step {
 
   @Override
   public StepResult compensate(Context ctx, EventSink out) {
+    if (holdsNoResources(snapshot)) {
+      EximLogs.info(
+          out,
+          ctx,
+          this,
+          "nothing to restore: "
+              + snapshot
+              + " has no "
+              + INDEX
+              + ", so none of the resources the import targets existed before it");
+      return StepResult.ok();
+    }
     Context nested =
         new Context(
             ctx.runId() + RESTORE_SUFFIX, ctx.home(), ctx.platform(), ctx.cancel(), ctx.services());
@@ -154,6 +174,28 @@ final class RestoreFromPreImportSnapshot implements Step {
       }
       case CheckResult.Fail f -> Optional.of("postcheck failed: " + f.message());
     };
+  }
+
+  /**
+   * True only for a readable archive that has entries and no {@value #INDEX}, which is what an
+   * export of URIs that do not exist writes (a lone {@code resources/} entry). An archive that
+   * cannot be read, or reads as no entries at all, is not judged here: the import reports it.
+   */
+  static boolean holdsNoResources(Path archive) {
+    try (InputStream raw = Files.newInputStream(archive);
+        ZipInputStream in = new ZipInputStream(raw, StandardCharsets.UTF_8)) {
+      boolean any = false;
+      ZipEntry entry;
+      while ((entry = in.getNextEntry()) != null) {
+        if (entry.getName().equals(INDEX)) {
+          return false;
+        }
+        any = true;
+      }
+      return any;
+    } catch (IOException | IllegalArgumentException e) {
+      return false;
+    }
   }
 
   private static String describe(RuntimeException e) {

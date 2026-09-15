@@ -10,12 +10,15 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations.ImportOptions;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -135,6 +138,76 @@ class ImportRollbackTest {
         .filteredOn(e -> e instanceof Event.Log)
         .map(e -> ((Event.Log) e).message())
         .anyMatch(m -> m.contains("re-imported"));
+  }
+
+  /**
+   * A restore that fails is no rollback: when the re-import of the snapshot fails as well, the run
+   * ends rollback-incomplete (exit 4). Issue #40 reached exit 3 here because the vendor re-import
+   * that threw was counted as a success.
+   */
+  @Test
+  void should_exit_4_when_the_snapshot_reimport_fails_too() {
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.Failed.class);
+    assertThat(outcome.exitCode()).isEqualTo(4);
+    assertThat(((RunOutcome.Failed) outcome).rollbackIncomplete()).isTrue();
+    assertThat(adapter.imports).hasSize(2);
+    assertThat(fx.journal(EximFixture.RUN)).doesNotContain("import.snapshot-rollback:ROLLED_BACK");
+  }
+
+  /**
+   * Issue #41: nothing the import targets existed, so the snapshot holds a lone {@code resources/}
+   * entry and no {@code index.xml}. There is nothing to put back, and the vendor importer throws on
+   * such an archive, so the rollback re-imports nothing.
+   */
+  @Test
+  void should_skip_the_reimport_and_exit_3_when_the_snapshot_holds_no_index() throws IOException {
+    adapter.exportArchive = zipOf("resources/");
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(outcome.exitCode()).isEqualTo(3);
+    assertThat(adapter.imports).as("only the failed import ran").hasSize(1);
+    assertThat(fx.journal(EximFixture.RUN))
+        .containsSubsequence("import.poll:FAILED", "import.snapshot-rollback:ROLLED_BACK");
+    assertThat(fx.events)
+        .filteredOn(e -> e instanceof Event.Log)
+        .map(e -> ((Event.Log) e).message())
+        .anyMatch(m -> m.contains("nothing to restore"));
+  }
+
+  @Test
+  void should_judge_only_a_readable_archive_without_index_xml_as_holding_no_resources()
+      throws IOException {
+    Path empty = Files.write(tmp.resolve("empty.zip"), zipOf("resources/"));
+    Path full = Files.write(tmp.resolve("full.zip"), zipOf("index.xml", "resources/"));
+    Path indexLast = Files.write(tmp.resolve("last.zip"), zipOf("resources/", "index.xml"));
+    Path garbage = Files.write(tmp.resolve("garbage.zip"), new byte[] {'P', 'K', 0, 0});
+
+    assertThat(RestoreFromPreImportSnapshot.holdsNoResources(empty)).isTrue();
+    assertThat(RestoreFromPreImportSnapshot.holdsNoResources(full)).isFalse();
+    assertThat(RestoreFromPreImportSnapshot.holdsNoResources(indexLast)).isFalse();
+    assertThat(RestoreFromPreImportSnapshot.holdsNoResources(garbage)).isFalse();
+    assertThat(RestoreFromPreImportSnapshot.holdsNoResources(tmp.resolve("missing.zip"))).isFalse();
+  }
+
+  private static byte[] zipOf(String... names) throws IOException {
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+      for (String name : names) {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.closeEntry();
+      }
+    }
+    return bytes.toByteArray();
   }
 
   @Test
