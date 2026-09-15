@@ -73,7 +73,7 @@
     <versions-plugin.version>2.18.0</versions-plugin.version>
     <surefire.forkCount>1C</surefire.forkCount>
     <surefire.reuseForks>true</surefire.reuseForks>
-    <jacoco.version>0.8.12</jacoco.version>
+    <jacoco.version>0.8.15</jacoco.version>
     <!-- No floor by default: app is mostly picocli wiring the acceptance suite drives through the
          real jar, and dist and acceptance produce no coverage of their own. core and ops set
          their own minimum (roadmap item 18). -->
