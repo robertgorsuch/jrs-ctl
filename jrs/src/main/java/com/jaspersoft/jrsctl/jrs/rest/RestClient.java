@@ -88,6 +88,10 @@ public final class RestClient {
 
   public static final String CORRELATION_HEADER = "X-Jrsctl-Correlation";
   public static final String REMOTE_DOMAIN_HEADER = "X-REMOTE-DOMAIN";
+
+  /** The pre-authentication header, same name as the query parameter (ADR-0018). */
+  private static final String PREAUTH_HEADER = "pp";
+
   public static final String SESSION_COOKIE = "JSESSIONID";
   public static final String JSON = "application/json";
 
@@ -135,6 +139,7 @@ public final class RestClient {
   private final ThreadLocal<Boolean> reauthenticating = ThreadLocal.withInitial(() -> false);
   private volatile Optional<String> basicHeader = Optional.empty();
   private volatile Optional<String> tokenParam = Optional.empty();
+  private volatile Optional<String> tokenHeader = Optional.empty();
 
   private RestClient(Builder b) {
     this.baseUrl = b.baseUrl;
@@ -330,28 +335,51 @@ public final class RestClient {
     redactor.register(header);
     redactor.register(password);
     this.tokenParam = Optional.empty();
+    this.tokenHeader = Optional.empty();
     this.basicHeader = Optional.of(header);
   }
 
   /** Appends {@code pp=<token>} to every subsequent request (token / pre-authentication). */
   public void useToken(Secret token) {
+    useToken(token, Config.TokenLocation.QUERY);
+  }
+
+  /**
+   * Sends {@code pp=<token>} on every subsequent request, as a query parameter or as the {@code pp}
+   * request header (issue #45, ADR-0018); the token and its encoded form are registered with the
+   * redactor.
+   */
+  public void useToken(Secret token, Config.TokenLocation location) {
+    Objects.requireNonNull(location, "location");
     char[] chars = token.chars();
+    String raw;
     String encoded;
     try {
-      encoded = URLEncoder.encode(new String(chars), StandardCharsets.UTF_8);
+      raw = new String(chars);
+      encoded = URLEncoder.encode(raw, StandardCharsets.UTF_8);
     } finally {
       Arrays.fill(chars, '\0');
     }
     redactor.register(token);
     redactor.register(encoded);
     this.basicHeader = Optional.empty();
-    this.tokenParam = Optional.of(encoded);
+    switch (location) {
+      case QUERY -> {
+        this.tokenParam = Optional.of(encoded);
+        this.tokenHeader = Optional.empty();
+      }
+      case HEADER -> {
+        this.tokenParam = Optional.empty();
+        this.tokenHeader = Optional.of(raw);
+      }
+    }
   }
 
   /** Drops the Basic header and token; cookies are kept. */
   public void clearAuth() {
     this.basicHeader = Optional.empty();
     this.tokenParam = Optional.empty();
+    this.tokenHeader = Optional.empty();
   }
 
   /**
@@ -743,6 +771,7 @@ public final class RestClient {
             .method(method, body);
     contentType.ifPresent(ct -> rb.header("Content-Type", ct));
     basicHeader.ifPresent(h -> rb.header("Authorization", h));
+    tokenHeader.ifPresent(t -> rb.header(PREAUTH_HEADER, t));
     return rb.build();
   }
 

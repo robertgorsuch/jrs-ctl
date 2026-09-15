@@ -369,7 +369,7 @@ public final class RestJrsAdapter implements JrsAdapter {
             yield new Session(Session.AuthMode.BASIC, Optional.empty(), Instant.now());
           }
           case TOKEN -> {
-            client.useToken(credentials.password());
+            client.useToken(credentials.password(), config.server().auth().tokenLocation());
             verifyAuthenticated();
             yield new Session(Session.AuthMode.TOKEN, Optional.empty(), Instant.now());
           }

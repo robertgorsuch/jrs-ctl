@@ -136,6 +136,22 @@ public record Config(
     }
   }
 
+  /**
+   * {@code server.auth.tokenLocation}: where token mode sends the pre-authentication token, as the
+   * {@code pp} query parameter or the {@code pp} request header (issue #45, ADR-0018).
+   */
+  public enum TokenLocation implements YamlValued {
+    QUERY,
+    HEADER;
+
+    public static final TokenLocation DEFAULT = QUERY;
+
+    @Override
+    public String yamlValue() {
+      return name().toLowerCase(Locale.ROOT);
+    }
+  }
+
   /** {@code server.webappName}; explicit, never derived from the URL. */
   public enum WebappName implements YamlValued {
     JASPERSERVER("jasperserver"),
@@ -230,12 +246,22 @@ public record Config(
   }
 
   /** The {@code server.auth:} block. */
-  public record Auth(AuthMode mode, Optional<String> username, Optional<SecretRef> passwordRef) {
+  public record Auth(
+      AuthMode mode,
+      Optional<String> username,
+      Optional<SecretRef> passwordRef,
+      TokenLocation tokenLocation) {
 
     public Auth {
       Objects.requireNonNull(mode, "mode");
       Objects.requireNonNull(username, "username");
       Objects.requireNonNull(passwordRef, "passwordRef");
+      Objects.requireNonNull(tokenLocation, "tokenLocation");
+    }
+
+    /** The block without {@code tokenLocation}, which then takes its default. */
+    public Auth(AuthMode mode, Optional<String> username, Optional<SecretRef> passwordRef) {
+      this(mode, username, passwordRef, TokenLocation.DEFAULT);
     }
 
     public static Auth defaults() {

@@ -22,7 +22,8 @@
           "properties": {
             "mode": { "type": "string", "enum": ["basic", "form", "token"], "default": "basic" },
             "username": { "type": "string" },
-            "passwordRef": { "$ref": "#/$defs/secretRef" }
+            "passwordRef": { "$ref": "#/$defs/secretRef" },
+            "tokenLocation": { "type": "string", "enum": ["query", "header"], "default": "query" }
           }
         }
       }

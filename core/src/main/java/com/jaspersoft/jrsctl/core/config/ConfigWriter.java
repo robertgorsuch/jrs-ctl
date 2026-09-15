@@ -69,6 +69,9 @@ public final class ConfigWriter {
     auth.put("mode", c.server().auth().mode().yamlValue());
     c.server().auth().username().ifPresent(v -> auth.put("username", v));
     ref(c.server().auth().passwordRef(), auth);
+    if (c.server().auth().tokenLocation() != Config.TokenLocation.DEFAULT) {
+      auth.put("tokenLocation", c.server().auth().tokenLocation().yamlValue());
+    }
 
     if (!hasContent(c.server())) {
       // the schema requires server.baseUrl whenever a server block exists, so a defaults-only

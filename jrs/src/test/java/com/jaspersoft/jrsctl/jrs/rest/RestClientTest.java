@@ -150,6 +150,29 @@ class RestClientTest {
     assertThat(redactor.redact("saw tok&en=1 here")).doesNotContain("tok&en=1");
   }
 
+  /** Issue #45: a server with tokenInRequestParam false or unset reads the pp header. */
+  @Test
+  void should_send_pp_header_and_no_query_parameter_when_token_location_is_header() {
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/jobs"))
+            .willReturn(aResponse().withStatus(200)));
+    Redactor redactor = new Redactor();
+    RestClient client = builder(redactor).build();
+    try (Secret token = Secret.fromString("tok&en=1")) {
+      client.useToken(token, Config.TokenLocation.HEADER);
+    }
+
+    client.get("/rest_v2/jobs?limit=5");
+
+    wm.verify(
+        getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/jobs"))
+            .withQueryParam("limit", equalTo("5"))
+            .withQueryParam("pp", absent())
+            .withHeader("pp", equalTo("tok&en=1"))
+            .withHeader("Authorization", absent()));
+    assertThat(redactor.redact("saw tok&en=1 here")).doesNotContain("tok&en=1");
+  }
+
   @Test
   void should_store_session_cookie_and_resend_it_when_form_login_succeeds() {
     wm.stubFor(

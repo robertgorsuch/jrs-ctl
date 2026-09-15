@@ -266,7 +266,10 @@ public final class ConfigLoader {
                     .map(v -> yamlEnum("server.auth.mode", Config.AuthMode.class, v))
                     .orElse(Config.AuthMode.DEFAULT),
                 text(auth, "username"),
-                text(auth, "passwordRef").map(v -> secretRef("server.auth.passwordRef", v)))),
+                text(auth, "passwordRef").map(v -> secretRef("server.auth.passwordRef", v)),
+                text(auth, "tokenLocation")
+                    .map(v -> yamlEnum("server.auth.tokenLocation", Config.TokenLocation.class, v))
+                    .orElse(Config.TokenLocation.DEFAULT))),
         new Config.Service(
             text(service, "kind").map(v -> serviceKind("service.kind", v)),
             text(service, "name"),

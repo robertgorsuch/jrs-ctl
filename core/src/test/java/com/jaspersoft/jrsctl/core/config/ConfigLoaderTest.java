@@ -62,6 +62,28 @@ class ConfigLoaderTest {
     assertThat(c.envSecretNames()).containsExactlyInAnyOrder("JRS_PASSWORD", "PROXY_PW");
   }
 
+  /** Issue #45: {@code server.auth.tokenLocation} defaults to query and accepts header. */
+  @Test
+  void should_read_token_location_when_set_and_default_to_query_when_absent() throws IOException {
+    assertThat(loader.load(new JrsctlHome(tmp), Map.of(), Map.of()).server().auth().tokenLocation())
+        .isEqualTo(Config.TokenLocation.QUERY);
+    Files.writeString(
+        tmp.resolve("config.yaml"),
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+          auth:
+            mode: token
+            tokenLocation: header
+            passwordRef: env:JRS_TOKEN
+        """,
+        StandardCharsets.UTF_8);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThat(c.server().auth().tokenLocation()).isEqualTo(Config.TokenLocation.HEADER);
+  }
+
   @Test
   void should_read_every_block_when_file_is_complete() throws IOException {
     write(
