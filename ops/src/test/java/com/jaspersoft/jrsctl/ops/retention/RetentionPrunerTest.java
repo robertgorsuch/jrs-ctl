@@ -290,6 +290,82 @@ class RetentionPrunerTest {
     assertThat(oldSet).exists();
   }
 
+  /** A run started {@code age} ago, ended or not, with a bundle copy in its run directory. */
+  private Path runDir(String runId, Duration age, boolean ended) throws IOException {
+    Instant started = now.minus(age);
+    fake.stateStore().recordRunStart(runId, "hotfix-apply", Optional.empty(), started);
+    if (ended) {
+      fake.stateStore().recordRunEnd(runId, started.plusSeconds(60), TerminalState.SUCCEEDED, 0);
+    }
+    Path bundle = Files.createDirectories(fake.home.runDir(runId).resolve("bundle"));
+    Files.writeString(bundle.resolve("manifest.json"), "{}", StandardCharsets.UTF_8);
+    return fake.home.runDir(runId);
+  }
+
+  /** Issue #53: run directories follow retention like the run's snapshots. */
+  @Test
+  void should_remove_an_ended_unprotected_run_directory_when_it_is_older_than_retention()
+      throws Exception {
+    services(30, 20);
+    Path old = runDir("r-old", Duration.ofDays(40), true);
+    Path fresh = runDir("r-new", Duration.ofDays(1), true);
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).contains("runs/r-old").doesNotContain("runs/r-new");
+    assertThat(old).doesNotExist();
+    assertThat(fresh).exists();
+  }
+
+  @Test
+  void should_keep_the_bundle_copy_of_an_installed_hotfix_when_its_run_is_expired()
+      throws Exception {
+    services(30, 20);
+    Path dir = runDir("r-hf", Duration.ofDays(40), true);
+    fake.stateStore()
+        .recordHotfixInstalled(
+            new HotfixInstalled(
+                "HF-1",
+                "1",
+                "t",
+                "r-hf",
+                Optional.empty(),
+                HotfixState.INSTALLED,
+                now.minus(Duration.ofDays(40))),
+            List.of());
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).doesNotContain("runs/r-hf");
+    assertThat(dir.resolve("bundle").resolve("manifest.json")).exists();
+  }
+
+  @Test
+  void should_keep_unended_runs_and_directories_that_are_not_runs_when_pruning() throws Exception {
+    services(30, 20);
+    Path pending = runDir("r-pending", Duration.ofDays(40), false);
+    Path reapply = Files.createDirectories(fake.home.runs().resolve("upgrade-reapply"));
+    Files.setLastModifiedTime(reapply, FileTime.from(now.minus(Duration.ofDays(40))));
+    Path subRunOfPending = runDir("r-pending-hf-hf-1", Duration.ofDays(40), true);
+
+    pruner().prune(false);
+
+    assertThat(pending).exists();
+    assertThat(reapply).exists();
+    assertThat(subRunOfPending).exists();
+  }
+
+  @Test
+  void should_report_but_keep_run_directories_when_dry_run() throws Exception {
+    services(30, 20);
+    Path old = runDir("r-old", Duration.ofDays(40), true);
+
+    RetentionPruner.Result result = pruner().prune(true);
+
+    assertThat(ids(result)).contains("runs/r-old");
+    assertThat(old).exists();
+  }
+
   private Path preImportZip(String name, Duration age) throws IOException {
     Path dir = Files.createDirectories(fake.home.snapshots().resolve("pre-import"));
     Path zip = dir.resolve(name);

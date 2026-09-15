@@ -26,15 +26,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Retention pruning of the snapshot tree (spec §5.6, §14 phase 8): applies {@code
- * backups.retentionDays} and {@code backups.maxSnapshots} through {@link SnapshotStore#prune},
- * never touching a run named by {@link RetentionProtection}, then drops the {@code snapshots} rows
- * of every directory it deleted and writes one {@code runs.prune} audit row. Invariants: pruning is
- * not a journaled run, so {@code step_transitions} is never written; a dry run computes the same
- * candidates and mutates nothing, not even the audit trail; {@link #afterSuccessfulRun} is the
- * best-effort automatic form, which additionally protects the run that just finished, skips when
- * the run lock is held and never throws; {@link #prune} is the operator's explicit form and lets
- * I/O failures surface so the command can report them.
+ * Retention pruning of the snapshot tree and the run directories (spec §5.6, §14 phase 8): applies
+ * {@code backups.retentionDays} and {@code backups.maxSnapshots} through {@link
+ * SnapshotStore#prune}, removes the {@code runs/<runId>/} directories of ended runs older than the
+ * retention (issue #53), never touching a run named by {@link RetentionProtection}, then drops the
+ * {@code snapshots} rows of every directory it deleted and writes one {@code runs.prune} audit row.
+ * Invariants: pruning is not a journaled run, so {@code step_transitions} is never written; a dry
+ * run computes the same candidates and mutates nothing, not even the audit trail; {@link
+ * #afterSuccessfulRun} is the best-effort automatic form, which additionally protects the run that
+ * just finished, skips when the run lock is held and never throws; {@link #prune} is the operator's
+ * explicit form and lets I/O failures surface so the command can report them.
  */
 public final class RetentionPruner {
 
@@ -44,6 +45,12 @@ public final class RetentionPruner {
 
   /** Where {@code import} keeps its pre-import zips: {@code snapshots/pre-import/}. */
   static final String PRE_IMPORT_DIR = "pre-import";
+
+  /** Working directories {@code BundleWorkspace} leaves under {@code runs/} when cleanup fails. */
+  static final String VERIFY_PREFIX = "hotfix-verify-";
+
+  /** {@code EmbeddedStep.RUN_SUFFIX}: a re-applied hotfix runs as {@code <runId>-hf-<slug>}. */
+  static final String SUB_RUN_SUFFIX = "-hf-";
 
   /** One snapshot the pruner removed (or, in a dry run, would remove). */
   public record Removed(String id, String runId, String stepId, Path path) {}
@@ -153,6 +160,8 @@ public final class RetentionPruner {
     removed.addAll(loose.removed());
     kept += loose.kept();
     protectedKept += loose.protectedKept();
+    // run directories are listed with what was removed; kept and protected stay snapshot counts
+    removed.addAll(runDirectories(store, protectedRuns, retention, dryRun));
     if (!dryRun) {
       sweepStaleRows(store, protectedRuns);
     }
@@ -271,6 +280,60 @@ public final class RetentionPruner {
       }
     }
     return new Loose(removed, kept, protectedKept);
+  }
+
+  /**
+   * Issue #53: run directories ({@code runs/<runId>/}: bundle copies, staging, stop markers) follow
+   * the protection that keeps their snapshots. A directory goes only when its name is a run the
+   * state store knows, that run has ended and started before the retention cut-off, and neither it
+   * nor the run it is a {@code -hf-} sub-run of is protected. A leftover {@code hotfix-verify-*}
+   * directory goes by age. Any other name under {@code runs/} is never touched. Only what goes is
+   * returned: {@link Result#kept} and {@link Result#protectedCount} stay snapshot counts.
+   */
+  private List<Removed> runDirectories(
+      StateStore store, Set<String> protectedRuns, Duration retention, boolean dryRun)
+      throws IOException {
+    Path root = services.home().runs();
+    if (retention.isZero() || retention.isNegative() || !Files.isDirectory(root)) {
+      return List.of();
+    }
+    Instant cutoff = services.clock().instant().minus(retention);
+    List<Removed> removed = new ArrayList<>();
+    List<Path> entries;
+    try (Stream<Path> listing = Files.list(root)) {
+      entries = listing.filter(Files::isDirectory).sorted().toList();
+    }
+    for (Path entry : entries) {
+      String name = entry.getFileName().toString();
+      boolean expired;
+      if (name.startsWith(VERIFY_PREFIX)) {
+        expired = Files.getLastModifiedTime(entry).toInstant().isBefore(cutoff);
+      } else {
+        Optional<RunRecord> run = store.run(name);
+        if (run.isEmpty() || isProtected(name, protectedRuns)) {
+          continue;
+        }
+        expired = run.get().terminalState().isPresent() && run.get().startedAt().isBefore(cutoff);
+      }
+      if (!expired) {
+        continue;
+      }
+      removed.add(new Removed("runs/" + name, name, "*", entry));
+      if (!dryRun) {
+        LOG.info("pruning run directory {}", entry);
+        Trees.deleteRecursively(entry);
+      }
+    }
+    return removed;
+  }
+
+  private static boolean isProtected(String runId, Set<String> protectedRuns) {
+    for (String p : protectedRuns) {
+      if (runId.equals(p) || runId.startsWith(p + SUB_RUN_SUFFIX)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** True when {@code runDir} holds anything besides manifest snapshot directories. */
