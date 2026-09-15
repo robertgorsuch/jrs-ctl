@@ -302,8 +302,14 @@ class Phase5UpgradeTest {
     Files.createDirectories(buildomatic);
     write(
         buildomatic.resolve("js-export.bat"),
-        "@echo off\r\necho fake export > \"%2\"\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-export.sh"), "#!/bin/sh\necho fake export > \"$2\"\nexit 0\n");
+        "@echo off\r\n"
+            + "echo Processing started\r\n"
+            + "echo fake export > \"%2\"\r\n"
+            + "echo Done\r\n"
+            + "exit /b 0\r\n");
+    write(
+        buildomatic.resolve("js-export.sh"),
+        "#!/bin/sh\necho Processing started\necho fake export > \"$2\"\necho Done\nexit 0\n");
     write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
     write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
     if (webappNew.isEmpty()) {

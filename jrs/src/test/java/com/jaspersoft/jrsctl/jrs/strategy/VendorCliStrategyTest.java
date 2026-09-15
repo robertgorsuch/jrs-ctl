@@ -122,7 +122,10 @@ class VendorCliStrategyTest {
             throw new IllegalStateException(e);
           }
           onLine.accept(
-              new ProcessRunner.OutputLine(ProcessRunner.OutputLine.Stream.STDOUT, "done"));
+              new ProcessRunner.OutputLine(
+                  ProcessRunner.OutputLine.Stream.STDOUT, "Processing started"));
+          onLine.accept(
+              new ProcessRunner.OutputLine(ProcessRunner.OutputLine.Stream.STDOUT, "Done"));
           return new ProcessRunner.Result(0, false, Duration.ofSeconds(2));
         });
     Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
@@ -145,7 +148,7 @@ class VendorCliStrategyTest {
         .contains("--everything", "--users", "--roles", "--include-server-settings");
     assertThat(req.environment()).containsEntry("JAVA_HOME", javaHome.toString());
     assertThat(req.workingDir()).contains(installDir.resolve("buildomatic"));
-    assertThat(fx.sink.logMessages()).contains("done");
+    assertThat(fx.sink.logMessages()).contains("Done");
   }
 
   @Test
@@ -179,7 +182,7 @@ class VendorCliStrategyTest {
   void should_run_js_import_between_stop_and_start_when_import_runs_through_runner()
       throws IOException {
     Files.writeString(tmp.resolve("in.zip"), "PK");
-    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Processing started", "Done");
     Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
     Context ctx = fx.context(config, new FakeJrsAdapter());
 
@@ -208,7 +211,7 @@ class VendorCliStrategyTest {
       throws IOException {
     Files.writeString(tmp.resolve("in.zip"), "PK");
     Path keystore = Files.writeString(tmp.resolve("source.jrsks"), "keystore-bytes");
-    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Processing started", "Done");
     Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
     Context ctx = fx.context(config, new FakeJrsAdapter());
 
@@ -305,6 +308,56 @@ class VendorCliStrategyTest {
 
     assertThat(outcome).isNotInstanceOf(RunOutcome.Succeeded.class);
     assertThat(fx.journal()).contains("import.js-import:FAILED");
+  }
+
+  /**
+   * Issue #40: the validation succeeded, the import command threw, and the wrapper exited 0. The
+   * same step re-imports the pre-import snapshot in a rollback, which then reported the run as
+   * rolled back (exit 3) instead of rollback incomplete (exit 4).
+   */
+  @Test
+  void should_fail_the_import_when_the_import_command_throws_after_validation_and_exits_zero()
+      throws IOException {
+    Files.writeString(tmp.resolve("in.zip"), "PK");
+    fx.processes.exit(
+        0,
+        "BUILD SUCCESSFUL",
+        "Processing started",
+        "2026-09-14T17:33:15,565 ERROR BaseExportImportCommand:45 -"
+            + " java.lang.NullPointerException: entry");
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.importSteps(importRequest(Optional.empty())), ctx);
+
+    assertThat(outcome).isNotInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(fx.journal()).contains("import.js-import:FAILED");
+  }
+
+  @Test
+  void should_remove_the_partial_archive_when_the_export_command_starts_and_never_prints_done() {
+    fx.processes.answer(
+        (request, onLine) -> {
+          int i = request.command().indexOf("--output-zip");
+          try {
+            Files.writeString(Path.of(request.command().get(i + 1)), "PK-half-an-archive");
+          } catch (IOException e) {
+            throw new IllegalStateException(e);
+          }
+          onLine.accept(
+              new ProcessRunner.OutputLine(
+                  ProcessRunner.OutputLine.Stream.STDOUT, "Processing started"));
+          return new ProcessRunner.Result(0, false, Duration.ofSeconds(1));
+        });
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.exportSteps(exportRequest()), ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("never printed Done");
+    assertThat(Files.exists(output)).isFalse();
+    assertThat(Files.exists(RunFiles.partOf(output))).isFalse();
   }
 
   @Test

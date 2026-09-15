@@ -315,7 +315,81 @@ class VendorToolsTest {
 
     VendorRun.Completed c = (VendorRun.Completed) run;
     assertThat(c.reported()).isEqualTo(VendorRun.Reported.SILENT);
+    assertThat(c.processing()).isEqualTo(VendorRun.Processing.NOT_STARTED);
     assertThat(c.ok()).isTrue();
+    assertThat(c.processed()).isFalse();
+  }
+
+  private ImportRequest plainImport() {
+    return new ImportRequest(
+        tmp.resolve("in.zip"),
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty());
+  }
+
+  private VendorRun.Completed importPrinting(String... lines) {
+    runner.exit(0, lines);
+    return (VendorRun.Completed)
+        tools()
+            .importArchive(
+                buildomatic, plainImport(), Optional.empty(), Optional.of(javaHome), sink, scope);
+  }
+
+  /**
+   * Issue #40: Ant's validation succeeded, the import command then threw, and the wrapper still
+   * exited 0, so the import was recorded as done.
+   */
+  @Test
+  void should_report_a_failed_command_when_the_import_throws_after_a_successful_validation() {
+    VendorRun.Completed c =
+        importPrinting(
+            "BUILD SUCCESSFUL",
+            "Processing started",
+            "2026-09-14T17:33:15,565 ERROR BaseExportImportCommand:45 -"
+                + " java.lang.NullPointerException: entry",
+            "Done");
+
+    assertThat(c.exitCode()).isZero();
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.SUCCEEDED);
+    assertThat(c.processing()).isEqualTo(VendorRun.Processing.FAILED);
+    assertThat(c.ok()).isFalse();
+    assertThat(c.processed()).isFalse();
+    assertThat(c.summary()).contains("reported an error");
+    assertThat(sink.logMessages()).anyMatch(m -> m.contains("treating it as a failure"));
+  }
+
+  @Test
+  void should_report_a_processed_run_when_done_follows_processing_started() {
+    VendorRun.Completed plain = importPrinting("BUILD SUCCESSFUL", "Processing started", "Done");
+    VendorRun.Completed prefixed =
+        importPrinting("Processing started", "2026-09-14T17:40:00,001 INFO  command:1 - Done");
+
+    assertThat(plain.processing()).isEqualTo(VendorRun.Processing.COMPLETED);
+    assertThat(plain.processed()).isTrue();
+    assertThat(plain.summary()).isEqualTo("completed");
+    assertThat(prefixed.processing()).isEqualTo(VendorRun.Processing.COMPLETED);
+  }
+
+  @Test
+  void should_not_count_the_run_as_processed_when_done_is_missing_or_comes_before_the_start() {
+    VendorRun.Completed unfinished = importPrinting("BUILD SUCCESSFUL", "Processing started");
+    VendorRun.Completed early = importPrinting("Done", "Processing started");
+    VendorRun.Completed never = importPrinting("BUILD SUCCESSFUL", "Done");
+
+    assertThat(unfinished.processing()).isEqualTo(VendorRun.Processing.UNFINISHED);
+    assertThat(unfinished.ok()).isFalse();
+    assertThat(early.processing()).isEqualTo(VendorRun.Processing.UNFINISHED);
+    assertThat(never.processing()).isEqualTo(VendorRun.Processing.NOT_STARTED);
+    assertThat(never.ok()).isTrue();
+    assertThat(never.processed()).isFalse();
+    assertThat(never.summary()).contains("never printed Processing started");
   }
 
   @Test

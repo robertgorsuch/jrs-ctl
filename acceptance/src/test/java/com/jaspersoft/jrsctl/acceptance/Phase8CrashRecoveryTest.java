@@ -645,7 +645,9 @@ class Phase8CrashRecoveryTest {
               + "ping -n 2 127.0.0.1 >nul\r\n"
               + "goto wait\r\n"
               + ":go\r\n"
+              + "echo Processing started\r\n"
               + "echo fake export > \"%~2\"\r\n"
+              + "echo Done\r\n"
               + "exit /b 0\r\n");
       write(
           buildomatic.resolve("js-export.sh"),
@@ -659,7 +661,9 @@ class Phase8CrashRecoveryTest {
               + "  [ -e \"$CTRL/release.$N\" ] && break\n"
               + "  sleep 1\n"
               + "done\n"
+              + "echo Processing started\n"
               + "echo fake export > \"$2\"\n"
+              + "echo Done\n"
               + "exit 0\n");
       Path bin = Files.createDirectories(tomcat.resolve("bin"));
       if (WINDOWS) {

@@ -28,9 +28,12 @@ import java.util.Optional;
  * ops layer's pre-import snapshot (spec §9.4), which this step cannot do itself. Invariant: this
  * step reports success only on positive evidence from the tool's own output. {@code js-import.sh}
  * guards the import with {@code if [ $? -eq 0 ]} after {@code js-ant validate-database
- * validate-keystore} and has no else branch, so a validation failure imports nothing and exits 0; a
- * run whose transcript never showed a build banner is treated as a failure rather than recorded as
- * a verified import.
+ * validate-keystore} and has no else branch, so a validation failure imports nothing and exits 0;
+ * and Ant's banner belongs to that validation only, while the import command that follows can throw
+ * and the wrapper still exit 0 (issue #40). A run is therefore recorded as an import only when the
+ * validation banner appeared and the import command printed {@code Done} after {@code Processing
+ * started} with no error; this matters most inside the rollback, whose re-import of the pre-import
+ * snapshot must fail loudly rather than report the run as rolled back.
  */
 final class RunJsImport implements Step {
 
@@ -133,13 +136,16 @@ final class RunJsImport implements Step {
 
   /**
    * Turns a finished {@code js-import} into a step result. Anything other than a clean exit with a
-   * build banner that says the validation completed is a failure: the alternative is recording an
-   * import that never touched the repository as verified.
+   * completed validation and a finished import command is a failure: the alternative is recording
+   * an import that never touched the repository as verified.
    */
   private StepResult completed(VendorRun.Completed c) {
-    if (!c.ok()) {
+    if (!c.processed()) {
       return Failures.recoverable(
-          "js-import exited with " + c.exitCode() + ": " + String.join(" | ", c.tail()),
+          "js-import "
+              + c.summary()
+              + ", so the archive may not have been imported: "
+              + String.join(" | ", c.tail()),
           List.of(request.archive()),
           "check the buildomatic log; the pre-import snapshot is re-imported by rollback");
     }

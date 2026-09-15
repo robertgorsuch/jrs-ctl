@@ -169,7 +169,8 @@ final class BackupSteps {
                   out,
                   Logs.scope(ctx, this));
       return switch (run) {
-        case VendorRun.Completed c -> c.ok() ? finish(ctx, out, part, output) : failed(c, part);
+        case VendorRun.Completed c ->
+            c.processed() ? finish(ctx, out, part, output) : failed(c, part);
         case VendorRun.TimedOut t ->
             Failures.recoverable(
                 "js-export did not finish within " + t.timeout().toMinutes() + " minutes",
@@ -200,7 +201,7 @@ final class BackupSteps {
 
     private static StepResult failed(VendorRun.Completed c, Path part) {
       return Failures.recoverable(
-          "js-export exited with " + c.exitCode() + ": " + String.join(" | ", c.tail()),
+          "js-export " + c.summary() + ": " + String.join(" | ", c.tail()),
           "check the buildomatic log and the database connection in default_master.properties",
           List.of(part),
           List.of());

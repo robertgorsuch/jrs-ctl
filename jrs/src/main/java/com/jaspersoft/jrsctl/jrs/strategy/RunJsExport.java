@@ -19,9 +19,10 @@ import java.util.Optional;
 
 /**
  * Runs {@code js-export} with the service stopped, writing to {@code <output>.part} and renaming
- * onto {@code output} when the tool exits 0 and produced a non-empty archive (spec §7.4, §9.2).
- * Mutates only the local filesystem; re-execution overwrites the partial file; compensation deletes
- * the partial and the final archive.
+ * onto {@code output} when the tool exits 0, its export command printed {@code Done} with no error,
+ * and it produced a non-empty archive (spec §7.4, §9.2): the wrapper exits 0 when the command
+ * threw, which could leave a partial archive behind (issue #40). Mutates only the local filesystem;
+ * re-execution overwrites the partial file; compensation deletes the partial and the final archive.
  */
 final class RunJsExport implements Step {
 
@@ -99,7 +100,8 @@ final class RunJsExport implements Step {
             .apply(ctx)
             .export(b.get(), request, part, config.vendor().javaHome(), out, Logs.scope(ctx, this));
     return switch (run) {
-      case VendorRun.Completed c -> c.ok() ? finish(ctx, out, part, output) : failed(c, part);
+      case VendorRun.Completed c ->
+          c.processed() ? finish(ctx, out, part, output) : failed(c, part);
       case VendorRun.TimedOut t ->
           Failures.recoverable(
               "js-export did not finish within " + t.timeout().toMinutes() + " minutes",
@@ -132,7 +134,7 @@ final class RunJsExport implements Step {
 
   private static StepResult failed(VendorRun.Completed c, Path part) {
     return Failures.recoverable(
-        "js-export exited with " + c.exitCode() + ": " + String.join(" | ", c.tail()),
+        "js-export " + c.summary() + ": " + String.join(" | ", c.tail()),
         List.of(part),
         "check the buildomatic log and the database connection in default_master.properties");
   }

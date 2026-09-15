@@ -53,6 +53,16 @@ public final class VendorTools {
   private static final List<String> REPORTED_SUCCESS =
       List.of("build successful", "validation completed");
 
+  /**
+   * The export/import command's own markers, string constants of {@code BaseExportImportCommand} in
+   * {@code jasperserver-export-tool}: matched case-sensitively, the error and the start anywhere in
+   * a line (log4j prefixes a timestamp), {@code Done} as the whole line or its last word.
+   */
+  private static final String PROCESSING_STARTED = "Processing started";
+
+  private static final String PROCESSING_DONE = "Done";
+  private static final String PROCESSING_ERROR = "ERROR BaseExportImportCommand";
+
   private final ProcessRunner runner;
   private final FileOps files;
   private final Redactor redactor;
@@ -327,6 +337,7 @@ public final class VendorTools {
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
     EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);
+    ProcessingMarkers markers = new ProcessingMarkers();
     ProcessRunner.Result result =
         runner.run(
             new ProcessRunner.Request(
@@ -339,6 +350,7 @@ public final class VendorTools {
                 }
                 tail.addLast(text);
                 banner(text).ifPresent(banners::add);
+                markers.accept(text);
               }
               Event.Log.Level level =
                   switch (line.stream()) {
@@ -349,6 +361,7 @@ public final class VendorTools {
             });
     List<String> lines;
     VendorRun.Reported reported;
+    VendorRun.Processing processing;
     synchronized (tail) {
       lines = List.copyOf(tail);
       reported =
@@ -357,6 +370,7 @@ public final class VendorTools {
               : banners.contains(VendorRun.Reported.SUCCEEDED)
                   ? VendorRun.Reported.SUCCEEDED
                   : VendorRun.Reported.SILENT;
+      processing = markers.result();
     }
     if (result.timedOut()) {
       log(
@@ -376,14 +390,51 @@ public final class VendorTools {
             + " after "
             + result.elapsed().toSeconds()
             + "s");
-    if (result.exitCode() == 0 && reported == VendorRun.Reported.FAILED) {
+    VendorRun.Completed completed =
+        new VendorRun.Completed(result.exitCode(), result.elapsed(), lines, reported, processing);
+    if (result.exitCode() == 0 && !completed.ok()) {
       log(
           sink,
           scope,
           Event.Log.Level.ERROR,
-          invocation.script() + " reported a failed build but exited 0; treating it as a failure");
+          invocation.script() + " " + completed.summary() + "; treating it as a failure");
     }
-    return new VendorRun.Completed(result.exitCode(), result.elapsed(), lines, reported);
+    return completed;
+  }
+
+  /**
+   * Follows the export/import command's markers through a transcript in order. An error line wins
+   * over everything; {@code Done} counts only after a {@code Processing started}, and a second
+   * start (a wrapper that runs the command again) needs its own {@code Done}.
+   */
+  private static final class ProcessingMarkers {
+    private boolean started;
+    private boolean done;
+    private boolean failed;
+
+    void accept(String line) {
+      if (line.contains(PROCESSING_ERROR)) {
+        failed = true;
+      } else if (line.contains(PROCESSING_STARTED)) {
+        started = true;
+        done = false;
+      } else if (started) {
+        String stripped = line.strip();
+        if (stripped.equals(PROCESSING_DONE) || stripped.endsWith(" " + PROCESSING_DONE)) {
+          done = true;
+        }
+      }
+    }
+
+    VendorRun.Processing result() {
+      if (failed) {
+        return VendorRun.Processing.FAILED;
+      }
+      if (done) {
+        return VendorRun.Processing.COMPLETED;
+      }
+      return started ? VendorRun.Processing.UNFINISHED : VendorRun.Processing.NOT_STARTED;
+    }
   }
 
   /** The build banner this line carries, if any; failure wins when a line somehow holds both. */

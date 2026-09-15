@@ -143,7 +143,7 @@ class StepIdempotencyTest {
         .isInstanceOf(StepResult.Ok.class);
   }
 
-  /** The tool writes the archive to the path after {@code --output-zip}. */
+  /** The tool writes the archive to the path after {@code --output-zip} and says it is done. */
   private void vendorWritesArchive() {
     fx.processes.answer(
         (request, onLine) -> {
@@ -153,6 +153,11 @@ class StepIdempotencyTest {
           } catch (IOException e) {
             throw new UncheckedIOException(e);
           }
+          onLine.accept(
+              new ProcessRunner.OutputLine(
+                  ProcessRunner.OutputLine.Stream.STDOUT, "Processing started"));
+          onLine.accept(
+              new ProcessRunner.OutputLine(ProcessRunner.OutputLine.Stream.STDOUT, "Done"));
           return new ProcessRunner.Result(0, false, Duration.ofMillis(1));
         });
   }
@@ -305,7 +310,7 @@ class StepIdempotencyTest {
 
   @Test
   void should_invoke_js_import_identically_when_run_js_import_executes_twice() throws IOException {
-    fx.processes.exit(0, "VALIDATION COMPLETED", "Import finished");
+    fx.processes.exit(0, "VALIDATION COMPLETED", "Processing started", "Done");
     Context ctx = ctx();
     Step importStep = new RunJsImport(importRequest(Optional.empty()), vendor);
 

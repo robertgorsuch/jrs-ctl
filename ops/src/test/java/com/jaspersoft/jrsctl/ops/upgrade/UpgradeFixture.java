@@ -175,8 +175,14 @@ public final class UpgradeFixture implements AutoCloseable {
   private void exportScripts(Path buildomatic) throws IOException {
     write(
         buildomatic.resolve("js-export.bat"),
-        "@echo off\r\necho fake export > \"%2\"\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-export.sh"), "#!/bin/sh\necho fake export > \"$2\"\nexit 0\n");
+        "@echo off\r\n"
+            + "echo Processing started\r\n"
+            + "echo fake export > \"%2\"\r\n"
+            + "echo Done\r\n"
+            + "exit /b 0\r\n");
+    write(
+        buildomatic.resolve("js-export.sh"),
+        "#!/bin/sh\necho Processing started\necho fake export > \"$2\"\necho Done\nexit 0\n");
   }
 
   private void targetPackage() throws IOException {
