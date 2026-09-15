@@ -134,7 +134,7 @@ Maven multi-module project. Package root: `com.jaspersoft.jrsctl`.
 | Module | Responsibility | Depends on |
 |---|---|---|
 | `core` | Config, secrets, platform abstraction, state store (incl. journal), snapshots, compat matrix, redaction, event model, engine (`Plan`, `Step`, `Runner`, retry/cancel, `EventBus`), run lock | — |
-| `jrs` | REST v2 client, `JrsAdapter`, capability probes, `ExportImportStrategy` implementations, vendor-tool process wrappers, keystore inspection | `core` |
+| `jrs` | REST v2 client, `JrsAdapter`, capability probes, `ExportImportStrategy` implementations, vendor-tool process wrappers, keystore inspection, the service stop/start/wait steps every plan shares (ADR-0015) | `core` |
 | `ops` | Operation implementations producing Plans (mutating) or Reports (read-only) | `core`, `jrs` |
 | `app` | Picocli commands, `--json` output, progress tree renderer, Javalin console server, SSE endpoint, static UI, support bundle, main entry, shaded JAR | `ops` |
 | `dist` | jlink runtime image, portable ZIP/tar.gz, SBOM, checksum and signing steps (signing executes in CI only) | `app` |
@@ -169,6 +169,8 @@ service:
   name: jasperreportsTomcat             # windows-service / systemd only
   scriptPath: /opt/jasperreports-server/ctlscript.sh   # ctlscript / catalina only
   stopTimeoutSeconds: 180
+  # forceStopAfterSeconds: 60           # ctlscript / catalina only, off when absent, below stopTimeoutSeconds:
+                                        # ends this Tomcat's JVM if it outlives the stop script (ADR-0016)
 database:                               # required only for hotfixes that carry SQL
   type: postgresql                      # postgresql | mysql | oracle | mssql | db2
   url: jdbc:postgresql://localhost:5432/jasperserver

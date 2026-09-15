@@ -14,6 +14,8 @@ hs_err_pid*
 
 # per-developer agent tooling: plugin lists, permissions, worktrees (never shared)
 .claude/
+# JetBrains Junie's per-developer plan store; outcomes worth keeping are recorded under docs/
+.junie/
 
 # live-server scratch home used for manual checks against a real install (never shared)
 /tmp-real-home/
