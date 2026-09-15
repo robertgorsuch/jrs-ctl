@@ -10,7 +10,7 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
-import com.jaspersoft.jrsctl.ops.service.ServiceSteps;
+import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;

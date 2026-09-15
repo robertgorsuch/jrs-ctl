@@ -22,6 +22,9 @@ import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.api.Session;
+import com.jaspersoft.jrsctl.jrs.service.ContextServiceRuntime;
+import com.jaspersoft.jrsctl.jrs.service.ServiceRuntime;
+import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
@@ -372,9 +375,16 @@ class StepIdempotencyTest {
 
   // ---------------------------------------------------------------- service steps
 
+  /**
+   * The shared service steps (jrs.service) resolved from the context, as the vendor strategy does.
+   */
+  private ServiceRuntime.Source runtime() {
+    return ContextServiceRuntime.source(fx.polling.clock(), fx.polling.sleeper());
+  }
+
   @Test
   void should_stop_once_when_stop_service_executes_twice() {
-    Step stop = ServiceSteps.stop("export");
+    Step stop = ServiceSteps.stop(runtime(), "export", "export.stop-service");
     Context ctx = ctx();
 
     executeOk(stop, ctx);
@@ -387,7 +397,7 @@ class StepIdempotencyTest {
 
   @Test
   void should_start_once_when_stop_service_compensates_twice() {
-    Step stop = ServiceSteps.stop("export");
+    Step stop = ServiceSteps.stop(runtime(), "export", "export.stop-service");
     Context ctx = ctx();
     executeOk(stop, ctx);
 
@@ -402,7 +412,7 @@ class StepIdempotencyTest {
   @Test
   void should_start_once_when_start_service_executes_twice() {
     fx.service.stop(Duration.ZERO);
-    Step start = ServiceSteps.start("export");
+    Step start = ServiceSteps.start(runtime(), "export", "export.start-service");
     Context ctx = ctx();
 
     executeOk(start, ctx);
@@ -415,7 +425,7 @@ class StepIdempotencyTest {
   @Test
   void should_stop_once_when_start_service_compensates_twice() {
     fx.service.stop(Duration.ZERO);
-    Step start = ServiceSteps.start("export");
+    Step start = ServiceSteps.start(runtime(), "export", "export.start-service");
     Context ctx = ctx();
     executeOk(start, ctx);
 
@@ -458,7 +468,7 @@ class StepIdempotencyTest {
             new PollExport(fx.polling),
             new PollImport(fx.polling),
             new VerifyImport(),
-            ServiceSteps.waitForServer("export", fx.polling));
+            ServiceSteps.waitForServer(runtime(), "export", "export.wait-for-server"));
     Map<String, String> before = files();
 
     for (Step step : readOnly) {

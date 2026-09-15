@@ -1,10 +1,12 @@
-package com.jaspersoft.jrsctl.ops.service;
+package com.jaspersoft.jrsctl.jrs.service;
 
+import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 
 /**
  * What the shared service steps need from an operation's runtime. Invariants: {@link #controller()}
@@ -25,4 +27,32 @@ public interface ServiceRuntime {
 
   /** {@code serverInfo} from the server, never from a cache. */
   ServerIdentity refreshIdentity();
+
+  /**
+   * Where a step finds its runtime when it runs. An ops operation holds its runtime already and
+   * passes a {@link Fixed} one; a strategy builds its steps before any context exists and resolves
+   * the runtime from the context each step runs in ({@link ContextServiceRuntime}).
+   */
+  @FunctionalInterface
+  interface Source {
+
+    ServiceRuntime at(Context ctx);
+
+    static Source fixed(ServiceRuntime runtime) {
+      return new Fixed(runtime);
+    }
+  }
+
+  /** A runtime known when the plan is built, the same for every context. */
+  record Fixed(ServiceRuntime runtime) implements Source {
+
+    public Fixed {
+      Objects.requireNonNull(runtime, "runtime");
+    }
+
+    @Override
+    public ServiceRuntime at(Context ctx) {
+      return runtime;
+    }
+  }
 }

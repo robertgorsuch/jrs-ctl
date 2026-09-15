@@ -21,8 +21,9 @@ import java.util.function.Supplier;
 
 /**
  * Scripted {@link JrsAdapter} for strategy tests: identity, capabilities and keystore are plain
- * fields; the repository listing used by {@code WaitForServer} answers according to {@code
- * listFolderBehaviour}; the async export/import methods are unsupported (use WireMock for those).
+ * fields; the uncached identity read used by {@code WaitForServer} answers according to {@code
+ * refreshIdentityBehaviour} and the repository listing according to {@code listFolderBehaviour};
+ * the async export/import methods are unsupported (use WireMock for those).
  */
 public final class FakeJrsAdapter implements JrsAdapter {
 
@@ -42,6 +43,8 @@ public final class FakeJrsAdapter implements JrsAdapter {
   public Supplier<Set<Capability>> capabilitySupplier = () -> capabilities;
   public Supplier<List<String>> listFolderBehaviour = () -> List.of("/public");
   public int listFolderCalls;
+  public Supplier<ServerIdentity> refreshIdentityBehaviour = () -> IDENTITY;
+  public int refreshIdentityCalls;
 
   public FakeJrsAdapter withKeystore(KeystoreInfo info) {
     this.keystore = info;
@@ -68,7 +71,8 @@ public final class FakeJrsAdapter implements JrsAdapter {
 
   @Override
   public ServerIdentity refreshIdentity() {
-    return identity();
+    refreshIdentityCalls++;
+    return refreshIdentityBehaviour.get();
   }
 
   @Override

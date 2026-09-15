@@ -165,6 +165,22 @@ class VendorCliStrategyTest {
     assertThat(Files.exists(output)).isFalse();
   }
 
+  /** Issue #43: the vendor copy wrote its stop marker only after a successful stop. */
+  @Test
+  void should_restart_service_during_rollback_when_export_stop_fails_half_way() {
+    fx.service.failStopHalfway();
+    Config config = StrategyFixture.vendorConfig(installDir, Optional.of(javaHome));
+    Context ctx = fx.context(config, new FakeJrsAdapter());
+
+    RunOutcome outcome = fx.run(strategy.exportSteps(exportRequest()), ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(fx.service.calls()).containsExactly("stop", "start");
+    assertThat(fx.service.state())
+        .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.RUNNING);
+    assertThat(fx.processes.requests()).isEmpty();
+  }
+
   @Test
   void should_fail_precheck_without_mutation_when_java_home_missing() {
     Config config = StrategyFixture.vendorConfig(installDir, Optional.empty());

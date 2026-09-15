@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.ops.service;
+package com.jaspersoft.jrsctl.jrs.service;
 
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
@@ -24,16 +24,18 @@ import java.util.Optional;
 import java.util.function.BooleanSupplier;
 
 /**
- * The service stop, start and wait steps of every ops plan: hotfix apply and rollback (spec §8.2
- * steps 6 and 10, §8.3) and upgrade, reconcile and rollback (spec §10.2 steps 4, 9, 11). One
- * implementation, since the two copies that preceded it drifted (review finding 1.13: only one had
- * learnt not to start a service the operator had stopped, and it recorded that fact too late).
- * Invariants: stop and start consult the controller's state first and leave a service already in
- * the wanted state alone; a stop writes a run-scoped marker <em>before</em> it acts, so its
- * compensation starts the service exactly when this run tried to stop it, including a stop that
- * went wrong half-way, and never when the operator had it stopped; a start's compensation stops it
- * again; wait-for-server polls the server through {@link ServiceRuntime#refreshIdentity()} with the
- * spec §6.5 backoff under a ten-minute cap and mutates nothing. A platform that refuses a command
+ * The service stop, start and wait steps of every plan that touches the service: hotfix apply and
+ * rollback (spec §8.2 steps 6 and 10, §8.3), upgrade, reconcile and rollback (spec §10.2 steps 4,
+ * 9, 11) and vendor export and import (spec §7.3, §7.4). One implementation, since every copy that
+ * preceded it drifted (review finding 1.13 for hotfix and upgrade, issue #43 for the vendor
+ * strategy's copy, which recorded its stop too late and waited out a refused command). Invariants:
+ * stop and start consult the controller's state first and leave a service already in the wanted
+ * state alone; a state the controller cannot determine is refused at precheck, before anything is
+ * stopped; a stop writes a run-scoped marker <em>before</em> it acts, so its compensation starts
+ * the service exactly when this run tried to stop it, including a stop that went wrong half-way,
+ * and never when the operator had it stopped; a start's compensation stops it again;
+ * wait-for-server polls the server through {@link ServiceRuntime#refreshIdentity()} with the spec
+ * §6.5 backoff under a ten-minute cap and mutates nothing. A platform that refuses a command
  * outright ({@link ServiceControlException}) fails at once with the rights remediation rather than
  * being waited out (spec §5.3).
  */
@@ -54,15 +56,27 @@ public final class ServiceSteps {
   private ServiceSteps() {}
 
   public static Step stop(ServiceRuntime rt, String phase, String id) {
-    return new StopService(rt, phase, id);
+    return stop(ServiceRuntime.Source.fixed(rt), phase, id);
   }
 
   public static Step start(ServiceRuntime rt, String phase, String id) {
-    return new StartService(rt, phase, id);
+    return start(ServiceRuntime.Source.fixed(rt), phase, id);
   }
 
   public static Step waitForServer(ServiceRuntime rt, String phase, String id) {
-    return new WaitForServer(rt, phase, id);
+    return waitForServer(ServiceRuntime.Source.fixed(rt), phase, id);
+  }
+
+  public static Step stop(ServiceRuntime.Source source, String phase, String id) {
+    return new StopService(source, phase, id);
+  }
+
+  public static Step start(ServiceRuntime.Source source, String phase, String id) {
+    return new StartService(source, phase, id);
+  }
+
+  public static Step waitForServer(ServiceRuntime.Source source, String phase, String id) {
+    return new WaitForServer(source, phase, id);
   }
 
   /** Precheck shared by stop and start: the service must be identifiable and its state known. */
@@ -171,12 +185,12 @@ public final class ServiceSteps {
 
   /** Stops the service; compensation starts it only if this run tried to stop it. */
   private static final class StopService implements Step {
-    private final ServiceRuntime rt;
+    private final ServiceRuntime.Source source;
     private final String phase;
     private final String id;
 
-    StopService(ServiceRuntime rt, String phase, String id) {
-      this.rt = Objects.requireNonNull(rt, "rt");
+    StopService(ServiceRuntime.Source source, String phase, String id) {
+      this.source = Objects.requireNonNull(source, "source");
       this.phase = Objects.requireNonNull(phase, "phase");
       this.id = Objects.requireNonNull(id, "id");
     }
@@ -206,16 +220,21 @@ public final class ServiceSteps {
 
     @Override
     public String detail() {
-      return "timeout " + rt.serviceTimeout().toSeconds() + "s";
+      // A plan built before any context exists (the vendor strategy) cannot read the configured
+      // timeout yet; it names the key instead.
+      return source instanceof ServiceRuntime.Fixed fixed
+          ? "timeout " + fixed.runtime().serviceTimeout().toSeconds() + "s"
+          : "timeout service.stopTimeoutSeconds";
     }
 
     @Override
     public CheckResult precheck(Context ctx) {
-      return controllerCheck(rt);
+      return controllerCheck(source.at(ctx));
     }
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
+      ServiceRuntime rt = source.at(ctx);
       ServiceController.State before;
       try {
         before = rt.controller().state();
@@ -226,9 +245,9 @@ public final class ServiceSteps {
         log(rt, ctx, out, this, Event.Log.Level.INFO, "service already stopped");
         return StepResult.ok();
       }
-      // The marker goes down before the stop is attempted (review 1.13): a stop that goes wrong
-      // half-way must still be undone by starting the service, and nothing has changed yet if the
-      // marker cannot be written.
+      // The marker goes down before the stop is attempted (review 1.13, issue #43): a stop that
+      // goes wrong half-way must still be undone by starting the service, and nothing has changed
+      // yet if the marker cannot be written.
       try {
         Files.createDirectories(marker(ctx).getParent());
         Files.writeString(marker(ctx), "stopped", StandardCharsets.UTF_8);
@@ -242,7 +261,7 @@ public final class ServiceSteps {
 
     @Override
     public CheckResult postcheck(Context ctx) {
-      ServiceController.State s = rt.controller().state();
+      ServiceController.State s = source.at(ctx).controller().state();
       return s == ServiceController.State.STOPPED
           ? CheckResult.pass()
           : CheckResult.fail("service state is " + s + " after stop", "stop the service by hand");
@@ -250,6 +269,7 @@ public final class ServiceSteps {
 
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
+      ServiceRuntime rt = source.at(ctx);
       if (!Files.isRegularFile(marker(ctx))) {
         log(
             rt,
@@ -280,12 +300,12 @@ public final class ServiceSteps {
 
   /** Starts the service; compensation stops it again. */
   private static final class StartService implements Step {
-    private final ServiceRuntime rt;
+    private final ServiceRuntime.Source source;
     private final String phase;
     private final String id;
 
-    StartService(ServiceRuntime rt, String phase, String id) {
-      this.rt = Objects.requireNonNull(rt, "rt");
+    StartService(ServiceRuntime.Source source, String phase, String id) {
+      this.source = Objects.requireNonNull(source, "source");
       this.phase = Objects.requireNonNull(phase, "phase");
       this.id = Objects.requireNonNull(id, "id");
     }
@@ -312,17 +332,17 @@ public final class ServiceSteps {
 
     @Override
     public CheckResult precheck(Context ctx) {
-      return controllerCheck(rt);
+      return controllerCheck(source.at(ctx));
     }
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
-      return start(rt, ctx.cancel()::isCancelled);
+      return start(source.at(ctx), ctx.cancel()::isCancelled);
     }
 
     @Override
     public CheckResult postcheck(Context ctx) {
-      ServiceController.State s = rt.controller().state();
+      ServiceController.State s = source.at(ctx).controller().state();
       return s == ServiceController.State.RUNNING
           ? CheckResult.pass()
           : CheckResult.fail("service state is " + s + " after start", "check the Tomcat log");
@@ -330,18 +350,18 @@ public final class ServiceSteps {
 
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
-      return stop(rt, ctx.cancel()::isCancelled);
+      return stop(source.at(ctx), ctx.cancel()::isCancelled);
     }
   }
 
   /** Polls {@code serverInfo}, uncached, until the server answers; read-only. */
   private static final class WaitForServer implements Step {
-    private final ServiceRuntime rt;
+    private final ServiceRuntime.Source source;
     private final String phase;
     private final String id;
 
-    WaitForServer(ServiceRuntime rt, String phase, String id) {
-      this.rt = Objects.requireNonNull(rt, "rt");
+    WaitForServer(ServiceRuntime.Source source, String phase, String id) {
+      this.source = Objects.requireNonNull(source, "source");
       this.phase = Objects.requireNonNull(phase, "phase");
       this.id = Objects.requireNonNull(id, "id");
     }
@@ -378,6 +398,7 @@ public final class ServiceSteps {
 
     @Override
     public StepResult execute(Context ctx, EventSink out) {
+      ServiceRuntime rt = source.at(ctx);
       RetryPolicy policy = RetryPolicy.HTTP_DEFAULT;
       Duration waited = Duration.ZERO;
       int attempt = 1;

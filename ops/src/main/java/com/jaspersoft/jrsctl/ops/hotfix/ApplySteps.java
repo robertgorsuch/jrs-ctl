@@ -83,6 +83,6 @@ final class ApplySteps {
    *   backup  5     HotfixBackupSteps: TakeSnapshot
    *   apply   7-9   HotfixApplyPhaseSteps: StageFiles, AtomicSwap, ApplySql
    *   record  12    HotfixRecordSteps: RecordInstalled
-   * The service steps of 6 and 10 come from ops.service.ServiceSteps, which the upgrade shares.
+   * The service steps of 6 and 10 come from jrs.service.ServiceSteps, which the upgrade shares.
    */
 }
