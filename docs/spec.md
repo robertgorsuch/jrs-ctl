@@ -396,6 +396,7 @@ sealed interface ExportImportStrategy permits RestStrategy, VendorCliStrategy {
 
 - Locate the installed `buildomatic/` (ADR-0013): `server.buildomaticDir` when set, authoritative even when it cannot be reached (nothing is substituted for it); else `<installDir>/buildomatic`; else a neighbour that holds this platform's `js-ant` and a `default_master.properties`, beside `server.tomcatDir` or `installDir` or inside a `jasperreports-server*` directory under or beside `installDir`, two such neighbours being refused as ambiguous. The upgrade target package's tree is always `<package>/buildomatic`. Verify expected scripts exist for the detected version.
 - Invoke with `ProcessRunner` using `vendor.javaHome` as `JAVA_HOME` and its `bin` first on `PATH` (the wrappers start the export/import command with the first `java` on `PATH` unless a `java` folder sits next to buildomatic), stream stdout/stderr into events (redacted), capture exit code, enforce timeout.
+- Judge a run by the tool's own output as well as its exit code, which the wrappers do not reliably propagate. Ant's `BUILD FAILED`, or the Windows wrappers' `Checking Ant return code: BAD`, is a failure. `js-import` also needs Ant's `BUILD SUCCESSFUL` or `VALIDATION COMPLETED`, which belongs to the validation that runs before the import only. `js-export` and `js-import` succeed only when the export/import command printed `Done` after `Processing started` and logged no `ERROR BaseExportImportCommand`: the command can throw after a successful validation while the wrapper exits 0 (#40).
 - Never modify vendor scripts. Property overrides are written to `default_master.properties` **in the buildomatic directory being invoked** (the upgrade target package's copy for upgrades; a run-scoped copy of the installed buildomatic for export/import). The pre-existing file, if any, is snapshotted first and restored by compensation. Open question Q5 (§19) tracks whether `js-ant` accepts an out-of-directory property file; if it does, prefer that.
 
 ### 7.5 REST client
@@ -522,6 +523,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 - `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root).
 - Rollback re-imports that snapshot. **This is best-effort**: re-import restores overwritten resources but does not delete resources the failed import created. The Plan summary and the operator guide state this explicitly.
+- A snapshot that is a readable archive with entries but no `index.xml` means none of the resources the import targets existed before it. Its rollback is a logged no-op: there is nothing to put back, and the vendor importer throws on such an archive (#41). A re-import that fails leaves the run rollback-incomplete (exit 4).
 
 ### 9.5 Commands
 
