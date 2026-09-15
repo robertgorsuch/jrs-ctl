@@ -60,6 +60,34 @@ class ConfigWriterTest {
   }
 
   @Test
+  void should_round_trip_force_stop_after_seconds_and_omit_it_when_unset() throws IOException {
+    Config base = Config.defaults();
+    Config original =
+        new Config(
+            base.server(),
+            new Config.Service(
+                Optional.of(ServiceConfig.Kind.CATALINA),
+                Optional.empty(),
+                Optional.of(Path.of("/opt/tomcat/bin/catalina.sh")),
+                180,
+                Optional.of(60)),
+            base.database(),
+            base.vendor(),
+            base.network(),
+            base.console(),
+            base.backups(),
+            base.smoke());
+    JrsctlHome home = new JrsctlHome(tmp.resolve("home"));
+
+    ConfigWriter.write(original, home.configFile());
+    Config reloaded = new ConfigLoader().load(home, Map.of(), Map.of());
+
+    assertThat(reloaded).isEqualTo(original);
+    assertThat(ConfigWriter.render(original)).contains("forceStopAfterSeconds: 60");
+    assertThat(ConfigWriter.render(base)).doesNotContain("forceStopAfterSeconds");
+  }
+
+  @Test
   void should_never_emit_secret_values_when_rendering() {
     String yaml = ConfigWriter.render(fullConfig());
 

@@ -272,7 +272,8 @@ public final class ConfigLoader {
             text(service, "name"),
             text(service, "scriptPath").map(v -> path("service.scriptPath", v)),
             integer(service, "stopTimeoutSeconds")
-                .orElse(Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS)),
+                .orElse(Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS),
+            integer(service, "forceStopAfterSeconds")),
         new Config.Database(
             text(database, "type")
                 .map(v -> yamlEnum("database.type", Config.DatabaseType.class, v)),

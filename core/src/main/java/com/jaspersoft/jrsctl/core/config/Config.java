@@ -67,11 +67,32 @@ public record Config(
                     new ConfigException(
                         "service.kind is not set",
                         "run jrsctl init or set service.kind in config.yaml"));
+    if (service.forceStopAfterSeconds().isPresent()) {
+      if (kind != ServiceConfig.Kind.CATALINA && kind != ServiceConfig.Kind.CTLSCRIPT) {
+        throw new ConfigException(
+            "service.forceStopAfterSeconds applies to the catalina and ctlscript kinds only"
+                + " (service.kind is "
+                + Service.kindToYaml(kind)
+                + ")",
+            "remove service.forceStopAfterSeconds, or set service.kind to catalina or ctlscript");
+      }
+      if (service.forceStopAfterSeconds().get() >= service.stopTimeoutSeconds()) {
+        throw new ConfigException(
+            "service.forceStopAfterSeconds ("
+                + service.forceStopAfterSeconds().get()
+                + ") must be below service.stopTimeoutSeconds ("
+                + service.stopTimeoutSeconds()
+                + ")",
+            "lower service.forceStopAfterSeconds or raise service.stopTimeoutSeconds, so the"
+                + " forced stop has time to take effect");
+      }
+    }
     return new ServiceConfig(
         kind,
         service.name(),
         service.scriptPath(),
-        Duration.ofSeconds(service.stopTimeoutSeconds()));
+        Duration.ofSeconds(service.stopTimeoutSeconds()),
+        service.forceStopAfterSeconds().map(Duration::ofSeconds));
   }
 
   /** {@code server.auth.mode}. */
@@ -197,12 +218,15 @@ public record Config(
 
   /**
    * The {@code service:} block; {@code kind} spellings follow the YAML ({@code windows-service}).
+   * {@code forceStopAfterSeconds} is off when absent; whether it fits the kind and the stop timeout
+   * is checked by {@link Config#toServiceConfig()}, where the other service rules live (ADR-0016).
    */
   public record Service(
       Optional<ServiceConfig.Kind> kind,
       Optional<String> name,
       Optional<Path> scriptPath,
-      int stopTimeoutSeconds) {
+      int stopTimeoutSeconds,
+      Optional<Integer> forceStopAfterSeconds) {
 
     public static final int DEFAULT_STOP_TIMEOUT_SECONDS = 180;
 
@@ -210,9 +234,22 @@ public record Config(
       Objects.requireNonNull(kind, "kind");
       Objects.requireNonNull(name, "name");
       Objects.requireNonNull(scriptPath, "scriptPath");
+      Objects.requireNonNull(forceStopAfterSeconds, "forceStopAfterSeconds");
       if (stopTimeoutSeconds < 1) {
         throw new IllegalArgumentException("stopTimeoutSeconds must be >= 1");
       }
+      if (forceStopAfterSeconds.isPresent() && forceStopAfterSeconds.get() < 1) {
+        throw new IllegalArgumentException("forceStopAfterSeconds must be >= 1");
+      }
+    }
+
+    /** A service block without {@code forceStopAfterSeconds}. */
+    public Service(
+        Optional<ServiceConfig.Kind> kind,
+        Optional<String> name,
+        Optional<Path> scriptPath,
+        int stopTimeoutSeconds) {
+      this(kind, name, scriptPath, stopTimeoutSeconds, Optional.empty());
     }
 
     public static Service empty() {

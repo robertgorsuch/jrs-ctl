@@ -99,7 +99,9 @@ abstract class AbstractPlatform implements Platform {
               cfg.kind(),
               required(cfg.scriptPath(), "scriptPath"),
               tomcats,
-              PollingServiceController.DEFAULT_POLL_INTERVAL);
+              PollingServiceController.DEFAULT_POLL_INTERVAL,
+              cfg.forceStopAfter(),
+              ScriptServiceController.ProcessTerminator.FORCIBLY);
       case MANUAL ->
           new ManualServiceController(
               runner, prompt, installDir, tomcats, PollingServiceController.DEFAULT_POLL_INTERVAL);

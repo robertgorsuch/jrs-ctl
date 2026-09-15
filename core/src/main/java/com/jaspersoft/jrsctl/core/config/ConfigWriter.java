@@ -81,6 +81,9 @@ public final class ConfigWriter {
     c.service().name().ifPresent(v -> service.put("name", v));
     path(c.service().scriptPath(), service, "scriptPath");
     service.put("stopTimeoutSeconds", c.service().stopTimeoutSeconds());
+    c.service()
+        .forceStopAfterSeconds()
+        .ifPresent(v -> service.put("forceStopAfterSeconds", v.intValue()));
 
     ObjectNode database = root.putObject("database");
     c.database().type().ifPresent(v -> database.put("type", v.yamlValue()));

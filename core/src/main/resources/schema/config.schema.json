@@ -34,7 +34,8 @@
         "kind": { "type": "string", "enum": ["windows-service", "systemd", "ctlscript", "catalina", "manual"] },
         "name": { "type": "string" },
         "scriptPath": { "type": "string" },
-        "stopTimeoutSeconds": { "type": "integer", "minimum": 1, "default": 180 }
+        "stopTimeoutSeconds": { "type": "integer", "minimum": 1, "default": 180 },
+        "forceStopAfterSeconds": { "type": "integer", "minimum": 1 }
       }
     },
     "database": {

@@ -281,6 +281,90 @@ class ConfigLoaderTest {
         .hasMessageContaining("cannot parse");
   }
 
+  @Test
+  void should_carry_force_stop_after_seconds_into_service_config_when_kind_is_catalina()
+      throws IOException {
+    write(
+        """
+        service:
+          kind: catalina
+          scriptPath: /opt/tomcat/bin/catalina.sh
+          stopTimeoutSeconds: 180
+          forceStopAfterSeconds: 60
+        """);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThat(c.service().forceStopAfterSeconds()).contains(60);
+    assertThat(c.toServiceConfig().forceStopAfter()).contains(Duration.ofSeconds(60));
+  }
+
+  @Test
+  void should_leave_force_stop_off_when_the_key_is_absent() throws IOException {
+    write(
+        """
+        service:
+          kind: catalina
+          scriptPath: /opt/tomcat/bin/catalina.sh
+        """);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThat(c.service().forceStopAfterSeconds()).isEmpty();
+    assertThat(c.toServiceConfig().forceStopAfter()).isEmpty();
+    assertThat(Config.defaults().service().forceStopAfterSeconds()).isEmpty();
+  }
+
+  @Test
+  void should_refuse_force_stop_after_seconds_when_kind_is_not_a_script_kind() throws IOException {
+    write(
+        """
+        service:
+          kind: windows-service
+          name: jasperreportsTomcat
+          forceStopAfterSeconds: 60
+        """);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThatThrownBy(c::toServiceConfig)
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("service.forceStopAfterSeconds")
+        .hasMessageContaining("windows-service");
+  }
+
+  @Test
+  void should_refuse_force_stop_after_seconds_when_not_below_the_stop_timeout() throws IOException {
+    write(
+        """
+        service:
+          kind: ctlscript
+          scriptPath: /opt/jrs/ctlscript.sh
+          stopTimeoutSeconds: 60
+          forceStopAfterSeconds: 60
+        """);
+
+    Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
+
+    assertThatThrownBy(c::toServiceConfig)
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("service.stopTimeoutSeconds");
+  }
+
+  @Test
+  void should_report_a_violation_when_force_stop_after_seconds_is_zero() throws IOException {
+    write(
+        """
+        service:
+          kind: catalina
+          scriptPath: /opt/tomcat/bin/catalina.sh
+          forceStopAfterSeconds: 0
+        """);
+
+    assertThatThrownBy(() -> loader.load(new JrsctlHome(tmp), Map.of(), Map.of()))
+        .isInstanceOf(ConfigException.class);
+  }
+
   private void write(String yaml) throws IOException {
     Files.writeString(new JrsctlHome(tmp).configFile(), yaml, StandardCharsets.UTF_8);
   }
