@@ -50,6 +50,15 @@ final class ConsoleFixture implements AutoCloseable {
   static ConsoleFixture start(Path home, Clock clock, Function<Services, OperationCatalog> catalog)
       throws IOException {
     Files.createDirectories(home);
+    // The install dir needs a server.xml so the manual service kind knows this Tomcat's ports;
+    // without it an unrelated JVM of another account (a Java service on the build host) makes the
+    // state unknown instead of stopped and the golden depends on the machine (ADR-0014).
+    Path conf = Files.createDirectories(home.resolve("conf"));
+    Files.writeString(
+        conf.resolve("server.xml"),
+        "<Server port=\"18005\" shutdown=\"SHUTDOWN\"><Service name=\"Catalina\">"
+            + "<Connector port=\"18089\" protocol=\"HTTP/1.1\"/></Service></Server>\n",
+        StandardCharsets.UTF_8);
     Files.writeString(
         home.resolve("config.yaml"),
         """

@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -40,7 +41,8 @@ public final class ManualServiceController extends PollingServiceController {
 
   @Override
   public State state() {
-    return TomcatState.of(processes, installDir);
+    return TomcatState.of(
+        processes, installDir, installDir.map(ServerXml::portsUnder).orElse(Set.of()));
   }
 
   @Override

@@ -13,10 +13,13 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * {@link TomcatProcessFinder} over {@link ProcessHandle#allProcesses()}. Invariants: the scan never
- * throws (processes the current user cannot inspect are skipped); {@code catalina.home} and {@code
- * catalina.base} are read from {@code -D} arguments; the working directory is only known on Linux,
- * from {@code /proc/<pid>/cwd}, and only for processes of the same user.
+ * {@link TomcatProcessFinder} over {@link ProcessHandle#allProcesses()}, for Linux, where the JDK
+ * reads command lines from {@code /proc}. Invariants: the scan never throws (processes the current
+ * user cannot inspect are skipped); {@code catalina.home} and {@code catalina.base} are read from
+ * {@code -D} arguments; the working directory is only known on Linux, from {@code /proc/<pid>/cwd},
+ * and only for processes of the same user. On Windows the JDK returns no command line for any
+ * process, so Windows uses {@link WindowsTomcatProcesses} instead (issue #38); {@link #describe} is
+ * the recognition rule both share.
  */
 final class TomcatProcesses implements TomcatProcessFinder {
 
@@ -41,8 +44,22 @@ final class TomcatProcesses implements TomcatProcessFinder {
 
   private static Optional<TomcatProcess> describe(ProcessHandle handle) {
     ProcessHandle.Info info = handle.info();
-    String commandLine = commandLine(info);
-    String command = info.command().orElse("");
+    return describe(handle.pid(), commandLine(info), info.command().orElse(""))
+        .map(
+            t ->
+                new TomcatProcess(
+                    t.pid(),
+                    t.commandLine(),
+                    t.catalinaHome(),
+                    t.catalinaBase(),
+                    workingDir(handle.pid())));
+  }
+
+  /**
+   * The Tomcat recognised in one process, or empty when it is not a Tomcat: {@code catalina} in the
+   * command line, or a {@code tomcatN.exe} service wrapper, whose home is two levels above it.
+   */
+  static Optional<TomcatProcess> describe(long pid, String commandLine, String command) {
     boolean isTomcat =
         commandLine.toLowerCase(Locale.ROOT).contains("catalina")
             || SERVICE_WRAPPER.matcher(command).find();
@@ -65,8 +82,7 @@ final class TomcatProcesses implements TomcatProcessFinder {
       // procrun lives in <tomcat>/bin/tomcat9.exe
       home = parsePath(command).map(Path::getParent).map(Path::getParent);
     }
-    return Optional.of(
-        new TomcatProcess(handle.pid(), commandLine, home, base, workingDir(handle.pid())));
+    return Optional.of(new TomcatProcess(pid, commandLine, home, base, Optional.empty()));
   }
 
   private static String commandLine(ProcessHandle.Info info) {

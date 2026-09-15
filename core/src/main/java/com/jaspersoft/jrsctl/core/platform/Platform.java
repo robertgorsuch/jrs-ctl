@@ -39,6 +39,16 @@ public interface Platform {
   /** Places {@code init} should look for an installation, most likely first. */
   List<Path> candidateInstallDirs();
 
+  /**
+   * A platform whose process-based service controllers ({@code manual}, and {@code systemd}'s
+   * lingering-JVM check) judge the Tomcat under {@code installDir} rather than any Tomcat on the
+   * host. The real platforms return a copy; the default returns this platform unchanged, which is
+   * what test fakes without process scanning need.
+   */
+  default Platform withInstallDir(Path installDir) {
+    return this;
+  }
+
   enum OsFamily {
     WINDOWS,
     LINUX

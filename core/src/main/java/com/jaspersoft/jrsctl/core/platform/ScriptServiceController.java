@@ -65,9 +65,13 @@ public final class ScriptServiceController extends PollingServiceController {
     return watchedDir;
   }
 
+  /**
+   * Process-based; the ports of the watched Tomcat's {@code server.xml} decide whether a JVM that
+   * cannot be inspected might be it (ADR-0014).
+   */
   @Override
   public State state() {
-    return TomcatState.of(processes, Optional.of(watchedDir));
+    return TomcatState.of(processes, Optional.of(watchedDir), ServerXml.portsUnder(watchedDir));
   }
 
   @Override

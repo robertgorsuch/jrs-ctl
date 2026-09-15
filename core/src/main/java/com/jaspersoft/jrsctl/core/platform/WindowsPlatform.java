@@ -31,7 +31,17 @@ public final class WindowsPlatform extends AbstractPlatform {
           "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
 
   public WindowsPlatform(Arch arch, ProcessRunner runner, FileOps files, OperatorPrompt prompt) {
-    this(arch, runner, files, prompt, Optional.empty(), TomcatProcesses.INSTANCE);
+    this(arch, runner, files, prompt, new WindowsTomcatProcesses(runner));
+  }
+
+  /** With the process finder shared by this platform and its file operations (issue #38). */
+  WindowsPlatform(
+      Arch arch,
+      ProcessRunner runner,
+      FileOps files,
+      OperatorPrompt prompt,
+      TomcatProcessFinder tomcats) {
+    this(arch, runner, files, prompt, Optional.empty(), tomcats);
   }
 
   private WindowsPlatform(

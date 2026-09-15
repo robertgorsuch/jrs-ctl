@@ -40,7 +40,10 @@ public final class Platforms {
     Platform.Arch arch = arch(osArch);
     ProcessRunner runner = new DefaultProcessRunner();
     return switch (os) {
-      case WINDOWS -> new WindowsPlatform(arch, runner, new WindowsFileOps(), prompt);
+      case WINDOWS -> {
+        TomcatProcessFinder tomcats = new WindowsTomcatProcesses(runner);
+        yield new WindowsPlatform(arch, runner, new WindowsFileOps(tomcats), prompt, tomcats);
+      }
       case LINUX -> new LinuxPlatform(arch, runner, new LinuxFileOps(), prompt);
     };
   }

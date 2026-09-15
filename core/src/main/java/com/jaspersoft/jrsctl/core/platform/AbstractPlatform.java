@@ -51,6 +51,7 @@ abstract class AbstractPlatform implements Platform {
   }
 
   /** A copy that watches the Tomcat under {@code installDir} for {@code service.kind: manual}. */
+  @Override
   public abstract Platform withInstallDir(Path installDir);
 
   @Override
@@ -93,8 +94,15 @@ abstract class AbstractPlatform implements Platform {
               installDir,
               PollingServiceController.DEFAULT_POLL_INTERVAL);
       case CTLSCRIPT, CATALINA ->
-          new ScriptServiceController(runner, cfg.kind(), required(cfg.scriptPath(), "scriptPath"));
-      case MANUAL -> new ManualServiceController(runner, prompt, installDir);
+          new ScriptServiceController(
+              runner,
+              cfg.kind(),
+              required(cfg.scriptPath(), "scriptPath"),
+              tomcats,
+              PollingServiceController.DEFAULT_POLL_INTERVAL);
+      case MANUAL ->
+          new ManualServiceController(
+              runner, prompt, installDir, tomcats, PollingServiceController.DEFAULT_POLL_INTERVAL);
     };
   }
 
@@ -171,7 +179,14 @@ abstract class AbstractPlatform implements Platform {
   /** Install dirs of running Tomcats, derived from catalina.home/base and working directory. */
   final List<Path> installDirsFromProcesses() {
     List<Path> found = new ArrayList<>();
-    for (TomcatProcessFinder.TomcatProcess tomcat : tomcats.find()) {
+    List<TomcatProcessFinder.TomcatProcess> running;
+    try {
+      running = tomcats.find();
+    } catch (TomcatScanException e) {
+      LOG.debug("no install dirs from running Tomcats: {}", e.getMessage());
+      return found;
+    }
+    for (TomcatProcessFinder.TomcatProcess tomcat : running) {
       Stream.of(tomcat.catalinaBase(), tomcat.catalinaHome(), tomcat.workingDir())
           .flatMap(Optional::stream)
           .flatMap(p -> installDirAround(p).stream())

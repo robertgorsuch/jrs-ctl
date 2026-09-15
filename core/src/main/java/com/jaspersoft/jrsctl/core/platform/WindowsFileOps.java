@@ -62,7 +62,7 @@ public final class WindowsFileOps extends DefaultFileOps {
   private final TomcatProcessFinder processes;
 
   public WindowsFileOps() {
-    this(TomcatProcesses.INSTANCE);
+    this(new WindowsTomcatProcesses(new DefaultProcessRunner()));
   }
 
   WindowsFileOps(TomcatProcessFinder processes) {
@@ -189,7 +189,14 @@ public final class WindowsFileOps extends DefaultFileOps {
   @Override
   public Optional<String> lockHolder(Path file) {
     Path absolute = file.toAbsolutePath().normalize();
-    for (TomcatProcessFinder.TomcatProcess tomcat : processes.find()) {
+    List<TomcatProcessFinder.TomcatProcess> tomcats;
+    try {
+      tomcats = processes.find();
+    } catch (TomcatScanException e) {
+      LOG.debug("cannot name the holder of {}: {}", file, e.getMessage());
+      return Optional.empty();
+    }
+    for (TomcatProcessFinder.TomcatProcess tomcat : tomcats) {
       boolean holds =
           tomcat.catalinaHome().map(absolute::startsWith).orElse(false)
               || tomcat.catalinaBase().map(absolute::startsWith).orElse(false);

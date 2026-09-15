@@ -214,7 +214,7 @@ class Phase5UpgradeTest {
     write(webapp.resolve("META-INF").resolve("context.xml"), "<Context/>");
     write(
         tomcat.resolve("conf").resolve("server.xml"),
-        "<Server><Service><Connector port=\"8080\" protocol=\"HTTP/1.1\"/></Service></Server>");
+        "<Server><Service><Connector port=\"18080\" protocol=\"HTTP/1.1\"/></Service></Server>");
     write(
         tomcat
             .resolve("conf")
