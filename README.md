@@ -1,6 +1,6 @@
 # jrsctl
 
-**The safe way to look after JasperReports Server.** From Actian Jaspersoft.
+**The safe way to look after JasperReports Server.** From  Jaspersoft.
 
 jrsctl checks your server's health, installs hotfixes, backs up and moves report content between servers, and upgrades the server to a new version. Before it changes anything it shows you exactly what it will do and asks you to confirm. If something fails partway, it puts things back the way they were.
 
