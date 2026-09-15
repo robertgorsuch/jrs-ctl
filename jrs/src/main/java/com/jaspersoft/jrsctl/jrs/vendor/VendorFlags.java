@@ -58,4 +58,13 @@ public final class VendorFlags {
    * first.
    */
   public static final String PATH = "PATH";
+
+  /** Environment variable every vendor wrapper appends to the tool's JVM command line. */
+  public static final String JAVA_OPTS = "JAVA_OPTS";
+
+  /**
+   * System property naming the Spring cache profile the export and import tools activate. {@code
+   * js-export.bat} never sets it (issue #39).
+   */
+  public static final String CACHE_PROVIDER_PROPERTY = "js.cache.provider";
 }

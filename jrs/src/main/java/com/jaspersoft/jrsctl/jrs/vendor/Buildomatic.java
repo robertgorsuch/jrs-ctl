@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.jrs.vendor;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -10,6 +11,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -31,6 +34,9 @@ public record Buildomatic(
   public static final String ANT_SCRIPT = "js-ant";
   public static final List<String> SCRIPT_NAMES = List.of(EXPORT_SCRIPT, IMPORT_SCRIPT, ANT_SCRIPT);
   public static final String MASTER_PROPERTIES = "default_master.properties";
+  public static final String CACHE_PROPERTIES = "cache.properties";
+  public static final String DEFAULT_CACHE_PROVIDER = "infinispan";
+  private static final Pattern PROFILE_NAME = Pattern.compile("[A-Za-z0-9._-]+");
 
   public Buildomatic {
     Objects.requireNonNull(dir, "dir");
@@ -77,5 +83,35 @@ public record Buildomatic(
 
   public Optional<JdbcDriverDir> driverDir(Config.DatabaseType type) {
     return driverDir(type.yamlValue());
+  }
+
+  /**
+   * The Spring cache profile the vendor export and import tools must activate: {@code
+   * js.cache.provider} from {@code build_conf/default/cache.properties}, else from {@code
+   * conf_source/iePro/cache.properties}, else {@link #DEFAULT_CACHE_PROVIDER}, which is what 10.0.0
+   * ships. A value that is not a plain profile name is ignored, so nothing but a single {@code -D}
+   * option ever reaches {@code JAVA_OPTS}.
+   */
+  public String cacheProvider() {
+    List<Path> candidates =
+        List.of(
+            dir.resolve("build_conf").resolve("default").resolve(CACHE_PROPERTIES),
+            dir.resolve("conf_source").resolve("iePro").resolve(CACHE_PROPERTIES));
+    for (Path candidate : candidates) {
+      if (!Files.isRegularFile(candidate)) {
+        continue;
+      }
+      Properties properties = new Properties();
+      try (InputStream in = Files.newInputStream(candidate)) {
+        properties.load(in);
+      } catch (IOException | IllegalArgumentException e) {
+        continue;
+      }
+      String value = properties.getProperty(VendorFlags.CACHE_PROVIDER_PROPERTY, "").strip();
+      if (PROFILE_NAME.matcher(value).matches()) {
+        return value;
+      }
+    }
+    return DEFAULT_CACHE_PROVIDER;
   }
 }

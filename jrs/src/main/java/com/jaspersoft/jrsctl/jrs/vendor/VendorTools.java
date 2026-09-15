@@ -284,6 +284,21 @@ public final class VendorTools {
    * Windows spells it {@code Path}), joined with {@code ;} for batch wrappers and {@code :} for
    * shell ones.
    */
+  /**
+   * The inherited {@code JAVA_OPTS} with {@code -Djs.cache.provider=<provider>} appended, or the
+   * inherited value unchanged when it already names that property, so an operator's own choice
+   * wins.
+   */
+  static String javaOptsWith(Map<String, String> inherited, String provider) {
+    String current = inherited.getOrDefault(VendorFlags.JAVA_OPTS, "").strip();
+    String prefix = "-D" + VendorFlags.CACHE_PROVIDER_PROPERTY + "=";
+    if (current.contains(prefix)) {
+      return current;
+    }
+    String flag = prefix + provider;
+    return current.isEmpty() ? flag : current + " " + flag;
+  }
+
   static String pathWithJavaFirst(Path javaHome, Map<String, String> inherited, boolean batch) {
     String separator = batch ? ";" : ":";
     String bin = javaHome.resolve("bin").toString();
@@ -328,12 +343,17 @@ public final class VendorTools {
     // The wrappers launch ExportCommand/ImportCommand with the first java on PATH unless a java
     // folder sits next to buildomatic, so a relocated tree ran on the machine's default JDK (#31).
     Path javaHome = invocation.javaHome().get();
+    Map<String, String> inherited = System.getenv();
+    // js-export.bat never passes js.cache.provider, so ExportCommand's Spring context failed with
+    // "Invalid profile [null]" on every Windows host (#39); every wrapper appends %JAVA_OPTS%.
     Map<String, String> env =
         Map.of(
             VendorFlags.JAVA_HOME,
             javaHome.toString(),
             VendorFlags.PATH,
-            pathWithJavaFirst(javaHome, System.getenv(), batch));
+            pathWithJavaFirst(javaHome, inherited, batch),
+            VendorFlags.JAVA_OPTS,
+            javaOptsWith(inherited, invocation.buildomatic().cacheProvider()));
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
     EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);

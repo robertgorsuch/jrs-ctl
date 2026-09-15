@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -197,6 +198,23 @@ class VendorToolsTest {
         .containsExactly("--keystore", "k.jrsks");
   }
 
+  /** Issue #39: js-export.bat never passes js.cache.provider; the wrappers append JAVA_OPTS. */
+  @Test
+  void should_add_cache_provider_to_java_opts_when_inherited_java_opts_lacks_it() {
+    assertThat(VendorTools.javaOptsWith(Map.of(), "infinispan"))
+        .isEqualTo("-Djs.cache.provider=infinispan");
+    assertThat(VendorTools.javaOptsWith(Map.of("JAVA_OPTS", " -Xmx2g "), "infinispan"))
+        .isEqualTo("-Xmx2g -Djs.cache.provider=infinispan");
+  }
+
+  @Test
+  void should_keep_inherited_java_opts_when_it_already_names_the_cache_provider() {
+    assertThat(
+            VendorTools.javaOptsWith(
+                Map.of("JAVA_OPTS", "-Djs.cache.provider=ehcache -Xmx1g"), "infinispan"))
+        .isEqualTo("-Djs.cache.provider=ehcache -Xmx1g");
+  }
+
   @Test
   void should_pass_java_home_and_buildomatic_working_dir_when_running_export() {
     runner.exit(0, "Export finished");
@@ -225,6 +243,7 @@ class VendorToolsTest {
     assertThat(req.workingDir()).contains(buildomatic.dir());
     assertThat(req.environment()).containsEntry("JAVA_HOME", javaHome.toString());
     assertThat(req.environment().get("PATH")).startsWith(javaHome.resolve("bin").toString());
+    assertThat(req.environment().get("JAVA_OPTS")).contains("-Djs.cache.provider=");
     assertThat(req.timeout()).isEqualTo(VendorTools.DEFAULT_TIMEOUT);
     assertThat(sink.logMessages()).contains("Export finished");
     assertThat(sink.of(Event.Log.class))
