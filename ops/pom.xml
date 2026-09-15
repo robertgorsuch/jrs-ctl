@@ -18,7 +18,7 @@
          and 79.6 on Linux, so the floor is the honest number for both hosts rather than an
          artefact of one. Raising it to 0.80 means covering SmokeOperation,
          DefaultUpgradeOperations and RunVendorUpgrade. -->
-    <jacoco.line.minimum>0.78</jacoco.line.minimum>
+    <jacoco.line.minimum>0.80</jacoco.line.minimum>
   </properties>
 
   <dependencies>

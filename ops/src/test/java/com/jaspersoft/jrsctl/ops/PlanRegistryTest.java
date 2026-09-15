@@ -8,9 +8,15 @@ import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
+import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.io.IOException;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -142,6 +148,169 @@ class PlanRegistryTest {
     assertThatThrownBy(() -> registry.rebuild(PlanRegistry.HOTFIX_APPLY, "not json at all"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("not JSON");
+  }
+
+  // ---------------------------------------------------------------- rebuild through the registry
+
+  private final Recorder hotfix = new Recorder();
+  private final Recorder exim = new Recorder();
+  private final Recorder upgrade = new Recorder();
+
+  private PlanRegistry registry() {
+    return new PlanRegistry(
+        () -> hotfix.as(HotfixOperations.class),
+        () -> exim.as(ExportImportOperations.class),
+        () -> upgrade.as(UpgradeOperations.class));
+  }
+
+  @Test
+  void should_plan_the_same_upgrade_when_rebuilding_from_the_stored_arguments() {
+    UpgradeOperations.UpgradeOptions options =
+        new UpgradeOperations.UpgradeOptions(
+            "10.1.0", Path.of("packages", "jrs-10.1.0"), UpgradeOperations.Mode.SAMEDB, true, true);
+
+    registry().rebuild(PlanRegistry.UPGRADE, PlanRegistry.upgradeArgs(options));
+
+    assertThat(upgrade.calls).containsExactly("planUpgrade");
+    assertThat(upgrade.args.get(0)).containsExactly(options);
+  }
+
+  @Test
+  void should_plan_the_same_upgrade_rollback_when_rebuilding_from_the_stored_arguments() {
+    registry()
+        .rebuild(
+            PlanRegistry.UPGRADE_ROLLBACK,
+            PlanRegistry.upgradeRollbackArgs("r-20260914", UpgradeOperations.RollbackPoint.C));
+
+    assertThat(upgrade.calls).containsExactly("planRollback");
+    assertThat(upgrade.args.get(0))
+        .containsExactly("r-20260914", UpgradeOperations.RollbackPoint.C);
+  }
+
+  @Test
+  void should_plan_the_same_hotfix_apply_when_rebuilding_from_the_stored_arguments() {
+    Path bundle = Path.of("bundles", "hf-1.zip");
+
+    registry().rebuild(PlanRegistry.HOTFIX_APPLY, PlanRegistry.applyArgs(bundle, true));
+
+    assertThat(hotfix.calls).containsExactly("planApply");
+    assertThat(hotfix.args.get(0))
+        .containsExactly(
+            bundle.toAbsolutePath().normalize(), new HotfixOperations.ApplyOptions(true));
+  }
+
+  @Test
+  void should_plan_the_same_hotfix_rollback_when_rebuilding_from_the_stored_arguments() {
+    registry().rebuild(PlanRegistry.HOTFIX_ROLLBACK, PlanRegistry.rollbackArgs("hf-1", true));
+
+    assertThat(hotfix.calls).containsExactly("planRollback");
+    assertThat(hotfix.args.get(0))
+        .containsExactly("hf-1", new HotfixOperations.RollbackOptions(true));
+  }
+
+  @Test
+  void should_plan_the_same_export_when_rebuilding_from_the_stored_arguments() {
+    ExportImportOperations.ExportOptions options =
+        new ExportImportOperations.ExportOptions(
+            Set.of("/public", "/organizations"),
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            Path.of("out", "export.zip").toAbsolutePath().normalize(),
+            Optional.of(ExportImportStrategy.Kind.REST));
+
+    registry().rebuild(PlanRegistry.EXPORT, PlanRegistry.exportArgs(options));
+
+    assertThat(exim.calls).containsExactly("planExport");
+    assertThat(exim.args.get(0)).containsExactly(options);
+  }
+
+  @Test
+  void should_ignore_blank_and_non_text_uris_when_reading_export_arguments() throws IOException {
+    ExportImportOperations.ExportOptions options =
+        PlanRegistry.exportOptions(
+            tree("{\"uris\":[\"/public\",\" \",5],\"out\":\"export.zip\",\"strategy\":null}"));
+
+    assertThat(options.uris()).containsExactly("/public");
+    assertThat(options.strategy()).isEmpty();
+    assertThat(options.usersRoles()).isFalse();
+  }
+
+  @Test
+  void should_plan_the_same_import_when_rebuilding_from_the_stored_arguments() {
+    ExportImportOperations.ImportOptions withKeystore =
+        new ExportImportOperations.ImportOptions(
+            Path.of("in", "import.zip").toAbsolutePath().normalize(),
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            true,
+            Optional.of(Path.of("keys", "source.jrsks").toAbsolutePath().normalize()),
+            Optional.of(SecretRef.parse("env:KEYSTORE_PASSWORD")),
+            Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
+    ExportImportOperations.ImportOptions plain =
+        new ExportImportOperations.ImportOptions(
+            Path.of("in", "plain.zip").toAbsolutePath().normalize(),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+
+    registry().rebuild(PlanRegistry.IMPORT, PlanRegistry.importArgs(withKeystore));
+    registry().rebuild(PlanRegistry.IMPORT, PlanRegistry.importArgs(plain));
+
+    assertThat(exim.calls).containsExactly("planImport", "planImport");
+    assertThat(exim.args.get(0)).containsExactly(withKeystore);
+    assertThat(exim.args.get(1)).containsExactly(plain);
+  }
+
+  @Test
+  void should_name_the_missing_field_when_stored_arguments_lack_a_required_one() {
+    assertThatThrownBy(() -> registry().rebuild(PlanRegistry.UPGRADE, "{\"to\":\"10.1.0\"}"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'package'");
+    assertThatThrownBy(() -> registry().rebuild(PlanRegistry.HOTFIX_ROLLBACK, "{\"id\":\"  \"}"))
+        .as("a blank value counts as missing")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'id'");
+    assertThat(upgrade.calls).isEmpty();
+    assertThat(hotfix.calls).isEmpty();
+  }
+
+  /** Implements any operations interface, records each call and its arguments, answers null. */
+  private static final class Recorder implements InvocationHandler {
+    final List<String> calls = new ArrayList<>();
+    final List<List<Object>> args = new ArrayList<>();
+
+    <T> T as(Class<T> type) {
+      return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, this));
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] arguments) {
+      if (method.getDeclaringClass() == Object.class) {
+        return switch (method.getName()) {
+          case "hashCode" -> System.identityHashCode(proxy);
+          case "equals" -> proxy == arguments[0];
+          default -> "recorder";
+        };
+      }
+      calls.add(method.getName());
+      args.add(arguments == null ? List.of() : List.of(arguments));
+      return null;
+    }
   }
 
   private static JsonNode tree(String json) throws IOException {
