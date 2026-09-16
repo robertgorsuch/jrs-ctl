@@ -26,6 +26,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 - **Run jrsctl on the JasperReports Server machine itself.** It doesn't work over the network.
 - **Use an account that is allowed to stop and start the server.** On Windows, open **Command Prompt** with **Run as administrator**. On Linux, use the account that runs the server, or `root`.
 - **Have the JasperReports Server admin password ready** (`superuser` on the Commercial edition, `jasperadmin` on the Community edition; `init` proposes the right one).
+- **No Java to install.** The download includes its own Java, used only by jrsctl. Nothing is installed on the machine, and jrsctl does not change the Java that JasperReports Server uses. For the server's own scripts (buildomatic) jrsctl uses the Java that came with your server, or the one you set as `vendor.javaHome`: Java 8 for 7.x, 11 for 8.x, 17 for 9.x and 10.x.
 - **Supported:** JasperReports Server 7.1 to 10.x, Community and Commercial editions, on Windows or Linux (64-bit).
 
 ---
@@ -317,7 +318,7 @@ Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md
 
 ## For developers
 
-Building from source, the project rules and how to contribute are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The design is in [`docs/spec.md`](docs/spec.md).
+You do not need to build jrsctl to use it: download the release archive above. Building from source (it needs JDK 21), the project rules and how to contribute are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The design is in [`docs/spec.md`](docs/spec.md).
 
 ## Licence
 

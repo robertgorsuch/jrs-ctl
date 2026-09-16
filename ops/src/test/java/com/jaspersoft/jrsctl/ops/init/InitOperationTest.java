@@ -62,6 +62,12 @@ class InitOperationTest {
               v ->
                   v.key().equals("database.type")
                       && v.source().contains("default_master.properties"))
+          // #65: the report says this Java is for buildomatic, not the one jrsctl runs on
+          .anyMatch(
+              v ->
+                  v.key().equals("vendor.javaHome")
+                      && v.source().contains("buildomatic")
+                      && v.source().contains("not the Java jrsctl runs on"))
           .noneMatch(v -> v.value().contains("Sup3rSecret"));
     }
   }

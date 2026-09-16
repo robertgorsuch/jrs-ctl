@@ -64,6 +64,13 @@ drives the packaged jar the way an operator would.
   `Phase0SkeletonTest` fails if either is tracked.
 - Tests tagged `needs-jrs` (a real JasperReports Server) or `needs-docker` are excluded by default;
   they are release gates, not phase gates (spec §0 rule 10).
+- Building is for contributors. Operators and testers use the release archive, which carries its
+  own Java 21 runtime and needs no JDK on the host; the Java that buildomatic runs with is a
+  separate setting (`vendor.javaHome`). jrsctl stays on Java 21: the code uses Java 21 language
+  features, and the bundled runtime makes the host's Java irrelevant (#65).
+- A test that fails on your machine but passes in CI is a bug, not something to skip: open an issue
+  with the test name, the operating system and the report from `<module>/target/surefire-reports/`.
+  Do not build with `-DskipTests` to try the tool; use the release archive instead.
 - Distribution: `scripts\build-dist.cmd` or `scripts/build-dist.sh` (Maven profile `dist`).
 - Windows and Linux on x86-64 are the supported platforms (ADR-0002); nothing else is built or
   tested.

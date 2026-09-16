@@ -175,7 +175,10 @@ public final class InitOperation {
         j ->
             values.add(
                 new InitReport.Detected(
-                    "vendor.javaHome", j.toString(), "bundled JDK in install dir")));
+                    "vendor.javaHome",
+                    j.toString(),
+                    "bundled JDK in install dir; buildomatic runs with it (not the Java jrsctl runs"
+                        + " on, which is its own)")));
     values.add(new InitReport.Detected("smoke.reportUri", DEFAULT_SMOKE_REPORT, SOURCE_DEFAULT));
     values.add(
         new InitReport.Detected(
