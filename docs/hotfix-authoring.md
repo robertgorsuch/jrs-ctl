@@ -11,7 +11,7 @@ A hotfix passes through two roles, usually different people:
 | **Operator** | The administrator of a JasperReports Server | Receives a bundle ZIP and runs `jrsctl hotfix verify`, `hotfix apply`, `hotfix list` and, if needed, `hotfix rollback` | The bundle. Bundles from Actian Jaspersoft verify against the publisher key built into jrsctl, so nothing else is needed. For a bundle signed by anyone else, that author's public key, trusted once with `jrsctl keys add <name> <file>` |
 | **Author** | Jaspersoft support or engineering, or a customer packaging its own fix | Writes `manifest.json`, puts the files under `payload/` (and SQL under `sql/`), builds and signs the bundle with `jrsctl hotfix build`, tests it on staging and hands the ZIP to operators | A signing key, created once with `jrsctl keys generate`; this guide; and the manifest template (see "Starting from the template") |
 
-An operator never writes a manifest and never holds a private key. The rest of this guide is for authors.
+An operator never writes a manifest and never holds a private key. The rest of this guide is for authors. The two author commands, `jrsctl hotfix build` and `jrsctl keys generate`, are left out of `jrsctl hotfix --help` and `jrsctl keys --help` so operators do not meet them; they run, and answer `--help` and `--explain`, as usual.
 
 ## What a hotfix is, in jrsctl terms
 

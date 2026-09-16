@@ -209,6 +209,7 @@ final class KeysCommand implements Runnable {
   /** {@code jrsctl keys generate <name> --private-out <file>}. */
   @Command(
       name = "generate",
+      hidden = true,
       mixinStandardHelpOptions = true,
       exitCodeOnInvalidInput = ExitCodes.USAGE,
       description =

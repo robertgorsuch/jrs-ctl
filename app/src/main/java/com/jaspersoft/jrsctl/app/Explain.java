@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import picocli.CommandLine;
 import picocli.CommandLine.IExecutionStrategy;
@@ -25,7 +26,8 @@ import picocli.CommandLine.ParseResult;
  * running any command code (required options and positional parameters are not validated, exactly
  * as for {@code --help}); the text is the command's {@code ### `jrsctl <path> ...`} section of the
  * embedded operator guide, so the explanation and the documentation cannot drift apart; a group
- * command prints the sections of all its subcommands and the root prints every command section.
+ * command prints the sections of all its visible subcommands and the root prints every visible
+ * command section; a hidden command (bundle authoring, #62) is explained only when named.
  */
 final class Explain {
 
@@ -65,6 +67,14 @@ final class Explain {
 
   /** The explanation for a command path such as {@code "hotfix apply"} ({@code ""} = root). */
   static Optional<String> text(String commandPath) {
+    return text(commandPath, Set.of());
+  }
+
+  /**
+   * As {@link #text(String)}, leaving out the sections of {@code hidden} command paths unless the
+   * path names one of them exactly.
+   */
+  static Optional<String> text(String commandPath, Set<String> hidden) {
     Map<String, Section> sections = sections();
     Section exact = sections.get(commandPath);
     if (exact != null) {
@@ -73,7 +83,7 @@ final class Explain {
     String prefix = commandPath.isEmpty() ? "" : commandPath + " ";
     StringBuilder sb = new StringBuilder();
     for (Map.Entry<String, Section> e : sections.entrySet()) {
-      if (e.getKey().startsWith(prefix)) {
+      if (e.getKey().startsWith(prefix) && !hiddenUnder(e.getKey(), hidden)) {
         if (sb.length() > 0) {
           sb.append(System.lineSeparator());
         }
@@ -81,6 +91,35 @@ final class Explain {
       }
     }
     return sb.length() == 0 ? Optional.empty() : Optional.of(sb.toString());
+  }
+
+  /** True when {@code path} is a hidden command or lies under one. */
+  private static boolean hiddenUnder(String path, Set<String> hidden) {
+    return hidden.stream().anyMatch(h -> path.equals(h) || path.startsWith(h + " "));
+  }
+
+  /** Relative paths (e.g. {@code "hotfix build"}) of every hidden command under {@code cmd}. */
+  static Set<String> hiddenPaths(CommandLine cmd) {
+    Set<String> out = new TreeSet<>();
+    collectHidden(cmd, out, Collections.newSetFromMap(new IdentityHashMap<>()));
+    return out;
+  }
+
+  private static void collectHidden(CommandLine cmd, Set<String> out, Set<CommandSpec> seen) {
+    CommandSpec spec = cmd.getCommandSpec();
+    if (!seen.add(spec)) {
+      return;
+    }
+    if (spec.usageMessage().hidden() && spec.parent() != null) {
+      out.add(relative(spec.qualifiedName(" ")));
+    }
+    for (CommandLine sub : cmd.getSubcommands().values()) {
+      collectHidden(sub, out, seen);
+    }
+  }
+
+  private static String relative(String qualifiedName) {
+    return qualifiedName.equals("jrsctl") ? "" : qualifiedName.substring("jrsctl ".length());
   }
 
   /** True when the guide has a section whose heading names exactly this command path. */
@@ -177,8 +216,7 @@ final class Explain {
       }
       CommandLine target = deepest.commandSpec().commandLine();
       String path = deepest.commandSpec().qualifiedName(" ");
-      String relative = path.equals("jrsctl") ? "" : path.substring("jrsctl ".length());
-      Optional<String> text = text(relative);
+      Optional<String> text = text(relative(path), hiddenPaths(root(target)));
       if (text.isEmpty()) {
         PrintWriter err = target.getErr();
         err.println(
@@ -194,6 +232,14 @@ final class Explain {
       out.print(text.get());
       out.flush();
       return ExitCodes.SUCCESS;
+    }
+
+    private static CommandLine root(CommandLine cmd) {
+      CommandLine top = cmd;
+      while (top.getParent() != null) {
+        top = top.getParent();
+      }
+      return top;
     }
 
     private static boolean requested(ParseResult pr) {

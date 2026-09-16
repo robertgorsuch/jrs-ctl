@@ -105,8 +105,45 @@ class ExplainTest {
         .contains("jrsctl keys list")
         .contains("jrsctl keys add")
         .contains("jrsctl keys remove")
-        .contains("jrsctl keys generate")
+        .doesNotContain("jrsctl keys generate")
         .doesNotContain("jrsctl secrets");
+  }
+
+  /**
+   * Issue #62: bundle authoring commands are not part of the operator's path, so a group's help and
+   * explanation leave them out; they still run and still explain themselves when named.
+   */
+  @Test
+  void should_hide_authoring_commands_from_group_help_and_explain_when_not_named() {
+    StringWriter help = new StringWriter();
+    CommandLine cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(help));
+    assertThat(cmd.execute("hotfix", "--help")).isZero();
+    assertThat(help.toString())
+        .contains("apply")
+        .contains("verify")
+        .doesNotContain("build")
+        .contains("jrsctl docs hotfix-authoring");
+
+    StringWriter explain = new StringWriter();
+    cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(explain));
+    assertThat(cmd.execute("hotfix", "--explain")).isZero();
+    assertThat(explain.toString())
+        .contains("jrsctl hotfix apply")
+        .doesNotContain("jrsctl hotfix build");
+
+    StringWriter named = new StringWriter();
+    cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(named));
+    assertThat(cmd.execute("hotfix", "build", "--explain")).isZero();
+    assertThat(named.toString()).startsWith("jrsctl hotfix build").contains("--key");
+
+    StringWriter keys = new StringWriter();
+    cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(keys));
+    assertThat(cmd.execute("keys", "--help")).isZero();
+    assertThat(keys.toString()).contains("add").doesNotContain("generate");
   }
 
   @Test

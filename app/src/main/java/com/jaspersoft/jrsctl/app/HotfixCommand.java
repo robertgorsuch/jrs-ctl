@@ -39,7 +39,11 @@ import picocli.CommandLine.Spec;
     name = "hotfix",
     mixinStandardHelpOptions = true,
     exitCodeOnInvalidInput = ExitCodes.USAGE,
-    description = "Build, verify, apply, roll back and list signed hotfix bundles.",
+    description = "Verify, apply, roll back and list hotfixes.",
+    footerHeading = "%n",
+    footer =
+        "Hotfixes from Actian Jaspersoft need no key setup. Writing your own hotfix bundles:"
+            + " jrsctl docs hotfix-authoring",
     subcommands = {
       HotfixCommand.Build.class,
       HotfixCommand.Verify.class,
@@ -56,9 +60,13 @@ final class HotfixCommand implements Runnable {
     spec.commandLine().usage(spec.commandLine().getOut());
   }
 
-  /** {@code jrsctl hotfix build <dir> --key <secretRef> --out <bundle>}. */
+  /**
+   * {@code jrsctl hotfix build <dir> --key <secretRef> --out <bundle>}. Hidden from the group's
+   * help: it is for bundle authors, not operators (#62).
+   */
   @Command(
       name = "build",
+      hidden = true,
       mixinStandardHelpOptions = true,
       exitCodeOnInvalidInput = ExitCodes.USAGE,
       description =
