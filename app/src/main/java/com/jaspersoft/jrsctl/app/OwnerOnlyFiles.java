@@ -100,7 +100,7 @@ public final class OwnerOnlyFiles {
     }
     files.applyPermissions(file, new FileOps.Permissions(owner, entries));
     if (platform.os() == Platform.OsFamily.WINDOWS) {
-      dropInheritedEntries(platform, file);
+      dropInheritedEntries(platform, file, owner + ":(F)");
     }
   }
 
@@ -131,7 +131,7 @@ public final class OwnerOnlyFiles {
     }
     files.applyPermissions(dir, new FileOps.Permissions(owner, entries));
     if (platform.os() == Platform.OsFamily.WINDOWS) {
-      dropInheritedEntries(platform, dir);
+      dropInheritedEntries(platform, dir, owner + ":(OI)(CI)(F)");
     }
   }
 
@@ -140,16 +140,20 @@ public final class OwnerOnlyFiles {
    * DACL through the file-attribute view leaves the security descriptor unprotected, so the
    * parent's inheritable entries can be propagated back onto a file holding a secret. Windows has
    * no API for this in the JDK, and neither BouncyCastle nor JNA is approved (spec §13.3), so the
-   * built-in {@code icacls} does it, with its arguments as a list and no shell.
+   * built-in {@code icacls} does it, with its arguments as a list and no shell. The same call
+   * grants the owner full control explicitly ({@code ownerGrant}): inside a directory jrsctl
+   * restricted, the file inherits exactly the owner entry the ACL view just set, Windows folds the
+   * two together, and removing the inherited entries alone left an empty access list that shut the
+   * owner out too.
    */
-  private static void dropInheritedEntries(Platform platform, Path file) {
+  private static void dropInheritedEntries(Platform platform, Path file, String ownerGrant) {
     try {
       ProcessRunner.Result result =
           platform
               .processes()
               .run(
                   new ProcessRunner.Request(
-                      List.of("icacls", file.toString(), "/inheritance:r"),
+                      List.of("icacls", file.toString(), "/inheritance:r", "/grant:r", ownerGrant),
                       Optional.empty(),
                       Map.of(),
                       ICACLS_TIMEOUT),

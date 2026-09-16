@@ -22,6 +22,29 @@ class OwnerOnlyFilesTest {
 
   private final Platform platform = Platforms.detect(OperatorPrompt.nonInteractive());
 
+  /**
+   * A home jrsctl created hands its owner's entry down to every file. Restricting a file there set
+   * the same entry explicitly, which Windows folds into the inherited one, and then removed the
+   * inherited entries, leaving an empty access list: the owner could no longer write the secret.
+   */
+  @Test
+  void should_keep_the_owner_able_to_write_when_the_directory_was_restricted_by_jrsctl(
+      @TempDir Path dir) throws IOException {
+    Path home = Files.createDirectories(dir.resolve("home"));
+    OwnerOnlyFiles.restrictDirectoryToOwner(platform, home);
+
+    Path token = home.resolve("console.token");
+    OwnerOnlyFiles.write(platform, token, "t0k3n");
+    Path temp = Files.createTempFile(home, "secrets", ".tmp");
+    OwnerOnlyFiles.restrictToOwner(platform, temp);
+    Files.writeString(temp, "ciphertext", StandardCharsets.UTF_8);
+
+    assertThat(Files.readString(token, StandardCharsets.UTF_8)).isEqualTo("t0k3n");
+    assertThat(platform.files().isOwnerOnly(token)).isTrue();
+    assertThat(Files.readString(temp, StandardCharsets.UTF_8)).isEqualTo("ciphertext");
+    assertThat(platform.files().isOwnerOnly(temp)).isTrue();
+  }
+
   @Test
   void should_write_a_file_only_its_owner_can_read(@TempDir Path dir) throws IOException {
     Path secret = dir.resolve("nested").resolve("key.pem");
