@@ -624,8 +624,10 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
   - `service.kind` and name by probing Windows services / systemd units / `ctlscript.sh`;
   - `buildomaticDir` from `--buildomatic-dir` or the 7.4 search, shown with its source (a hint that cannot be reached is reported, not written);
   - `database` and `vendor.javaHome` prefilled from that buildomatic directory's `default_master.properties` (passwords are never copied; a `passwordRef` placeholder is written);
-  - `runAsUser` from the Tomcat process owner.
-- Every value is shown for confirmation; nothing is written without it unless `--non-interactive`.
+  - `runAsUser` from the Tomcat process owner;
+  - `server.auth.username` `superuser` for the commercial edition (`jasperserver-pro`) and `jasperadmin` for the community edition (#59).
+- Every value is shown for confirmation; nothing is written without it unless `--yes`.
+- Interactively (no `--yes`, `--non-interactive` or `--json`) the operator may replace the reviewed values one by one; each is validated as a `--set` override is, and a directory must exist. `init` then offers to store the server and database passwords in `secrets.enc` (read without echo into zeroed `char[]`s; a new store's passphrase is entered twice unless `--passphrase-file` or `JRSCTL_PASSPHRASE` supplies it) and writes `enc:` references for them; the secrets are stored only after the write is confirmed and before `config.yaml` is written. Otherwise `passwordRef` placeholders are `env:` references (#63).
 
 ### 12.1 `doctor`
 

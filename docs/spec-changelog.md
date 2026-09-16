@@ -1,5 +1,15 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-16 (field test)
+
+Changes from the first field test of 1.3.0 and 1.4.0 by a JasperReports Server support engineer, whose finding was that the tool asked an administrator to learn YAML, environment variables, bundle signing and raw Markdown before doing anything useful.
+
+- §12.0: `init` proposes `superuser` for the commercial edition and `jasperadmin` for the community edition (#59). Interactively it lets the operator replace each reviewed value, validated as `--set` is, and offers to store the server and database passwords in `secrets.enc` with `enc:` references, stored only after the write is confirmed (#63).
+- §17 (embedded help): `--help` ends with worked examples for every command, held in one place and parsed against the command tree by a test (#61). `--explain` and `jrsctl docs` render Markdown as plain text when standard output is a terminal and keep the Markdown when piped; `docs --format auto|text|markdown` chooses explicitly (#60). `hotfix build` and `keys generate` are hidden from their groups' help and `--explain`, since they are for bundle authors (#62).
+- §13 (console): on Linux without `DISPLAY` or `WAYLAND_DISPLAY` and with a loopback bind, `console` opens no browser and prints the `ssh -L` command that reaches it from another machine (#64).
+- §5.2: on Windows, restricting a secret file inside a home jrsctl created no longer leaves it with an empty access list; the `icacls` call that removes inherited entries also grants the owner full control.
+- Documentation: the README says no Java has to be installed and which Java buildomatic uses; CONTRIBUTING says why jrsctl stays on Java 21 and asks for an issue, not `-DskipTests`, when a test fails on one machine (#65).
+
 ## Draft 1.1 amendment — 2026-09-16
 
 - §8.1, §8.2 step 3: `Preflight` refuses a `replace` entry whose path does not exist on the server, as it refuses an `add` whose path does (#55). Such an entry was swapped in as an `add` while the plan promised a snapshot and a restore that could not exist (#56). A hotfix installed before this change with such an entry still rolls back cleanly: `hotfix rollback` deletes every file recorded without a pre-install hash, whatever its action.
