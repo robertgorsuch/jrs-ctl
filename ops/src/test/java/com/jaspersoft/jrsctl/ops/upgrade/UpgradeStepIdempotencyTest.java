@@ -543,7 +543,73 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  @Test
+  void should_keep_the_pre_upgrade_copy_when_point_config_at_target_executes_twice()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      String original = UpgradeFixture.read(f.fake.home.configFile());
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-pc");
+      Idempotency.runAll(plan, ctx, f.events::add);
+      String once = UpgradeFixture.read(f.fake.home.configFile());
+      Step step = Idempotency.step(plan, "point-config-at-target");
+
+      Idempotency.executeOk(step, ctx, f.events::add);
+
+      assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(once);
+      assertThat(once).isNotEqualTo(original);
+      assertThat(SnapshotSet.of(f.fake.home, "r-pc", f.os).dir().resolve("jrsctl-config.yaml"))
+          .hasContent(original);
+    }
+  }
+
+  @Test
+  void should_converge_when_point_config_at_target_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      String original = UpgradeFixture.read(f.fake.home.configFile());
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-pc-c");
+      Idempotency.runAll(plan, ctx, f.events::add);
+      Step step = Idempotency.step(plan, "point-config-at-target");
+
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      Idempotency.compensateOk(step, ctx, f.events::add);
+
+      assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(original);
+    }
+  }
+
   // ---------------------------------------------------------------- rollback plan
+
+  @Test
+  void should_converge_when_restore_jrsctl_config_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      String original = UpgradeFixture.read(f.fake.home.configFile());
+      Plan plan = rollbackPlan(f);
+      Context ctx = start(f, plan, "r-rjc");
+      Idempotency.runUpTo(plan, ctx, "restore-jrsctl-config", f.events::add);
+
+      Idempotency.executeOk(Idempotency.step(plan, "restore-jrsctl-config"), ctx, f.events::add);
+
+      assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(original);
+    }
+  }
+
+  @Test
+  void should_converge_when_restore_jrsctl_config_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = rollbackPlan(f);
+      String upgraded = UpgradeFixture.read(f.fake.home.configFile());
+      Context ctx = start(f, plan, "r-rjc-c");
+      Idempotency.runAll(plan, ctx, f.events::add);
+      Step step = Idempotency.step(plan, "restore-jrsctl-config");
+
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      Idempotency.compensateOk(step, ctx, f.events::add);
+
+      assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(upgraded);
+    }
+  }
 
   @Test
   void should_converge_when_restore_webapp_executes_twice() throws Exception {

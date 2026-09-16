@@ -3,6 +3,8 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
@@ -19,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -31,6 +34,35 @@ class UpgradeRunTest {
 
   private static UpgradeOptions newdb(UpgradeFixture f) {
     return UpgradeOptions.newdb(UpgradeFixture.NEW_VERSION, f.packageDir);
+  }
+
+  /**
+   * Issue #69: after an upgrade jrsctl works with the new version's buildomatic without the
+   * operator editing its configuration, and rolling the upgrade back puts the old configuration
+   * back.
+   */
+  @Test
+  void should_point_config_at_the_upgraded_buildomatic_and_restore_it_on_rollback()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      String before = UpgradeFixture.read(f.fake.home.configFile());
+      Path upgraded = f.packageDir.resolve("buildomatic").toAbsolutePath().normalize();
+
+      RunOutcome up = f.run(f.ops().planUpgrade(newdb(f)), "r-up-cfg", RunOptions.DEFAULT);
+
+      assertThat(up).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(after.server().buildomaticDir()).contains(upgraded);
+      assertThat(after.server().installDir()).contains(f.installDir.toAbsolutePath().normalize());
+      assertThat(f.logs())
+          .anyMatch(m -> m.contains("server.buildomaticDir") && m.contains(upgraded.toString()));
+
+      RunOutcome back =
+          f.run(f.ops().planRollback("r-up-cfg", RollbackPoint.B), "r-rb-cfg", RunOptions.DEFAULT);
+
+      assertThat(back).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(before);
+    }
   }
 
   @Test
@@ -322,6 +354,7 @@ class UpgradeRunTest {
               "restore-buildomatic",
               "restore-config",
               "restore-keystore",
+              "restore-jrsctl-config",
               "start-service",
               "wait-for-server",
               "record-rollback");

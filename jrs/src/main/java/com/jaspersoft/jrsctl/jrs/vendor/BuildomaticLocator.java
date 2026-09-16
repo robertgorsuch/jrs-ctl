@@ -46,7 +46,8 @@ public final class BuildomaticLocator {
   private static final Pattern COLON = Pattern.compile(":");
 
   static final String SOURCE_CONFIGURED = "server.buildomaticDir";
-  static final String SOURCE_UNDER_INSTALL = "under server.installDir";
+  static final String SOURCE_UNDER_INSTALL =
+      "inside the installation directory (server.installDir)";
 
   private final Platform platform;
 
@@ -232,9 +233,16 @@ public final class BuildomaticLocator {
     Map<Path, String> out = new LinkedHashMap<>();
     tomcatDir
         .map(Path::getParent)
-        .ifPresent(p -> out.putIfAbsent(p.resolve(DIR_NAME), "beside server.tomcatDir"));
+        .ifPresent(
+            p ->
+                out.putIfAbsent(
+                    p.resolve(DIR_NAME),
+                    "next to the Tomcat directory (server.tomcatDir), not inside it"));
     Optional<Path> parent = installDir.map(Path::getParent);
-    parent.ifPresent(p -> out.putIfAbsent(p.resolve(DIR_NAME), "beside server.installDir"));
+    parent.ifPresent(
+        p ->
+            out.putIfAbsent(
+                p.resolve(DIR_NAME), "next to the installation directory (server.installDir)"));
     installDir.ifPresent(
         d ->
             distributions(d)
@@ -242,7 +250,9 @@ public final class BuildomaticLocator {
                     x ->
                         out.putIfAbsent(
                             x.resolve(DIR_NAME),
-                            "in " + x.getFileName() + " under server.installDir")));
+                            "in the "
+                                + x.getFileName()
+                                + " directory inside the installation directory")));
     parent.ifPresent(
         p ->
             distributions(p)
@@ -250,7 +260,9 @@ public final class BuildomaticLocator {
                     x ->
                         out.putIfAbsent(
                             x.resolve(DIR_NAME),
-                            "in " + x.getFileName() + " beside server.installDir")));
+                            "in the "
+                                + x.getFileName()
+                                + " directory next to the installation directory")));
     return out;
   }
 

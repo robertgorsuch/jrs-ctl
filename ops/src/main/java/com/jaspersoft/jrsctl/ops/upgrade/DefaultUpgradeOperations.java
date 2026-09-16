@@ -205,6 +205,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     steps.add(new VerifySteps.Smoke(rt, in));
     steps.add(new VerifySteps.RecordUpgrade(rt, in));
+    steps.add(new JrsctlConfigSteps.PointConfigAtTarget(rt, in));
 
     Path snapshotDir = SnapshotSet.placeholder(rt.home());
     Map<String, String> rollbackPoints = new LinkedHashMap<>();
@@ -355,6 +356,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     steps.add(new RestoreSteps.RestoreBuildomatic(rt, in));
     steps.add(new RestoreSteps.RestoreConfig(rt, in));
     steps.add(new RestoreSteps.RestoreKeystore(rt, in));
+    steps.add(new JrsctlConfigSteps.RestoreJrsctlConfig(in));
     steps.add(ServiceSteps.start(rt, Phases.ROLLBACK, RestoreSteps.START_SERVICE));
     steps.add(ServiceSteps.waitForServer(rt, Phases.ROLLBACK, RestoreSteps.WAIT_FOR_SERVER));
     steps.add(new RestoreSteps.RecordRollback(rt, in));

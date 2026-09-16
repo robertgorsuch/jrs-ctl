@@ -61,7 +61,7 @@ class InitBuildomaticDirTest {
           .anyMatch(
               v ->
                   v.key().equals("server.buildomaticDir")
-                      && v.source().contains("beside server.installDir"));
+                      && v.source().contains("next to the installation directory"));
     }
   }
 

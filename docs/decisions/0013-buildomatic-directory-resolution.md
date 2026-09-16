@@ -59,7 +59,7 @@ use. On such hosts `doctor` failed `vendor` with "no buildomatic directory under
 - `TomcatLayout.buildomaticDir` stays as a fact about the Tomcat layout but no longer drives any
   decision.
 - `doctor`'s `vendor` item names the rule that found the directory (`server.buildomaticDir`,
-  `under server.installDir`, `beside server.installDir`, ...), so an operator can see a discovered
+  `inside the installation directory (server.installDir)`, `next to the installation directory (server.installDir)`, ...; the wording was made plainer in #69, after a field tester read "beside server.tomcatDir" as "inside the Tomcat folder"), so an operator can see a discovered
   choice before relying on it.
 - Verified read-only on 2026-09-14 against real shares on both operating systems (#31). Not
   verified: vendor export/import and upgrade with the tree on a share, and whether the 10.0.0

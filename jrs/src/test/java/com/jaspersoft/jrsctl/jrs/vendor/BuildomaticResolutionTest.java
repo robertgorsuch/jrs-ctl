@@ -80,7 +80,8 @@ class BuildomaticResolutionTest {
         linux.resolve(config(Optional.of(install), Optional.empty(), Optional.empty()));
 
     assertThat(r.located().map(Buildomatic::dir)).contains(normal(beside));
-    assertThat(((BuildomaticResolution.Found) r).source()).isEqualTo("beside server.installDir");
+    assertThat(((BuildomaticResolution.Found) r).source())
+        .isEqualTo("next to the installation directory (server.installDir)");
   }
 
   @Test
@@ -93,7 +94,8 @@ class BuildomaticResolutionTest {
         linux.resolve(config(Optional.of(install), Optional.of(tomcat), Optional.empty()));
 
     assertThat(r.located().map(Buildomatic::dir)).contains(normal(beside));
-    assertThat(((BuildomaticResolution.Found) r).source()).isEqualTo("beside server.tomcatDir");
+    assertThat(((BuildomaticResolution.Found) r).source())
+        .isEqualTo("next to the Tomcat directory (server.tomcatDir), not inside it");
   }
 
   @Test

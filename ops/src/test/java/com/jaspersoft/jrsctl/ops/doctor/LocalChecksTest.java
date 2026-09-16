@@ -80,7 +80,7 @@ class LocalChecksTest {
 
       ReportItem found = LocalChecks.vendor(services);
       assertThat(found.status()).isEqualTo(ReportItem.Status.PASS);
-      assertThat(found.detail()).contains("under server.installDir");
+      assertThat(found.detail()).contains("inside the installation directory");
 
       Files.delete(install.resolve("buildomatic").resolve("js-import.sh"));
       ReportItem missing = LocalChecks.vendor(services);

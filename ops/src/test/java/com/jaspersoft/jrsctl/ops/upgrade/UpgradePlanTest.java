@@ -49,7 +49,8 @@ class UpgradePlanTest {
               "plan-hotfix-reapply",
               "plan-customization-reapply",
               "smoke",
-              "record-upgrade");
+              "record-upgrade",
+              "point-config-at-target");
       assertThat(plan.summary().operation()).isEqualTo("upgrade");
       assertThat(plan.summary().target()).isEqualTo("8.2.0 -> 9.0.0 (newdb)");
       assertThat(plan.summary().serviceRestart()).isTrue();

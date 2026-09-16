@@ -126,6 +126,12 @@ import org.junit.jupiter.api.Test;
  * <tr><td>upgrade VerifySteps.RecordUpgrade</td>
  *     <td>UpgradeStepIdempotencyTest#should_keep_the_superseded_list_when_record_upgrade_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_converge_when_record_upgrade_compensates_twice</td></tr>
+ * <tr><td>upgrade JrsctlConfigSteps.PointConfigAtTarget</td>
+ *     <td>UpgradeStepIdempotencyTest#should_keep_the_pre_upgrade_copy_when_point_config_at_target_executes_twice</td>
+ *     <td>UpgradeStepIdempotencyTest#should_converge_when_point_config_at_target_compensates_twice</td></tr>
+ * <tr><td>upgrade JrsctlConfigSteps.RestoreJrsctlConfig</td>
+ *     <td>UpgradeStepIdempotencyTest#should_converge_when_restore_jrsctl_config_executes_twice</td>
+ *     <td>UpgradeStepIdempotencyTest#should_converge_when_restore_jrsctl_config_compensates_twice</td></tr>
  * <tr><td>upgrade EmbeddedStep</td>
  *     <td colspan="2">UpgradeStepIdempotencyTest#should_delegate_to_the_inner_step_when_embedded_step_executes_twice</td></tr>
  * <tr><td>upgrade RestoreSteps.RestoreWebapp</td>
@@ -375,6 +381,18 @@ class IdempotencyCoverageTest {
                   + "should_keep_the_superseded_list_when_record_upgrade_executes_twice;"
                   + U
                   + "should_converge_when_record_upgrade_compensates_twice"),
+          Map.entry(
+              OPS + "upgrade.JrsctlConfigSteps$PointConfigAtTarget",
+              U
+                  + "should_keep_the_pre_upgrade_copy_when_point_config_at_target_executes_twice;"
+                  + U
+                  + "should_converge_when_point_config_at_target_compensates_twice"),
+          Map.entry(
+              OPS + "upgrade.JrsctlConfigSteps$RestoreJrsctlConfig",
+              U
+                  + "should_converge_when_restore_jrsctl_config_executes_twice;"
+                  + U
+                  + "should_converge_when_restore_jrsctl_config_compensates_twice"),
           Map.entry(
               OPS + "upgrade.EmbeddedStep",
               U + "should_delegate_to_the_inner_step_when_embedded_step_executes_twice"),
