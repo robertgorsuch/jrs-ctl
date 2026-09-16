@@ -156,12 +156,43 @@ Exercises the server end to end: login, repository listing, a sample report run 
 
 ### `jrsctl config show [--json]`
 
-Prints the effective configuration after precedence is applied (flag `--set` > environment > `config.yaml` > built-in default) as YAML, with the source of each value in a comment. Every secret appears as its reference (`env:NAME`, `file:/path`, `enc:NAME`), never as a value, so the output is safe to paste into a ticket.
+Prints the effective configuration after precedence is applied (flag `--set` > environment > `config.yaml` > built-in default) as YAML, followed by one comment line per value an environment variable or `--set` overrides (`# console.port: overridden by JRSCTL_CONSOLE_PORT`). `jrsctl config keys` gives the source of every value. Every secret appears as its reference (`env:NAME`, `file:/path`, `enc:NAME`), never as a value, so the output is safe to paste into a ticket.
 
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.
-- **Exit codes:** 0; **2** when `config.yaml` is missing, malformed or violates the schema (the message names the key).
-- **Flags:** `--json` — the same document as JSON.
+- **Exit codes:** 0; **2** when `config.yaml` is malformed or violates the schema (the message names the key).
+- **Flags:** `--json` — the configuration as JSON, without the override comments.
+
+### `jrsctl config set <key> [<value>]`
+
+Changes one setting in `config.yaml` without editing the file (#70). The new value is checked the way `--set` values are, and the whole file must still pass the schema before it is written. The previous file is kept as `config.yaml.bak`. The command prints `key: old -> new`, and adds a note when an environment variable or `--set` still overrides the key. Without a value it asks for one, showing the current value in brackets (Enter changes nothing).
+
+A password key (`server.auth.passwordRef`, `database.passwordRef`, `network.proxy.passwordRef`, `network.trustStore.passwordRef`, `console.auth.passwordRef`) never takes a password on the command line, where shell history and the process list would keep it. Give a reference (`env:NAME`, `file:/path`, `enc:NAME`), or give no value: the password is then typed without echo and stored in `secrets.enc` under the existing `enc:` name or a default (`JRS_PASSWORD`, `JRS_DB_PASSWORD`, `JRS_PROXY_PASSWORD`, `JRS_TRUSTSTORE_PASSWORD`, `JRS_CONSOLE_PASSWORD`), and the key is set to `enc:NAME`. The store's passphrase comes from `--passphrase-file` or `JRSCTL_PASSPHRASE`, or is asked for (twice for a new store).
+
+List values (`network.proxy.noProxy`) are edited in `config.yaml` itself.
+
+- **Mutates:** `config.yaml` (and `config.yaml.bak`) in the jrsctl home; `secrets.enc` when a password is typed. Audited as `config.set` (and `secrets.set`). Nothing on the server.
+- **Rollback:** copy `config.yaml.bak` back, or `jrsctl config set <key> <old value>`.
+- **Exit codes:** 0 (also when nothing was entered for an ordinary key); **2** for an unknown key (see `jrsctl config keys`), a value the schema refuses, a password given on the command line, or no password or passphrase entered; nothing is written in those cases.
+- **Flags:** `<key>` — the dotted setting name; `<value>` — the new value, or a reference for a password key; `--json` — `{key, old, new, file, backup}`.
+
+### `jrsctl config unset <key>`
+
+Removes one setting from `config.yaml`, so its default applies, or nothing when it has none. Prints `key: old -> new` and keeps the previous file as `config.yaml.bak`.
+
+- **Mutates:** `config.yaml` and `config.yaml.bak` in the jrsctl home. Audited as `config.unset`.
+- **Rollback:** copy `config.yaml.bak` back, or `jrsctl config set <key> <old value>`.
+- **Exit codes:** 0; **2** for an unknown key or when the file without the key fails the schema.
+- **Flags:** `<key>` — the dotted setting name; `--json` — `{key, old, new, file, backup}`.
+
+### `jrsctl config keys [--json]`
+
+Every setting the configuration accepts, in schema order, with its current value, where the value comes from (`--set`, the `JRSCTL_*` variable, `config.yaml` or `default`) and a one-line description. Secrets appear as references.
+
+- **Mutates:** nothing; read-only.
+- **Rollback:** not applicable.
+- **Exit codes:** 0; **2** when `config.yaml` is malformed.
+- **Flags:** `--json` — an array of `{key, value, source, description}`.
 
 ### `jrsctl hotfix build <dir> --key <secretRef> --out <bundle>`
 

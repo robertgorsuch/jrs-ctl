@@ -38,6 +38,63 @@ class ConfigLoaderTest {
     assertThat(c.service().stopTimeoutSeconds()).isEqualTo(180);
   }
 
+  /** Issue #70: config keys and config show say where each value comes from. */
+  @Test
+  void should_name_the_source_of_each_key_when_flag_env_file_and_default_mix() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        "server:\n  baseUrl: http://file:8080/jasperserver-pro\n  webappName: jasperserver-pro\n",
+        StandardCharsets.UTF_8);
+
+    Map<String, ConfigLoader.Source> sources =
+        loader.sources(
+            file,
+            Map.of("JRSCTL_CONSOLE_PORT", "7500"),
+            Map.of("server.auth.username", "superuser"));
+
+    assertThat(sources.get("server.baseUrl").origin()).isEqualTo(ConfigLoader.Origin.FILE);
+    assertThat(sources.get("console.port").origin()).isEqualTo(ConfigLoader.Origin.ENVIRONMENT);
+    assertThat(sources.get("console.port").detail()).isEqualTo("JRSCTL_CONSOLE_PORT");
+    assertThat(sources.get("server.auth.username").origin()).isEqualTo(ConfigLoader.Origin.FLAG);
+    assertThat(sources.get("backups.retentionDays").origin())
+        .isEqualTo(ConfigLoader.Origin.DEFAULT);
+    assertThat(sources.keySet()).containsExactlyElementsOf(loader.knownKeys());
+  }
+
+  /** Issue #70: config set changes one key of the file and validates the result. */
+  @Test
+  void should_change_one_key_of_the_file_and_keep_the_others_when_setting() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        "server:\n  baseUrl: http://old:8080/jasperserver-pro\n  runAsUser: tomcat\n",
+        StandardCharsets.UTF_8);
+
+    Config changed = loader.fileWith(file, "server.baseUrl", "https://new:8443/jasperserver-pro");
+    Config reset = loader.fileWithout(file, "server.runAsUser");
+
+    assertThat(changed.server().baseUrl())
+        .contains(URI.create("https://new:8443/jasperserver-pro"));
+    assertThat(changed.server().runAsUser()).contains("tomcat");
+    assertThat(reset.server().runAsUser()).isEmpty();
+    assertThat(reset.server().baseUrl()).contains(URI.create("http://old:8080/jasperserver-pro"));
+  }
+
+  @Test
+  void should_refuse_an_unknown_key_or_an_invalid_value_when_setting() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+
+    assertThatThrownBy(() -> loader.fileWith(file, "server.baseUlr", "http://x"))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("server.baseUlr")
+        .satisfies(
+            t -> assertThat(((ConfigException) t).remediation()).contains("jrsctl config keys"));
+    assertThatThrownBy(() -> loader.fileWith(file, "console.port", "seventy"))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console.port");
+  }
+
   /** Issue #63: init applies the operator's edits the way --set applies an override. */
   @Test
   void should_apply_and_coerce_overrides_on_a_config_when_values_are_valid() {

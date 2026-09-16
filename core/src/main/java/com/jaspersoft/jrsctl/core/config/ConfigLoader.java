@@ -25,6 +25,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -91,6 +92,76 @@ public final class ConfigLoader {
     }
     validate(tree);
     return toConfig(tree);
+  }
+
+  /** Where a key's effective value comes from, highest precedence first. */
+  public enum Origin {
+    FLAG,
+    ENVIRONMENT,
+    FILE,
+    DEFAULT
+  }
+
+  /** The origin of one key's value and what names it: the variable, {@code --set} or the file. */
+  public record Source(Origin origin, String detail) {}
+
+  /**
+   * For every known key, in schema order, where its effective value comes from under the precedence
+   * {@code --set} over environment over file over default (#70).
+   */
+  public Map<String, Source> sources(
+      Path file, Map<String, String> env, Map<String, String> flags) {
+    Objects.requireNonNull(file, "file");
+    Objects.requireNonNull(env, "env");
+    Objects.requireNonNull(flags, "flags");
+    ObjectNode tree = readFile(file);
+    Map<String, Source> out = new LinkedHashMap<>();
+    for (String key : leafKeys.keySet()) {
+      String variable = envKey(key);
+      if (flags.containsKey(key)) {
+        out.put(key, new Source(Origin.FLAG, "--set " + key));
+      } else if (env.containsKey(variable)) {
+        out.put(key, new Source(Origin.ENVIRONMENT, variable));
+      } else if (!tree.at("/" + key.replace('.', '/')).isMissingNode()) {
+        out.put(key, new Source(Origin.FILE, file.toString()));
+      } else {
+        out.put(key, new Source(Origin.DEFAULT, "default"));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The configuration {@code file} alone (no environment, no flags) with {@code key} set to {@code
+   * raw}, coerced and validated as {@code --set} is; the file is not written (#70).
+   */
+  public Config fileWith(Path file, String key, String raw) {
+    Objects.requireNonNull(raw, "raw");
+    requireKnown(key);
+    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    put(tree, key, coerce(raw, leafKeys.get(key)));
+    validate(tree);
+    return toConfig(tree);
+  }
+
+  /** As {@link #fileWith} with {@code key} removed, so its default (or nothing) applies. */
+  public Config fileWithout(Path file, String key) {
+    requireKnown(key);
+    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    String[] segments = key.split("\\.", -1);
+    JsonNode parent = tree.at("/" + String.join("/", Arrays.copyOf(segments, segments.length - 1)));
+    if (parent instanceof ObjectNode obj) {
+      obj.remove(segments[segments.length - 1]);
+    }
+    validate(tree);
+    return toConfig(tree);
+  }
+
+  private void requireKnown(String key) {
+    if (!leafKeys.containsKey(Objects.requireNonNull(key, "key"))) {
+      throw new ConfigException(
+          "unknown configuration key " + key, "list the keys with: jrsctl config keys");
+    }
   }
 
   /**

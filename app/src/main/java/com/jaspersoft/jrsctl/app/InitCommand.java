@@ -1,14 +1,11 @@
 package com.jaspersoft.jrsctl.app;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
-import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
-import com.jaspersoft.jrsctl.core.secrets.PassphraseSource;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.ops.init.InitOperation;
@@ -26,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import java.util.regex.Pattern;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
@@ -94,8 +90,6 @@ final class InitCommand implements Callable<Integer> {
 
   static final String SERVER_SECRET = "JRS_PASSWORD";
   static final String DATABASE_SECRET = "JRS_DB_PASSWORD";
-
-  private static final Pattern DOT = Pattern.compile("\\.");
 
   @Override
   public Integer call() throws IOException {
@@ -205,7 +199,7 @@ final class InitCommand implements Callable<Integer> {
       }
       Optional<EncryptedSecretStore> store = Optional.empty();
       if (!passwords.isEmpty()) {
-        store = store(boot, out, held);
+        store = SecretStores.forWriting(boot, global, out, held);
         if (store.isEmpty()) {
           out.println("  no passphrase given; the passwords are not stored");
           clear(passwords);
@@ -277,7 +271,7 @@ final class InitCommand implements Callable<Integer> {
     for (Field field : REVIEW_FIELDS) {
       boolean settled = false;
       while (!settled) {
-        String current = current(config, field.key());
+        String current = ConfigKeys.value(config, field.key());
         Optional<String> answer = Prompter.line(out, "  " + field.label() + " [" + current + "]: ");
         if (answer.isEmpty()) {
           return config;
@@ -298,14 +292,6 @@ final class InitCommand implements Callable<Integer> {
       }
     }
     return config;
-  }
-
-  private static String current(Config config, String key) {
-    JsonNode node = ConfigWriter.toTree(config);
-    for (String segment : DOT.splitAsStream(key).toList()) {
-      node = node.path(segment);
-    }
-    return node.isValueNode() ? node.asText() : "";
   }
 
   private static void askPasswords(Config config, Map<String, char[]> passwords, PrintWriter out) {
@@ -336,68 +322,6 @@ final class InitCommand implements Callable<Integer> {
         store.set(p.getKey(), secret);
       }
       boot.services().stateStore().get().audit("operator", "secrets.set", p.getKey());
-    }
-  }
-
-  /**
-   * The store to write to: the usual passphrase chain when {@code --passphrase-file} or {@code
-   * JRSCTL_PASSPHRASE} supplies one, otherwise a passphrase asked for here (twice for a new store).
-   */
-  private Optional<EncryptedSecretStore> store(Bootstrap boot, PrintWriter out, List<Secret> held) {
-    EncryptedSecretStore usual = boot.secretStore();
-    if (global.passphraseFile().isPresent() || Env.vars().containsKey(PassphraseSource.ENV_VAR)) {
-      return Optional.of(usual);
-    }
-    Optional<Secret> passphrase =
-        usual.exists()
-            ? Prompter.secret(out, "  Passphrase of the encrypted store " + usual.file() + ": ")
-                .flatMap(InitCommand::secretOf)
-            : newPassphrase(out);
-    if (passphrase.isEmpty()) {
-      return Optional.empty();
-    }
-    // the store reads the passphrase on every use; interactive() closes it when it is done
-    held.add(passphrase.get());
-    Platform platform = boot.services().platform();
-    return Optional.of(
-        new EncryptedSecretStore(
-            usual.file(),
-            new PassphraseSource.Fixed(passphrase.get()),
-            f -> OwnerOnlyFiles.restrictToOwner(platform, f)));
-  }
-
-  private static Optional<Secret> newPassphrase(PrintWriter out) {
-    out.println(
-        "  Choose a passphrase for the encrypted store. jrsctl asks for it when it needs a"
-            + " password, and it cannot be recovered.");
-    for (int attempt = 0; attempt < 3; attempt++) {
-      Optional<char[]> first = Prompter.secret(out, "  New passphrase: ");
-      if (first.isEmpty() || first.get().length == 0) {
-        first.ifPresent(c -> Arrays.fill(c, '\0'));
-        return Optional.empty();
-      }
-      Optional<char[]> second = Prompter.secret(out, "  Type it again: ");
-      try {
-        if (second.isEmpty()) {
-          return Optional.empty();
-        }
-        if (Arrays.equals(first.get(), second.get())) {
-          return Optional.of(Secret.of(first.get()));
-        }
-      } finally {
-        Arrays.fill(first.get(), '\0');
-        second.ifPresent(c -> Arrays.fill(c, '\0'));
-      }
-      out.println("  the passphrases differ; try again");
-    }
-    return Optional.empty();
-  }
-
-  private static Optional<Secret> secretOf(char[] chars) {
-    try {
-      return chars.length == 0 ? Optional.empty() : Optional.of(Secret.of(chars));
-    } finally {
-      Arrays.fill(chars, '\0');
     }
   }
 

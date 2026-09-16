@@ -150,6 +150,28 @@ final class HelpExamples {
                 "See the effect of a one-off override",
                 "jrsctl config show --set server.baseUrl=https://jrs.example.com:8443/jasperserver-pro")));
     m.put(
+        "config set",
+        List.of(
+            new Example(
+                "Point jrsctl at another server address",
+                "jrsctl config set server.baseUrl https://jrs.example.com:8443/jasperserver-pro"),
+            new Example(
+                "Type the admin password (hidden) and store it encrypted",
+                "jrsctl config set server.auth.passwordRef"),
+            new Example("Be asked for the new value", "jrsctl config set service.name")));
+    m.put(
+        "config unset",
+        List.of(
+            new Example(
+                "Remove a setting so its default applies",
+                "jrsctl config unset server.runAsUser")));
+    m.put(
+        "config keys",
+        List.of(
+            new Example(
+                "List every setting, its value, where it comes from and what it does",
+                "jrsctl config keys")));
+    m.put(
         "hotfix verify",
         List.of(
             new Example(

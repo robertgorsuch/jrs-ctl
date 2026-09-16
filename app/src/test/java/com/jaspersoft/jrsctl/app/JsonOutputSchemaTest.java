@@ -541,6 +541,64 @@ class JsonOutputSchemaTest {
             "config show",
             0,
             dir -> run("config", "show", "--json", "--home", emptyHome(dir).toString())));
+    s.add(
+        of(
+            "config set",
+            "config set",
+            0,
+            dir ->
+                run(
+                    "config",
+                    "set",
+                    "server.baseUrl",
+                    "https://jrs.example.com/jasperserver-pro",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "config set of an unknown key",
+            "config set",
+            2,
+            dir ->
+                run(
+                    "config",
+                    "set",
+                    "server.nope",
+                    "x",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "config set without a value in JSON mode",
+            "config set",
+            2,
+            dir ->
+                run(
+                    "config",
+                    "set",
+                    "server.baseUrl",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "config unset",
+            "config unset",
+            0,
+            dir -> {
+              Path home = emptyHome(dir);
+              run("config", "set", "server.runAsUser", "tomcat", "--home", home.toString());
+              return run(
+                  "config", "unset", "server.runAsUser", "--json", "--home", home.toString());
+            }));
+    s.add(
+        of(
+            "config keys",
+            "config keys",
+            0,
+            dir -> run("config", "keys", "--json", "--home", emptyHome(dir).toString())));
 
     s.add(
         of(

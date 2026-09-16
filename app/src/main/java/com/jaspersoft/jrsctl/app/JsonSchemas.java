@@ -63,6 +63,9 @@ public final class JsonSchemas {
     m.put("doctor", new Document("doctor.schema.json"));
     m.put("smoke", new Document("smoke.schema.json"));
     m.put("config show", new Document(CONFIG));
+    m.put("config set", new Document("config-set.schema.json"));
+    m.put("config unset", new Document("config-set.schema.json"));
+    m.put("config keys", new Document("config-keys.schema.json"));
     m.put("hotfix build", new Document("hotfix-build.schema.json"));
     m.put("hotfix verify", new Document("hotfix-verify.schema.json"));
     m.put("hotfix apply", new Stream(true));
