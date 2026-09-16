@@ -27,7 +27,8 @@ import picocli.CommandLine.ParseResult;
  * as for {@code --help}); the text is the command's {@code ### `jrsctl <path> ...`} section of the
  * embedded operator guide, so the explanation and the documentation cannot drift apart; a group
  * command prints the sections of all its visible subcommands and the root prints every visible
- * command section; a hidden command (bundle authoring, #62) is explained only when named.
+ * command section; a hidden command (bundle authoring, #62) is explained only when named; on a
+ * terminal the section is rendered as plain text, and piped it stays the guide's Markdown (#60).
  */
 final class Explain {
 
@@ -39,6 +40,8 @@ final class Explain {
   private static final Pattern WORD = Pattern.compile("[a-z][a-z0-9-]*");
 
   private static final Pattern BLANK = Pattern.compile("\\s+");
+
+  private static final Pattern BLANK_LINE = Pattern.compile("\\R");
 
   private Explain() {}
 
@@ -229,7 +232,12 @@ final class Explain {
         return ExitCodes.USAGE;
       }
       PrintWriter out = target.getOut();
-      out.print(text.get());
+      // #60: Markdown is unreadable in a terminal; piped output keeps it for tools and tests
+      out.print(
+          Terminal.present()
+              ? TerminalMarkdown.render(
+                  BLANK_LINE.splitAsStream(text.get()).toList(), TerminalMarkdown.width(Env.vars()))
+              : text.get());
       out.flush();
       return ExitCodes.SUCCESS;
     }

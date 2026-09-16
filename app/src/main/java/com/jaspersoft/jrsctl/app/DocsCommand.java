@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -16,7 +17,9 @@ import picocli.CommandLine.Spec;
  * and independent of the jrsctl home and configuration (no {@code Bootstrap}); the listing is the
  * same set of names that {@code docs <name>} accepts; an unknown name is a usage error (exit 1)
  * that lists the valid names; {@code --json} affects the listing only and emits an array of {@code
- * {name, title, bytes}}.
+ * {name, title, bytes}}; a document is printed as plain text when {@code --format text} is given or
+ * when {@code --format auto} (the default) writes to a terminal, and as its Markdown source
+ * otherwise, so a redirect to a file keeps the Markdown (#60).
  */
 @Command(
     name = "docs",
@@ -38,6 +41,20 @@ final class DocsCommand implements Callable<Integer> {
   @Option(names = "--json", description = "Emit the listing as a JSON array of {name,title,bytes}.")
   boolean json;
 
+  /** How a document is printed. */
+  enum Format {
+    AUTO,
+    TEXT,
+    MARKDOWN
+  }
+
+  @Option(
+      names = "--format",
+      paramLabel = "<format>",
+      description =
+          "auto (plain text on a terminal, Markdown otherwise), text or markdown. Default: auto.")
+  Format format = Format.AUTO;
+
   @Override
   public Integer call() {
     PrintWriter out = spec.commandLine().getOut();
@@ -58,7 +75,15 @@ final class DocsCommand implements Callable<Integer> {
       out.flush();
       return ExitCodes.SUCCESS;
     }
-    if (EmbeddedDocs.print(name, out)) {
+    boolean text = format == Format.TEXT || (format == Format.AUTO && Terminal.present());
+    if (text) {
+      Optional<List<String>> lines = EmbeddedDocs.lines(name);
+      if (lines.isPresent()) {
+        out.print(TerminalMarkdown.render(lines.get(), TerminalMarkdown.width(Env.vars())));
+        out.flush();
+        return ExitCodes.SUCCESS;
+      }
+    } else if (EmbeddedDocs.print(name, out)) {
       return ExitCodes.SUCCESS;
     }
     err.println(

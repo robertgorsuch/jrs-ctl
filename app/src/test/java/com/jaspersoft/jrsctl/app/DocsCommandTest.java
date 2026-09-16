@@ -47,6 +47,30 @@ class DocsCommandTest {
         .contains("manifest.json");
   }
 
+  /** Issue #60: a document can be read as plain text, for example through a pager. */
+  @Test
+  void should_print_plain_text_without_markup_when_format_text_given() {
+    StringWriter out = new StringWriter();
+    CommandLine cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(out));
+    assertThat(cmd.execute("docs", "operator-guide", "--format", "text")).isZero();
+    assertThat(out.toString())
+        .startsWith("jrsctl operator guide" + System.lineSeparator() + "=====")
+        .contains("jrsctl hotfix apply")
+        .doesNotContain("### ")
+        .doesNotContain("|---")
+        .doesNotContain("**");
+  }
+
+  @Test
+  void should_print_the_markdown_source_when_format_markdown_given() {
+    StringWriter out = new StringWriter();
+    CommandLine cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(out));
+    assertThat(cmd.execute("docs", "operator-guide", "--format", "markdown")).isZero();
+    assertThat(out.toString()).startsWith("# jrsctl operator guide").contains("### `jrsctl");
+  }
+
   @Test
   void should_exit_usage_and_list_names_when_name_unknown() {
     StringWriter err = new StringWriter();

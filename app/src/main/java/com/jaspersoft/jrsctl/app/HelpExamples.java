@@ -325,7 +325,9 @@ final class HelpExamples {
         "docs",
         List.of(
             new Example("List the built-in documents", "jrsctl docs"),
-            new Example("Read the operator guide", "jrsctl docs operator-guide")));
+            new Example("Read the operator guide", "jrsctl docs operator-guide"),
+            new Example(
+                "Page through it as plain text", "jrsctl docs operator-guide --format text")));
     return Collections.unmodifiableMap(m);
   }
 }

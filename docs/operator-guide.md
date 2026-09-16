@@ -49,7 +49,7 @@ jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-
 ## Getting help offline
 
 - `jrsctl --help`, `jrsctl <command> --help`, `jrsctl help <command>` — the usage synopsis: flags, parameters, one line each.
-- `jrsctl <command> --explain` — the long form: what the command does, what it mutates (or that it is read-only), how it rolls back, its exit codes and every flag. It prints the command's section of this guide and exits 0 **without running anything**, so it is safe to add to any command line you are about to run, even one with required flags missing: `jrsctl hotfix apply --explain`. On a group (`jrsctl hotfix --explain`) it prints every subcommand's section; `jrsctl --explain` prints the whole command reference.
+- `jrsctl <command> --explain` — the long form, printed as plain text in a terminal and as Markdown when piped: what the command does, what it mutates (or that it is read-only), how it rolls back, its exit codes and every flag. It prints the command's section of this guide and exits 0 **without running anything**, so it is safe to add to any command line you are about to run, even one with required flags missing: `jrsctl hotfix apply --explain`. On a group (`jrsctl hotfix --explain`) it prints every subcommand's section; `jrsctl --explain` prints the whole command reference.
 - `jrsctl docs` lists the embedded documents; `jrsctl docs operator-guide` prints this guide, `jrsctl docs hotfix-authoring` the bundle authoring guide, `jrsctl docs security` the security notes.
 
 Neither `--explain` nor `docs` reads the configuration, the secret store or the server; they print text that was fixed when the jar was built. `jrsctl docs recovery-runbook` prints the recovery runbook: what to do after every non-zero exit code.
@@ -451,14 +451,14 @@ Runs started from the console go through the same plan, confirmation, fingerprin
 - **Exit codes:** 0 after a clean stop; **2** when the bind address or TLS material is refused or the port is busy.
 - **Flags:** `--bind <addr>` — override `console.bind` (default `127.0.0.1`); a non-loopback bind is refused with exit 2 unless `console.tls.enabled: true` (`certPath` PEM chain, `keyPath` unencrypted PKCS#8 PEM) and `console.auth.mode: local` (`passwordRef` for the operator password) are both configured, see `docs/security.md`; `--port <n>` — override `console.port` (default `7420`); `--port 0` picks a free port; `--open` / `--no-open` — open (default when a terminal is present) or do not open the default browser.
 
-### `jrsctl docs [<name>] [--json]`
+### `jrsctl docs [<name>] [--format auto|text|markdown] [--json]`
 
-Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document, as Markdown, to standard output so it can be read in the terminal or redirected to a file. The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, console token, hardening) and `readme`.
+Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document to standard output: as plain text in a terminal (headings underlined, tables aligned or listed row by row, no Markdown markup, wrapped to `COLUMNS` or 100 columns), and as its Markdown source when redirected to a file or a pipe (#60). The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, console token, hardening) and `readme`.
 
 - **Mutates:** nothing; read-only and independent of the jrsctl home, configuration and server.
 - **Rollback:** not applicable.
 - **Exit codes:** 0; **1** when the name is not one of the embedded documents (the message lists the valid names).
-- **Flags:** `<name>` — the document to print; `--json` — the listing as a JSON array of `{"name", "title", "bytes"}` (ignored when a name is given).
+- **Flags:** `<name>` — the document to print; `--format auto|text|markdown` — `auto` (default) chooses by whether standard output is a terminal, `text` forces plain text (for example `jrsctl docs operator-guide --format text | less`), `markdown` forces the source; `--json` — the listing as a JSON array of `{"name", "title", "bytes"}` (ignored when a name is given).
 
 ### `jrsctl help [<command>]`
 
