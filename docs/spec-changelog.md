@@ -9,6 +9,10 @@ Changes from the first field test of 1.3.0 and 1.4.0 by a JasperReports Server s
 - §13 (console): on Linux without `DISPLAY` or `WAYLAND_DISPLAY` and with a loopback bind, `console` opens no browser and prints the `ssh -L` command that reaches it from another machine (#64).
 - §5.2: on Windows, restricting a secret file inside a home jrsctl created no longer leaves it with an empty access list; the `icacls` call that removes inherited entries also grants the owner full control.
 - Documentation: the README says no Java has to be installed and which Java buildomatic uses; CONTRIBUTING says why jrsctl stays on Java 21 and asks for an issue, not `-DskipTests`, when a test fails on one machine (#65).
+- §5.1: `jrsctl config set <key> [<value>]`, `config unset <key>` and `config keys` change and list settings without editing `config.yaml`. The file alone is validated as `--set` is before it is written, and the previous file is kept as `config.yaml.bak`. A password key takes a reference, or a password typed without echo and stored in `secrets.enc`, never a password on the command line. `config show` notes values an environment variable or `--set` overrides (#70).
+- §9.2, §9.3: `export` keeps the service running by default with either strategy; `export --stop-service` keeps the previous stop and start around `js-export`. The import, its pre-import snapshot and the upgrade's point-B export still stop the service (ADR-0021, #67).
+- §9.2, §12.0, §12.1: REST `export` and `import` run from a machine with no installation configured (`jrsctl init --remote <url>`). A plan that would need the vendor tools there is refused while planning with exit 2, and `doctor` skips its local checks (#68).
+- §10.2: the upgrade plan ends with `point-config-at-target`, which sets `server.buildomaticDir` to the target package's buildomatic after saving `config.yaml` in the upgrade's snapshot set; `upgrade rollback` gains `restore-jrsctl-config`. The buildomatic discovery rules are worded in plain language (#69).
 
 ## Draft 1.1 amendment — 2026-09-16
 
