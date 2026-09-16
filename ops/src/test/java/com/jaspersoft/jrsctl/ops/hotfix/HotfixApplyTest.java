@@ -179,6 +179,48 @@ class HotfixApplyTest {
     }
   }
 
+  /**
+   * Issue #56: a {@code replace} of a path the server does not have created the file as an {@code
+   * add} would, so the manifest promised a snapshot and a restore that could not exist.
+   */
+  @Test
+  void should_refuse_in_preflight_and_create_nothing_when_a_replace_target_is_missing()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      String manifest =
+          """
+          {
+            "id": "%s",
+            "version": "1",
+            "title": "Replace a missing file",
+            "applies": { "versions": [">=8.0.0 <9.0.0"] },
+            "files": [ { "action": "replace", "path": "%s" } ],
+            "restart": "required",
+            "rollback": "snapshot"
+          }
+          """
+              .formatted(HotfixFixture.ID, HotfixFixture.FIX);
+      Path bundle =
+          f.build(
+              f.bundleDir(
+                  "replace-missing",
+                  manifest,
+                  Map.of("payload/" + HotfixFixture.FIX, HotfixFixture.FIX_BYTES)));
+
+      RunOutcome outcome = f.run(f.ops().planApply(bundle, SIGNED), "r-replace-missing");
+
+      assertThat(outcome)
+          .isInstanceOf(RunOutcome.PrecheckFailed.class)
+          .extracting(o -> ((RunOutcome.PrecheckFailed) o).stepId())
+          .isEqualTo("preflight");
+      assertThat(((RunOutcome.PrecheckFailed) outcome).message())
+          .contains(HotfixFixture.FIX)
+          .contains("does not exist");
+      assertThat(f.target(HotfixFixture.FIX)).doesNotExist();
+      assertThat(f.fake.platform.controller.events).isEmpty();
+    }
+  }
+
   @Test
   void should_fail_validate_manifest_when_required_hotfix_missing() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {

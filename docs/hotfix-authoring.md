@@ -166,7 +166,7 @@ The schema has `additionalProperties: false` at every level: a misspelled key is
 
 | Key | Rules |
 |---|---|
-| `action` | Mandatory. `add` (the path must not exist on the server), `replace` (it must exist and is snapshotted first) or `delete` (it must exist, is snapshotted, then removed). |
+| `action` | Mandatory. `add` (the path must not exist on the server), `replace` (it must exist and is snapshotted first) or `delete` (it must exist, is snapshotted, then removed). `hotfix apply` refuses, in its preflight and before anything changes, an `add` whose path exists and a `replace` whose path does not. |
 | `path` | Destination relative to the Tomcat directory; no leading `/`, no `..`, no `:`; listed once. For `add` and `replace` the same path under `payload/` must exist in the bundle directory; for `delete` it must **not**. |
 | `sha256` | Required for `add` and `replace` (the build fills it in); not allowed for `delete`. |
 | `replaces` | Optional, `replace` and `add` only: plain file names (no directories) of sibling files the new file supersedes, e.g. the old jar name when the version is in the file name. `hotfix apply` removes them from the same directory after snapshotting; the upgrade reconciler uses them to decide whether the hotfix is still `REAPPLICABLE` on the new version. A `delete` entry cannot list `replaces`. |

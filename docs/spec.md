@@ -453,7 +453,7 @@ The signature covers `manifest.json` only. The manifest carries the SHA-256 of e
 
 Manifest rules (enforced by `ValidateManifest`):
 - `id` is the state-store key. `applies.versions` governs applicability.
-- `files[].action` is mandatory: `add | replace | delete`. `add` is for a path the server does not have (a jar whose versioned name is new is an `add` naming the old jar in `replaces`); `replace` and `delete` are for a path it has. `Preflight` refuses an `add` whose path exists (§8.2); a `replace` of a missing path is not refused.
+- `files[].action` is mandatory: `add | replace | delete`. `add` is for a path the server does not have (a jar whose versioned name is new is an `add` naming the old jar in `replaces`); `replace` and `delete` are for a path it has. `Preflight` refuses an `add` whose path exists and a `replace` whose path does not (§8.2).
 - `restart: none` is permitted only if no file is under `WEB-INF/lib` or `WEB-INF/classes` (§5.3).
 - Every `sql[]` entry must set `idempotent: true` and either provide `rollbackFile` or the manifest must set `"rollback": "irreversible"` with a `rollbackNote` string that is shown in the Plan summary. There is no transactional SQL promise; DDL auto-commits on several supported databases.
 - SQL requires the `database` config section; `ValidateManifest` fails with remediation if it is absent.
@@ -463,7 +463,7 @@ Manifest rules (enforced by `ValidateManifest`):
 Phase `verify`:
 1. `VerifySignature` — reject unsigned unless `--allow-unsigned` (audited). A signature that is present but verifies against no trusted key is never waived: the bundle names no signer, so an unknown signer cannot be told from a bundle altered after signing; the operator adds the key or the bundle is refused (exit 7).
 2. `ValidateManifest` — schema + applicability vs. detected server + dependency/conflict check vs. state store + **file overlap check** against `hotfix_files` (a file already owned by an installed hotfix that is not in `requires` is a conflict).
-3. `Preflight` — disk space, write access, lock detection, service status, `restart` consistency, database connectivity if SQL present; an `add` entry whose path already exists on the server is refused, because `Snapshot` does not keep added paths and `hotfix rollback` removes them, so the existing file could not be restored (#55). Ship such a file as `replace`.
+3. `Preflight` — disk space, write access, lock detection, service status, `restart` consistency, database connectivity if SQL present; an `add` entry whose path already exists on the server is refused, because `Snapshot` does not keep added paths and `hotfix rollback` removes them, so the existing file could not be restored (#55). Ship such a file as `replace`. A `replace` entry whose path does not exist is refused as well: there is nothing to snapshot or restore, so the entry is an `add` and must say so (#56).
 4. `RunPrechecks`.
 
 Phase `backup`:

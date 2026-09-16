@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-16
+
+- §8.1, §8.2 step 3: `Preflight` refuses a `replace` entry whose path does not exist on the server, as it refuses an `add` whose path does (#55). Such an entry was swapped in as an `add` while the plan promised a snapshot and a restore that could not exist (#56). A hotfix installed before this change with such an entry still rolls back cleanly: `hotfix rollback` deletes every file recorded without a pre-install hash, whatever its action.
+
 ## Draft 1.1 amendment — 2026-09-15
 
 - §14 Phase 7, §18: the portable image ships a third launcher, `bin/jrsctl.ps1`, for Windows schedulers and scripts (ADR-0008 amendment, #33). Ctrl-C through the batch launcher leaves `cmd.exe` waiting on "Terminate batch job (Y/N)?": measured on Windows 11 against the v1.4.0 archive, the caller hung until the process was killed and never saw an exit code, while the same command from PowerShell ended within a second with one. The batch launcher is unchanged and stays the interactive default; the operator guide's Ctrl-C note now points automation at the PowerShell launcher, which also reads `JRSCTL_JAVA_OPTS`, rather than at the bare runtime invocation.

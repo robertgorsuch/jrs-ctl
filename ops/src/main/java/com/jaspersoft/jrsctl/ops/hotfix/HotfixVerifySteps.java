@@ -283,6 +283,15 @@ final class HotfixVerifySteps {
                   + ": the file already exists on the server and could not be restored on"
                   + " rollback; ship it as \"replace\"");
         }
+        // Issue #56: a replace of a missing path would be created as an add while the manifest
+        // promises a snapshot and a restore that cannot exist.
+        if (t.action() == Manifest.Action.REPLACE && !t.existedBefore()) {
+          problems.add(
+              "replace "
+                  + t.manifestPath()
+                  + ": the file does not exist on the server, so there is nothing to replace;"
+                  + " ship it as \"add\"");
+        }
       }
       Path base = in.paths().commonBase();
       // Review finding 1.16: staging, the snapshot and the landing tree may each sit on a volume
