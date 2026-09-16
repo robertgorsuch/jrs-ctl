@@ -24,6 +24,10 @@ import picocli.CommandLine.Spec;
     exitCodeOnExecutionException = ExitCodes.FAILED_ROLLBACK_INCOMPLETE,
     description =
         "Apply hotfixes, export and import repository content, and upgrade JasperReports Server safely.",
+    footer = {
+      "Examples for each command: jrsctl <command> --help",
+      "On Windows type bin\\jrsctl.cmd, on Linux bin/jrsctl, where the examples say jrsctl."
+    },
     subcommands = {
       SelfCheckCommand.class,
       InitCommand.class,

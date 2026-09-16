@@ -28,9 +28,10 @@ public final class Main {
   /** The complete command tree as the process runs it. */
   static CommandLine commandLine() {
     return Explain.install(
-        new CommandLine(new JrsctlCommand())
-            .setCaseInsensitiveEnumValuesAllowed(true)
-            .setExecutionExceptionHandler(new ExitCodes.Handler())
-            .setParameterExceptionHandler(new ExitCodes.ParameterHandler()));
+        HelpExamples.install(
+            new CommandLine(new JrsctlCommand())
+                .setCaseInsensitiveEnumValuesAllowed(true)
+                .setExecutionExceptionHandler(new ExitCodes.Handler())
+                .setParameterExceptionHandler(new ExitCodes.ParameterHandler())));
   }
 }

@@ -118,6 +118,11 @@ drives the packaged jar the way an operator would.
   affected ADR updated when the contract changed; `docs/operator-guide.md` updated when a command,
   flag or exit code changed (the guide is embedded in the jar and `--explain` prints its sections,
   so `Phase8ExplainDocsTest` fails when a command lacks its section).
+- Keep the three kinds of built-in help apart (#61): `--help` is the synopsis, one line per flag,
+  and 2-3 worked examples from `app/.../HelpExamples.java` (`HelpExamplesTest` fails when a
+  runnable command has none, or when an example does not parse); `--explain` is what the command
+  changes, how it is undone, its exit codes and flags, from the operator guide; `jrsctl docs` is
+  the task guides. A new command needs all three.
 - CI (`.github/workflows/ci.yml`) runs the full gate on Ubuntu and Windows, packages both
   archives, and audits dependencies. A pull request must be green on both operating systems.
 
