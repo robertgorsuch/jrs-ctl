@@ -106,12 +106,74 @@ class Phase7DistributionTest {
       assertThat(sha256(image.resolve(e.getKey()))).as(e.getKey()).isEqualTo(e.getValue());
     }
     assertThat(listed)
-        .containsKeys("lib/jrsctl.jar", "bin/jrsctl", "bin/jrsctl.cmd", "README.txt")
+        .containsKeys(
+            "lib/jrsctl.jar", "bin/jrsctl", "bin/jrsctl.cmd", "bin/jrsctl.ps1", "README.txt")
         .containsKeys("LICENSE", "LICENSE-THIRD-PARTY.txt");
     assertThat(Files.readString(image.resolve("README.txt"))).contains("Actian Jaspersoft");
     assertThat(Files.readString(image.resolve("LICENSE")))
         .as("the image carries the product's own licence text, byte for byte (ADR-0010)")
         .isEqualTo(Files.readString(repoRoot().resolve("LICENSE")));
+  }
+
+  /**
+   * Issue #33: the batch launcher blocks on {@code cmd.exe}'s "Terminate batch job (Y/N)?" after
+   * Ctrl-C and the caller loses the exit code, so the image also ships a PowerShell launcher for
+   * schedulers and scripts. It must reach the bundled runtime the same way the batch file does.
+   */
+  @Test
+  void powershell_launcher_prints_version_and_passes_selfcheck_without_a_jdk(@TempDir Path tmp)
+      throws Exception {
+    Assumptions.assumeTrue(WINDOWS, "the PowerShell launcher is the Windows entry point");
+    assumeImageBuilt();
+    Files.createDirectories(tmp);
+
+    Launch r = runPowershellLauncher(image.resolve("bin/jrsctl.ps1"), tmp, "--version");
+    assertThat(r.exit()).as("--version\n%s\n%s", r.stdout(), r.stderr()).isZero();
+    assertThat(r.stdout()).contains("jrsctl " + VERSION).contains("Actian Jaspersoft");
+
+    r = runPowershellLauncher(image.resolve("bin/jrsctl.ps1"), tmp, "selfcheck");
+    assertThat(r.exit()).as("selfcheck\n%s\n%s", r.stdout(), r.stderr()).isZero();
+    assertThat(r.stdout()).contains("PASS").contains("selfcheck ok").doesNotContain("FAIL");
+  }
+
+  /**
+   * A launcher that cannot reach the bundled runtime must say so and fail: PowerShell leaves {@code
+   * $LASTEXITCODE} unset when no native command ran, so an unguarded {@code exit $LASTEXITCODE}
+   * reports success to a scheduler that in fact got nothing (#33).
+   */
+  @Test
+  void powershell_launcher_fails_loudly_when_the_runtime_is_missing(@TempDir Path tmp)
+      throws Exception {
+    Assumptions.assumeTrue(WINDOWS, "the PowerShell launcher is the Windows entry point");
+    assumeImageBuilt();
+    Path lonely = tmp.resolve("unpacked").resolve("bin").resolve("jrsctl.ps1");
+    Files.createDirectories(lonely.getParent());
+    Files.copy(image.resolve("bin/jrsctl.ps1"), lonely);
+
+    Launch r = runPowershellLauncher(lonely, tmp.resolve("home"), "--version");
+
+    assertThat(r.exit()).as("stdout=%s stderr=%s", r.stdout(), r.stderr()).isNotZero();
+    assertThat(r.stderr()).contains("jrsctl").contains("missing");
+    assertThat(r.stdout()).isEmpty();
+  }
+
+  /**
+   * The image's PowerShell launcher, run the way a scheduler would, with a scrubbed environment.
+   */
+  private Launch runPowershellLauncher(Path script, Path home, String... args) throws Exception {
+    List<String> cmd = new ArrayList<>();
+    cmd.add(
+        Path.of(
+                System.getenv("SystemRoot"),
+                "System32",
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe")
+            .toString());
+    cmd.addAll(List.of("-NoProfile", "-ExecutionPolicy", "Bypass", "-File"));
+    cmd.add(script.toString());
+    cmd.addAll(List.of(args));
+    return run(cmd, home);
   }
 
   @Test
@@ -190,6 +252,9 @@ class Phase7DistributionTest {
         String systemRoot = System.getenv("SystemRoot");
         env.put("SystemRoot", systemRoot);
         env.put("PATH", systemRoot + "\\System32;" + systemRoot);
+        // PowerShell decides from PATHEXT what counts as an executable; without it the launcher's
+        // java.exe is never run and PowerShell says nothing on either stream (#33).
+        env.put("PATHEXT", ".COM;.EXE;.BAT;.CMD;.PS1");
         env.put("TEMP", home.toString());
         env.put("TMP", home.toString());
       } else {

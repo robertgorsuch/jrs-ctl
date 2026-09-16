@@ -12,6 +12,7 @@ Phase 7 ships jrsctl as a portable archive with a bundled jlink runtime, so an o
 
 ```
 bin/jrsctl.cmd            "%~dp0..\runtime\bin\java.exe" %JRSCTL_JAVA_OPTS% -jar "%~dp0..\lib\jrsctl.jar" %*  (exit code propagated)
+bin/jrsctl.ps1            the same invocation from PowerShell, for schedulers and scripts (amendment 2026-09-15, #33)
 bin/jrsctl                POSIX sh, resolves symlinks, exec "$home/runtime/bin/java" ... "$@"   (0755 in the tar)
 lib/jrsctl.jar            the shaded jar from app/target, byte-identical
 runtime/                  jlink output: --strip-debug --no-header-files --no-man-pages --compress zip-6
@@ -48,6 +49,10 @@ Rejected: antrun (XML-scripted logic is harder to test than 150 lines of Java); 
 ### Signing
 
 `scripts/sign-artifacts.cmd|.sh` run `scripts/SignArtifacts.java` (JDK single-file launch). With `JRSCTL_SIGNING_KEY` (Base64 PKCS#8 Ed25519 private key, the `jrsctl keys generate` format) they write `<artifact>.sig` = Base64 Ed25519 detached signature, the encoding hotfix bundles already use (§11.1, JDK provider, no BouncyCastle), for every archive, `.sha256` and the SBOM. Without the key they print `signing skipped: no key (CI only)` and exit 0. Only the `release` CI job holds the secret; local artifacts are unsigned (spec §0 rule 11).
+
+## Amendment, 2026-09-15 (#33)
+
+The image also ships `bin/jrsctl.ps1`. Measured on Windows 11 against the published v1.4.0 archive, with a real `CTRL_C_EVENT` sent to the console group of a running command: through `bin\jrsctl.cmd` the process was still alive fifteen seconds later, waiting on `cmd.exe`'s "Terminate batch job (Y/N)?", and the caller got no exit code at all; the same command run from PowerShell ended within a second and returned an exit code. A batch file cannot avoid that question, so schedulers and scripts get a launcher that is not one. `jrsctl.cmd` stays the interactive default and is unchanged, and no native launcher is introduced (that would restructure the image; see the rejected alternatives above). `ImageLayout` requires the file and normalises it to CRLF like `jrsctl.cmd`; `Phase7DistributionTest` runs it for `--version` and `selfcheck` on Windows.
 
 ## Consequences
 

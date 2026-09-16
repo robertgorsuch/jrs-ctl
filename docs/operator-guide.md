@@ -34,6 +34,7 @@ jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-
    | Path | Purpose |
    |---|---|
    | `bin\jrsctl.cmd` / `bin/jrsctl` | the launcher; every command in this guide is `bin\jrsctl.cmd <command>` (Windows) or `bin/jrsctl <command>` (Linux) |
+   | `bin\jrsctl.ps1` | the Windows launcher for schedulers and scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File bin\jrsctl.ps1 <command>`. It is not a batch file, so Ctrl-C never blocks on `cmd.exe`'s "Terminate batch job (Y/N)?" and the caller always gets jrsctl's exit code (#33) |
    | `lib/jrsctl.jar` | the application, with this documentation embedded (`jrsctl docs`) |
    | `runtime/` | the bundled Java runtime, used only by jrsctl (it is not a JDK and has no `javac`) |
    | `README.txt`, `LICENSE-THIRD-PARTY.txt` | quick start and the licences of the bundled components |
@@ -483,7 +484,15 @@ Prints the usage synopsis of the tool (no argument) or of one top-level command,
 | 8 | pending recovery required | a previous run has no terminal state; run `jrsctl runs recover <id> --resume|--rollback` |
 | 9 | run lock held | another jrsctl process owns `runs.lock`; the message names its run id and pid |
 
-**Ctrl-C on Windows.** `bin\jrsctl.cmd` is a batch file, so after Ctrl-C `cmd.exe` may ask `Terminate batch job (Y/N)?` when jrsctl has already cancelled and exited 5. The run is finished either way, and the answer changes nothing in it. A scheduler or script that must see exit code 5, and must never block on that question, should start the bundled runtime directly rather than the batch file. `JRSCTL_JAVA_OPTS` is not read in that form, so put any JVM options on the command line:
+**Ctrl-C on Windows.** `bin\jrsctl.cmd` is a batch file, so after Ctrl-C `cmd.exe` asks `Terminate batch job (Y/N)?` when jrsctl has already cancelled and exited. Measured on Windows 11 with a real console Ctrl-C: the question waits for an answer, so an unattended caller hangs on it and never sees the exit code (#33). The run itself is finished either way, and the answer changes nothing in it.
+
+A scheduler or script should therefore use the PowerShell launcher, which is not a batch file, never asks that question and passes jrsctl's own exit code back:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File <install>\bin\jrsctl.ps1 <command> [options]
+```
+
+It reads `JRSCTL_JAVA_OPTS` like `bin\jrsctl.cmd`. Starting the bundled runtime directly works as well, but then `JRSCTL_JAVA_OPTS` is not read, so any JVM options go on the command line:
 
 ```
 <install>\runtime\bin\java.exe -jar <install>\lib\jrsctl.jar <command> [options]

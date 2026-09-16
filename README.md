@@ -56,6 +56,7 @@ cd /opt/jrsctl-1.3.0
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
 > On **Windows** type `bin\jrsctl.cmd …` and on **Linux** type `bin/jrsctl …`.
 > For example, `jrsctl doctor` becomes `bin\jrsctl.cmd doctor` on Windows.
+> For scheduled or scripted runs on Windows, use `powershell -NoProfile -ExecutionPolicy Bypass -File bin\jrsctl.ps1 …` instead: pressing Ctrl-C during a batch-file run makes Windows ask a question that stops the script from finishing.
 
 ### Step 2: Check the tool itself
 

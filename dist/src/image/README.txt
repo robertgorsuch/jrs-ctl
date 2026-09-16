@@ -9,6 +9,7 @@ WHAT THIS IS
 
 LAYOUT
   bin/jrsctl.cmd            launcher for Windows
+  bin/jrsctl.ps1            launcher for Windows schedulers and scripts (PowerShell)
   bin/jrsctl                launcher for Linux
   lib/jrsctl.jar            the application
   runtime/                  bundled Java runtime (used only by jrsctl)
@@ -26,6 +27,11 @@ QUICK START
             bin/jrsctl selfcheck
             bin/jrsctl init --install-dir /opt/jasperreports-server-9.0
             bin/jrsctl doctor
+
+  Schedulers and scripts on Windows should use the PowerShell launcher:
+    powershell -NoProfile -ExecutionPolicy Bypass -File bin\jrsctl.ps1 <command>
+  After Ctrl-C the batch launcher lets cmd.exe ask "Terminate batch job
+  (Y/N)?", which blocks and hides the exit code; the PowerShell one does not.
 
   jrsctl keeps its configuration, run journal and snapshots in its home
   directory: --home <dir>, else $JRSCTL_HOME, else %ProgramData%\jrsctl

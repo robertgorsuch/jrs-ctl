@@ -26,6 +26,7 @@ public final class ImageLayout {
           "lib/jrsctl.jar",
           "bin/jrsctl",
           "bin/jrsctl.cmd",
+          "bin/jrsctl.ps1",
           "README.txt",
           "LICENSE-THIRD-PARTY.txt",
           "runtime/release");
@@ -54,10 +55,12 @@ public final class ImageLayout {
     Path sh = image.resolve("bin/jrsctl");
     String text = Files.readString(sh, StandardCharsets.UTF_8).replace("\r\n", "\n");
     Files.writeString(sh, text, StandardCharsets.UTF_8);
-    Path cmd = image.resolve("bin/jrsctl.cmd");
-    String cmdText =
-        Files.readString(cmd, StandardCharsets.UTF_8).replace("\r\n", "\n").replace("\n", "\r\n");
-    Files.writeString(cmd, cmdText, StandardCharsets.UTF_8);
+    for (String windowsLauncher : List.of("bin/jrsctl.cmd", "bin/jrsctl.ps1")) {
+      Path p = image.resolve(windowsLauncher);
+      String text2 =
+          Files.readString(p, StandardCharsets.UTF_8).replace("\r\n", "\n").replace("\n", "\r\n");
+      Files.writeString(p, text2, StandardCharsets.UTF_8);
+    }
 
     if (Files.getFileStore(image).supportsFileAttributeView("posix")) {
       Set<PosixFilePermission> rwxr = EnumSet.allOf(PosixFilePermission.class);
