@@ -125,7 +125,10 @@ final class HelpExamples {
                     + " --buildomatic-dir /data/jrs/buildomatic"),
             new Example(
                 "Show what would be written, without writing anything",
-                "jrsctl init --install-dir /opt/jasperreports-server-pro-10.0.0 --json")));
+                "jrsctl init --install-dir /opt/jasperreports-server-pro-10.0.0 --json"),
+            new Example(
+                "From another machine: REST export and import only",
+                "jrsctl init --remote https://jrs.example.com:8443/jasperserver-pro")));
     m.put(
         "doctor",
         List.of(

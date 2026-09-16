@@ -233,6 +233,14 @@ public record Config(
       Objects.requireNonNull(auth, "auth");
     }
 
+    /**
+     * True when the configuration names any part of a JasperReports Server installation on this
+     * machine; false for a jrsctl that reaches the server over REST only (#68).
+     */
+    public boolean namesLocalInstallation() {
+      return installDir.isPresent() || tomcatDir.isPresent() || buildomaticDir.isPresent();
+    }
+
     public static Server empty() {
       return new Server(
           Optional.empty(),

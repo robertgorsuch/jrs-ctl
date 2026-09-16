@@ -81,19 +81,31 @@ public final class DoctorOperation {
             "capabilities",
             s -> probe.dependent("capabilities", c -> ServerChecks.capabilities(s, c))));
 
+    // #68: a jrsctl that reaches the server over REST only has no installation to check
+    boolean local = services.config().server().namesLocalInstallation();
     Optional<TomcatLayout> layout = LocalChecks.layout(services);
-    items.add(guard("layout", s -> LocalChecks.layout(s, layout)));
-    items.add(guard("service", LocalChecks::service));
-    items.add(guard(LocalChecks.SERVICE_MANAGER, LocalChecks::serviceManager));
-    items.add(guard("permissions", s -> LocalChecks.permissions(s, layout)));
+    items.add(local ? guard("layout", s -> LocalChecks.layout(s, layout)) : remote("layout"));
+    items.add(local ? guard("service", LocalChecks::service) : remote("service"));
+    items.add(
+        local
+            ? guard(LocalChecks.SERVICE_MANAGER, LocalChecks::serviceManager)
+            : remote(LocalChecks.SERVICE_MANAGER));
+    items.add(
+        local
+            ? guard("permissions", s -> LocalChecks.permissions(s, layout))
+            : remote("permissions"));
     items.add(guard("disk", LocalChecks::disk));
     items.add(
-        guard("keystore", s -> probe.dependent("keystore", c -> ServerChecks.keystore(s, c))));
-    items.add(guard("vendor", LocalChecks::vendor));
+        local
+            ? guard("keystore", s -> probe.dependent("keystore", c -> ServerChecks.keystore(s, c)))
+            : remote("keystore"));
+    items.add(local ? guard("vendor", LocalChecks::vendor) : remote("vendor"));
     items.add(
-        guard(
-            "vendor-java",
-            s -> probe.dependent("vendor-java", c -> ServerChecks.vendorJava(s, c))));
+        local
+            ? guard(
+                "vendor-java",
+                s -> probe.dependent("vendor-java", c -> ServerChecks.vendorJava(s, c)))
+            : remote("vendor-java"));
     items.add(guard("database", DatabaseCheck::check));
     items.add(guard("state", LocalChecks::state));
     items.add(guard("runs", LocalChecks::runs));
@@ -102,6 +114,14 @@ public final class DoctorOperation {
     items.add(guard("network", LocalChecks::network));
     items.add(guard("elevated", LocalChecks::elevated));
     return DoctorReport.of(items);
+  }
+
+  private static ReportItem remote(String name) {
+    return ReportItem.skip(
+        name,
+        "no local installation configured: this jrsctl reaches the server over REST only",
+        "REST export and import work from here; run jrsctl on the server for hotfixes, upgrades"
+            + " and vendor tools, or set server.installDir");
   }
 
   private ReportItem guard(String name, DoctorCheck check) {

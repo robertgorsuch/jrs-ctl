@@ -23,7 +23,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 
 ## Before you start
 
-- **Run jrsctl on the JasperReports Server machine itself.** It doesn't work over the network.
+- **Run jrsctl on the JasperReports Server machine itself** for health checks, hotfixes and upgrades. Backing up and copying content (`export`, `import`) also works from another machine: set it up there with `jrsctl init --remote https://your-server/jasperserver-pro`.
 - **Use an account that is allowed to stop and start the server.** On Windows, open **Command Prompt** with **Run as administrator**. On Linux, use the account that runs the server, or `root`.
 - **Have the JasperReports Server admin password ready** (`superuser` on the Commercial edition, `jasperadmin` on the Community edition; `init` proposes the right one).
 - **No Java to install.** The download includes its own Java, used only by jrsctl. Nothing is installed on the machine, and jrsctl does not change the Java that JasperReports Server uses. For the server's own scripts (buildomatic) jrsctl uses the Java that came with your server, or the one you set as `vendor.javaHome`: Java 8 for 7.x, 11 for 8.x, 17 for 9.x and 10.x.

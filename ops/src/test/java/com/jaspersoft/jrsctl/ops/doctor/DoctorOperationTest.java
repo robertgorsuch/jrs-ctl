@@ -86,6 +86,39 @@ class DoctorOperationTest {
     }
   }
 
+  /**
+   * Issue #68: from a machine that only reaches the server over REST, the checks of a local
+   * installation are skipped and say why, instead of failing and pointing at jrsctl init.
+   */
+  @Test
+  void should_skip_the_local_installation_checks_when_the_configuration_names_no_installation()
+      throws Exception {
+    String remote =
+        """
+        server:
+          baseUrl: http://localhost:8081/jasperserver-pro
+          auth:
+            mode: basic
+            username: jasperadmin
+            passwordRef: env:JRS_PASSWORD
+        network:
+          mode: public
+        """;
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(remote)) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      Map<String, ReportItem> items = byName(report);
+      assertThat(report.exitCode()).as(report.items().toString()).isEqualTo(0);
+      for (String local :
+          List.of("layout", "service", "service-manager", "permissions", "keystore", "vendor")) {
+        assertThat(items.get(local).status()).as(local).isEqualTo(Status.SKIP);
+        assertThat(items.get(local).detail()).as(local).contains("no local installation");
+      }
+      assertThat(items.get("server").status()).isEqualTo(Status.PASS);
+      assertThat(items.get("auth").status()).isEqualTo(Status.PASS);
+    }
+  }
+
   /** Review finding 1.18: doctor runs the integrity check and names the way out. */
   @Test
   void should_fail_state_with_a_remediation_when_state_db_is_corrupt() throws Exception {
@@ -191,9 +224,10 @@ class DoctorOperationTest {
       Map<String, ReportItem> items = byName(report);
       assertThat(items.get("network").status()).isEqualTo(Status.WARN);
       assertThat(items.get("network").remediation()).contains("proxy");
-      assertThat(items.get("layout").status()).isEqualTo(Status.FAIL);
+      // no installation in this configuration: the local checks are skipped (#68)
+      assertThat(items.get("layout").status()).isEqualTo(Status.SKIP);
       assertThat(items.get("permissions").status()).isEqualTo(Status.SKIP);
-      assertThat(items.get("service").status()).isEqualTo(Status.FAIL);
+      assertThat(items.get("service").status()).isEqualTo(Status.SKIP);
       assertThat(items.get("auth").status()).isEqualTo(Status.FAIL);
       assertThat(report.exitCode()).isEqualTo(2);
     }

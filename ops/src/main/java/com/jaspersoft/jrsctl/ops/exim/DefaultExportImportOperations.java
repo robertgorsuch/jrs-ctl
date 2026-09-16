@@ -96,6 +96,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =
         strategies.select(services.config(), adapter, request, options.strategy());
+    requireLocalInstallation(selection, options.strategy(), options.fullServer(), "export");
     List<Step> steps = selection.strategy().exportSteps(request);
 
     List<String> warnings = new ArrayList<>();
@@ -162,6 +163,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =
         strategies.select(services.config(), adapter, request, options.strategy());
+    requireLocalInstallation(selection, options.strategy(), false, "import");
     ExportImportStrategy strategy = selection.strategy();
 
     List<String> warnings = new ArrayList<>();
@@ -332,6 +334,41 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           case VENDOR_CLI -> "vendor";
         };
     return kind + " (" + selection.reason() + ")";
+  }
+
+  /**
+   * #68: REST needs only the server address, so it works from any machine; the vendor tools need
+   * the installation on this one. A plan that would use them without one is refused while planning,
+   * with the reason REST was not used, instead of failing when the tools cannot be found.
+   */
+  private void requireLocalInstallation(
+      Strategies.Selection selection,
+      Optional<ExportImportStrategy.Kind> forced,
+      boolean fullServer,
+      String operation) {
+    if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI
+        || services.config().server().namesLocalInstallation()) {
+      return;
+    }
+    String why;
+    if (forced.isPresent() && forced.get() == ExportImportStrategy.Kind.VENDOR_CLI) {
+      why = "--strategy vendor uses the vendor " + operation + " tools";
+    } else if (fullServer) {
+      why = "a full-server export uses the vendor js-export tool";
+    } else {
+      why =
+          "REST cannot be used ("
+              + selection.reason()
+              + "), so the "
+              + operation
+              + " would need the vendor tools";
+    }
+    throw new IllegalArgumentException(
+        why
+            + ", which need a JasperReports Server installation on this machine, and this"
+            + " configuration names none (server.installDir, server.tomcatDir or"
+            + " server.buildomaticDir); run jrsctl on the JasperReports Server host, or use REST"
+            + " from here");
   }
 
   private static String describe(ExportRequest r) {

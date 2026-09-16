@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.ops.init.InitOperation;
 import com.jaspersoft.jrsctl.ops.init.InitReport;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URI;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,6 +69,15 @@ final class InitCommand implements Callable<Integer> {
   @Option(names = "--force", description = "Overwrite an existing config.yaml.")
   boolean force;
 
+  @Option(
+      names = "--remote",
+      paramLabel = "<url>",
+      description =
+          "Write a server-only configuration for this machine, which reaches the server over REST"
+              + " (export and import) and has no installation, e.g."
+              + " https://jrs.example.com/jasperserver-pro.")
+  URI remote;
+
   /** A value the operator is offered to change: its key, a label and whether it is a directory. */
   record Field(String key, String label, boolean directory) {}
 
@@ -96,10 +106,21 @@ final class InitCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     PrintWriter err = spec.commandLine().getErr();
     Redactor redactor = Redactor.global();
+    if (remote != null && (installDir != null || buildomaticDir != null)) {
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--remote describes a machine without an installation; it cannot be combined with"
+              + " --install-dir or --buildomatic-dir");
+    }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       InitOperation op = new InitOperation(boot.services());
       InitReport report =
-          op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
+          remote != null
+              ? op.detectRemote(remote)
+              : op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
       Config config = op.toConfig(report);
       Path target = boot.services().home().configFile();
       if (global.json()) {
@@ -142,7 +163,7 @@ final class InitCommand implements Callable<Integer> {
       for (String line : table.lines()) {
         out.println(redactor.redact(line));
       }
-      if (!report.detectedInstall()) {
+      if (!report.detectedInstall() && remote == null) {
         out.println("no installation detected; pass --install-dir <root> to point at one");
       }
       if (!global.yes()) {

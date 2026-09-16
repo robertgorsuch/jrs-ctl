@@ -102,8 +102,7 @@ public final class Strategies {
       };
     }
     if (fullServer) {
-      return new Selection(
-          vendor, "vendor CLI: full-server export requires js-export with the service stopped");
+      return new Selection(vendor, "vendor CLI: a full-server export uses js-export");
     }
     Set<Capability> caps;
     try {

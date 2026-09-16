@@ -207,6 +207,68 @@ public final class InitOperation {
     return new InitReport(config, values);
   }
 
+  /**
+   * A server-only configuration for a jrsctl that reaches the server over REST and has no
+   * installation on this machine (#68): the address, the webapp and admin user its path implies,
+   * and the password placeholder. Nothing is probed and nothing local is detected.
+   */
+  public InitReport detectRemote(URI baseUrl) {
+    Objects.requireNonNull(baseUrl, "baseUrl");
+    List<InitReport.Detected> values = new ArrayList<>();
+    Config defaults = Config.defaults();
+    values.add(new InitReport.Detected("server.baseUrl", baseUrl.toString(), "from --remote"));
+    String path = baseUrl.getPath() == null ? "" : baseUrl.getPath();
+    String last = path.replaceAll("/+$", "");
+    last = last.substring(last.lastIndexOf('/') + 1);
+    Optional<Config.WebappName> webapp =
+        last.equals(Config.WebappName.JASPERSERVER_PRO.yamlValue())
+            ? Optional.of(Config.WebappName.JASPERSERVER_PRO)
+            : last.equals(Config.WebappName.JASPERSERVER.yamlValue())
+                ? Optional.of(Config.WebappName.JASPERSERVER)
+                : Optional.empty();
+    webapp.ifPresent(
+        w ->
+            values.add(
+                new InitReport.Detected(
+                    "server.webappName", w.yamlValue(), "last segment of the --remote address")));
+    String username = username(webapp.map(Config.WebappName::yamlValue).orElse(""));
+    values.add(
+        new InitReport.Detected(
+            "server.auth.username",
+            username,
+            username.equals(COMMERCIAL_USERNAME)
+                ? "commercial edition (jasperserver-pro): full-server operations need superuser"
+                : "default; set it to the admin user you log in with"));
+    values.add(
+        new InitReport.Detected("server.auth.passwordRef", DEFAULT_PASSWORD_REF, SOURCE_DEFAULT));
+    values.add(
+        new InitReport.Detected(
+            "server.installDir",
+            "(none)",
+            "remote: REST export and import only; run jrsctl on the server for the rest"));
+    Config config =
+        new Config(
+            new Config.Server(
+                Optional.of(baseUrl),
+                webapp,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                new Config.Auth(
+                    Config.AuthMode.DEFAULT,
+                    Optional.of(username),
+                    Optional.of(SecretRef.parse(DEFAULT_PASSWORD_REF)))),
+            defaults.service(),
+            defaults.database(),
+            defaults.vendor(),
+            defaults.network(),
+            defaults.console(),
+            defaults.backups(),
+            new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
+    return new InitReport(config, values);
+  }
+
   /** The configuration the report proposes. */
   public Config toConfig(InitReport report) {
     return Objects.requireNonNull(report, "report").config();

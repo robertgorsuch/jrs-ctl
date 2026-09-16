@@ -172,6 +172,52 @@ class InitCommandTest {
     assertThat(home.resolve("config.yaml")).doesNotExist();
   }
 
+  /** Issue #68: a machine that only reaches the server over REST gets a server-only config. */
+  @Test
+  void should_write_a_server_only_config_when_remote_given() throws Exception {
+    Path home = tmp.resolve("home");
+
+    Run run =
+        run(
+            "init",
+            "--remote",
+            "https://jrs.example.com:8443/jasperserver-pro",
+            "--yes",
+            "--home",
+            home.toString());
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out()).doesNotContain("no installation detected");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().baseUrl())
+        .contains(URI.create("https://jrs.example.com:8443/jasperserver-pro"));
+    assertThat(loaded.server().webappName()).contains(Config.WebappName.JASPERSERVER_PRO);
+    assertThat(loaded.server().auth().username()).contains("superuser");
+    assertThat(loaded.server().auth().passwordRef().map(SecretRef::render))
+        .contains("env:JRS_PASSWORD");
+    assertThat(loaded.server().namesLocalInstallation()).isFalse();
+    assertThat(loaded.service().kind()).isEmpty();
+  }
+
+  @Test
+  void should_refuse_remote_together_with_an_install_dir() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+
+    Run run =
+        run(
+            "init",
+            "--remote",
+            "https://jrs.example.com/jasperserver",
+            "--install-dir",
+            install.toString(),
+            "--yes",
+            "--home",
+            tmp.resolve("home").toString());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(run.err()).contains("--remote").contains("--install-dir");
+  }
+
   /** Issue #63: an operator who changes nothing gets the detected values after a few answers. */
   @Test
   void should_write_the_detected_values_when_the_operator_changes_nothing_and_confirms()
