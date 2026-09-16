@@ -218,6 +218,20 @@ jrsctl console
 
 Your browser opens a private page on this machine, showing server health, installed hotfixes, backups and live progress of every job. Press `Ctrl+C` in the terminal, or type `stop`, to close it.
 
+**Server without a desktop?** Use the console from your own computer through SSH. Start it on the server:
+
+```bash
+jrsctl console --no-open
+```
+
+Then, on your own computer, open a tunnel (use the port the `Console:` line shows) and open the printed `http://127.0.0.1:7420/#token=...` address in your browser:
+
+```bash
+ssh -L 7420:127.0.0.1:7420 you@jrs-server
+```
+
+The console stays bound to the server's own loopback address, so nothing is exposed on the network. On a Linux server with no desktop, `jrsctl console` prints this `ssh` command for you.
+
 ---
 
 ## If something goes wrong

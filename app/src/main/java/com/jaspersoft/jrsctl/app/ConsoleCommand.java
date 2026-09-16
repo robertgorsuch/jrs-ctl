@@ -13,6 +13,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URI;
 import java.nio.charset.Charset;
 import java.time.Clock;
 import java.util.List;
@@ -111,7 +112,7 @@ public final class ConsoleCommand implements Callable<Integer> {
           out.println("Press Ctrl-C to stop, or type 'stop' and Enter.");
           out.flush();
         }
-        if (shouldOpenBrowser(services, out)) {
+        if (shouldOpenBrowser(services, server, out)) {
           openBrowser(services.platform(), server.launchUrl());
         }
         // review 4.9: the hook also closes the bootstrap, so Ctrl-C closes the state store and
@@ -171,11 +172,18 @@ public final class ConsoleCommand implements Callable<Integer> {
    * (review 4.1). An explicit {@code --open} overrides the refusal, since the operator may know the
    * machine better than its permission bits do.
    */
-  private boolean shouldOpenBrowser(Services services, PrintWriter out) {
+  private boolean shouldOpenBrowser(Services services, ConsoleServer server, PrintWriter out) {
     if (open != null) {
       return open;
     }
     if (!Terminal.present()) {
+      return false;
+    }
+    Optional<String> hint =
+        headlessHint(services.platform().os(), Env.vars(), URI.create(server.url()));
+    if (hint.isPresent()) {
+      out.println(hint.get());
+      out.flush();
       return false;
     }
     java.nio.file.Path home = services.home().root();
@@ -195,6 +203,40 @@ public final class ConsoleCommand implements Callable<Integer> {
       return false;
     }
     return true;
+  }
+
+  /**
+   * The SSH tunnel instructions for a Linux host without a desktop (neither {@code DISPLAY} nor
+   * {@code WAYLAND_DISPLAY} set), where no browser can open; empty on Windows, with a display, or
+   * when the console is bound to a network address, which needs no tunnel (#64).
+   */
+  static Optional<String> headlessHint(Platform.OsFamily os, Map<String, String> env, URI url) {
+    boolean display =
+        !env.getOrDefault("DISPLAY", "").isBlank()
+            || !env.getOrDefault("WAYLAND_DISPLAY", "").isBlank();
+    String host = url.getHost() == null ? "" : url.getHost();
+    boolean loopback = host.equals("127.0.0.1") || host.equals("localhost") || host.equals("[::1]");
+    if (os != Platform.OsFamily.LINUX || display || !loopback) {
+      return Optional.empty();
+    }
+    int port = url.getPort();
+    String user = env.getOrDefault("USER", "").isBlank() ? "<user>" : env.get("USER");
+    String machine =
+        env.getOrDefault("HOSTNAME", "").isBlank() ? "<this-server>" : env.get("HOSTNAME");
+    String nl = System.lineSeparator();
+    return Optional.of(
+        "No desktop on this machine, so no browser is opened. On your own computer run:"
+            + nl
+            + "  ssh -L "
+            + port
+            + ":127.0.0.1:"
+            + port
+            + " "
+            + user
+            + "@"
+            + machine
+            + nl
+            + "and open the Console URL above in a browser there. Keep this command running.");
   }
 
   /** Blocks until "stop" is read from standard input; on end of input, blocks until Ctrl-C. */
