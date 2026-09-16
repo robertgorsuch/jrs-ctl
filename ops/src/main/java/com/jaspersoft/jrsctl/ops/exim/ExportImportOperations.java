@@ -27,12 +27,37 @@ public interface ExportImportOperations {
       boolean settings,
       boolean fullServer,
       Path out,
-      Optional<ExportImportStrategy.Kind> strategy) {
+      Optional<ExportImportStrategy.Kind> strategy,
+      boolean stopService) {
 
     public ExportOptions {
       uris = Set.copyOf(uris);
       Objects.requireNonNull(out, "out");
       Objects.requireNonNull(strategy, "strategy");
+    }
+
+    /** With {@code stopService} true, what an export did before #67. */
+    public ExportOptions(
+        Set<String> uris,
+        boolean usersRoles,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean fullServer,
+        Path out,
+        Optional<ExportImportStrategy.Kind> strategy) {
+      this(
+          uris,
+          usersRoles,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          fullServer,
+          out,
+          strategy,
+          true);
     }
   }
 

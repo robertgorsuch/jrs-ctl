@@ -16,7 +16,8 @@ import java.util.Objects;
 
 /**
  * Export and import with the vendor {@code js-export}/{@code js-import} tools (spec §7.3, §7.4,
- * §9.2). Invariants: the service is stopped before the tool runs and started (and waited for)
+ * §9.2). Invariants: the service is stopped before {@code js-import} runs, and before {@code
+ * js-export} only when the request asks for it (#67, ADR-0021), and started (and waited for)
  * afterwards, in the returned steps themselves, which are the stop, start and wait steps every ops
  * plan uses ({@link ServiceSteps}, issue #43) with their runtime resolved from the run's context;
  * the vendor tree is located from {@code server.installDir} and verified before the service is
@@ -66,13 +67,18 @@ public final class VendorCliStrategy implements ExportImportStrategy {
   @Override
   public List<Step> exportSteps(ExportRequest request) {
     Objects.requireNonNull(request, "request");
-    return List.of(
-        new LocateVendorTools(EXPORT_PHASE, List.of(Buildomatic.EXPORT_SCRIPT), vendor),
-        ServiceSteps.stop(runtime, EXPORT_PHASE, EXPORT_PHASE + STOP),
-        new RunJsExport(request, vendor),
-        ServiceSteps.start(runtime, EXPORT_PHASE, EXPORT_PHASE + START),
-        ServiceSteps.waitForServer(runtime, EXPORT_PHASE, EXPORT_PHASE + WAIT),
-        new WriteSidecar(EXPORT_PHASE, request, Kind.VENDOR_CLI, polling.clock()));
+    List<Step> steps = new ArrayList<>();
+    steps.add(new LocateVendorTools(EXPORT_PHASE, List.of(Buildomatic.EXPORT_SCRIPT), vendor));
+    if (request.stopService()) {
+      steps.add(ServiceSteps.stop(runtime, EXPORT_PHASE, EXPORT_PHASE + STOP));
+    }
+    steps.add(new RunJsExport(request, vendor));
+    if (request.stopService()) {
+      steps.add(ServiceSteps.start(runtime, EXPORT_PHASE, EXPORT_PHASE + START));
+      steps.add(ServiceSteps.waitForServer(runtime, EXPORT_PHASE, EXPORT_PHASE + WAIT));
+    }
+    steps.add(new WriteSidecar(EXPORT_PHASE, request, Kind.VENDOR_CLI, polling.clock()));
+    return List.copyOf(steps);
   }
 
   @Override

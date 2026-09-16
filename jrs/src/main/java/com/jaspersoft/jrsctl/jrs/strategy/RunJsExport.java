@@ -18,11 +18,12 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Runs {@code js-export} with the service stopped, writing to {@code <output>.part} and renaming
- * onto {@code output} when the tool exits 0, its export command printed {@code Done} with no error,
- * and it produced a non-empty archive (spec §7.4, §9.2): the wrapper exits 0 when the command
- * threw, which could leave a partial archive behind (issue #40). Mutates only the local filesystem;
- * re-execution overwrites the partial file; compensation deletes the partial and the final archive.
+ * Runs {@code js-export}, with the service stopped or running as the request asks (#67), writing to
+ * {@code <output>.part} and renaming onto {@code output} when the tool exits 0, its export command
+ * printed {@code Done} with no error, and it produced a non-empty archive (spec §7.4, §9.2): the
+ * wrapper exits 0 when the command threw, which could leave a partial archive behind (issue #40).
+ * Mutates only the local filesystem; re-execution overwrites the partial file; compensation deletes
+ * the partial and the final archive.
  */
 final class RunJsExport implements Step {
 

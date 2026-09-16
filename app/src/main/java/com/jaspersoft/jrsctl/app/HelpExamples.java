@@ -217,8 +217,11 @@ final class HelpExamples {
                 "Back up one folder",
                 "jrsctl export --uri /public/Samples --out /backups/samples.zip"),
             new Example(
-                "Everything, with users, roles and settings",
-                "jrsctl export --full-server --out /backups/full-server.zip")));
+                "Everything, with users, roles and settings; the server keeps running",
+                "jrsctl export --full-server --out /backups/full-server.zip"),
+            new Example(
+                "The same with the service stopped while the export runs",
+                "jrsctl export --full-server --stop-service --out /backups/full-server.zip")));
     m.put(
         "import",
         List.of(

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
@@ -73,6 +74,35 @@ class PlanRegistryTest {
     assertThat(args.get("out").asText()).endsWith("export.zip");
     assertThat(args.get("strategy").asText()).isEqualTo("rest");
     assertThat(args.get("uris")).hasSize(2);
+  }
+
+  /**
+   * Issue #67: whether the export stops the service is part of the stored arguments; arguments
+   * journaled before the flag existed rebuild the plan they were made from, which always stopped.
+   */
+  @Test
+  void should_store_the_stop_service_choice_and_read_its_absence_as_the_old_stopping_plan()
+      throws IOException {
+    ExportImportOperations.ExportOptions live =
+        new ExportImportOperations.ExportOptions(
+            Set.of("/"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            Path.of("out", "full.zip"),
+            Optional.empty(),
+            false);
+
+    JsonNode args = tree(PlanRegistry.exportArgs(live));
+
+    assertThat(args.get("stopService").asBoolean(true)).isFalse();
+    assertThat(PlanRegistry.exportOptions(args).stopService()).isFalse();
+    ObjectNode legacy = (ObjectNode) args.deepCopy();
+    legacy.remove("stopService");
+    assertThat(PlanRegistry.exportOptions(legacy).stopService()).isTrue();
   }
 
   @Test

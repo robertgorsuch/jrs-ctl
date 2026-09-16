@@ -133,7 +133,7 @@ Back up just one folder, such as the sample reports:
 jrsctl export --uri /public/Samples --out C:\Backups\samples.zip
 ```
 
-Take a complete backup with users, roles and settings. This stops the server while it runs, then starts it again:
+Take a complete backup with users, roles and settings. The server keeps running; add `--stop-service` if you want it stopped while the backup is taken:
 
 ```bash
 jrsctl export --full-server --out C:\Backups\full-server.zip

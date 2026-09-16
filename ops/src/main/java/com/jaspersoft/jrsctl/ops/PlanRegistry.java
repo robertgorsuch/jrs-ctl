@@ -133,6 +133,7 @@ public final class PlanRegistry {
     node.put("monitoring", o.monitoring());
     node.put("settings", o.settings());
     node.put("fullServer", o.fullServer());
+    node.put("stopService", o.stopService());
     putStrategy(node, o.strategy());
     node.put("out", o.out().toAbsolutePath().normalize().toString());
     return Json.write(node);
@@ -178,7 +179,9 @@ public final class PlanRegistry {
         args.path("settings").asBoolean(false),
         args.path("fullServer").asBoolean(false),
         Path.of(required(args, "out")),
-        strategy(args));
+        strategy(args),
+        // #67: arguments stored before the flag existed describe a plan that stopped the service
+        args.path("stopService").asBoolean(true));
   }
 
   public static ExportImportOperations.ImportOptions importOptions(JsonNode args) {

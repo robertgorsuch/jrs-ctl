@@ -141,6 +141,32 @@ class DefaultExportImportOperationsTest {
     assertThat(plan.summary().warnings()).anyMatch(w -> w.contains("service will be stopped"));
   }
 
+  /** Issue #67: a full-server export runs js-export against the running server by default. */
+  @Test
+  void should_keep_the_service_running_and_say_so_when_a_full_server_export_does_not_ask_to_stop() {
+    Plan plan =
+        fx.ops()
+            .planExport(
+                new ExportOptions(
+                    Set.of(),
+                    true,
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    tmp.resolve("full.zip"),
+                    Optional.empty(),
+                    false));
+
+    assertThat(ids(plan))
+        .containsExactly("export.locate-vendor-tools", "export.js-export", "export.sidecar");
+    assertThat(plan.summary().serviceRestart()).isFalse();
+    assertThat(plan.summary().warnings())
+        .noneMatch(w -> w.contains("service will be stopped"))
+        .anyMatch(w -> w.contains("keeps running") && w.contains("--stop-service"));
+  }
+
   @Test
   void should_choose_vendor_when_strategy_forced() {
     Plan plan =

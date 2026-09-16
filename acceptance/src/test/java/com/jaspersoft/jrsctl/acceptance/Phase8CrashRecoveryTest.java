@@ -487,9 +487,21 @@ class Phase8CrashRecoveryTest {
     return zip.resolveSibling(zip.getFileName() + ".jrsctl.json");
   }
 
+  /**
+   * A vendor export that stops the service (#67 made the stop opt-in), so recovery has a stopped
+   * service to start again, which is what this suite checks.
+   */
   private static String[] exportArgs(Path out) {
     return new String[] {
-      "export", "--strategy", "vendor", "--uri", "/public", "--out", out.toString(), "--yes"
+      "export",
+      "--strategy",
+      "vendor",
+      "--stop-service",
+      "--uri",
+      "/public",
+      "--out",
+      out.toString(),
+      "--yes"
     };
   }
 

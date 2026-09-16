@@ -63,8 +63,15 @@ final class ExportCommand implements Callable<Integer> {
 
   @Option(
       names = "--full-server",
-      description = "Export everything with the vendor tools (stops the service).")
+      description = "Export everything with the vendor tools; the server keeps running.")
   boolean fullServer;
+
+  @Option(
+      names = "--stop-service",
+      description =
+          "Stop the service while the vendor tools export, for an export taken with nothing"
+              + " running, and start it again afterwards.")
+  boolean stopService;
 
   @Option(
       names = "--strategy",
@@ -102,7 +109,8 @@ final class ExportCommand implements Callable<Integer> {
             settings,
             fullServer,
             out,
-            kind);
+            kind,
+            stopService);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

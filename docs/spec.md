@@ -514,7 +514,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 9.2 Strategy selection
 
 - `RestStrategy` when `EXPORT_ASYNC`/`IMPORT_ASYNC` probes pass and `fullServer=false`.
-- `VendorCliStrategy` when `fullServer=true`, when probes fail, or when `--strategy vendor` is passed. The vendor strategy always includes `StopService` before `js-import` and before a full-server `js-export`, per vendor guidance, and `StartService` after.
+- `VendorCliStrategy` when `fullServer=true`, when probes fail, or when `--strategy vendor` is passed. The vendor strategy always includes `StopService` before `js-import`, and `StartService` after. It stops the service around `js-export` only with `--stop-service`; by default the export runs against the running server (ADR-0021, #67).
 - Strategy and its service-stop consequence are shown in the Plan summary.
 
 ### 9.3 Keystore handling

@@ -96,6 +96,29 @@ class VendorCliStrategyTest {
     assertThat(strategy.kind()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
   }
 
+  /**
+   * Issue #67: js-export reads the repository database and runs against a live server, so the
+   * service is stopped for an export only when the operator asks for a quiet export.
+   */
+  @Test
+  void should_leave_the_service_running_when_the_export_does_not_ask_for_a_stop() {
+    ExportRequest live =
+        new ExportRequest(
+            ExportRequest.Scope.EVERYTHING,
+            Set.of(),
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+            output,
+            false);
+
+    assertThat(ids(strategy.exportSteps(live)))
+        .containsExactly("export.locate-vendor-tools", "export.js-export", "export.sidecar");
+  }
+
   @Test
   void should_order_import_steps_with_keystore_step_when_source_keystore_present() {
     assertThat(ids(strategy.importSteps(importRequest(Optional.of(tmp.resolve("s.jrsks"))))))

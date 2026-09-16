@@ -90,7 +90,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.monitoring(),
             options.settings(),
             options.fullServer(),
-            out);
+            out,
+            options.stopService());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =
@@ -98,9 +99,14 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     List<Step> steps = selection.strategy().exportSteps(request);
 
     List<String> warnings = new ArrayList<>();
-    if (selection.strategy().requiresServiceStop()) {
+    boolean stops = selection.strategy().requiresServiceStop() && request.stopService();
+    if (stops) {
       warnings.add(
           "the service will be stopped for the vendor export and started again afterwards");
+    } else if (selection.strategy().requiresServiceStop()) {
+      warnings.add(
+          "the service keeps running while js-export reads the repository; pass --stop-service"
+              + " for an export taken with the service stopped");
     }
     if (Files.exists(out)) {
       warnings.add(out + " exists and will be replaced");
@@ -111,7 +117,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             target(request),
             List.of(out, Sidecar.pathFor(out)),
             sortedUris(request),
-            selection.strategy().requiresServiceStop(),
+            stops,
             List.of(),
             Map.of(EXPORT_PHASE, "delete the partial archive and its sidecar"),
             strategyLine(selection),
@@ -344,7 +350,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         + ";settings="
         + r.includeSettings()
         + ";fullServer="
-        + r.fullServer();
+        + r.fullServer()
+        // only a live export says so, so a stopping plan keeps the fingerprint it had before #67
+        + (r.stopService() ? "" : ";stopService=false");
   }
 
   private static String describe(ImportRequest r) {

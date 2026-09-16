@@ -848,13 +848,14 @@ const OPS = {
         h('div', { class: 'btn-row', style: 'margin-bottom: 12px;' }, browseBtn),
         checkField('usersRoles', 'Include users and roles'),
         checkField('accessEvents', 'Include access events'),
-        checkField('fullServer', 'Full server', 'Forces the vendor strategy, which stops the service.'),
+        checkField('fullServer', 'Full server', 'Forces the vendor strategy; the server keeps running.'),
+        checkField('stopService', 'Stop the service during a vendor export', 'For an export taken with nothing running; the service is started again afterwards.'),
         field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-export)']], 'auto')),
         field('Output file', textInput('out', { mono: true, required: true, placeholder: 'C:\\exports\\acme.zip' })),
       ];
     },
     args: (v) => ({ uris: v.uris.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), usersRoles: !!v.usersRoles, accessEvents: !!v.accessEvents,
-      fullServer: !!v.fullServer, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out }),
+      fullServer: !!v.fullServer, stopService: !!v.stopService, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out }),
     validate: (v) => (!v.out ? 'Enter the output file.' : !v.fullServer && !v.uris.trim() ? 'Enter at least one URI or choose Full server.' : null),
   },
   import: {
