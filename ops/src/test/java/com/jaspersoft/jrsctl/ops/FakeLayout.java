@@ -27,7 +27,16 @@ public final class FakeLayout {
 
   /** Linux bundle: {@code apache-tomcat/}, {@code ctlscript.sh}, {@code buildomatic/*.sh}. */
   public static Path linux(Path installDir) throws IOException {
-    Path tomcat = tomcat(installDir.resolve("apache-tomcat"), "jasperserver-pro", 8081);
+    return linux(installDir, "jasperserver-pro");
+  }
+
+  /** As {@link #linux(Path)} with the Community edition webapp {@code jasperserver}. */
+  public static Path linuxCommunity(Path installDir) throws IOException {
+    return linux(installDir, "jasperserver");
+  }
+
+  private static Path linux(Path installDir, String webapp) throws IOException {
+    Path tomcat = tomcat(installDir.resolve("apache-tomcat"), webapp, 8081);
     Files.writeString(installDir.resolve("ctlscript.sh"), "#!/bin/sh\n", StandardCharsets.UTF_8);
     Files.writeString(
         tomcat.resolve("bin").resolve("catalina.sh"), "#!/bin/sh\n", StandardCharsets.UTF_8);

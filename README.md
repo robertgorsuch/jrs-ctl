@@ -25,7 +25,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 
 - **Run jrsctl on the JasperReports Server machine itself.** It doesn't work over the network.
 - **Use an account that is allowed to stop and start the server.** On Windows, open **Command Prompt** with **Run as administrator**. On Linux, use the account that runs the server, or `root`.
-- **Have the JasperReports Server admin password ready** (the `jasperadmin` account, unless you use a different one).
+- **Have the JasperReports Server admin password ready** (`superuser` on the Commercial edition, `jasperadmin` on the Community edition; `init` proposes the right one).
 - **Supported:** JasperReports Server 7.1 to 10.x, Community and Commercial editions, on Windows or Linux (64-bit).
 
 ---
@@ -84,13 +84,13 @@ jrsctl never saves passwords in its settings. It reads them when it runs. Set th
 
 ```bat
 :: Windows
-set JRS_PASSWORD=your-jasperadmin-password
+set JRS_PASSWORD=your-admin-password
 set JRS_DB_PASSWORD=your-database-password
 ```
 
 ```bash
 # Linux
-export JRS_PASSWORD='your-jasperadmin-password'
+export JRS_PASSWORD='your-admin-password'
 export JRS_DB_PASSWORD='your-database-password'
 ```
 

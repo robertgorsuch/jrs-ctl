@@ -66,6 +66,47 @@ class InitOperationTest {
     }
   }
 
+  /**
+   * Issue #59: on the commercial edition jasperadmin administers one organisation only, and a
+   * full-server export needs superuser.
+   */
+  @Test
+  void should_propose_superuser_when_the_installation_is_the_commercial_edition() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.of(install));
+
+      assertThat(report.config().server().auth().username()).contains("superuser");
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("server.auth.username")
+                      && v.value().equals("superuser")
+                      && v.source().contains("commercial edition"));
+    }
+  }
+
+  @Test
+  void should_propose_jasperadmin_when_the_installation_is_the_community_edition()
+      throws Exception {
+    Path install = FakeLayout.linuxCommunity(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.of(install));
+
+      assertThat(report.config().server().auth().username()).contains("jasperadmin");
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("server.auth.username")
+                      && v.value().equals("jasperadmin")
+                      && v.source().contains("community edition"));
+    }
+  }
+
   /** Review finding 3.2: a supervised host is named and systemctl is never probed. */
   @Test
   void should_name_the_supervisor_and_skip_systemctl_when_process_one_is_not_systemd()

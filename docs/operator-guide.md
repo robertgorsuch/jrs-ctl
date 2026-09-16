@@ -125,7 +125,7 @@ Verifies the tool itself, with no configuration and no server: the Java runtime 
 
 ### `jrsctl init [--install-dir <dir>] [--buildomatic-dir <dir>] [--force]`
 
-Detects the JasperReports Server installation (Tomcat layout, the Windows service or systemd unit, `server.xml` port, the buildomatic directory and its `default_master.properties`, database settings) and writes `config.yaml` into the jrsctl home. Every detected value is shown with its source first and you are asked before the file is written. Secrets are never copied: the database and server passwords are written as `env:` placeholders for you to fill in (or to replace with `enc:` references after `secrets set`).
+Detects the JasperReports Server installation (Tomcat layout, the Windows service or systemd unit, `server.xml` port, the buildomatic directory and its `default_master.properties`, database settings) and writes `config.yaml` into the jrsctl home. Every detected value is shown with its source first and you are asked before the file is written. The proposed server user is `superuser` for the commercial edition (`jasperserver-pro`), where `jasperadmin` administers a single organisation and full-server operations need `superuser`, and `jasperadmin` for the community edition (#59). Secrets are never copied: the database and server passwords are written as `env:` placeholders for you to fill in (or to replace with `enc:` references after `secrets set`).
 
 - **Mutates:** only `config.yaml` in the jrsctl home, after confirmation (skipped with `--yes`). Nothing on the server.
 - **Rollback:** an existing `config.yaml` is kept unless `--force`; with `--force` the previous file is overwritten, so copy it first if you may want it back.

@@ -42,7 +42,15 @@ import org.slf4j.LoggerFactory;
  */
 public final class InitOperation {
 
+  /** Username proposed when the edition is unknown or Community; it exists on both editions. */
   public static final String DEFAULT_USERNAME = "jasperadmin";
+
+  /**
+   * Username proposed for the commercial edition, where jasperadmin administers one organisation
+   * and full-server operations need superuser (#59).
+   */
+  public static final String COMMERCIAL_USERNAME = "superuser";
+
   public static final String DEFAULT_PASSWORD_REF = "env:JRS_PASSWORD";
   public static final String DEFAULT_DB_PASSWORD_REF = "env:JRS_DB_PASSWORD";
   public static final String DEFAULT_SMOKE_REPORT = "/public/Samples/Reports/AllAccounts";
@@ -142,7 +150,17 @@ public final class InitOperation {
         u ->
             values.add(
                 new InitReport.Detected("server.runAsUser", u, "owner of the Tomcat process")));
-    values.add(new InitReport.Detected("server.auth.username", DEFAULT_USERNAME, SOURCE_DEFAULT));
+    String username = username(layout.webappName());
+    values.add(
+        new InitReport.Detected(
+            "server.auth.username",
+            username,
+            username.equals(COMMERCIAL_USERNAME)
+                ? "commercial edition ("
+                    + layout.webappName()
+                    + "): full-server operations need"
+                    + " superuser"
+                : "community edition (" + layout.webappName() + ")"));
     values.add(
         new InitReport.Detected("server.auth.passwordRef", DEFAULT_PASSWORD_REF, SOURCE_DEFAULT));
 
@@ -174,7 +192,7 @@ public final class InitOperation {
                 runAsUser,
                 new Config.Auth(
                     Config.AuthMode.DEFAULT,
-                    Optional.of(DEFAULT_USERNAME),
+                    Optional.of(username),
                     Optional.of(SecretRef.parse(DEFAULT_PASSWORD_REF)))),
             service,
             database,
@@ -207,6 +225,12 @@ public final class InitOperation {
   }
 
   // ---- detection helpers ------------------------------------------------------------------------
+
+  private static String username(String webappName) {
+    return webappName.equals(Config.WebappName.JASPERSERVER_PRO.yamlValue())
+        ? COMMERCIAL_USERNAME
+        : DEFAULT_USERNAME;
+  }
 
   private record Located(TomcatLayout layout, String source) {}
 
