@@ -251,6 +251,9 @@ class Phase7DistributionTest {
       if (WINDOWS) {
         String systemRoot = System.getenv("SystemRoot");
         env.put("SystemRoot", systemRoot);
+        // Without SystemDrive, Windows expands %SystemDrive% literally and a launcher run creates
+        // a "%SystemDrive%\ProgramData\..." tree under the working directory instead of its home.
+        env.put("SystemDrive", System.getenv("SystemDrive"));
         env.put("PATH", systemRoot + "\\System32;" + systemRoot);
         // PowerShell decides from PATHEXT what counts as an executable; without it the launcher's
         // java.exe is never run and PowerShell says nothing on either stream (#33).
