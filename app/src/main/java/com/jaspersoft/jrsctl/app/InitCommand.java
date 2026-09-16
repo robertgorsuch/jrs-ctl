@@ -1,19 +1,32 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
+import com.jaspersoft.jrsctl.core.secrets.PassphraseSource;
+import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.ops.init.InitOperation;
 import com.jaspersoft.jrsctl.ops.init.InitReport;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.regex.Pattern;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
@@ -24,7 +37,13 @@ import picocli.CommandLine.Spec;
  * {@code jrsctl init}: detect the installation and write {@code config.yaml} (spec §12.0).
  * Invariants: nothing is written without confirmation unless {@code --yes}; an existing file is
  * kept unless {@code --force}; the values are shown with their sources first so the operator can
- * judge them; secrets are never read and only {@code env:} placeholders are written.
+ * judge them; interactively (#63) the operator may replace each {@link #REVIEW_FIELDS reviewed}
+ * value, which is validated like a {@code --set} override before it is accepted, and may store the
+ * server and database passwords in {@code secrets.enc}: they are read without echo into {@code
+ * char[]}s that are zeroed and never printed, stored only after the write is confirmed and before
+ * the configuration is written, and named by {@code enc:} references; otherwise, and always with
+ * {@code --yes}, {@code --non-interactive} or {@code --json}, only {@code env:} placeholders are
+ * written.
  */
 @Command(
     name = "init",
@@ -52,6 +71,31 @@ final class InitCommand implements Callable<Integer> {
 
   @Option(names = "--force", description = "Overwrite an existing config.yaml.")
   boolean force;
+
+  /** A value the operator is offered to change: its key, a label and whether it is a directory. */
+  record Field(String key, String label, boolean directory) {}
+
+  /** The values reviewed interactively, in the order they are asked. */
+  static final List<Field> REVIEW_FIELDS =
+      List.of(
+          new Field("server.baseUrl", "Server URL", false),
+          new Field("server.auth.username", "Server admin user", false),
+          new Field("server.installDir", "Installation directory", true),
+          new Field("server.tomcatDir", "Tomcat directory", true),
+          new Field("server.buildomaticDir", "Buildomatic directory", true),
+          new Field(
+              "service.kind",
+              "Service type (windows-service, systemd, ctlscript, catalina, manual)",
+              false),
+          new Field("service.name", "Service name", false),
+          new Field("database.url", "Repository database JDBC URL", false),
+          new Field("database.username", "Repository database user", false),
+          new Field("vendor.javaHome", "Java for buildomatic", true));
+
+  static final String SERVER_SECRET = "JRS_PASSWORD";
+  static final String DATABASE_SECRET = "JRS_DB_PASSWORD";
+
+  private static final Pattern DOT = Pattern.compile("\\.");
 
   @Override
   public Integer call() throws IOException {
@@ -115,11 +159,7 @@ final class InitCommand implements Callable<Integer> {
           err.flush();
           return ExitCodes.PRECHECK_FAILED;
         }
-        if (!Confirm.ask(out, "Write config to " + target + "? [y/N] ")) {
-          out.println("config not written (pass --yes to write without asking)");
-          out.flush();
-          return ExitCodes.SUCCESS;
-        }
+        return interactive(boot, op, config, target, out, err);
       }
       try {
         Path written = op.write(config, force);
@@ -130,6 +170,240 @@ final class InitCommand implements Callable<Integer> {
         return alreadyExists(out, err, e);
       }
     }
+  }
+
+  /**
+   * Review, passwords, confirmation, then the writes: secrets first, so a failure to store them
+   * leaves no configuration naming references that do not exist.
+   */
+  private int interactive(
+      Bootstrap boot,
+      InitOperation op,
+      Config detected,
+      Path target,
+      PrintWriter out,
+      PrintWriter err)
+      throws IOException {
+    if (Files.exists(target) && !force) {
+      return alreadyExists(out, err, new FileAlreadyExistsException(target.toString()));
+    }
+    ConfigLoader loader = new ConfigLoader();
+    Config config = detected;
+    out.println();
+    if (Prompter.yes(out, "Change any of these values? [y/N] ", false)) {
+      out.println("Press Enter to keep the value in brackets, or type a new one.");
+      config = review(loader, config, out);
+    }
+    Map<String, char[]> passwords = new LinkedHashMap<>();
+    List<Secret> held = new ArrayList<>();
+    try {
+      out.println();
+      out.println("Passwords are never written to config.yaml.");
+      if (Prompter.yes(
+          out, "Store the passwords encrypted on this machine (recommended)? [Y/n] ", true)) {
+        askPasswords(config, passwords, out);
+      }
+      Optional<EncryptedSecretStore> store = Optional.empty();
+      if (!passwords.isEmpty()) {
+        store = store(boot, out, held);
+        if (store.isEmpty()) {
+          out.println("  no passphrase given; the passwords are not stored");
+          clear(passwords);
+        }
+      }
+      Map<String, String> refs = new LinkedHashMap<>();
+      if (passwords.containsKey(SERVER_SECRET)) {
+        refs.put("server.auth.passwordRef", "enc:" + SERVER_SECRET);
+      }
+      if (passwords.containsKey(DATABASE_SECRET)) {
+        refs.put("database.passwordRef", "enc:" + DATABASE_SECRET);
+      }
+      if (!refs.isEmpty()) {
+        config = loader.withOverrides(config, refs);
+      }
+      out.println();
+      if (!Prompter.yes(out, "Write config to " + target + "? [y/N] ", false)) {
+        out.println("config not written (pass --yes to write without asking)");
+        out.flush();
+        return ExitCodes.SUCCESS;
+      }
+      if (store.isPresent()) {
+        try {
+          storePasswords(boot, store.get(), passwords);
+        } catch (SecretException e) {
+          return ExitCodes.fail(
+              out,
+              err,
+              false,
+              ExitCodes.PRECHECK_FAILED,
+              "passwords not stored and config not written: " + e.getMessage(),
+              Optional.of("run jrsctl init again, or store them with jrsctl secrets set <NAME>"));
+        }
+      }
+      Path written;
+      try {
+        written = op.write(config, force);
+      } catch (FileAlreadyExistsException e) {
+        return alreadyExists(out, err, e);
+      }
+      out.println("wrote " + written);
+      if (store.isPresent()) {
+        out.println(
+            "stored "
+                + String.join(" and ", passwords.keySet())
+                + " encrypted in "
+                + store.get().file()
+                + "; jrsctl asks for the passphrase when it needs a password (for scheduled runs"
+                + " set JRSCTL_PASSPHRASE or pass --passphrase-file)");
+      }
+      if (!config.envSecretNames().isEmpty()) {
+        out.println(
+            "before running jrsctl, set "
+                + String.join(" and ", config.envSecretNames())
+                + " in the environment, or store them encrypted with: jrsctl secrets set <NAME>");
+      }
+      out.println("Next: jrsctl doctor");
+      out.flush();
+      return ExitCodes.SUCCESS;
+    } finally {
+      clear(passwords);
+      held.forEach(Secret::close);
+    }
+  }
+
+  /** Asks for each reviewed field until the answer is kept or accepted; end of input stops. */
+  private static Config review(ConfigLoader loader, Config start, PrintWriter out) {
+    Config config = start;
+    for (Field field : REVIEW_FIELDS) {
+      boolean settled = false;
+      while (!settled) {
+        String current = current(config, field.key());
+        Optional<String> answer = Prompter.line(out, "  " + field.label() + " [" + current + "]: ");
+        if (answer.isEmpty()) {
+          return config;
+        }
+        String value = answer.get();
+        if (value.isEmpty()) {
+          settled = true;
+        } else if (field.directory() && !Files.isDirectory(Path.of(value))) {
+          out.println("    no such directory: " + value + " (press Enter to keep the old value)");
+        } else {
+          try {
+            config = loader.withOverrides(config, Map.of(field.key(), value));
+            settled = true;
+          } catch (ConfigException e) {
+            out.println("    not accepted: " + e.getMessage());
+          }
+        }
+      }
+    }
+    return config;
+  }
+
+  private static String current(Config config, String key) {
+    JsonNode node = ConfigWriter.toTree(config);
+    for (String segment : DOT.splitAsStream(key).toList()) {
+      node = node.path(segment);
+    }
+    return node.isValueNode() ? node.asText() : "";
+  }
+
+  private static void askPasswords(Config config, Map<String, char[]> passwords, PrintWriter out) {
+    String user = config.server().auth().username().orElse("the server user");
+    Prompter.secret(out, "  Password for " + user + " (Enter to skip): ")
+        .ifPresent(p -> keep(passwords, SERVER_SECRET, p));
+    Optional<String> dbUser = config.database().username();
+    if (dbUser.isPresent()) {
+      Prompter.secret(out, "  Password for database user " + dbUser.get() + " (Enter to skip): ")
+          .ifPresent(p -> keep(passwords, DATABASE_SECRET, p));
+    }
+  }
+
+  private static void keep(Map<String, char[]> passwords, String name, char[] value) {
+    if (value.length == 0) {
+      return;
+    }
+    passwords.put(name, value);
+  }
+
+  private static void storePasswords(
+      Bootstrap boot, EncryptedSecretStore store, Map<String, char[]> passwords) {
+    if (!store.exists()) {
+      store.init();
+    }
+    for (Map.Entry<String, char[]> p : passwords.entrySet()) {
+      try (Secret secret = Secret.of(p.getValue())) {
+        store.set(p.getKey(), secret);
+      }
+      boot.services().stateStore().get().audit("operator", "secrets.set", p.getKey());
+    }
+  }
+
+  /**
+   * The store to write to: the usual passphrase chain when {@code --passphrase-file} or {@code
+   * JRSCTL_PASSPHRASE} supplies one, otherwise a passphrase asked for here (twice for a new store).
+   */
+  private Optional<EncryptedSecretStore> store(Bootstrap boot, PrintWriter out, List<Secret> held) {
+    EncryptedSecretStore usual = boot.secretStore();
+    if (global.passphraseFile().isPresent() || Env.vars().containsKey(PassphraseSource.ENV_VAR)) {
+      return Optional.of(usual);
+    }
+    Optional<Secret> passphrase =
+        usual.exists()
+            ? Prompter.secret(out, "  Passphrase of the encrypted store " + usual.file() + ": ")
+                .flatMap(InitCommand::secretOf)
+            : newPassphrase(out);
+    if (passphrase.isEmpty()) {
+      return Optional.empty();
+    }
+    // the store reads the passphrase on every use; interactive() closes it when it is done
+    held.add(passphrase.get());
+    Platform platform = boot.services().platform();
+    return Optional.of(
+        new EncryptedSecretStore(
+            usual.file(),
+            new PassphraseSource.Fixed(passphrase.get()),
+            f -> OwnerOnlyFiles.restrictToOwner(platform, f)));
+  }
+
+  private static Optional<Secret> newPassphrase(PrintWriter out) {
+    out.println(
+        "  Choose a passphrase for the encrypted store. jrsctl asks for it when it needs a"
+            + " password, and it cannot be recovered.");
+    for (int attempt = 0; attempt < 3; attempt++) {
+      Optional<char[]> first = Prompter.secret(out, "  New passphrase: ");
+      if (first.isEmpty() || first.get().length == 0) {
+        first.ifPresent(c -> Arrays.fill(c, '\0'));
+        return Optional.empty();
+      }
+      Optional<char[]> second = Prompter.secret(out, "  Type it again: ");
+      try {
+        if (second.isEmpty()) {
+          return Optional.empty();
+        }
+        if (Arrays.equals(first.get(), second.get())) {
+          return Optional.of(Secret.of(first.get()));
+        }
+      } finally {
+        Arrays.fill(first.get(), '\0');
+        second.ifPresent(c -> Arrays.fill(c, '\0'));
+      }
+      out.println("  the passphrases differ; try again");
+    }
+    return Optional.empty();
+  }
+
+  private static Optional<Secret> secretOf(char[] chars) {
+    try {
+      return chars.length == 0 ? Optional.empty() : Optional.of(Secret.of(chars));
+    } finally {
+      Arrays.fill(chars, '\0');
+    }
+  }
+
+  private static void clear(Map<String, char[]> passwords) {
+    passwords.values().forEach(c -> Arrays.fill(c, '\0'));
+    passwords.clear();
   }
 
   private int alreadyExists(PrintWriter out, PrintWriter err, FileAlreadyExistsException e) {

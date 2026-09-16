@@ -1,0 +1,107 @@
+package com.jaspersoft.jrsctl.app;
+
+import java.io.BufferedReader;
+import java.io.Console;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.Optional;
+
+/**
+ * Questions for the operator across several prompts in one command (#63). Invariants: answers come
+ * from the console when there is one (secrets without echo), otherwise from one buffered reader
+ * over standard input shared by every prompt of the process, so piped answers are consumed line by
+ * line and none is lost to a second buffer; end of input is an empty {@link Optional} and a yes/no
+ * question answered by end of input is no, so an unattended run never agrees by accident; a secret
+ * is returned as a {@code char[]} the caller must zero, and is never printed; tests replace the
+ * input with {@link #override} and restore it with {@link #reset}.
+ */
+final class Prompter {
+
+  private static volatile Optional<BufferedReader> override = Optional.empty();
+  private static volatile Optional<BufferedReader> stdin = Optional.empty();
+
+  private Prompter() {}
+
+  /** Replaces standard input and the console with {@code answers} (tests). */
+  static void override(Reader answers) {
+    override = Optional.of(new BufferedReader(answers));
+  }
+
+  /** Restores standard input and the console. */
+  static void reset() {
+    override = Optional.empty();
+  }
+
+  /** One line, stripped; empty at end of input. */
+  static Optional<String> line(PrintWriter out, String prompt) {
+    Optional<Console> console = console();
+    if (console.isPresent()) {
+      out.flush();
+      return Optional.ofNullable(console.get().readLine("%s", prompt)).map(String::strip);
+    }
+    out.print(prompt);
+    out.flush();
+    try {
+      Optional<String> answer = Optional.ofNullable(reader().readLine()).map(String::strip);
+      if (answer.isEmpty()) {
+        out.println();
+      }
+      return answer;
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+  }
+
+  /** A secret, not echoed on a console; empty at end of input. The caller zeroes the array. */
+  static Optional<char[]> secret(PrintWriter out, String prompt) {
+    Optional<Console> console = console();
+    if (console.isPresent()) {
+      out.flush();
+      return Optional.ofNullable(console.get().readPassword("%s", prompt));
+    }
+    out.print(prompt);
+    out.flush();
+    try {
+      String answer = reader().readLine();
+      if (answer == null) {
+        out.println();
+        return Optional.empty();
+      }
+      return Optional.of(answer.toCharArray());
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+  }
+
+  /** A yes/no question; an empty answer takes {@code defaultYes}, end of input is no. */
+  static boolean yes(PrintWriter out, String prompt, boolean defaultYes) {
+    Optional<String> answer = line(out, prompt);
+    if (answer.isEmpty()) {
+      return false;
+    }
+    String a = answer.get().toLowerCase(Locale.ROOT);
+    if (a.isEmpty()) {
+      return defaultYes;
+    }
+    return a.equals("y") || a.equals("yes");
+  }
+
+  private static Optional<Console> console() {
+    return override.isPresent() ? Optional.empty() : Terminal.console();
+  }
+
+  private static synchronized BufferedReader reader() {
+    if (override.isPresent()) {
+      return override.get();
+    }
+    if (stdin.isEmpty()) {
+      stdin =
+          Optional.of(new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)));
+    }
+    return stdin.get();
+  }
+}

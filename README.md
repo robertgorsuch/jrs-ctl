@@ -69,7 +69,7 @@ Every check should pass. This step doesn't touch your server. If one fails, the 
 
 ### Step 3: Connect jrsctl to your server
 
-Tell jrsctl where JasperReports Server is installed. It finds the rest (ports, service, database) on its own, shows you what it found, and asks before it saves anything.
+Tell jrsctl where JasperReports Server is installed. It finds the rest (ports, service, database) on its own and shows you what it found.
 
 ```bat
 :: Windows
@@ -81,21 +81,15 @@ jrsctl init --install-dir "C:\Jaspersoft\jasperreports-server-pro-9.0.0"
 jrsctl init --install-dir /opt/jasperreports-server-pro-9.0.0
 ```
 
-jrsctl never saves passwords in its settings. It reads them when it runs. Set them in the same terminal before the next step:
+Then it asks you three things:
 
-```bat
-:: Windows
-set JRS_PASSWORD=your-admin-password
-set JRS_DB_PASSWORD=your-database-password
-```
+1. **Change any of these values?** Press Enter if they look right. Type `y` to go through them one by one: press Enter to keep a value, or type a new one.
+2. **Store the passwords encrypted on this machine?** Press Enter (yes), then type the admin password and the database password. Nothing shows on screen as you type. The first time, you also choose a passphrase for the encrypted store. jrsctl asks for it when it needs a password, so keep it safe.
+3. **Write config?** Type `y`.
 
-```bash
-# Linux
-export JRS_PASSWORD='your-admin-password'
-export JRS_DB_PASSWORD='your-database-password'
-```
+Passwords are never saved in the settings file itself.
 
-> Prefer not to type passwords each time? Store them encrypted on this machine instead. See [Keep passwords encrypted](#keep-passwords-encrypted) below.
+> Scheduled or scripted runs can't answer prompts. Set `JRSCTL_PASSPHRASE` for them, or skip the encrypted store and set `JRS_PASSWORD` and `JRS_DB_PASSWORD` in the environment instead (`init` tells you which names to set).
 
 ### Step 4: Run a health check
 

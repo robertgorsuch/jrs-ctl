@@ -93,6 +93,22 @@ public final class ConfigLoader {
     return toConfig(tree);
   }
 
+  /**
+   * {@code base} with {@code overrides} (dotted key to raw value) applied, coerced and validated
+   * exactly as {@code --set} values are; a {@link ConfigException} names the key it refuses.
+   */
+  public Config withOverrides(Config base, Map<String, String> overrides) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(overrides, "overrides");
+    ObjectNode tree = ConfigWriter.toTree(base);
+    for (Map.Entry<String, String> o : overrides.entrySet()) {
+      SchemaKeys.Type type = leafKeys.getOrDefault(o.getKey(), SchemaKeys.Type.STRING);
+      put(tree, o.getKey(), coerce(o.getValue(), type));
+    }
+    validate(tree);
+    return toConfig(tree);
+  }
+
   /** Validates an already merged tree and maps it; exposed for {@code doctor}. */
   public Config fromTree(JsonNode tree) {
     if (!(tree instanceof ObjectNode obj)) {

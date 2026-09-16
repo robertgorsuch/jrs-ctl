@@ -5,13 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
+import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
+import com.jaspersoft.jrsctl.core.secrets.PassphraseSource;
+import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import java.io.PrintWriter;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -19,6 +25,19 @@ import picocli.CommandLine;
 class InitCommandTest {
 
   @TempDir Path tmp;
+
+  @AfterEach
+  void restore() {
+    Prompter.reset();
+    Env.reset();
+  }
+
+  /** Runs init without --yes, answering its prompts from {@code answers}, one per line. */
+  private Run interactive(Path home, Path install, String... answers) {
+    Env.override(Map.of());
+    Prompter.override(new StringReader(String.join(System.lineSeparator(), answers) + "\n"));
+    return run("init", "--home", home.toString(), "--install-dir", install.toString());
+  }
 
   static Path fakeLayout(Path install) throws Exception {
     Path tomcat = install.resolve("apache-tomcat");
@@ -150,6 +169,160 @@ class InitCommandTest {
 
     assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
     assertThat(run.out()).contains("\"error\"").contains("confirmation required").contains("--yes");
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+  }
+
+  /** Issue #63: an operator who changes nothing gets the detected values after a few answers. */
+  @Test
+  void should_write_the_detected_values_when_the_operator_changes_nothing_and_confirms()
+      throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run = interactive(home, install, "", "n", "y");
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out())
+        .contains("Change any of these values?")
+        .contains("Store the passwords encrypted")
+        .contains("JRS_PASSWORD")
+        .contains("Next: jrsctl doctor");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().baseUrl())
+        .contains(URI.create("http://localhost:8089/jasperserver-pro"));
+    assertThat(loaded.server().auth().passwordRef().map(SecretRef::render))
+        .contains("env:JRS_PASSWORD");
+  }
+
+  /** Issue #63: each value can be replaced; a directory that does not exist is asked again. */
+  @Test
+  void should_replace_a_value_and_ask_again_for_a_missing_directory_when_reviewing()
+      throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+    Path java = Files.createDirectories(tmp.resolve("jdk17"));
+    java.util.List<String> answers = new java.util.ArrayList<>();
+    answers.add("y");
+    for (InitCommand.Field field : InitCommand.REVIEW_FIELDS) {
+      switch (field.key()) {
+        case "server.baseUrl" -> answers.add("https://jrs.example.com:8443/jasperserver-pro");
+        case "server.auth.username" -> answers.add("jasperadmin");
+        case "vendor.javaHome" -> {
+          answers.add(tmp.resolve("no-such-jdk").toString());
+          answers.add(java.toString());
+        }
+        default -> answers.add("");
+      }
+    }
+    answers.add("n");
+    answers.add("y");
+
+    Run run = interactive(home, install, answers.toArray(String[]::new));
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out()).contains("no such directory");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().baseUrl())
+        .contains(URI.create("https://jrs.example.com:8443/jasperserver-pro"));
+    assertThat(loaded.server().auth().username()).contains("jasperadmin");
+    assertThat(loaded.vendor().javaHome()).contains(java.toAbsolutePath().normalize());
+  }
+
+  /** Issue #63: passwords go to secrets.enc and the configuration names them as enc: references. */
+  @Test
+  void should_store_passwords_encrypted_and_write_enc_references_when_the_operator_agrees()
+      throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run =
+        interactive(
+            home,
+            install,
+            "", // change nothing
+            "y", // store the passwords encrypted
+            "Adm1n-Secret", // server password
+            "Db-Secret", // database password
+            "store-pass", // new store passphrase
+            "store-pass", // again
+            "y"); // write
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().auth().passwordRef().map(SecretRef::render))
+        .contains("enc:JRS_PASSWORD");
+    assertThat(loaded.database().passwordRef().map(SecretRef::render))
+        .contains("enc:JRS_DB_PASSWORD");
+    EncryptedSecretStore store =
+        new EncryptedSecretStore(
+            new JrsctlHome(home).secretsFile(),
+            new PassphraseSource.Fixed(Secret.fromString("store-pass")));
+    try (Secret server = store.get("JRS_PASSWORD").orElseThrow();
+        Secret db = store.get("JRS_DB_PASSWORD").orElseThrow()) {
+      assertThat(new String(server.chars())).isEqualTo("Adm1n-Secret");
+      assertThat(new String(db.chars())).isEqualTo("Db-Secret");
+    }
+    assertThat(Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8))
+        .doesNotContain("Adm1n-Secret")
+        .doesNotContain("Db-Secret");
+    assertThat(run.out() + run.err())
+        .doesNotContain("Adm1n-Secret")
+        .doesNotContain("store-pass")
+        .contains("JRSCTL_PASSPHRASE")
+        .doesNotContain("before running jrsctl, set");
+  }
+
+  @Test
+  void should_ask_again_when_the_two_passphrases_differ() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run =
+        interactive(
+            home,
+            install,
+            "",
+            "y",
+            "Adm1n-Secret",
+            "",
+            "one",
+            "two",
+            "store-pass",
+            "store-pass",
+            "y");
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out()).contains("the passphrases differ");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().auth().passwordRef().map(SecretRef::render))
+        .contains("enc:JRS_PASSWORD");
+    assertThat(loaded.database().passwordRef().map(SecretRef::render))
+        .contains("env:JRS_DB_PASSWORD");
+    assertThat(run.out()).contains("before running jrsctl, set JRS_DB_PASSWORD");
+  }
+
+  @Test
+  void should_store_nothing_when_the_operator_declines_to_write() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run =
+        interactive(
+            home, install, "", "y", "Adm1n-Secret", "Db-Secret", "store-pass", "store-pass", "n");
+
+    assertThat(run.code()).isZero();
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+    assertThat(new JrsctlHome(home).secretsFile()).doesNotExist();
+  }
+
+  @Test
+  void should_write_nothing_when_input_ends_before_confirmation() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run = interactive(home, install, "y", "https://jrs.example.com/jasperserver-pro");
+
+    assertThat(run.code()).isZero();
     assertThat(home.resolve("config.yaml")).doesNotExist();
   }
 }

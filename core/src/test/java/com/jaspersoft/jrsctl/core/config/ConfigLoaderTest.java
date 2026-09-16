@@ -38,6 +38,32 @@ class ConfigLoaderTest {
     assertThat(c.service().stopTimeoutSeconds()).isEqualTo(180);
   }
 
+  /** Issue #63: init applies the operator's edits the way --set applies an override. */
+  @Test
+  void should_apply_and_coerce_overrides_on_a_config_when_values_are_valid() {
+    Config c =
+        loader.withOverrides(
+            Config.defaults(),
+            Map.of(
+                "server.baseUrl", "https://jrs.example.com:8443/jasperserver-pro",
+                "server.auth.passwordRef", "enc:JRS_PASSWORD",
+                "console.port", "7500"));
+
+    assertThat(c.server().baseUrl())
+        .contains(URI.create("https://jrs.example.com:8443/jasperserver-pro"));
+    assertThat(c.server().auth().passwordRef().map(SecretRef::render)).contains("enc:JRS_PASSWORD");
+    assertThat(c.console().port()).isEqualTo(7500);
+    assertThat(c.network()).isEqualTo(Config.defaults().network());
+  }
+
+  @Test
+  void should_refuse_an_override_naming_the_key_when_the_value_is_invalid() {
+    assertThatThrownBy(
+            () -> loader.withOverrides(Config.defaults(), Map.of("console.port", "not-a-port")))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console.port");
+  }
+
   /** Issue #47: every env: reference in the configuration, by variable name. */
   @Test
   void should_list_the_env_secret_names_when_references_use_env_file_and_enc() throws IOException {
