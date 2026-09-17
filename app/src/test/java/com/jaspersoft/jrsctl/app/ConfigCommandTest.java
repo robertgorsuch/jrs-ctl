@@ -205,6 +205,32 @@ class ConfigCommandTest {
     assertThat(show.out()).contains("# database.type: from").contains("default_master.properties");
   }
 
+  /** Issue #74: config set and show work on a home configured with jrsctl.properties. */
+  @Test
+  void should_change_and_show_a_properties_configuration_in_its_own_format() throws IOException {
+    Files.delete(home.resolve("config.yaml"));
+    Files.writeString(
+        home.resolve("jrsctl.properties"),
+        "server.baseUrl=http://old.example.com:8080/jasperserver-pro\nserver.runAsUser=tomcat\n",
+        StandardCharsets.UTF_8);
+
+    InitCommandTest.Run set =
+        jrsctl("config", "set", "server.baseUrl", "https://new.example.com/jasperserver-pro");
+    InitCommandTest.Run show = jrsctl("config", "show", "--format", "properties");
+
+    assertThat(set.code()).as(set.out() + set.err()).isZero();
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+    assertThat(home.resolve("jrsctl.properties"))
+        .content()
+        .contains("server.baseUrl=https://new.example.com/jasperserver-pro")
+        .contains("server.runAsUser=tomcat");
+    assertThat(home.resolve("jrsctl.properties.bak")).exists();
+    assertThat(show.code()).as(show.out() + show.err()).isZero();
+    assertThat(show.out())
+        .contains("server.baseUrl=https://new.example.com/jasperserver-pro")
+        .doesNotContain("server:");
+  }
+
   @Test
   void should_describe_every_key_the_schema_knows() {
     for (String key : new ConfigLoader().knownKeys()) {

@@ -38,11 +38,50 @@ public final class ConfigWriter {
     if (parent != null) {
       Files.createDirectories(parent);
     }
+    boolean properties = file.getFileName().toString().endsWith(".properties");
     try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
       out.write(
           "# jrsctl configuration (docs/spec.md section 5.1). Secrets are references only.\n");
-      YAML.writeValue(out, toTree(config));
+      if (properties) {
+        out.write(
+            "# Values are literal: a backslash needs no escaping. Lists are comma-separated.\n");
+        out.write(renderProperties(config));
+      } else {
+        YAML.writeValue(out, toTree(config));
+      }
     }
+  }
+
+  /**
+   * The configuration as {@code key=value} lines with dotted keys, in schema order (#74); lists are
+   * comma-separated and values are written literally, as the loader reads them.
+   */
+  public static String renderProperties(Config config) {
+    StringBuilder sb = new StringBuilder();
+    flatten(toTree(config), "", sb);
+    return sb.toString();
+  }
+
+  private static void flatten(
+      com.fasterxml.jackson.databind.JsonNode node, String prefix, StringBuilder sb) {
+    if (node.isObject()) {
+      for (java.util.Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> e :
+          node.properties()) {
+        flatten(e.getValue(), prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey(), sb);
+      }
+      return;
+    }
+    String value;
+    if (node.isArray()) {
+      java.util.List<String> items = new java.util.ArrayList<>();
+      node.forEach(n -> items.add(n.asText()));
+      value = String.join(",", items);
+    } else if (node.isNull()) {
+      value = "";
+    } else {
+      value = node.asText();
+    }
+    sb.append(prefix).append('=').append(value).append('\n');
   }
 
   /** The YAML as a string, for {@code --json}/dry-run display. */

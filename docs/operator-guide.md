@@ -8,7 +8,7 @@ Everything the tool stores lives under one directory, the **jrsctl home** (`--ho
 
 | Path | Purpose |
 |---|---|
-| `config.yaml` | the configuration written by `init` and edited by you |
+| `config.yaml` | the configuration written by `init` and edited by you; or `jrsctl.properties` with the same dotted keys (ADR-0022), never both |
 | `state.db` | SQLite journal: runs, step transitions, installed hotfixes, plans, snapshots, audit |
 | `runs.lock` | the run lock; holds the run id and pid of the process that owns it |
 | `runs/<runId>/` | staging and temp files of one run |
@@ -123,14 +123,14 @@ Verifies the tool itself, with no configuration and no server: the Java runtime 
 - **Exit codes:** 0 when every item passes; **2** when any item fails (the line names the resource or runtime property); **6** when the failure is the `platform` item, that is, the host is not Windows or Linux on x86-64 (ADR-0002). Every other command refuses such a host with the same exit code before it opens anything.
 - **Flags:** `--json` — the report as `{"items": [...], "ok": bool}`.
 
-### `jrsctl init [--install-dir <dir>] [--buildomatic-dir <dir>] [--remote <url>] [--force]`
+### `jrsctl init [--install-dir <dir>] [--buildomatic-dir <dir>] [--remote <url>] [--format yaml|properties] [--force]`
 
 Detects the JasperReports Server installation (Tomcat layout, the Windows service or systemd unit, `server.xml` port, the buildomatic directory and its `default_master.properties`, database settings) and writes `config.yaml` into the jrsctl home. Every detected value is shown with its source first and you are asked before the file is written. The repository database type, URL and user are shown but not copied (#73): every command reads them from the installed buildomatic's `default_master.properties`, so the two cannot drift apart, and a value you set in `config.yaml` (or with `jrsctl config set`) overrides the file; `doctor`'s `database` item says when such a value disagrees with `default_master.properties`, and `config keys` shows `default_master.properties` as the source of a value read from it. The proposed server user is `superuser` for the commercial edition (`jasperserver-pro`), where `jasperadmin` administers a single organisation and full-server operations need `superuser`, and `jasperadmin` for the community edition (#59). Secrets are never copied from the installation. Interactively (#63) `init` then asks three questions: **change any of these values?** (Enter keeps them; `y` steps through the server URL, admin user, installation, Tomcat and buildomatic directories, service type and name, database URL and user, and the Java for buildomatic, where Enter keeps the value in brackets and a new value is validated like `--set`, with directories required to exist); **store the passwords encrypted on this machine?** (Enter is yes: the admin and database passwords are read without echo, and on first use a passphrase for `secrets.enc` is chosen and typed twice, unless `--passphrase-file` or `JRSCTL_PASSPHRASE` supplies it); and **write config?** Only after that last yes are the passwords stored in `secrets.enc` and `config.yaml` written with `enc:JRS_PASSWORD` / `enc:JRS_DB_PASSWORD`. A password left empty, or a refused store, keeps its `env:` placeholder, and `init` names the variables still to set. With `--yes`, `--non-interactive` or `--json` nothing is asked and both passwords are written as `env:` placeholders.
 
 - **Mutates:** only `config.yaml` in the jrsctl home, and `secrets.enc` when you chose to store the passwords, after confirmation (skipped with `--yes`). Nothing on the server.
 - **Rollback:** an existing `config.yaml` is kept unless `--force`; with `--force` the previous file is overwritten, so copy it first if you may want it back. Stored passwords are removed with `jrsctl secrets remove JRS_PASSWORD` and `jrsctl secrets remove JRS_DB_PASSWORD`.
 - **Exit codes:** 0 when the file was written or shown; **2** when no installation is found at the given directory, when the directory is not a JasperReports Server tree, or when confirmation is needed but `--non-interactive` forbids the prompt (pass `--yes`; with `--json` the refusal is an error document). `--json` alone prints the detection report without writing and exits 0.
-- **Flags:** `--install-dir <dir>` — root of the installation when auto-detection does not find it (the directory holding `apache-tomcat/` or the Tomcat tree itself); `--buildomatic-dir <dir>` — the installed buildomatic directory when it is not under the installation root (another disk, a mount point or a network share); without it `init` looks under and beside the installation and Tomcat and writes what it finds as `server.buildomaticDir`, with its source; a directory that cannot be reached is reported and not written; `--remote <url>` — write a server-only configuration for a machine that is not the server (#68): the address, the webapp and admin user its path implies (`superuser` for `jasperserver-pro`) and the password placeholder, with no installation, service or buildomatic; such a jrsctl runs REST `export` and `import`, and `doctor` skips its local checks; cannot be combined with `--install-dir` or `--buildomatic-dir`; `--force` — overwrite an existing `config.yaml`; `--json` — print the detection report and the proposed configuration as JSON without writing anything.
+- **Flags:** `--install-dir <dir>` — root of the installation when auto-detection does not find it (the directory holding `apache-tomcat/` or the Tomcat tree itself); `--buildomatic-dir <dir>` — the installed buildomatic directory when it is not under the installation root (another disk, a mount point or a network share); without it `init` looks under and beside the installation and Tomcat and writes what it finds as `server.buildomaticDir`, with its source; a directory that cannot be reached is reported and not written; `--remote <url>` — write a server-only configuration for a machine that is not the server (#68): the address, the webapp and admin user its path implies (`superuser` for `jasperserver-pro`) and the password placeholder, with no installation, service or buildomatic; such a jrsctl runs REST `export` and `import`, and `doctor` skips its local checks; cannot be combined with `--install-dir` or `--buildomatic-dir`; `--format yaml|properties` — write `config.yaml` (default) or `jrsctl.properties` (#74): `key=value` lines with the keys `jrsctl config keys` lists, values taken literally so a Windows path needs no doubled backslashes, lists comma-separated; `init` refuses to write one format while the other exists, even with `--force`; `--force` — overwrite an existing configuration file; `--json` — print the detection report and the proposed configuration as JSON without writing anything.
 
 ### `jrsctl doctor [--allow-unsupported] [--json]`
 
@@ -156,14 +156,14 @@ Exercises the server end to end: login, repository listing, a sample report run 
 - **Exit codes:** 0 every check passed; **2** a check failed (read-only), **3**/**4** only with `--mutating` when the temporary report could not be removed cleanly.
 - **Flags:** `--mutating` — include the create/run/delete round trip; `--json` — the report as JSON.
 
-### `jrsctl config show [--json]`
+### `jrsctl config show [--format yaml|properties] [--json]`
 
 Prints the effective configuration after precedence is applied (flag `--set` > environment > `config.yaml` > built-in default) as YAML, followed by one comment line per value an environment variable or `--set` overrides (`# console.port: overridden by JRSCTL_CONSOLE_PORT`). `jrsctl config keys` gives the source of every value. Every secret appears as its reference (`env:NAME`, `file:/path`, `enc:NAME`), never as a value, so the output is safe to paste into a ticket.
 
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.
 - **Exit codes:** 0; **2** when `config.yaml` is malformed or violates the schema (the message names the key).
-- **Flags:** `--json` — the configuration as JSON, without the override comments.
+- **Flags:** `--format yaml|properties` — print YAML (default) or `jrsctl.properties` lines (#74); `--json` — the configuration as JSON, without the override comments.
 
 ### `jrsctl config set <key> [<value>]`
 
@@ -171,7 +171,7 @@ Changes one setting in `config.yaml` without editing the file (#70). The new val
 
 A password key (`server.auth.passwordRef`, `database.passwordRef`, `network.proxy.passwordRef`, `network.trustStore.passwordRef`, `console.auth.passwordRef`) never takes a password on the command line, where shell history and the process list would keep it. Give a reference (`env:NAME`, `file:/path`, `enc:NAME`), or give no value: the password is then typed without echo and stored in `secrets.enc` under the existing `enc:` name or a default (`JRS_PASSWORD`, `JRS_DB_PASSWORD`, `JRS_PROXY_PASSWORD`, `JRS_TRUSTSTORE_PASSWORD`, `JRS_CONSOLE_PASSWORD`), and the key is set to `enc:NAME`. The store's passphrase comes from `--passphrase-file` or `JRSCTL_PASSPHRASE`, or is asked for (twice for a new store).
 
-List values (`network.proxy.noProxy`) are edited in `config.yaml` itself.
+A list value (`network.proxy.noProxy`) is given comma-separated. The file is rewritten in its own format, `config.yaml` or `jrsctl.properties`.
 
 - **Mutates:** `config.yaml` (and `config.yaml.bak`) in the jrsctl home; `secrets.enc` when a password is typed. Audited as `config.set` (and `secrets.set`). Nothing on the server.
 - **Rollback:** copy `config.yaml.bak` back, or `jrsctl config set <key> <old value>`.

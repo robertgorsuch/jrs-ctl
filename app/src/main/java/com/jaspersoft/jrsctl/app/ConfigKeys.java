@@ -61,7 +61,7 @@ final class ConfigKeys {
           Map.entry("network.proxy.username", "Proxy user"),
           Map.entry(
               "network.proxy.passwordRef", "Proxy password: enc:NAME, env:NAME or file:/path"),
-          Map.entry("network.proxy.noProxy", "Hosts that bypass the proxy (edit in config.yaml)"),
+          Map.entry("network.proxy.noProxy", "Hosts that bypass the proxy, comma-separated"),
           Map.entry("network.trustStore.path", "Extra truststore with the server's CA certificate"),
           Map.entry(
               "network.trustStore.passwordRef",

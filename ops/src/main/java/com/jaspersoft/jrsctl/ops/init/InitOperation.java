@@ -275,18 +275,46 @@ public final class InitOperation {
   }
 
   /**
-   * Writes {@code config} to {@code home.configFile()}.
-   *
-   * @throws FileAlreadyExistsException when the file exists and {@code force} is false
+   * Writes {@code config} to {@code config.yaml} in the home, as {@link #write(Config, Path,
+   * boolean)}.
    */
   public Path write(Config config, boolean force) throws IOException {
-    Path file = services.home().configFile();
-    if (Files.exists(file) && !force) {
+    return write(config, services.home().yamlConfigFile(), force);
+  }
+
+  /**
+   * Writes {@code config} to {@code target}, {@code config.yaml} or {@code jrsctl.properties} in
+   * the home, in the format its name says (#74).
+   *
+   * @throws FileAlreadyExistsException when {@code target} exists and {@code force} is false, or
+   *     when the configuration exists in the other format, which even {@code force} does not
+   *     replace because two files would be left
+   */
+  public Path write(Config config, Path target, boolean force) throws IOException {
+    Path other = otherFormat(target);
+    if (Files.exists(other)) {
       throw new FileAlreadyExistsException(
-          file.toString(), null, "config.yaml already exists; pass --force to overwrite it");
+          other.toString(),
+          null,
+          "the configuration is already in "
+              + other.getFileName()
+              + "; move it out of the jrsctl home to switch formats, or write that format");
     }
-    ConfigWriter.write(config, file);
-    return file;
+    if (Files.exists(target) && !force) {
+      throw new FileAlreadyExistsException(
+          target.toString(),
+          null,
+          target.getFileName() + " already exists; pass --force to overwrite it");
+    }
+    ConfigWriter.write(config, target);
+    return target;
+  }
+
+  /** The home's configuration file in the format {@code target} is not in. */
+  public Path otherFormat(Path target) {
+    return target.equals(services.home().propertiesConfigFile())
+        ? services.home().yamlConfigFile()
+        : services.home().propertiesConfigFile();
   }
 
   // ---- detection helpers ------------------------------------------------------------------------

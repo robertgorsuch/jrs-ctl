@@ -127,6 +127,9 @@ final class HelpExamples {
                 "Show what would be written, without writing anything",
                 "jrsctl init --install-dir /opt/jasperreports-server-pro-10.0.0 --json"),
             new Example(
+                "Write jrsctl.properties instead of config.yaml",
+                "jrsctl init --install-dir /opt/jasperreports-server-pro-10.0.0 --format properties"),
+            new Example(
                 "From another machine: REST export and import only",
                 "jrsctl init --remote https://jrs.example.com:8443/jasperserver-pro")));
     m.put(
@@ -149,6 +152,8 @@ final class HelpExamples {
         "config show",
         List.of(
             new Example("Show the settings in use and where each came from", "jrsctl config show"),
+            new Example(
+                "The same as jrsctl.properties lines", "jrsctl config show --format properties"),
             new Example(
                 "See the effect of a one-off override",
                 "jrsctl config show --set server.baseUrl=https://jrs.example.com:8443/jasperserver-pro")));

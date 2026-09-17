@@ -47,6 +47,7 @@ import java.util.function.Supplier;
 public final class ConfigLoader {
 
   public static final String ENV_PREFIX = "JRSCTL_";
+  private static final java.util.regex.Pattern COMMA = java.util.regex.Pattern.compile(",");
   static final String SCHEMA_RESOURCE = "/schema/config.schema.json";
 
   private final JsonSchema schema;
@@ -71,6 +72,16 @@ public final class ConfigLoader {
   /** Loads {@code home.configFile()} (optional) and overlays {@code env} then {@code flags}. */
   public Config load(JrsctlHome home, Map<String, String> env, Map<String, String> flags) {
     Objects.requireNonNull(home, "home");
+    if (Files.isRegularFile(home.yamlConfigFile())
+        && Files.isRegularFile(home.propertiesConfigFile())) {
+      throw new ConfigException(
+          "both "
+              + home.yamlConfigFile()
+              + " and "
+              + home.propertiesConfigFile()
+              + " exist, so it is unclear which configuration is meant",
+          "keep one of them: move the other out of the jrsctl home");
+    }
     return load(home.configFile(), env, flags);
   }
 
@@ -240,6 +251,9 @@ public final class ConfigLoader {
     if (!Files.isRegularFile(file)) {
       return JsonNodeFactory.instance.objectNode();
     }
+    if (file.getFileName().toString().endsWith(".properties")) {
+      return readProperties(file);
+    }
     JsonNode root;
     try (InputStream in = Files.newInputStream(file)) {
       root = yaml.readTree(in);
@@ -255,6 +269,56 @@ public final class ConfigLoader {
           file + " does not contain a top-level mapping", "start the file with server: ...");
     }
     return obj;
+  }
+
+  /**
+   * {@code key=value} lines with the dotted keys {@code --set} uses (#74). Values are taken
+   * literally, as buildomatic's properties are read: a backslash is not an escape, so a Windows
+   * path needs no doubling; {@code #} and {@code !} start comments; {@code =}, {@code :} or
+   * whitespace separates key and value; an unknown or repeated key is refused with its line number.
+   */
+  private ObjectNode readProperties(Path file) {
+    ObjectNode tree = JsonNodeFactory.instance.objectNode();
+    Set<String> seen = new java.util.HashSet<>();
+    List<String> lines;
+    try {
+      lines = Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new ConfigException(
+          "cannot read " + file + ": " + e.getMessage(), "check the file's permissions");
+    }
+    for (int i = 0; i < lines.size(); i++) {
+      String line = lines.get(i).strip();
+      if (line.isEmpty() || line.startsWith("#") || line.startsWith("!")) {
+        continue;
+      }
+      int sep = -1;
+      for (int k = 0; k < line.length(); k++) {
+        char c = line.charAt(k);
+        if (c == '=' || c == ':' || Character.isWhitespace(c)) {
+          sep = k;
+          break;
+        }
+      }
+      String key = (sep < 0 ? line : line.substring(0, sep)).strip();
+      String value = sep < 0 ? "" : line.substring(sep + 1).strip();
+      if (value.startsWith("=") || value.startsWith(":")) {
+        value = value.substring(1).strip();
+      }
+      String where = file + " line " + (i + 1);
+      if (!leafKeys.containsKey(key)) {
+        throw new ConfigException(
+            "unknown configuration key " + key + " at " + where,
+            "list the keys with: jrsctl config keys");
+      }
+      if (!seen.add(key)) {
+        throw new ConfigException(
+            "configuration key " + key + " is given twice, again at " + where,
+            "keep one line for " + key);
+      }
+      put(tree, key, coerce(value, leafKeys.get(key)));
+    }
+    return tree;
   }
 
   private static void put(ObjectNode root, String dottedPath, JsonNode value) {
@@ -295,6 +359,11 @@ public final class ConfigLoader {
         yield lower.equals("true") || lower.equals("false")
             ? BooleanNode.valueOf(lower.equals("true"))
             : TextNode.valueOf(raw);
+      }
+      case LIST -> {
+        com.fasterxml.jackson.databind.node.ArrayNode items = JsonNodeFactory.instance.arrayNode();
+        COMMA.splitAsStream(v).map(String::strip).filter(s -> !s.isEmpty()).forEach(items::add);
+        yield items;
       }
     };
   }

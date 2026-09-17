@@ -69,6 +69,18 @@ final class InitCommand implements Callable<Integer> {
   @Option(names = "--force", description = "Overwrite an existing config.yaml.")
   boolean force;
 
+  /** The file format {@code init} writes (#74, ADR-0022). */
+  enum Format {
+    YAML,
+    PROPERTIES
+  }
+
+  @Option(
+      names = "--format",
+      paramLabel = "yaml|properties",
+      description = "Write config.yaml (default) or jrsctl.properties.")
+  Format format = Format.YAML;
+
   @Option(
       names = "--remote",
       paramLabel = "<url>",
@@ -122,7 +134,10 @@ final class InitCommand implements Callable<Integer> {
               ? op.detectRemote(remote)
               : op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
       Config config = op.toConfig(report);
-      Path target = boot.services().home().configFile();
+      Path target =
+          format == Format.PROPERTIES
+              ? boot.services().home().propertiesConfigFile()
+              : boot.services().home().yamlConfigFile();
       if (global.json()) {
         // one document: the detection report plus whether config.yaml was written (only --yes
         // writes in JSON mode, there is no prompt)
@@ -133,7 +148,7 @@ final class InitCommand implements Callable<Integer> {
         json.put("configFile", target.toString());
         if (global.yes()) {
           try {
-            Path written = op.write(config, force);
+            Path written = op.write(config, target, force);
             json.put("written", true);
             json.put("writtenTo", written.toString());
           } catch (FileAlreadyExistsException e) {
@@ -177,7 +192,7 @@ final class InitCommand implements Callable<Integer> {
         return interactive(boot, op, report, config, target, out, err);
       }
       try {
-        Path written = op.write(config, force);
+        Path written = op.write(config, target, force);
         out.println("wrote " + written);
         out.flush();
         return ExitCodes.SUCCESS;
@@ -200,6 +215,15 @@ final class InitCommand implements Callable<Integer> {
       PrintWriter out,
       PrintWriter err)
       throws IOException {
+    if (Files.exists(op.otherFormat(target))) {
+      return alreadyExists(
+          out,
+          err,
+          new FileAlreadyExistsException(
+              op.otherFormat(target).toString(),
+              null,
+              "move it out of the jrsctl home to switch formats, or write that format"));
+    }
     if (Files.exists(target) && !force) {
       return alreadyExists(out, err, new FileAlreadyExistsException(target.toString()));
     }
@@ -258,7 +282,7 @@ final class InitCommand implements Callable<Integer> {
       }
       Path written;
       try {
-        written = op.write(config, force);
+        written = op.write(config, target, force);
       } catch (FileAlreadyExistsException e) {
         return alreadyExists(out, err, e);
       }
@@ -372,6 +396,9 @@ final class InitCommand implements Callable<Integer> {
         global.json(),
         ExitCodes.PRECHECK_FAILED,
         e.getFile() + " already exists",
-        Optional.of("pass --force to overwrite it"));
+        Optional.of(
+            e.getReason() != null && e.getReason().contains("switch formats")
+                ? e.getReason()
+                : "pass --force to overwrite it"));
   }
 }

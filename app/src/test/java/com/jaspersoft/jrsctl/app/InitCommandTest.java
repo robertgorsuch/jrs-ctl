@@ -174,6 +174,47 @@ class InitCommandTest {
     assertThat(home.resolve("config.yaml")).doesNotExist();
   }
 
+  /** Issue #74: the configuration can be written as jrsctl.properties instead of config.yaml. */
+  @Test
+  void should_write_jrsctl_properties_when_format_properties_given() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run =
+        run(
+            "init",
+            "--format",
+            "properties",
+            "--yes",
+            "--home",
+            home.toString(),
+            "--install-dir",
+            install.toString());
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+    assertThat(home.resolve("jrsctl.properties"))
+        .content()
+        .contains("server.baseUrl=http://localhost:8089/jasperserver-pro")
+        .contains("server.auth.passwordRef=env:JRS_PASSWORD");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().baseUrl())
+        .contains(URI.create("http://localhost:8089/jasperserver-pro"));
+
+    Run again =
+        run(
+            "init",
+            "--force",
+            "--yes",
+            "--home",
+            home.toString(),
+            "--install-dir",
+            install.toString());
+    assertThat(again.code()).as("switching formats would leave two files").isEqualTo(2);
+    assertThat(again.err()).contains("jrsctl.properties");
+    assertThat(home.resolve("config.yaml")).doesNotExist();
+  }
+
   /** Issue #68: a machine that only reaches the server over REST gets a server-only config. */
   @Test
   void should_write_a_server_only_config_when_remote_given() throws Exception {

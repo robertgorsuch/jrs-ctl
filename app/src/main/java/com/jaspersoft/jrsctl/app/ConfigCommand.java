@@ -69,12 +69,23 @@ final class ConfigCommand implements Runnable {
     @Spec CommandSpec spec;
     @Mixin GlobalOptions global;
 
+    @picocli.CommandLine.Option(
+        names = "--format",
+        paramLabel = "yaml|properties",
+        description = "Print as YAML (default) or as jrsctl.properties lines.")
+    String format = "yaml";
+
     @Override
     public Integer call() {
       PrintWriter out = spec.commandLine().getOut();
       Redactor redactor = Redactor.global();
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Config config = boot.services().config();
+        if (!global.json() && format.equalsIgnoreCase("properties")) {
+          out.println(redactor.redact(ConfigWriter.renderProperties(config).stripTrailing()));
+          out.flush();
+          return ExitCodes.SUCCESS;
+        }
         if (global.json()) {
           out.println(redactor.redact(JsonOut.write(ConfigWriter.toTree(config)).stripTrailing()));
           out.flush();

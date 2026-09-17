@@ -17,7 +17,9 @@ final class SchemaKeys {
     STRING,
     INTEGER,
     BOOLEAN,
-    NULLABLE_STRING
+    NULLABLE_STRING,
+    /** An array of strings, given as one comma-separated value (#74). */
+    LIST
   }
 
   private SchemaKeys() {}
@@ -65,6 +67,7 @@ final class SchemaKeys {
     return switch (jsonType.toLowerCase(Locale.ROOT)) {
       case "integer", "number" -> Type.INTEGER;
       case "boolean" -> Type.BOOLEAN;
+      case "array" -> Type.LIST;
       default -> Type.STRING;
     };
   }

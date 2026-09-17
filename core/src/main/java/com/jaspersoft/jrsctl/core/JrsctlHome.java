@@ -9,8 +9,23 @@ import java.nio.file.Path;
  */
 public record JrsctlHome(Path root) {
 
+  /**
+   * The configuration file in use: {@code jrsctl.properties} when it exists (#74), otherwise {@code
+   * config.yaml}, which is also where a new configuration is written by default.
+   */
   public Path configFile() {
+    Path properties = propertiesConfigFile();
+    return java.nio.file.Files.isRegularFile(properties) ? properties : yamlConfigFile();
+  }
+
+  /** {@code config.yaml}, the default configuration format. */
+  public Path yamlConfigFile() {
     return root.resolve("config.yaml");
+  }
+
+  /** {@code jrsctl.properties}, the optional properties format (#74, ADR-0022). */
+  public Path propertiesConfigFile() {
+    return root.resolve("jrsctl.properties");
   }
 
   public Path stateDb() {
