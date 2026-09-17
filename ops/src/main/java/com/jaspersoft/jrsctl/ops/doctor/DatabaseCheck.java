@@ -61,6 +61,16 @@ final class DatabaseCheck {
           "set database.type, database.url, database.username and database.passwordRef before"
               + " applying a hotfix that carries SQL");
     }
+    if (db.passwordRef().isEmpty()) {
+      // #73: settings read from default_master.properties are not a request to check the database
+      return ReportItem.skip(
+          NAME,
+          db.type().get().yamlValue()
+              + " repository database found, but database.passwordRef is not set, so the"
+              + " connection is not checked; needed only for hotfixes with SQL",
+          "set database.passwordRef (jrsctl config set database.passwordRef) to check the"
+              + " connection");
+    }
     Config.DatabaseType type = db.type().get();
     Optional<JdbcSettings> settings = JdbcSettings.from(s.config(), s.platform());
     if (settings.isEmpty()) {

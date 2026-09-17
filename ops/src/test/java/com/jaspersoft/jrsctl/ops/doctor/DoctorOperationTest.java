@@ -119,6 +119,32 @@ class DoctorOperationTest {
     }
   }
 
+  /**
+   * Issue #73: with the database settings read from default_master.properties, an installation
+   * whose operator never set a database password must not fail doctor, or the upgrade preflight
+   * that runs it; the database is needed only for hotfixes with SQL.
+   */
+  @Test
+  void should_skip_the_database_check_when_no_password_reference_is_configured() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    String yaml =
+        healthyYaml(install)
+            + """
+            database:
+              type: postgresql
+              url: jdbc:postgresql://db.example.internal:5433/jasperserver
+              username: jasperdb
+            """;
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(yaml)) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem database = byName(report).get("database");
+      assertThat(database.status()).isEqualTo(Status.SKIP);
+      assertThat(database.detail()).contains("database.passwordRef");
+      assertThat(report.exitCode()).as(report.items().toString()).isZero();
+    }
+  }
+
   /** Issue #73: config.yaml overriding buildomatic's database settings with other values. */
   @Test
   void should_name_database_values_that_disagree_with_default_master_properties() throws Exception {
