@@ -19,7 +19,7 @@ import com.jaspersoft.jrsctl.jrs.vendor.MasterProperties;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 /**
  * Phase C of spec §10.2: stage {@code default_master.properties} into the target package's
@@ -235,12 +236,22 @@ final class VendorSteps {
         switch (source.get()) {
           case Source.Copy c -> Files.copy(c.file(), tmp, StandardCopyOption.REPLACE_EXISTING);
           case Source.Locations l -> {
+            // Properties.store escapes the paths (backslashes, colons) but also stamps the
+            // current time as a comment, which would make every re-execution write different
+            // bytes; only the key lines are kept
             Properties p = new Properties();
             p.setProperty("ks", l.ks().toString());
             p.setProperty("ksp", l.ksp().toString());
-            try (OutputStream os = Files.newOutputStream(tmp)) {
-              p.store(os, "written by jrsctl: the keystore the running server uses");
-            }
+            StringWriter buffer = new StringWriter();
+            p.store(buffer, null);
+            String content =
+                buffer
+                    .toString()
+                    .lines()
+                    .filter(line -> !line.startsWith("#"))
+                    .sorted()
+                    .collect(Collectors.joining("\n", "", "\n"));
+            Files.writeString(tmp, content, StandardCharsets.ISO_8859_1);
           }
         }
         Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
