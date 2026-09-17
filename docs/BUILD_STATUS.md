@@ -190,6 +190,47 @@ Every fix was confirmed against `main` at `1e9edbf` before it was written, on br
 - **Spec:** the changes are one "Draft 1.1 amendment — 2026-09-15" entry in `docs/spec-changelog.md`, following the dated-amendment practice of 2026-09-10 to 2026-09-14 rather than the Draft 1.2 bump the plan proposed.
 - **Still open, outside this machine:** #31 (buildomatic on a real share), #33 (Ctrl-C at a real console), #35 (JRS container image), #36 (support engineering review); checklists are in the plan's Task 12.
 
+### Field test 1.6.0 (2026-09-16 to 2026-09-17)
+
+A JasperReports Server support engineer tested 1.3.0 and 1.4.0. The finding: the tool asked administrators to learn YAML, environment variables, bundle signing and raw Markdown before they could do anything useful. The recommendations were filed as #59 to #75 with `priority: now`, `next` and `later` labels; the spec changes are in `docs/spec-changelog.md`.
+
+- **Now (#59 to #65).**
+  - `init` proposes `superuser` for the commercial edition.
+  - Every `--help` ends with examples that parse (`HelpExamplesTest`).
+  - `docs` and `--explain` print plain text in a terminal.
+  - Hotfix authoring commands are hidden from `--help`.
+  - Interactive `init` reviews each value and stores passwords encrypted.
+  - `console` prints the `ssh -L` command on a Linux host without a display.
+  - The README says no Java is needed.
+  - Found on the way: a home jrsctl created on Windows gave its secret files an empty DACL (`51886a8`, `icacls /grant:r`).
+- **Next (#67 to #70).**
+  - `export` keeps the service running unless `--stop-service` is given (ADR-0021).
+  - `init --remote` sets up a REST-only machine, and commands that need the vendor tools are refused with a reason.
+  - After an upgrade, `server.buildomaticDir` points at the new buildomatic.
+  - `config set`, `unset` and `keys` change one setting at a time.
+  - #66 (official hotfix packages) waits for sample packages.
+- **Later (#71 to #74).**
+  - `jrsctl` with no command opens a guided menu.
+  - `customizations scan --vendor` finds site customizations.
+  - Database settings come from `default_master.properties`; `doctor` reports a disagreement, and its database check is skipped until `database.passwordRef` is set.
+  - `jrsctl.properties` is accepted as the configuration file (ADR-0022).
+  - #75 (full-screen terminal UI) was evaluated in ADR-0023 and not built.
+- **#56 and #57** from 1.5.0 are fixed: a hotfix `replace` of a missing path is refused, and Ctrl-C on `console` exits 0. #57 was checked with a real `CTRL_C_EVENT` (1.2.0 gave 130).
+- **Verified against the real 10.0.0 PRO server** (`C:\Jaspersoft\jasperreports-server-10.0.0`), from a copy of the packaged jar:
+  - #73: `config.yaml` holds only the password reference, and `doctor` passed 23 of 23 as `jasperadmin`.
+  - #74: `jrsctl.properties` with unescaped Windows paths.
+  - #68: remote `doctor`, the full-server refusal, and a REST export and re-import of `/public/Samples`.
+  - #67: a full-server export ran for 86 s with the service Running throughout, giving a valid archive of 3,346 entries (organizations, 8 users, 8 roles, 3,309 resources, report jobs).
+  - #72: a scan against a pristine `jasperserver-pro.war` taken from the 10.0.0 Windows installer found the site's edited `js.config.properties` and `web.xml` and its added jars and script, and set aside `context.xml`, `js.quartz.properties` and `keystore.init.properties` as installer-written (`7c66cdf`).
+  - A 401 is now reported as refused credentials (`0f905c0`); it used to read as an unreachable server followed by an HTML page.
+- **Checked by hand at a real console:**
+  - the menu;
+  - interactive `init` with hidden password and passphrase prompts;
+  - plain-text `docs` and `--explain`;
+  - the headless hint over ssh on the Linux laptop.
+- **Mistake recorded:** a `verify` started during the live comparison export repackaged `app/target/jrsctl.jar`. The export then failed with `NoClassDefFoundError`, leaving the service stopped and the run pending. The service was restarted and `runs recover --rollback` exited 3 cleanly. Live checks now run from a copy of the jar.
+- **Not done:** the `--stop-service` comparison export; a full-server export on versions other than 10.0.0.
+
 ## Known gaps
 
 - Work is committed on `main` rather than a branch per phase; the phase boundary is the commit. The repository now has a remote (`github.com/robertgorsuch/jrs-ctl`) and CI has run green on both operating systems since 2026-09-10 (`56d9b88` onward), so the PR checklist in spec §15 applies from here.
