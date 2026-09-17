@@ -205,6 +205,40 @@ class DoctorOperationTest {
     }
   }
 
+  /**
+   * Found against a real 10.0.0 server: with a wrong password the server answers every call with
+   * 401, and doctor called that "unexpected RestException ... check server.baseUrl", pointing the
+   * operator at the address instead of the credentials.
+   */
+  @Test
+  void should_name_the_refused_user_and_the_credentials_when_the_server_answers_401()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(healthyYaml(install))) {
+      fake.adapter.identityFailure =
+          java.util.Optional.of(
+              new com.jaspersoft.jrsctl.jrs.rest.RestException(
+                  401,
+                  "GET",
+                  "/rest_v2/serverInfo",
+                  "HTTP 401 from GET /rest_v2/serverInfo: <!doctype html><html>Unauthorized"));
+
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem server = byName(report).get("server");
+      assertThat(server.status()).isEqualTo(Status.FAIL);
+      assertThat(server.detail())
+          .contains("refused the login of jasperadmin")
+          .contains("401")
+          .doesNotContain("<html")
+          .doesNotContain("unexpected");
+      assertThat(server.remediation())
+          .contains("server.auth.passwordRef")
+          .doesNotContain("baseUrl");
+      assertThat(byName(report).get("auth").detail()).isEqualTo("server refused the credentials");
+    }
+  }
+
   @Test
   void should_fail_server_and_skip_dependents_when_server_unreachable() throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));

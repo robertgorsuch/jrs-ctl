@@ -72,6 +72,31 @@ class ExitCodesHandlerTest {
     assertThat(h.err()).contains("boom").contains(LOG);
   }
 
+  /**
+   * Found against a real 10.0.0 server: a refused login printed the server's whole HTML error page
+   * after "error:" and pointed at nothing.
+   */
+  @Test
+  void should_say_the_credentials_were_refused_without_the_html_page_when_planning_gets_401() {
+    StringWriter err = new StringWriter();
+
+    int code =
+        ExitCodes.reportPlanningFailure(
+            new PrintWriter(err),
+            new com.jaspersoft.jrsctl.jrs.rest.RestException(
+                401,
+                "GET",
+                "/rest_v2/serverInfo",
+                "HTTP 401 from GET /rest_v2/serverInfo: <!doctype html><html>Unauthorized"));
+
+    assertThat(code).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(err.toString())
+        .contains("refused the credentials")
+        .contains("401")
+        .contains("server.auth.passwordRef")
+        .doesNotContain("<html");
+  }
+
   @Test
   void should_name_the_exception_class_instead_of_null_when_it_has_no_message() {
     Handled h = handle(new IllegalStateException(), "selfcheck");

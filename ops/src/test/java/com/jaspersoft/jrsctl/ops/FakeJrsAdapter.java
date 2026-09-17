@@ -89,9 +89,15 @@ public final class FakeJrsAdapter implements JrsAdapter {
     return bytes;
   }
 
+  /** When set, {@link #identity()} throws it (e.g. a 401 for refused credentials). */
+  public Optional<RuntimeException> identityFailure = Optional.empty();
+
   @Override
   public ServerIdentity identity() {
     calls.add("identity");
+    if (identityFailure.isPresent()) {
+      throw identityFailure.get();
+    }
     return identity;
   }
 

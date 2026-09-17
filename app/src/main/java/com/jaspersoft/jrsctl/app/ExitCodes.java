@@ -114,6 +114,27 @@ public final class ExitCodes {
       PrintWriter out, PrintWriter err, boolean json, RuntimeException e) {
     int code = Handler.codeFor(e);
     code = code == FAILED_ROLLBACK_INCOMPLETE ? PRECHECK_FAILED : code;
+    if (e instanceof com.jaspersoft.jrsctl.jrs.rest.RestException rest
+        && rest.authenticationFailure()) {
+      // the server's HTML error page says nothing an operator can act on
+      return fail(
+          out,
+          err,
+          json,
+          PRECHECK_FAILED,
+          e.getClass().getSimpleName(),
+          "the server refused the credentials (HTTP "
+              + rest.status()
+              + " from "
+              + rest.method()
+              + " "
+              + rest.path()
+              + ")",
+          Optional.of(
+              "check server.auth.username and the password behind server.auth.passwordRef"
+                  + " (jrsctl config keys shows both; jrsctl doctor tests the login)"),
+          Map.of());
+    }
     return fail(
         out,
         err,
