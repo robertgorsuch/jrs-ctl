@@ -555,7 +555,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 3. `ConfirmDbBackup` — both modes (ADR-0012); fails without `--db-backup-confirmed`.
 
 **Phase B — backup** (rollback point B)
-4. `FullExport` (vendor strategy; includes service stop/start).
+4. `FullExport` (vendor strategy; includes service stop/start) — **samedb only**. In `newdb` mode the export moves to Phase C, after the stop (ADR-0025): the database is rebuilt from it, so nothing may change in the repository between the export and the vendor run, and the service is not restarted in between.
 5. `BackupKeystore`.
 6. `BackupWebapp` — archive of `tomcatDir/webapps/<webappName>` and installed `buildomatic/`.
 7. `BackupConfig` — `default_master.properties`, JNDI, context files.
@@ -563,6 +563,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 **Phase C — vendor upgrade** (rollback point C = restore B)
 8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file.
 9. `StopService`.
+9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts.
 10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
 11. `StartService` + `WaitForServer`.
 

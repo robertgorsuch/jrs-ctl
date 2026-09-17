@@ -18,6 +18,7 @@ import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.Idempotency;
 import com.jaspersoft.jrsctl.ops.customizations.DefaultCustomizationOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
@@ -75,6 +76,11 @@ class UpgradeStepIdempotencyTest {
 
   private static UpgradeOptions newdb(UpgradeFixture f) {
     return UpgradeOptions.newdb(UpgradeFixture.NEW_VERSION, f.packageDir);
+  }
+
+  /** The backup phase restarts the server only in samedb mode (review §1.6). */
+  private static UpgradeOptions samedb(UpgradeFixture f) {
+    return new UpgradeOptions(UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false);
   }
 
   private static Context start(UpgradeFixture f, Plan plan, String runId) {
@@ -161,7 +167,7 @@ class UpgradeStepIdempotencyTest {
   @Test
   void should_not_mutate_when_read_only_upgrade_steps_execute_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      Plan plan = f.ops().planUpgrade(newdb(f));
+      Plan plan = f.ops().planUpgrade(samedb(f));
       Context ctx = start(f, plan, "r-ro");
       List<String> readOnly =
           List.of(
@@ -313,7 +319,7 @@ class UpgradeStepIdempotencyTest {
   void should_stop_once_when_stop_service_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       assertReexecutionConverges(
-          f, f.ops().planUpgrade(newdb(f)), "r-stop", "full-export-stop-service");
+          f, f.ops().planUpgrade(samedb(f)), "r-stop", "full-export-stop-service");
       assertThat(f.fake.platform.controller.events).containsExactly("stop");
       assertThat(f.fake.home.runDir("r-stop").resolve("full-export-stop-service.stopped")).exists();
     }
@@ -322,7 +328,7 @@ class UpgradeStepIdempotencyTest {
   @Test
   void should_start_once_when_stop_service_compensates_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      Plan plan = f.ops().planUpgrade(newdb(f));
+      Plan plan = f.ops().planUpgrade(samedb(f));
       Context ctx = start(f, plan, "r-stop-c");
       Idempotency.runUpTo(plan, ctx, "full-export-stop-service");
       Step stop = Idempotency.step(plan, "full-export-stop-service");
@@ -339,7 +345,7 @@ class UpgradeStepIdempotencyTest {
   void should_start_once_when_start_service_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       assertReexecutionConverges(
-          f, f.ops().planUpgrade(newdb(f)), "r-start", "full-export-start-service");
+          f, f.ops().planUpgrade(samedb(f)), "r-start", "full-export-start-service");
       assertThat(f.fake.platform.controller.events).containsExactly("stop", "start");
     }
   }
@@ -347,7 +353,7 @@ class UpgradeStepIdempotencyTest {
   @Test
   void should_stop_once_when_start_service_compensates_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      Plan plan = f.ops().planUpgrade(newdb(f));
+      Plan plan = f.ops().planUpgrade(samedb(f));
       Context ctx = start(f, plan, "r-start-c");
       Idempotency.runUpTo(plan, ctx, "full-export-start-service");
       Step startStep = Idempotency.step(plan, "full-export-start-service");

@@ -21,7 +21,7 @@ The vendor guidance the spec cited concerns imports, where a running server's ca
 4. Unchanged, on purpose:
    - `import` with the vendor strategy still stops the service (caches, concurrent changes).
    - The import's pre-import snapshot still stops the service. The import stops it right after anyway, and changing it would make an interrupted import journaled by an earlier jrsctl rebuild into a different plan.
-   - The upgrade's point-B full export (`full-export-stop-service`, `full-export`, `full-export-start-service`) still stops the service. With `--mode newdb` that archive is what the new repository database is built from, so it is taken with nothing changing underneath it.
+   - The upgrade's point-B full export (`full-export-stop-service`, `full-export`, `full-export-start-service`) still stops the service. With `--mode newdb` that archive is what the new repository database is built from, so it is taken with nothing changing underneath it. *Amended by ADR-0025 (2026-09-17): in newdb mode the export is taken in the vendor phase after `stop-service` and the service is not restarted before the vendor run; the restart between the two had let repository changes in that the rebuild then discarded.*
 
 ## Consequences
 

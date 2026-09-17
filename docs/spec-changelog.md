@@ -5,6 +5,7 @@
 Changes from `docs/reviews/2026-09-17-vendor-doc-review.md`, which compared the tool with the JasperReports Server 8.1 to 10.1 upgrade, installation, administrator, security and REST guides.
 
 - §9.4, §9.5: an import the server parks in phase `pending` (REST reference 10.1 pp.119-124) is no longer polled as if it were running until the two-hour timeout. The poll cancels the task and fails with the server's nested `error.code` and the resource URIs from `error.parameters`, and `import --broken-dependencies fail|skip|include` reaches both the REST `brokenDependencies` parameter and js-import's `--broken-dependencies` (review §1.1).
+- §10.2: in `newdb` mode the full export is taken in the vendor phase, after `stop-service`, and the service is not started again before `js-upgrade-newdb` runs. The previous plan restarted the server between the export and the vendor run, and every repository change made in that interval was discarded when the script rebuilt the database from the export (review §1.6, ADR-0025). `samedb` keeps the export in the backup phase with its restart.
 
 ## Draft 1.1 amendment — 2026-09-17 (official hotfix packages)
 

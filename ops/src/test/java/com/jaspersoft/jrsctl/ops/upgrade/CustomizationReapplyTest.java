@@ -70,8 +70,10 @@ class CustomizationReapplyTest {
 
       assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
       assertThat(f.fake.platform.controller.events)
-          .as("full export, vendor upgrade, then the WEB-INF customisation each stop and start")
-          .containsExactly("stop", "start", "stop", "start", "stop", "start");
+          .as(
+              "the vendor upgrade (newdb takes the full export after its stop, review §1.6) and"
+                  + " the WEB-INF customisation each stop and start")
+          .containsExactly("stop", "start", "stop", "start");
     }
   }
 

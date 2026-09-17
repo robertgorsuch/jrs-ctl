@@ -240,7 +240,8 @@ class UpgradeRunTest {
       RunOutcome outcome = f.run(plan, "r-up-prestopped", RunOptions.withRollbackAll());
 
       assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
-      assertThat(f.fake.platform.controller.events).isNotEmpty().last().isEqualTo("stop");
+      // the run found the service stopped, so it neither stopped nor started it
+      assertThat(f.fake.platform.controller.events).doesNotContain("start");
       assertThat(f.fake.platform.serviceState)
           .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.STOPPED);
     }

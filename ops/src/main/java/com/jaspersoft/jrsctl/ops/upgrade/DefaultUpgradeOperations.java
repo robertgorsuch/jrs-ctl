@@ -68,6 +68,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " default_master.properties, then imports the point-B full export into it; jrsctl"
           + " cannot undo that (ADR-0012).";
 
+  /**
+   * Review §1.6, ADR-0025: nothing may change in the repository after the export newdb rebuilds it
+   * from.
+   */
+  public static final String NEWDB_STAYS_STOPPED_WARNING =
+      "The full export is taken after the service is stopped and the service stays stopped until"
+          + " the vendor upgrade has run: a repository change made after that export (a scheduled"
+          + " report, an edited user) would be lost when js-upgrade-newdb rebuilds the database"
+          + " from it (ADR-0025).";
+
   static final String PASSWORD_WARNING =
       "database passwords are not copied into the target default_master.properties (spec §7.4);"
           + " add them there before running if the vendor scripts need them";
@@ -158,6 +168,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           case SAMEDB -> SAMEDB_WARNING;
           case NEWDB -> NEWDB_WARNING;
         });
+    if (options.mode() == Mode.NEWDB) {
+      warnings.add(NEWDB_STAYS_STOPPED_WARNING);
+    }
     warnings.add(FILES_ONLY_WARNING);
     warnings.add(PASSWORD_WARNING);
 
@@ -165,17 +178,28 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     steps.add(new PreflightSteps.Doctor(rt, in));
     steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
     steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
-    steps.add(ServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
-    steps.add(new BackupSteps.FullExport(rt, in));
-    steps.add(ServiceSteps.start(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-start-service"));
-    steps.add(
-        ServiceSteps.waitForServer(
-            rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-wait-for-server"));
+    if (options.mode() == Mode.SAMEDB) {
+      // samedb migrates the database in place and the export is only a rollback aid, so the
+      // server may serve again between the export and the vendor run
+      steps.add(ServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
+      steps.add(new BackupSteps.FullExport(rt, in));
+      steps.add(ServiceSteps.start(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-start-service"));
+      steps.add(
+          ServiceSteps.waitForServer(
+              rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-wait-for-server"));
+    }
     steps.add(new BackupSteps.BackupKeystore(rt, in));
     steps.add(new BackupSteps.BackupWebapp(rt, in));
     steps.add(new BackupSteps.BackupConfig(rt, in));
     steps.add(new VendorSteps.WriteMasterProperties(rt, in));
     steps.add(ServiceSteps.stop(rt, Phases.VENDOR_UPGRADE, VendorSteps.STOP_SERVICE));
+    if (options.mode() == Mode.NEWDB) {
+      // newdb rebuilds the database from this export, so it is taken once the service is down
+      // and nothing restarts the server before the vendor run; the vendor's own order
+      // (review §1.6, ADR-0025). A vendor-phase rollback restarts the service through the stop
+      // step's compensation.
+      steps.add(new BackupSteps.FullExport(rt, in, Phases.VENDOR_UPGRADE));
+    }
     steps.add(new VendorSteps.RunVendorUpgrade(rt, in));
     steps.add(ServiceSteps.start(rt, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
     steps.add(ServiceSteps.waitForServer(rt, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
@@ -214,7 +238,10 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         Phases.BACKUP, "point B: backups written under " + snapshotDir + ", server untouched");
     rollbackPoints.put(
         Phases.VENDOR_UPGRADE,
-        "point C = restore point B (webapp, buildomatic, configuration, keystore)");
+        "point C = restore point B (webapp, buildomatic, configuration, keystore)"
+            + (options.mode() == Mode.NEWDB
+                ? "; the full export is taken here, after the stop, and kept under " + snapshotDir
+                : ""));
     rollbackPoints.put(Phases.RECONCILE, "restore point B");
     rollbackPoints.put(
         Phases.VERIFY,
