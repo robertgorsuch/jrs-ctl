@@ -46,6 +46,10 @@ jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-
 
 `JRSCTL_JAVA_OPTS` passes extra options to the bundled JVM when needed (proxy settings such as `-Dhttps.proxyHost=...`, an extra truststore with `-Djavax.net.ssl.trustStore=...`, or a heap limit). The runtime has no `jdk.localedata`, so output uses English formatting whatever the OS locale.
 
+## Guided mode
+
+Type `jrsctl` with nothing after it, in a terminal, and a menu opens (#71): set up or change settings, check server health, back up content, restore or copy content, apply or remove a hotfix, upgrade the server, and recent jobs with recovery. Each choice asks only for what it needs, prints the command line it is about to run (`Running: jrsctl export --out /backups/repository.zip`), and runs that ordinary command, with the same plan, confirmation and exit code as typing it. An interrupted job that needs recovery is shown before the menu. A hotfix is verified before it is applied, and the upgrade choice will not start until you confirm that the repository database is backed up. Global options given with `jrsctl` (`--home`, `--set`, `--passphrase-file`, `--ascii`, `--no-color`) are passed on to every command. Without a terminal, or with `--json` or `--non-interactive`, `jrsctl` alone still prints its usage and exits 1, so scripts see no change.
+
 ## Getting help offline
 
 - `jrsctl --help`, `jrsctl <command> --help`, `jrsctl help <command>` — the usage synopsis: flags, parameters, one line each.

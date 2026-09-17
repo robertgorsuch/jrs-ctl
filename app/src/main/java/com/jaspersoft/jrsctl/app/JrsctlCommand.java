@@ -1,6 +1,10 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.Version;
+import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -52,8 +56,10 @@ public final class JrsctlCommand implements Callable<Integer> {
   @Mixin GlobalOptions global;
 
   /**
-   * No subcommand given: a usage error (exit 1). Text mode prints the usage on standard error;
-   * {@code --json} prints the error document on standard output and nothing else (review 4.5).
+   * No subcommand given. On a terminal, without {@code --json} or {@code --non-interactive}, the
+   * guided menu runs (#71); otherwise it is a usage error (exit 1): text mode prints the usage on
+   * standard error and {@code --json} prints the error document on standard output and nothing else
+   * (review 4.5), so scripts see no change.
    */
   @Override
   public Integer call() {
@@ -69,9 +75,47 @@ public final class JrsctlCommand implements Callable<Integer> {
               Map.of()));
       return ExitCodes.USAGE;
     }
+    if (!global.nonInteractive() && Terminal.present()) {
+      // #71: an operator at a terminal gets the guided menu instead of a usage error
+      return new GuidedMode(cmd.getOut(), passOn(global), this::runCommand, this::pendingRuns)
+          .run();
+    }
     cmd.usage(cmd.getErr());
     cmd.getErr().flush();
     return ExitCodes.USAGE;
+  }
+
+  private int runCommand(String[] args) {
+    picocli.CommandLine root = Main.commandLine();
+    root.setOut(spec.commandLine().getOut());
+    root.setErr(spec.commandLine().getErr());
+    return root.execute(args);
+  }
+
+  /** Ids of runs that need recovery; empty when the home or its journal cannot be read. */
+  private List<String> pendingRuns() {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+      return boot.services().stateStore().get().pendingRuns().stream()
+          .map(RunRecord::runId)
+          .toList();
+    } catch (RuntimeException e) {
+      return List.of();
+    }
+  }
+
+  /** The global options given with a bare {@code jrsctl}, to pass on to every guided command. */
+  static List<String> passOn(GlobalOptions global) {
+    List<String> args = new ArrayList<>();
+    global.home().ifPresent(h -> args.addAll(List.of("--home", h.toString())));
+    global.passphraseFile().ifPresent(f -> args.addAll(List.of("--passphrase-file", f.toString())));
+    global.set().forEach((k, v) -> args.addAll(List.of("--set", k + "=" + v)));
+    if (global.ascii()) {
+      args.add("--ascii");
+    }
+    if (global.noColor()) {
+      args.add("--no-color");
+    }
+    return args;
   }
 
   /** Supplies {@code --version} output from the build-time version resource. */

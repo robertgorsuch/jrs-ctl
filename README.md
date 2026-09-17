@@ -256,6 +256,8 @@ jrsctl runs show <run id>    # the step-by-step detail of one job
 
 ## Getting help
 
+Not sure which command you need? Type `jrsctl` on its own: a menu walks you through the common jobs and shows the command it runs for each.
+
 Everything is built in and works without internet access:
 
 ```bash
