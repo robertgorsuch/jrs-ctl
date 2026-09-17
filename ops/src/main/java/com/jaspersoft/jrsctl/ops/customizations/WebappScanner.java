@@ -28,8 +28,9 @@ import java.util.zip.ZipInputStream;
  * its {@code .war}) under the configured webapp name, or the {@code .war} itself, which is read as
  * a stream and never unpacked; files are compared by SHA-256, and an installed file whose size
  * differs from the vendor's is reported without being hashed; logs and caches the server writes at
- * run time are ignored; files the installer writes itself are reported as {@link Change#INSTALLER},
- * not as customizations; nothing is written anywhere.
+ * run time, and backup copies an operator left beside an edited file, are ignored; files the
+ * installer writes itself are reported as {@link Change#INSTALLER}, whether or not the vendor copy
+ * has them, never as customizations; nothing is written anywhere.
  */
 final class WebappScanner {
 
@@ -37,15 +38,22 @@ final class WebappScanner {
   private static final List<String> IGNORED_PREFIXES =
       List.of("WEB-INF/logs/", "WEB-INF/cache/", "WEB-INF/work/", "META-INF/maven/");
 
-  private static final List<String> IGNORED_SUFFIXES = List.of(".log", ".tmp", ".lck");
+  private static final List<String> IGNORED_SUFFIXES =
+      List.of(".log", ".tmp", ".lck", ".bak", ".orig", ".old", "~");
+
+  /** Backups with a suffix after the marker, such as {@code web.xml.bak-2026-07-30}. */
+  private static final List<String> BACKUP_MARKERS = List.of(".bak-", ".bak.", ".bak_", ".orig-");
 
   /**
    * Files the installer (buildomatic's webapp deployment) fills in with site values: JNDI, JDBC,
-   * Hibernate dialect and Quartz settings. Best knowledge; support confirms the list (#72).
+   * Hibernate dialect, Quartz and keystore location settings. {@code context.xml}, {@code
+   * js.quartz.properties} and {@code classes/keystore.init.properties} were confirmed against a
+   * pristine 10.0.0 war and its installation; the other two depend on the repository database.
    */
   static final Set<String> INSTALLER_WRITTEN =
       Set.of(
           "META-INF/context.xml",
+          "WEB-INF/classes/keystore.init.properties",
           "WEB-INF/hibernate.properties",
           "WEB-INF/js.jdbc.properties",
           "WEB-INF/js.quartz.properties");
@@ -96,8 +104,8 @@ final class WebappScanner {
       boolean isRegistered = registered.contains(file.toAbsolutePath().normalize());
       Fingerprint vendorPrint = theirs.get(rel);
       if (vendorPrint == null) {
-        out.add(
-            new ScanEntry(rel, Change.ADDED, Optional.of(file), Optional.empty(), isRegistered));
+        Change change = INSTALLER_WRITTEN.contains(rel) ? Change.INSTALLER : Change.ADDED;
+        out.add(new ScanEntry(rel, change, Optional.of(file), Optional.empty(), isRegistered));
         continue;
       }
       if (Files.size(file) == vendorPrint.size()
@@ -131,7 +139,8 @@ final class WebappScanner {
   static boolean ignored(String rel) {
     String lower = rel.toLowerCase(Locale.ROOT);
     return IGNORED_PREFIXES.stream().anyMatch(rel::startsWith)
-        || IGNORED_SUFFIXES.stream().anyMatch(lower::endsWith);
+        || IGNORED_SUFFIXES.stream().anyMatch(lower::endsWith)
+        || BACKUP_MARKERS.stream().anyMatch(lower::contains);
   }
 
   private static String relative(Path root, Path file) {

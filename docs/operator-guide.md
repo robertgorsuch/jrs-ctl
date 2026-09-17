@@ -333,10 +333,10 @@ Finds the files the site changed without registering them one by one (#72). The 
 
 - `CHANGED` — in both, different: a customization.
 - `ADDED` — only in the installation: a customization.
-- `INSTALLER` — different, but one the installer fills in with site values (`META-INF/context.xml`, `WEB-INF/hibernate.properties`, `WEB-INF/js.jdbc.properties`, `WEB-INF/js.quartz.properties`). Listed, never registered.
+- `INSTALLER` — a file the installer writes with site values, whether it differs from the vendor's copy or the vendor has none: `META-INF/context.xml`, `WEB-INF/js.quartz.properties`, `WEB-INF/classes/keystore.init.properties`, and, depending on the repository database, `WEB-INF/hibernate.properties` and `WEB-INF/js.jdbc.properties`. Listed, never registered.
 - `REMOVED` — only in the vendor's copy. Listed, nothing to register.
 
-Logs, caches and work files are ignored. With `--register`, `--yes`, or a yes at the prompt, every changed and added file not yet registered is registered: a changed file with the vendor file's hash as its original, so an upgrade re-applies it automatically where the vendor left the file alone, and an added file with its own hash.
+Logs, caches and work files are ignored, and so are backup copies left beside an edited file (`*.bak`, `*.bak-<date>`, `*.orig`, `*.old`, `*~`). With `--register`, `--yes`, or a yes at the prompt, every changed and added file not yet registered is registered: a changed file with the vendor file's hash as its original, so an upgrade re-applies it automatically where the vendor left the file alone, and an added file with its own hash.
 
 - **Mutates:** nothing without registration; with it, as `customizations register` for each file.
 - **Rollback:** `customizations unregister <path>` for a file registered by mistake.

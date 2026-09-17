@@ -174,6 +174,34 @@ class CustomizationScanTest {
   }
 
   @Test
+  void should_report_installer_files_the_vendor_copy_lacks_as_installer_not_added()
+      throws Exception {
+    // a real 10.0.0 install has an installer-written keystore.init.properties the war lacks
+    installed("WEB-INF/classes/keystore.init.properties", "ks=/opt/jrs\n");
+
+    Map<String, ScanEntry> entries = byPath(ops.scan(vendorWar()));
+
+    assertThat(entries.get("WEB-INF/classes/keystore.init.properties").change())
+        .isEqualTo(Change.INSTALLER);
+    assertThat(ops.registerScan(ops.scan(vendorWar())))
+        .noneMatch(c -> c.path().endsWith("keystore.init.properties"));
+  }
+
+  @Test
+  void should_ignore_backup_copies_an_operator_left_next_to_an_edited_file() throws Exception {
+    installed("WEB-INF/js.config.properties.bak-2026-07-30", "backup");
+    installed("WEB-INF/web.xml.bak", "backup");
+    installed("WEB-INF/web.xml.orig", "backup");
+    installed("scripts/extra.js~", "editor backup");
+
+    Map<String, ScanEntry> entries = byPath(ops.scan(vendorWar()));
+
+    assertThat(entries.keySet())
+        .noneMatch(p -> p.contains(".bak") || p.endsWith(".orig") || p.endsWith("~"))
+        .contains("scripts/extra.js");
+  }
+
+  @Test
   void should_refuse_a_vendor_path_that_holds_no_webapp() throws Exception {
     Path empty = Files.createDirectories(tmp.resolve("nothing"));
 
