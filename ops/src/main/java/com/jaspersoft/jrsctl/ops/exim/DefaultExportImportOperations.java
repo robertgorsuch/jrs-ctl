@@ -354,7 +354,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     if (forced.isPresent() && forced.get() == ExportImportStrategy.Kind.VENDOR_CLI) {
       why = "--strategy vendor uses the vendor " + operation + " tools";
     } else if (fullServer) {
-      why = "a full-server export uses the vendor js-export tool";
+      why = "a full-server export uses the vendor tools (js-export)";
     } else {
       why =
           "REST cannot be used ("
