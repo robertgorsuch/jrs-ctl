@@ -623,7 +623,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
   - `webappName`, `tomcatDir`, `baseUrl` from the Tomcat layout and `server.xml` port;
   - `service.kind` and name by probing Windows services / systemd units / `ctlscript.sh`;
   - `buildomaticDir` from `--buildomatic-dir` or the 7.4 search, shown with its source (a hint that cannot be reached is reported, not written);
-  - `database` and `vendor.javaHome` prefilled from that buildomatic directory's `default_master.properties` (passwords are never copied; a `passwordRef` placeholder is written);
+  - `vendor.javaHome` from the installation, and the `database.passwordRef` placeholder; `database.type`, `database.url` and `database.username` are shown from that buildomatic directory's `default_master.properties` but not copied, because every command reads them from it when `config.yaml`, the environment or `--set` leave them out (#73; passwords are never read);
   - `runAsUser` from the Tomcat process owner;
   - `server.auth.username` `superuser` for the commercial edition (`jasperserver-pro`) and `jasperadmin` for the community edition (#59).
 - Every value is shown for confirmation; nothing is written without it unless `--yes`.

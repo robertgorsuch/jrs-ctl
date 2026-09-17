@@ -84,6 +84,13 @@ final class ConfigCommand implements Runnable {
         Map<String, ConfigLoader.Source> sources =
             new ConfigLoader()
                 .sources(boot.services().home().configFile(), Env.vars(), global.set());
+        for (String key : boot.fromBuildomatic().keySet()) {
+          text.append(System.lineSeparator())
+              .append("# ")
+              .append(key)
+              .append(": from ")
+              .append(boot.fromBuildomatic().get(key));
+        }
         for (Map.Entry<String, ConfigLoader.Source> s : sources.entrySet()) {
           overriddenBy(s.getValue())
               .ifPresent(
@@ -315,7 +322,7 @@ final class ConfigCommand implements Runnable {
             Map<String, String> row = new LinkedHashMap<>();
             row.put("key", s.getKey());
             row.put("value", ConfigKeys.value(config, s.getKey()));
-            row.put("source", label(s.getValue()));
+            row.put("source", label(s.getKey(), s.getValue(), boot));
             row.put("description", ConfigKeys.description(s.getKey()));
             rows.add(row);
           }
@@ -327,7 +334,7 @@ final class ConfigCommand implements Runnable {
           table.row(
               s.getKey(),
               ConfigKeys.value(config, s.getKey()),
-              label(s.getValue()),
+              label(s.getKey(), s.getValue(), boot),
               ConfigKeys.description(s.getKey()));
         }
         table.lines().forEach(line -> out.println(redactor.redact(line)));
@@ -338,7 +345,10 @@ final class ConfigCommand implements Runnable {
       }
     }
 
-    private static String label(ConfigLoader.Source source) {
+    private static String label(String key, ConfigLoader.Source source, Bootstrap boot) {
+      if (boot.fromBuildomatic().containsKey(key)) {
+        return "default_master.properties";
+      }
       return switch (source.origin()) {
         case FLAG -> "--set";
         case ENVIRONMENT -> source.detail();

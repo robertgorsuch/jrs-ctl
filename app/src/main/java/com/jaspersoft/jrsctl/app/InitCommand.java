@@ -174,7 +174,7 @@ final class InitCommand implements Callable<Integer> {
           err.flush();
           return ExitCodes.PRECHECK_FAILED;
         }
-        return interactive(boot, op, config, target, out, err);
+        return interactive(boot, op, report, config, target, out, err);
       }
       try {
         Path written = op.write(config, force);
@@ -194,6 +194,7 @@ final class InitCommand implements Callable<Integer> {
   private int interactive(
       Bootstrap boot,
       InitOperation op,
+      InitReport report,
       Config detected,
       Path target,
       PrintWriter out,
@@ -207,7 +208,7 @@ final class InitCommand implements Callable<Integer> {
     out.println();
     if (Prompter.yes(out, "Change any of these values? [y/N] ", false)) {
       out.println("Press Enter to keep the value in brackets, or type a new one.");
-      config = review(loader, config, out);
+      config = review(loader, config, report, out);
     }
     Map<String, char[]> passwords = new LinkedHashMap<>();
     List<Secret> held = new ArrayList<>();
@@ -216,7 +217,7 @@ final class InitCommand implements Callable<Integer> {
       out.println("Passwords are never written to config.yaml.");
       if (Prompter.yes(
           out, "Store the passwords encrypted on this machine (recommended)? [Y/n] ", true)) {
-        askPasswords(config, passwords, out);
+        askPasswords(config, report, passwords, out);
       }
       Optional<EncryptedSecretStore> store = Optional.empty();
       if (!passwords.isEmpty()) {
@@ -287,12 +288,15 @@ final class InitCommand implements Callable<Integer> {
   }
 
   /** Asks for each reviewed field until the answer is kept or accepted; end of input stops. */
-  private static Config review(ConfigLoader loader, Config start, PrintWriter out) {
+  private static Config review(
+      ConfigLoader loader, Config start, InitReport report, PrintWriter out) {
     Config config = start;
     for (Field field : REVIEW_FIELDS) {
       boolean settled = false;
       while (!settled) {
-        String current = ConfigKeys.value(config, field.key());
+        String written = ConfigKeys.value(config, field.key());
+        // #73: database values read from default_master.properties show what jrsctl will use
+        String current = written.isEmpty() ? detected(report, field.key()).orElse("") : written;
         Optional<String> answer = Prompter.line(out, "  " + field.label() + " [" + current + "]: ");
         if (answer.isEmpty()) {
           return config;
@@ -315,11 +319,21 @@ final class InitCommand implements Callable<Integer> {
     return config;
   }
 
-  private static void askPasswords(Config config, Map<String, char[]> passwords, PrintWriter out) {
+  /** The value the detection report shows for {@code key}, when it has one. */
+  private static Optional<String> detected(InitReport report, String key) {
+    return report.values().stream()
+        .filter(d -> d.key().equals(key))
+        .map(InitReport.Detected::value)
+        .findFirst();
+  }
+
+  private static void askPasswords(
+      Config config, InitReport report, Map<String, char[]> passwords, PrintWriter out) {
     String user = config.server().auth().username().orElse("the server user");
     Prompter.secret(out, "  Password for " + user + " (Enter to skip): ")
         .ifPresent(p -> keep(passwords, SERVER_SECRET, p));
-    Optional<String> dbUser = config.database().username();
+    Optional<String> dbUser =
+        config.database().username().or(() -> detected(report, "database.username"));
     if (dbUser.isPresent()) {
       Prompter.secret(out, "  Password for database user " + dbUser.get() + " (Enter to skip): ")
           .ifPresent(p -> keep(passwords, DATABASE_SECRET, p));

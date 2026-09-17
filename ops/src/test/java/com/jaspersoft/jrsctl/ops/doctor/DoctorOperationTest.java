@@ -119,6 +119,33 @@ class DoctorOperationTest {
     }
   }
 
+  /** Issue #73: config.yaml overriding buildomatic's database settings with other values. */
+  @Test
+  void should_name_database_values_that_disagree_with_default_master_properties() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    String yaml =
+        healthyYaml(install)
+            + """
+            database:
+              type: postgresql
+              url: jdbc:postgresql://db.example.internal:5433/jasperserver
+              username: reporting
+              passwordRef: env:JRS_PASSWORD
+            """;
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(yaml)) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem database = byName(report).get("database");
+      assertThat(database.status()).isNotEqualTo(Status.SKIP);
+      assertThat(database.detail())
+          .contains("database.username")
+          .contains("reporting")
+          .contains("jasperdb")
+          .contains("default_master.properties");
+      assertThat(database.remediation()).contains("remove database.username from config.yaml");
+    }
+  }
+
   /** Review finding 1.18: doctor runs the integrity check and names the way out. */
   @Test
   void should_fail_state_with_a_remediation_when_state_db_is_corrupt() throws Exception {

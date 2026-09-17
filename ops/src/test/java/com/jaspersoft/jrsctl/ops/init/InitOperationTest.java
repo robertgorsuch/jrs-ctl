@@ -48,10 +48,17 @@ class InitOperationTest {
       assertThat(config.service().kind()).contains(ServiceConfig.Kind.CTLSCRIPT);
       assertThat(config.service().scriptPath())
           .contains(install.toAbsolutePath().normalize().resolve("ctlscript.sh"));
-      assertThat(config.database().type()).contains(Config.DatabaseType.POSTGRESQL);
-      assertThat(config.database().url())
-          .contains("jdbc:postgresql://db.example.internal:5433/jasperserver");
-      assertThat(config.database().username()).contains("jasperdb");
+      // #73: shown with their source but not copied; jrsctl reads them from buildomatic
+      assertThat(config.database().type()).isEmpty();
+      assertThat(config.database().url()).isEmpty();
+      assertThat(config.database().username()).isEmpty();
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("database.url")
+                      && v.value().equals("jdbc:postgresql://db.example.internal:5433/jasperserver")
+                      && v.source().contains("not copied"))
+          .anyMatch(v -> v.key().equals("database.username") && v.value().equals("jasperdb"));
       assertThat(config.database().passwordRef().map(r -> r.render()))
           .contains("env:JRS_DB_PASSWORD");
       assertThat(config.vendor().javaHome())

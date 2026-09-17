@@ -2,12 +2,14 @@ package com.jaspersoft.jrsctl.ops.doctor;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.ops.BuildomaticDefaults;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import com.jaspersoft.jrsctl.ops.db.JdbcConnector;
 import com.jaspersoft.jrsctl.ops.db.JdbcException;
 import com.jaspersoft.jrsctl.ops.db.JdbcSettings;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -28,6 +30,29 @@ final class DatabaseCheck {
   }
 
   static ReportItem check(Services s, JdbcConnector connector) {
+    ReportItem item = connect(s, connector);
+    // #73: a value config.yaml sets overrides buildomatic's; say so when the two disagree
+    Map<String, String> differ = BuildomaticDefaults.disagreements(s.config(), s.platform());
+    if (differ.isEmpty() || item.status() == ReportItem.Status.SKIP) {
+      return item;
+    }
+    String detail =
+        item.detail()
+            + "; config.yaml differs from default_master.properties ("
+            + String.join(
+                "; ", differ.entrySet().stream().map(e -> e.getKey() + " " + e.getValue()).toList())
+            + ")";
+    String remediation =
+        "remove "
+            + String.join(", ", differ.keySet())
+            + " from config.yaml to use the values"
+            + " buildomatic has, or make them agree";
+    return item.status() == ReportItem.Status.PASS
+        ? ReportItem.warn(NAME, detail, remediation)
+        : new ReportItem(NAME, item.status(), detail, item.remediation() + "; " + remediation);
+  }
+
+  private static ReportItem connect(Services s, JdbcConnector connector) {
     Config.Database db = s.config().database();
     if (db.type().isEmpty()) {
       return ReportItem.skip(

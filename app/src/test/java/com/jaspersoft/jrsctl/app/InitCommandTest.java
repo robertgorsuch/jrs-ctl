@@ -112,7 +112,9 @@ class InitCommandTest {
     Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
     assertThat(loaded.server().baseUrl())
         .contains(URI.create("http://localhost:8089/jasperserver-pro"));
-    assertThat(loaded.database().type()).contains(Config.DatabaseType.POSTGRESQL);
+    // #73: config.yaml carries no database type; jrsctl reads it from default_master.properties
+    assertThat(loaded.database().type()).isEmpty();
+    assertThat(yaml).doesNotContain("postgresql");
     assertThat(run.out()).contains("wrote ").contains("server.webappName");
   }
 

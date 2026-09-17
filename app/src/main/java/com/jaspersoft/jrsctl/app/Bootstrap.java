@@ -19,6 +19,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretResolver;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapterFactory;
+import com.jaspersoft.jrsctl.ops.BuildomaticDefaults;
 import com.jaspersoft.jrsctl.ops.Lazy;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.Console;
@@ -49,11 +50,17 @@ final class Bootstrap implements AutoCloseable {
   private final Services services;
   private final Lazy<StateStore> store;
   private final EncryptedSecretStore secretStore;
+  private final Map<String, java.nio.file.Path> fromBuildomatic;
 
-  private Bootstrap(Services services, Lazy<StateStore> store, EncryptedSecretStore secretStore) {
+  private Bootstrap(
+      Services services,
+      Lazy<StateStore> store,
+      EncryptedSecretStore secretStore,
+      Map<String, java.nio.file.Path> fromBuildomatic) {
     this.services = services;
     this.store = store;
     this.secretStore = secretStore;
+    this.fromBuildomatic = Map.copyOf(fromBuildomatic);
   }
 
   static Bootstrap open(GlobalOptions options, Map<String, String> env, Clock clock) {
@@ -74,10 +81,14 @@ final class Bootstrap implements AutoCloseable {
     // review 3.4: the SQLite driver runs its native library from java.io.tmpdir, which a
     // CIS-hardened Linux host mounts noexec; the home is the tool's own writable directory
     NativeTempDir.use(home.nativeTemp());
-    Config config = new ConfigLoader().load(home, env, options.set());
+    Config loaded = new ConfigLoader().load(home, env, options.set());
     // The manual and systemd controllers judge Tomcat by the configured install directory and its
     // server.xml ports; without this they watched every Tomcat on the host (ADR-0014).
-    Platform platform = config.server().installDir().map(detected::withInstallDir).orElse(detected);
+    Platform platform = loaded.server().installDir().map(detected::withInstallDir).orElse(detected);
+    // #73: database settings config.yaml leaves out come from buildomatic's
+    // default_master.properties
+    BuildomaticDefaults.Result defaults = BuildomaticDefaults.apply(loaded, platform);
+    Config config = defaults.config();
 
     List<PassphraseSource> sources = new ArrayList<>();
     options
@@ -113,7 +124,7 @@ final class Bootstrap implements AutoCloseable {
             adapter,
             clock,
             interactive);
-    return new Bootstrap(services, store, secretStore);
+    return new Bootstrap(services, store, secretStore, defaults.filled());
   }
 
   /**
@@ -162,6 +173,13 @@ final class Bootstrap implements AutoCloseable {
    */
   EncryptedSecretStore secretStore() {
     return secretStore;
+  }
+
+  /**
+   * The configuration keys read from buildomatic's default_master.properties, with the file (#73).
+   */
+  Map<String, java.nio.file.Path> fromBuildomatic() {
+    return fromBuildomatic;
   }
 
   @Override

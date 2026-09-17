@@ -35,7 +35,10 @@ class InitBuildomaticDirTest {
       Config config = init.toConfig(report);
 
       assertThat(config.server().buildomaticDir()).contains(share.toAbsolutePath().normalize());
-      assertThat(config.database().type()).contains(Config.DatabaseType.POSTGRESQL);
+      // #73: read from that directory's default_master.properties at run time, not copied
+      assertThat(config.database().type()).isEmpty();
+      assertThat(report.values())
+          .anyMatch(v -> v.key().equals("database.type") && v.value().equals("postgresql"));
       assertThat(report.values())
           .anyMatch(
               v ->

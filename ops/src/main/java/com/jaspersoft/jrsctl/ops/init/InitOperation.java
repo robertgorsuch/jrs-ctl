@@ -641,15 +641,20 @@ public final class InitOperation {
     if (type.isEmpty()) {
       return Config.Database.empty();
     }
-    String source = "from default_master.properties";
+    // #73: read at run time from default_master.properties, not copied, so the two cannot drift
+    String source = "from default_master.properties at run time (not copied into config.yaml)";
     values.add(new InitReport.Detected("database.type", type.get().yamlValue(), source));
-    Optional<String> url = master.jdbcUrl();
-    url.ifPresent(u -> values.add(new InitReport.Detected("database.url", u, source)));
-    Optional<String> user = master.dbUsername();
-    user.ifPresent(u -> values.add(new InitReport.Detected("database.username", u, source)));
+    master.jdbcUrl().ifPresent(u -> values.add(new InitReport.Detected("database.url", u, source)));
+    master
+        .dbUsername()
+        .ifPresent(u -> values.add(new InitReport.Detected("database.username", u, source)));
     values.add(
         new InitReport.Detected("database.passwordRef", DEFAULT_DB_PASSWORD_REF, SOURCE_DEFAULT));
     return new Config.Database(
-        type, url, user, Optional.of(SecretRef.parse(DEFAULT_DB_PASSWORD_REF)), Optional.empty());
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(SecretRef.parse(DEFAULT_DB_PASSWORD_REF)),
+        Optional.empty());
   }
 }

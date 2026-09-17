@@ -181,6 +181,30 @@ class ConfigCommandTest {
         .contains(ConfigKeys.description("server.baseUrl"));
   }
 
+  /** Issue #73: a database value read from default_master.properties says so. */
+  @Test
+  void should_label_database_values_read_from_buildomatic_when_listing_keys() throws Exception {
+    Path install = InitCommandTest.fakeLayout(tmp.resolve("jrs"));
+    Files.writeString(
+        home.resolve("config.yaml"),
+        """
+        server:
+          baseUrl: http://localhost:8089/jasperserver-pro
+          installDir: %s
+        """
+            .formatted(install.toString().replace("\\", "/")),
+        StandardCharsets.UTF_8);
+
+    InitCommandTest.Run keys = jrsctl("config", "keys");
+    InitCommandTest.Run show = jrsctl("config", "show");
+
+    assertThat(keys.code()).as(keys.out() + keys.err()).isZero();
+    assertThat(keys.out().lines().filter(l -> l.startsWith("database.type")).findFirst())
+        .hasValueSatisfying(
+            l -> assertThat(l).contains("postgresql").contains("default_master.properties"));
+    assertThat(show.out()).contains("# database.type: from").contains("default_master.properties");
+  }
+
   @Test
   void should_describe_every_key_the_schema_knows() {
     for (String key : new ConfigLoader().knownKeys()) {
