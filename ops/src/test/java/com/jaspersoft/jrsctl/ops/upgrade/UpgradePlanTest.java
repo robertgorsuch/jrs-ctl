@@ -38,6 +38,7 @@ class UpgradePlanTest {
               "backup-webapp",
               "backup-config",
               "write-master-properties",
+              "stage-keystore-init",
               "stop-service",
               "full-export",
               "run-vendor-upgrade",
@@ -94,6 +95,8 @@ class UpgradePlanTest {
               "full-export-start-service",
               "full-export-wait-for-server",
               "backup-keystore");
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence("write-master-properties", "stage-keystore-init", "stop-service");
       assertThat(plan.summary().warnings())
           .contains(
               "Rollback restores files only. Restore the database from your own backup before"

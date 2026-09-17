@@ -14,6 +14,8 @@ Legend: **P1** likely wrong today · **P2** vendor step missing from a plan · *
 ## P1 — corrects behaviour that disagrees with the vendor
 
 ### 1.1 REST import parked in `pending` is polled for two hours
+*Fixed 2026-09-17.*
+
 REST reference pp.119-123: an import whose catalog has broken dependencies or an organisation mismatch stops in
 phase `pending` ("cannot run because of an error, but it can be restarted with new options"), and
 `brokenDependencies` defaults to `fail`, so any missing data source makes this the normal outcome. The error is
@@ -68,6 +70,8 @@ Recommend: `upgradePaths` gain `modes: [samedb, newdb]` and use full ranges; `ve
 refuses a mode the path does not list (exit 6) and, for Oracle targets ≥10.1, a missing `dbVersion`.
 
 ### 1.4 The target buildomatic gets no `keystore.init.properties`
+*Fixed 2026-09-17: `stage-keystore-init` step, and the creation banner fails any vendor run.*
+
 Security guide pp.11-13, installation guide pp.192-193, every upgrade guide: buildomatic finds the keystore
 through `buildomatic/keystore.init.properties` (`ks`, `ksp`), then `default_master.properties`, then the
 `ks`/`ksp` environment variables, then the home of the user running the script. If none resolves, the script
@@ -94,16 +98,17 @@ home and consults only `buildomatic/keystore.init.properties`. Recommend: consul
 buildomatic copy, then homes; `doctor` FAILs when the running server's file names a path the run-as user
 cannot read, and WARNs when permissions are wider than 600/640 (keystore deck p.6).
 
-### 1.6 Newdb upgrades rebuild the database from an export taken while the server was live
-Phase B `FullExport` runs against the running server (ADR-0021), Phase C stops it, and `js-upgrade-newdb`
-drops the repository and re-imports that export (ADR-0012). Every repository change between the export and
-the stop is lost: scheduler output, users edited, saved reports. The vendor's procedure for newdb is
+### 1.6 Newdb upgrades restart the server between the export and the rebuild
+Phase B stops the service, takes `FullExport`, then **starts the service again** (`full-export-start-service`,
+`full-export-wait-for-server`) before the file backups; Phase C stops it a second time and `js-upgrade-newdb`
+drops the repository and re-imports that export (ADR-0012). Every repository change made while the server
+was back up is lost: scheduler output, users edited, saved reports. The vendor's procedure for newdb is
 "Stop your application server" before anything else (10.1 pp.43-44) and the 2023 upgrade deck says "shut
 down old server when ready to flip; perform final full export".
 
-Recommend: in `newdb` mode order the plan `StopService → FullExport → BackupKeystore …`, or pause all
-scheduled jobs (`POST /rest_v2/jobs/pause/` with an empty body, REST p.234) and re-export after the stop.
-`samedb` can keep the current order because the export is only a rollback aid there.
+Recommend: in `newdb` mode take the export after the vendor-phase stop and do not restart before the
+vendor run (one outage instead of two). `samedb` can keep the current order because the export is only a
+rollback aid there. *Fixed 2026-09-17, ADR-0025.*
 
 ## P2 — vendor upgrade steps the plan does not perform
 

@@ -9,20 +9,28 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.Durability;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
+import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
+import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.keystore.KeystoreInspector;
+import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.MasterProperties;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 
 /**
  * Phase C of spec §10.2: stage {@code default_master.properties} into the target package's
@@ -41,6 +49,7 @@ import java.util.Optional;
 final class VendorSteps {
 
   static final String WRITE_MASTER_PROPERTIES = "write-master-properties";
+  static final String STAGE_KEYSTORE_INIT = "stage-keystore-init";
   static final String RUN_VENDOR_UPGRADE = "run-vendor-upgrade";
   static final String STOP_SERVICE = "stop-service";
   static final String START_SERVICE = "start-service";
@@ -78,6 +87,225 @@ final class VendorSteps {
     overrides.put(APP_SERVER_TYPE, TOMCAT);
     overrides.put(APP_SERVER_DIR, tomcatDir.toAbsolutePath().normalize().toString());
     return Map.copyOf(overrides);
+  }
+
+  /**
+   * Review §1.4: buildomatic resolves the server keystore through {@code keystore.init.properties}
+   * ({@code ks}, {@code ksp}) in the buildomatic directory it runs from, then the home of the
+   * account running it (security guide 10.1 pp.11-13). A freshly unpacked target package has no
+   * such file, and jrsctl runs the vendor script as its own account, so without this step {@code
+   * setup.xml}'s {@code create-ks} makes a new keystore, silently when {@code BUILDOMATIC_MODE} is
+   * not {@code interactive}, and every password the repository holds becomes undecryptable. The
+   * step writes the file into the target buildomatic: a verbatim copy of the installation's own
+   * when it has one, else {@code ks}/{@code ksp} from where the adapter found {@code .jrsks} and
+   * {@code .jrsksp}. Invariants: a file already there is kept under the run directory and put back
+   * by compensation; a file this step wrote where none was is removed by compensation; both are
+   * idempotent; when no location is known the precheck refuses, because the vendor script would
+   * then create a keystore.
+   */
+  static final class StageKeystoreInit implements Step {
+
+    static final String BACKUP_SUFFIX = ".bak";
+    static final String WRITTEN_MARKER = STAGE_KEYSTORE_INIT + ".written";
+
+    private final UpgradeRuntime rt;
+    private final UpgradeInput in;
+
+    StageKeystoreInit(UpgradeRuntime rt, UpgradeInput in) {
+      this.rt = Objects.requireNonNull(rt, "rt");
+      this.in = Objects.requireNonNull(in, "in");
+    }
+
+    private Path buildomaticDir() {
+      return in.targetBuildomatic().orElse(in.target().dir().resolve(UpgradeInput.BUILDOMATIC));
+    }
+
+    private Path target() {
+      return buildomaticDir().resolve(KeystoreInspector.INIT_PROPERTIES);
+    }
+
+    private Path installedFile() {
+      return in.installedBuildomatic().resolve(KeystoreInspector.INIT_PROPERTIES);
+    }
+
+    private Path backup(Context ctx) {
+      return ctx.home()
+          .runDir(ctx.runId())
+          .resolve(KeystoreInspector.INIT_PROPERTIES + BACKUP_SUFFIX);
+    }
+
+    private Path marker(Context ctx) {
+      return ctx.home().runDir(ctx.runId()).resolve(WRITTEN_MARKER);
+    }
+
+    @Override
+    public String id() {
+      return STAGE_KEYSTORE_INIT;
+    }
+
+    @Override
+    public String title() {
+      return "point the target buildomatic at the server's keystore";
+    }
+
+    @Override
+    public String phase() {
+      return Phases.VENDOR_UPGRADE;
+    }
+
+    @Override
+    public String detail() {
+      return target()
+          + (Files.isRegularFile(installedFile())
+              ? " (copy of " + installedFile() + ")"
+              : " (ks/ksp from the keystore the server uses)");
+    }
+
+    /** Where the file's content comes from; empty when no keystore location is known. */
+    private Optional<Source> source() {
+      if (Files.isRegularFile(installedFile())) {
+        return Optional.of(new Source.Copy(installedFile()));
+      }
+      KeystoreInfo info;
+      try {
+        info = rt.services().adapter().get().keystore();
+      } catch (JrsUnreachableException | RestException e) {
+        return Optional.empty();
+      }
+      if (!info.present() || info.keystoreFile().isEmpty()) {
+        return Optional.empty();
+      }
+      Path ks = info.keystoreFile().get().toAbsolutePath().normalize().getParent();
+      Path ksp =
+          info.propertiesFile().map(p -> p.toAbsolutePath().normalize().getParent()).orElse(ks);
+      return Optional.of(new Source.Locations(ks, ksp));
+    }
+
+    private sealed interface Source permits Source.Copy, Source.Locations {
+      record Copy(Path file) implements Source {}
+
+      record Locations(Path ks, Path ksp) implements Source {}
+    }
+
+    @Override
+    public CheckResult precheck(Context ctx) {
+      if (!Files.isDirectory(buildomaticDir())) {
+        return CheckResult.fail(
+            "target buildomatic " + buildomaticDir() + " does not exist",
+            "point --package at the unpacked distribution");
+      }
+      if (!rt.files().isWritable(buildomaticDir())) {
+        return CheckResult.fail(
+            buildomaticDir() + " is not writable",
+            "grant jrsctl write access to the target package");
+      }
+      if (source().isEmpty()) {
+        return CheckResult.fail(
+            "no keystore location is known: neither "
+                + installedFile()
+                + " nor the server's .jrsks could be found, so the vendor upgrade script would"
+                + " create a new keystore and the repository's passwords would become"
+                + " undecryptable",
+            "set server.runAsUser to the account that installed the server, or write ks= and"
+                + " ksp= into "
+                + installedFile()
+                + " (security guide: keystore.init.properties)");
+      }
+      return CheckResult.pass();
+    }
+
+    @Override
+    public StepResult execute(Context ctx, EventSink out) {
+      Optional<Source> source = source();
+      if (source.isEmpty()) {
+        return Failures.recoverable(
+            "no keystore location is known; the vendor script would create a new keystore",
+            "set server.runAsUser to the installing account or write " + installedFile());
+      }
+      Path target = target();
+      Path backup = backup(ctx);
+      try {
+        Files.createDirectories(backup.getParent());
+        if (Files.isRegularFile(target)
+            && !Files.exists(backup)
+            && !Files.isRegularFile(marker(ctx))) {
+          Files.copy(target, backup, StandardCopyOption.COPY_ATTRIBUTES);
+        }
+        Path tmp = target.resolveSibling(KeystoreInspector.INIT_PROPERTIES + ".jrsctl-tmp");
+        switch (source.get()) {
+          case Source.Copy c -> Files.copy(c.file(), tmp, StandardCopyOption.REPLACE_EXISTING);
+          case Source.Locations l -> {
+            Properties p = new Properties();
+            p.setProperty("ks", l.ks().toString());
+            p.setProperty("ksp", l.ksp().toString());
+            try (OutputStream os = Files.newOutputStream(tmp)) {
+              p.store(os, "written by jrsctl: the keystore the running server uses");
+            }
+          }
+        }
+        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+        Files.writeString(marker(ctx), "written", StandardCharsets.UTF_8);
+        Logs.info(
+            rt,
+            ctx,
+            out,
+            this,
+            switch (source.get()) {
+              case Source.Copy c -> "copied " + c.file() + " to " + target;
+              case Source.Locations l ->
+                  "wrote " + target + " (ks=" + l.ks() + ", ksp=" + l.ksp() + ")";
+            });
+        return StepResult.ok();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot write " + target + ": " + e.getMessage(),
+            "check permissions on the target package");
+      }
+    }
+
+    @Override
+    public CheckResult postcheck(Context ctx) {
+      Path target = target();
+      if (!Files.isRegularFile(target)) {
+        return CheckResult.fail(target + " was not written", "run again");
+      }
+      Properties p = new Properties();
+      try (var reader = Files.newBufferedReader(target, StandardCharsets.ISO_8859_1)) {
+        p.load(reader);
+      } catch (IOException e) {
+        return CheckResult.fail("cannot read " + target + ": " + e.getMessage(), "run again");
+      }
+      return p.getProperty("ks", "").isBlank()
+          ? CheckResult.fail(target + " names no ks location", "run again")
+          : CheckResult.pass();
+    }
+
+    @Override
+    public StepResult compensate(Context ctx, EventSink out) {
+      Path target = target();
+      Path backup = backup(ctx);
+      try {
+        if (Files.isRegularFile(backup)) {
+          Files.copy(
+              backup,
+              target,
+              StandardCopyOption.REPLACE_EXISTING,
+              StandardCopyOption.COPY_ATTRIBUTES);
+          Files.deleteIfExists(backup);
+          Files.deleteIfExists(marker(ctx));
+          Logs.info(rt, ctx, out, this, "restored the package's own " + target);
+        } else if (Files.isRegularFile(marker(ctx))) {
+          Files.deleteIfExists(target);
+          Files.deleteIfExists(marker(ctx));
+          Logs.info(rt, ctx, out, this, "removed " + target);
+        }
+        return StepResult.ok();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot restore " + target + ": " + e.getMessage(),
+            "check permissions on the target package");
+      }
+    }
   }
 
   static final class WriteMasterProperties implements Step {
@@ -434,8 +662,12 @@ final class VendorSteps {
 
     private StepResult failed(Context ctx, VendorRun.Completed c) {
       return Failures.recoverable(
-          "vendor upgrade exited with " + c.exitCode() + ": " + String.join(" | ", c.tail()),
-          "read the buildomatic log; the run is rolled back to point B",
+          "vendor upgrade " + c.summary() + ": " + String.join(" | ", c.tail()),
+          c.reported() == VendorRun.Reported.CREATED_KEYSTORE
+              ? "the run is rolled back to point B, which puts the saved .jrsks and .jrsksp back;"
+                  + " before running again make sure the target buildomatic's"
+                  + " keystore.init.properties names the keystore the server uses"
+              : "read the buildomatic log; the run is rolled back to point B",
           List.of(in.webappDir()),
           List.of(in.snapshots(ctx).dir()));
     }

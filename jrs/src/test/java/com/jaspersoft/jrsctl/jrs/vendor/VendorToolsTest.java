@@ -414,6 +414,26 @@ class VendorToolsTest {
   }
 
   /**
+   * Review §1.4: buildomatic's setup.xml prints this line (interactive: as a y/n prompt; otherwise
+   * as a warning) and then creates a keystore. A run that did so is a failure whatever it exited
+   * with: the repository's passwords are now encrypted with a key nobody has.
+   */
+  @Test
+  void should_report_a_created_keystore_when_the_script_announces_one() {
+    VendorRun.Completed c =
+        importPrinting(
+            "WARNING: A new encryption key and a new keystore are about to be created.",
+            "BUILD SUCCESSFUL",
+            "Processing started",
+            "Done");
+
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.CREATED_KEYSTORE);
+    assertThat(c.ok()).isFalse();
+    assertThat(c.processed()).isFalse();
+    assertThat(c.summary()).contains("created a new keystore");
+  }
+
+  /**
    * Issue #40: Ant's validation succeeded, the import command then threw, and the wrapper still
    * exited 0, so the import was recorded as done.
    */

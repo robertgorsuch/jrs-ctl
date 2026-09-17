@@ -225,6 +225,27 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Review §1.4: a vendor script that announces a new keystore has made the repository's passwords
+   * undecryptable, whatever it exited with; the run must roll back to point B, which puts the saved
+   * keystore files back.
+   */
+  @Test
+  void should_roll_back_to_point_b_when_the_vendor_script_creates_a_new_keystore()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.vendorScriptCreatesKeystore();
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-new-ks", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("created a new keystore");
+      assertThat(f.logs()).anyMatch(m -> m.contains("backup-keystore restored from"));
+      assertThat(f.fake.platform.controller.events).endsWith("stop", "start");
+    }
+  }
+
   /** Review finding 1.13: a service the operator had stopped is not this run's to start. */
   @Test
   void should_leave_a_service_the_operator_had_stopped_stopped_when_rolling_back()

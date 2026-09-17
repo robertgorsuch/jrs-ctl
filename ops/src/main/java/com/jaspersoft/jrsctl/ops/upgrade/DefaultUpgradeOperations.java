@@ -192,6 +192,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     steps.add(new BackupSteps.BackupWebapp(rt, in));
     steps.add(new BackupSteps.BackupConfig(rt, in));
     steps.add(new VendorSteps.WriteMasterProperties(rt, in));
+    steps.add(new VendorSteps.StageKeystoreInit(rt, in));
     steps.add(ServiceSteps.stop(rt, Phases.VENDOR_UPGRADE, VendorSteps.STOP_SERVICE));
     if (options.mode() == Mode.NEWDB) {
       // newdb rebuilds the database from this export, so it is taken once the service is down

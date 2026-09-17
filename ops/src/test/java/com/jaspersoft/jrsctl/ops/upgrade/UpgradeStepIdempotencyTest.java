@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
+import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.Idempotency;
 import com.jaspersoft.jrsctl.ops.customizations.DefaultCustomizationOperations;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -261,6 +263,95 @@ class UpgradeStepIdempotencyTest {
       assertThat(state(f, "r-wm-c")).isEqualTo(once);
       assertThat(target).hasContent("pristine=yes\n");
     }
+  }
+
+  /**
+   * Review §1.4: buildomatic finds the keystore through {@code keystore.init.properties}; a fresh
+   * target package has none, and the vendor scripts then create a new keystore (setup.xml {@code
+   * create-ks}) and the repository's passwords become undecryptable.
+   */
+  @Test
+  void
+      should_point_the_target_buildomatic_at_the_server_keystore_when_stage_keystore_init_executes_twice()
+          throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path target = f.packageDir.resolve("buildomatic").resolve("keystore.init.properties");
+      assertReexecutionConverges(f, f.ops().planUpgrade(newdb(f)), "r-ksi", "stage-keystore-init");
+      Properties written = load(target);
+      assertThat(Path.of(written.getProperty("ks"))).isEqualTo(f.keystoreDir);
+      assertThat(Path.of(written.getProperty("ksp"))).isEqualTo(f.keystoreDir);
+      assertThat(f.fake.home.runDir("r-ksi").resolve("keystore.init.properties.bak"))
+          .doesNotExist();
+    }
+  }
+
+  @Test
+  void should_copy_the_installed_keystore_init_properties_verbatim_when_the_installation_has_one()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.write(
+          f.installDir.resolve("buildomatic").resolve("keystore.init.properties"),
+          "#installer\nks=/srv/jrs/home\nksp=/srv/jrs/home\n");
+      Path target = f.packageDir.resolve("buildomatic").resolve("keystore.init.properties");
+      assertReexecutionConverges(
+          f, f.ops().planUpgrade(newdb(f)), "r-ksi-copy", "stage-keystore-init");
+      assertThat(target).hasContent("#installer\nks=/srv/jrs/home\nksp=/srv/jrs/home\n");
+    }
+  }
+
+  @Test
+  void should_converge_when_stage_keystore_init_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path target = f.packageDir.resolve("buildomatic").resolve("keystore.init.properties");
+      UpgradeFixture.write(target, "ks=pristine\n");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-ksi-c");
+      Idempotency.runUpTo(plan, ctx, "stage-keystore-init");
+      assertThat(UpgradeFixture.read(target)).doesNotContain("pristine");
+      Step step = Idempotency.step(plan, "stage-keystore-init");
+      Idempotency.compensateOk(step, ctx);
+      Map<String, String> once = state(f, "r-ksi-c");
+      Idempotency.compensateOk(step, ctx);
+      assertThat(state(f, "r-ksi-c")).isEqualTo(once);
+      assertThat(target).hasContent("ks=pristine\n");
+    }
+  }
+
+  @Test
+  void should_remove_the_staged_file_when_stage_keystore_init_compensates_and_there_was_none()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path target = f.packageDir.resolve("buildomatic").resolve("keystore.init.properties");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-ksi-rm");
+      Idempotency.runUpTo(plan, ctx, "stage-keystore-init");
+      assertThat(target).exists();
+      Step step = Idempotency.step(plan, "stage-keystore-init");
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+      assertThat(target).doesNotExist();
+    }
+  }
+
+  @Test
+  void should_fail_stage_keystore_init_precheck_when_no_keystore_location_is_known()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.adapter.keystore = KeystoreInfo.absent("no .jrsks under the run-as user's home");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      CheckResult result =
+          Idempotency.step(plan, "stage-keystore-init").precheck(f.ctx("r-ksi-none"));
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message()).contains("new keystore");
+    }
+  }
+
+  private static Properties load(Path file) throws IOException {
+    Properties p = new Properties();
+    try (var in = Files.newBufferedReader(file, StandardCharsets.ISO_8859_1)) {
+      p.load(in);
+    }
+    return p;
   }
 
   @Test
