@@ -866,10 +866,12 @@ const OPS = {
       checkField('skipUserUpdate', 'Skip user update', 'Keep current user accounts; archive users are not applied.'),
       field('Source keystore', textInput('sourceKeystore', { mono: true, placeholder: 'C:\\imports\\keystore' }), 'Required when the archive was exported from another server.'),
       field('Source keystore password', textInput('sourceKeystorePassword', { type: 'password' }), 'Sent once with this request and never stored by the console.'),
+      field('Broken dependencies', selectInput('brokenDependencies', [['fail', 'Fail before importing anything (server default)'], ['skip', 'Skip the resources whose dependency is missing'], ['include', 'Import them with the dependency missing']], 'fail')),
       field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-import, stops the service)']], 'auto')),
     ],
     args: (v) => ({ archive: v.archive, update: !!v.update, skipUserUpdate: !!v.skipUserUpdate, sourceKeystore: v.sourceKeystore || null,
-      sourceKeystorePassword: v.sourceKeystorePassword || null, strategy: v.strategy === 'auto' ? null : v.strategy }),
+      sourceKeystorePassword: v.sourceKeystorePassword || null, strategy: v.strategy === 'auto' ? null : v.strategy,
+      brokenDependencies: v.brokenDependencies || 'fail' }),
     validate: (v) => (v.archive ? null : 'Enter the archive path.'),
   },
   upgrade: {

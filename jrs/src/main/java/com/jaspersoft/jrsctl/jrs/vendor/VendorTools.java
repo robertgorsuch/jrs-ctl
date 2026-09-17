@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import java.nio.file.Path;
@@ -65,6 +66,10 @@ public final class VendorTools {
 
   private static final String PROCESSING_DONE = "Done";
   private static final String PROCESSING_ERROR = "ERROR BaseExportImportCommand";
+  // buildomatic/bin/setup.xml (10.0.0): the confirmMessage of the interactive create-ks and the
+  // warningMessage of the silent one both start with this sentence
+  static final String KEYSTORE_CREATED_BANNER =
+      "a new encryption key and a new keystore are about to be created";
 
   private final ProcessRunner runner;
   private final FileOps files;
@@ -217,6 +222,10 @@ public final class VendorTools {
     }
     if (request.skipThemes()) {
       args.add(VendorFlags.SKIP_THEMES);
+    }
+    if (request.brokenDependencies() != BrokenDependencies.FAIL) {
+      args.add(VendorFlags.BROKEN_DEPENDENCIES);
+      args.add(request.brokenDependencies().vendor());
     }
     request.sourceKeystore().ifPresent(ks -> args.addAll(keystoreArgs(ks, storepass)));
     return List.copyOf(args);
@@ -424,11 +433,13 @@ public final class VendorTools {
     synchronized (tail) {
       lines = List.copyOf(tail);
       reported =
-          banners.contains(VendorRun.Reported.FAILED)
-              ? VendorRun.Reported.FAILED
-              : banners.contains(VendorRun.Reported.SUCCEEDED)
-                  ? VendorRun.Reported.SUCCEEDED
-                  : VendorRun.Reported.SILENT;
+          banners.contains(VendorRun.Reported.CREATED_KEYSTORE)
+              ? VendorRun.Reported.CREATED_KEYSTORE
+              : banners.contains(VendorRun.Reported.FAILED)
+                  ? VendorRun.Reported.FAILED
+                  : banners.contains(VendorRun.Reported.SUCCEEDED)
+                      ? VendorRun.Reported.SUCCEEDED
+                      : VendorRun.Reported.SILENT;
       processing = markers.result();
     }
     if (result.timedOut()) {
@@ -499,6 +510,9 @@ public final class VendorTools {
   /** The build banner this line carries, if any; failure wins when a line somehow holds both. */
   private static Optional<VendorRun.Reported> banner(String line) {
     String lower = line.toLowerCase(Locale.ROOT);
+    if (lower.contains(KEYSTORE_CREATED_BANNER)) {
+      return Optional.of(VendorRun.Reported.CREATED_KEYSTORE);
+    }
     if (REPORTED_FAILURE.stream().anyMatch(lower::contains)) {
       return Optional.of(VendorRun.Reported.FAILED);
     }

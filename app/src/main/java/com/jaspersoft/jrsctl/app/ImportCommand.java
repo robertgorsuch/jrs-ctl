@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -67,6 +68,15 @@ final class ImportCommand implements Callable<Integer> {
   boolean skipThemes;
 
   @Option(
+      names = "--broken-dependencies",
+      paramLabel = "fail|skip|include",
+      description =
+          "What to do with a resource whose dependency is missing: fail before importing anything"
+              + " (the server default), skip the resource, or include it with the dependency"
+              + " missing.")
+  String brokenDependencies;
+
+  @Option(
       names = "--source-keystore",
       paramLabel = "<path>",
       description = "The source server's .jrsks, imported first when the keystores differ.")
@@ -93,8 +103,13 @@ final class ImportCommand implements Callable<Integer> {
     PrintWriter err = spec.commandLine().getErr();
     Optional<ExportImportStrategy.Kind> kind;
     Optional<SecretRef> passwordRef;
+    BrokenDependencies broken;
     try {
       kind = StrategyFlag.parse(strategy);
+      broken =
+          brokenDependencies == null
+              ? BrokenDependencies.FAIL
+              : BrokenDependencies.parse(brokenDependencies);
       passwordRef =
           sourceKeystorePasswordRef == null
               ? Optional.empty()
@@ -114,7 +129,8 @@ final class ImportCommand implements Callable<Integer> {
             skipThemes,
             Optional.ofNullable(sourceKeystore),
             passwordRef,
-            kind);
+            kind,
+            broken);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

@@ -125,6 +125,9 @@ final class EximFakeAdapter implements JrsAdapter {
   }
 
   @Override
+  public void cancelImport(Handles.ImportHandle handle) {}
+
+  @Override
   public KeystoreInfo keystore() {
     return keystore;
   }

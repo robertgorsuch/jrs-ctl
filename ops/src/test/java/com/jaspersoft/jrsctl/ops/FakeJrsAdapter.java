@@ -150,6 +150,11 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public void cancelImport(Handles.ImportHandle handle) {
+    calls.add("cancelImport " + handle.id());
+  }
+
+  @Override
   public KeystoreInfo keystore() {
     calls.add("keystore");
     return keystore;

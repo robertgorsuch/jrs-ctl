@@ -46,6 +46,12 @@ public final class UpgradeFixture implements AutoCloseable {
   /** Marker file in the package: the fake js-ant copies the new webapp, then exits 3. */
   static final String FAIL_AFTER_COPY = "fail-after-copy";
 
+  static final String CREATE_KEYSTORE = "create-keystore";
+
+  /** What buildomatic's setup.xml prints before create-ks when it found no keystore. */
+  public static final String KEYSTORE_WARNING =
+      "WARNING: A new encryption key and a new keystore are about to be created.";
+
   public final FakeServices fake;
   public final Services services;
   public final Path root;
@@ -127,6 +133,14 @@ public final class UpgradeFixture implements AutoCloseable {
     write(packageDir.resolve(FAIL_AFTER_COPY), "");
   }
 
+  /**
+   * Makes the fake vendor upgrade announce a new keystore the way setup.xml does when it finds
+   * none, and still exit 0 (review §1.4).
+   */
+  public void vendorScriptCreatesKeystore() throws IOException {
+    write(packageDir.resolve(CREATE_KEYSTORE), "");
+  }
+
   /** Re-scripts the vendor Java probe, e.g. to simulate a JDK 11. */
   public void javaVersion(String banner) {
     for (String exe : List.of("java", "java.exe")) {
@@ -205,6 +219,11 @@ public final class UpgradeFixture implements AutoCloseable {
             + "\" >nul\r\n"
             + "if errorlevel 1 exit /b 1\r\n"
             + "if exist \"%~dp0..\\"
+            + CREATE_KEYSTORE
+            + "\" echo "
+            + KEYSTORE_WARNING
+            + "\r\n"
+            + "if exist \"%~dp0..\\"
             + FAIL_AFTER_COPY
             + "\" (echo BUILD FAILED after copying the webapp & exit /b 3)\r\n"
             + "echo %* >> \"%~dp0..\\js-ant.log\"\r\n"
@@ -216,6 +235,11 @@ public final class UpgradeFixture implements AutoCloseable {
             + "cp -R \"$(dirname \"$0\")/../webapp-new/.\" \""
             + target
             + "/\" || exit 1\n"
+            + "if [ -f \"$(dirname \"$0\")/../"
+            + CREATE_KEYSTORE
+            + "\" ]; then echo \""
+            + KEYSTORE_WARNING
+            + "\"; fi\n"
             + "if [ -f \"$(dirname \"$0\")/../"
             + FAIL_AFTER_COPY
             + "\" ]; then echo \"BUILD FAILED after copying the webapp\"; exit 3; fi\n"

@@ -78,6 +78,11 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public void cancelImport(Handles.ImportHandle handle) {
+    adapter().cancelImport(handle);
+  }
+
+  @Override
   public KeystoreInfo keystore() {
     return adapter().keystore();
   }

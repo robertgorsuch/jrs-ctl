@@ -34,15 +34,13 @@ class UpgradePlanTest {
               "doctor",
               "verify-target-package",
               "confirm-db-backup",
-              "full-export-stop-service",
-              "full-export",
-              "full-export-start-service",
-              "full-export-wait-for-server",
               "backup-keystore",
               "backup-webapp",
               "backup-config",
               "write-master-properties",
+              "stage-keystore-init",
               "stop-service",
+              "full-export",
               "run-vendor-upgrade",
               "start-service",
               "wait-for-server",
@@ -57,6 +55,7 @@ class UpgradePlanTest {
       assertThat(plan.summary().strategy()).isEqualTo("vendor-cli");
       assertThat(plan.summary().warnings())
           .contains(DefaultUpgradeOperations.NEWDB_WARNING)
+          .contains(DefaultUpgradeOperations.NEWDB_STAYS_STOPPED_WARNING)
           .contains(DefaultUpgradeOperations.FILES_ONLY_WARNING)
           .doesNotContain(DefaultUpgradeOperations.SAMEDB_WARNING);
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").detail())
@@ -87,12 +86,24 @@ class UpgradePlanTest {
 
       assertThat(UpgradeFixture.ids(plan))
           .startsWith("doctor", "verify-target-package", "confirm-db-backup");
+      // samedb migrates the database in place, so the server may serve between the export and
+      // the vendor run; only newdb rebuilds the database from that export (review §1.6)
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "full-export-stop-service",
+              "full-export",
+              "full-export-start-service",
+              "full-export-wait-for-server",
+              "backup-keystore");
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence("write-master-properties", "stage-keystore-init", "stop-service");
       assertThat(plan.summary().warnings())
           .contains(
               "Rollback restores files only. Restore the database from your own backup before"
                   + " running rollback.")
           .contains(DefaultUpgradeOperations.SAMEDB_WARNING)
-          .doesNotContain(DefaultUpgradeOperations.NEWDB_WARNING);
+          .doesNotContain(DefaultUpgradeOperations.NEWDB_WARNING)
+          .doesNotContain(DefaultUpgradeOperations.NEWDB_STAYS_STOPPED_WARNING);
       assertThat(plan.summary().target()).endsWith("(samedb)");
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").title())
           .contains("js-upgrade-samedb");

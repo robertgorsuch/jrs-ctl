@@ -74,6 +74,10 @@ final class VerifyImport implements Step {
             CheckResult.fail(
                 "import " + id.get() + " failed: " + s.message().orElse("no message"),
                 "check the jasperserver log; the pre-import snapshot is re-imported by rollback");
+        case PENDING ->
+            CheckResult.fail(
+                "import " + id.get() + " is pending on the server and imported nothing",
+                "cancel it and run again with --broken-dependencies skip or include");
       };
     } catch (JrsUnreachableException e) {
       return CheckResult.fail("server unreachable: " + e.getMessage(), e.remediation());

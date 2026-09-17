@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
@@ -119,9 +120,17 @@ class PlanRegistryTest {
             true,
             Optional.of(Path.of("keys", "source.jrsks")),
             Optional.of(SecretRef.parse("env:KEYSTORE_PASSWORD")),
-            Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
+            Optional.of(ExportImportStrategy.Kind.VENDOR_CLI),
+            BrokenDependencies.INCLUDE);
 
     JsonNode args = tree(PlanRegistry.importArgs(options));
+    ExportImportOperations.ImportOptions back = PlanRegistry.importOptions(args);
+
+    assertThat(args.get("brokenDependencies").asText()).isEqualTo("include");
+    assertThat(back.brokenDependencies()).isEqualTo(BrokenDependencies.INCLUDE);
+    // arguments stored before the option existed describe a plan that used the server default
+    assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).brokenDependencies())
+        .isEqualTo(BrokenDependencies.FAIL);
 
     assertThat(args.get("archive").asText()).endsWith("import.zip");
     assertThat(args.get("update").asBoolean()).isTrue();

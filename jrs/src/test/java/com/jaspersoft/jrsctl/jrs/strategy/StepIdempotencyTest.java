@@ -555,6 +555,9 @@ class StepIdempotencyTest {
     }
 
     @Override
+    public void cancelImport(Handles.ImportHandle handle) {}
+
+    @Override
     public KeystoreInfo keystore() {
       return keystore;
     }

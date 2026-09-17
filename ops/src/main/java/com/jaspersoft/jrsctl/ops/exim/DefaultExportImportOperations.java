@@ -158,7 +158,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.settings(),
             options.skipThemes(),
             options.sourceKeystore().map(p -> p.toAbsolutePath().normalize()),
-            options.sourceKeystorePassword());
+            options.sourceKeystorePassword(),
+            options.brokenDependencies());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =

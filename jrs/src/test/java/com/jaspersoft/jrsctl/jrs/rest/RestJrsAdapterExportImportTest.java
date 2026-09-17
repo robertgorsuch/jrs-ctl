@@ -1,6 +1,8 @@
 package com.jaspersoft.jrsctl.jrs.rest;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.delete;
+import static com.github.tomakehurst.wiremock.client.WireMock.deleteRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -13,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
@@ -208,7 +211,83 @@ class RestJrsAdapterExportImportTest {
   }
 
   @Test
+  void should_report_pending_with_the_nested_error_when_server_parks_the_import() {
+    // REST reference 10.1 p.120: a catalog with broken dependencies stops in phase "pending" and
+    // the code is nested under "error", not a flat "errorCode".
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/import/imp-7/state")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody(
+                        "{\"id\":\"imp-7\",\"phase\":\"pending\",\"message\":\"Import is pending\","
+                            + "\"error\":{\"code\":\"import.broken.dependencies\","
+                            + "\"parameters\":[\"/public/ds\",\"/public/other\"]}}")));
+
+    Handles.ImportStatus s = f.adapter.pollImport(new Handles.ImportHandle("imp-7"));
+
+    assertThat(s.phase()).isEqualTo(Handles.Phase.PENDING);
+    assertThat(s.done()).isTrue();
+    assertThat(s.errorCode()).contains("import.broken.dependencies");
+    assertThat(s.errorParameters()).containsExactly("/public/ds", "/public/other");
+  }
+
+  @Test
+  void should_cancel_the_import_task_when_asked() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        delete(urlPathEqualTo(f.path("/rest_v2/import/imp-8")))
+            .willReturn(aResponse().withStatus(204)));
+
+    f.adapter.cancelImport(new Handles.ImportHandle("imp-8"));
+
+    wm.verify(deleteRequestedFor(urlPathEqualTo(f.path("/rest_v2/import/imp-8"))));
+  }
+
+  @Test
+  void should_send_broken_dependencies_only_when_it_is_not_the_server_default() throws IOException {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    Path archive = tmp.resolve("bd.zip");
+    Files.writeString(archive, "PK");
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/import")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-9\",\"phase\":\"inprogress\"}")));
+
+    f.adapter.startImport(request(archive, BrokenDependencies.SKIP), archive);
+    f.adapter.startImport(request(archive, BrokenDependencies.FAIL), archive);
+
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/import")))
+            .withQueryParam("brokenDependencies", equalTo("skip")));
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/import")))
+            .withoutQueryParam("brokenDependencies"));
+  }
+
+  private static ImportRequest request(Path archive, BrokenDependencies brokenDependencies) {
+    return new ImportRequest(
+        archive,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        brokenDependencies);
+  }
+
+  @Test
   void should_map_phase_strings_when_server_spells_them_differently() {
+    assertThat(RestJrsAdapter.phase("pending")).isEqualTo(Handles.Phase.PENDING);
     assertThat(RestJrsAdapter.phase("inprogress")).isEqualTo(Handles.Phase.INPROGRESS);
     assertThat(RestJrsAdapter.phase("in-progress")).isEqualTo(Handles.Phase.INPROGRESS);
     assertThat(RestJrsAdapter.phase("READY")).isEqualTo(Handles.Phase.READY);

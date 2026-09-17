@@ -35,6 +35,7 @@ public sealed interface VendorRun
     public boolean ok() {
       return exitCode == 0
           && reported != Reported.FAILED
+          && reported != Reported.CREATED_KEYSTORE
           && processing != Processing.FAILED
           && processing != Processing.UNFINISHED;
     }
@@ -51,6 +52,11 @@ public sealed interface VendorRun
     public String summary() {
       if (exitCode != 0) {
         return "exited with " + exitCode;
+      }
+      if (reported == Reported.CREATED_KEYSTORE) {
+        return "created a new keystore because it found none to reuse (buildomatic setup.xml"
+            + " create-ks); the repository's passwords are now encrypted with a key no other copy"
+            + " of the server has";
       }
       if (reported == Reported.FAILED) {
         return "reported a failed build but exited 0";
@@ -69,12 +75,16 @@ public sealed interface VendorRun
    * What the tool said about itself, read from its output. {@link #SUCCEEDED} is Ant's {@code BUILD
    * SUCCESSFUL} or the {@code VALIDATION COMPLETED} that buildomatic's {@code ImportExportLogger}
    * prints in its place; {@link #FAILED} is Ant's {@code BUILD FAILED} or the {@code Checking Ant
-   * return code: BAD} of the Windows wrappers; {@link #SILENT} means neither appeared, which a
-   * caller that needs positive evidence must not read as success.
+   * return code: BAD} of the Windows wrappers; {@link #CREATED_KEYSTORE} is setup.xml's
+   * announcement that {@code create-ks} is about to make a new keystore because it found none,
+   * which is a failure whatever the exit code and outranks the other banners (review §1.4); {@link
+   * #SILENT} means none appeared, which a caller that needs positive evidence must not read as
+   * success.
    */
   enum Reported {
     SUCCEEDED,
     FAILED,
+    CREATED_KEYSTORE,
     SILENT
   }
 

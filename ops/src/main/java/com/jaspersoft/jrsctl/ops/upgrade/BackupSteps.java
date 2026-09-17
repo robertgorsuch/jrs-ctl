@@ -88,8 +88,25 @@ final class BackupSteps {
   /** Step 4: {@code js-export --everything} through the installed buildomatic. */
   static final class FullExport extends Additive {
 
+    private final String phase;
+
     FullExport(UpgradeRuntime rt, UpgradeInput in) {
+      this(rt, in, Phases.BACKUP);
+    }
+
+    /**
+     * In newdb mode the export belongs to the vendor phase, taken right after the stop that the
+     * vendor run needs anyway: the database is rebuilt from it, so nothing may change in the
+     * repository between the export and the run (review §1.6, ADR-0025).
+     */
+    FullExport(UpgradeRuntime rt, UpgradeInput in, String phase) {
       super(rt, in);
+      this.phase = Objects.requireNonNull(phase, "phase");
+    }
+
+    @Override
+    public String phase() {
+      return phase;
     }
 
     @Override

@@ -400,7 +400,7 @@ sealed interface ExportImportStrategy permits RestStrategy, VendorCliStrategy {
 
 - Locate the installed `buildomatic/` (ADR-0013): `server.buildomaticDir` when set, authoritative even when it cannot be reached (nothing is substituted for it); else `<installDir>/buildomatic`; else a neighbour that holds this platform's `js-ant` and a `default_master.properties`, beside `server.tomcatDir` or `installDir` or inside a `jasperreports-server*` directory under or beside `installDir`, two such neighbours being refused as ambiguous. The upgrade target package's tree is always `<package>/buildomatic`. Verify expected scripts exist for the detected version.
 - Invoke with `ProcessRunner` using `vendor.javaHome` as `JAVA_HOME` and its `bin` first on `PATH` (the wrappers start the export/import command with the first `java` on `PATH` unless a `java` folder sits next to buildomatic), stream stdout/stderr into events (redacted), capture exit code, enforce timeout.
-- Judge a run by the tool's own output as well as its exit code, which the wrappers do not reliably propagate. Ant's `BUILD FAILED`, or the Windows wrappers' `Checking Ant return code: BAD`, is a failure. `js-import` also needs Ant's `BUILD SUCCESSFUL` or `VALIDATION COMPLETED`, which belongs to the validation that runs before the import only. `js-export` and `js-import` succeed only when the export/import command printed `Done` after `Processing started` and logged no `ERROR BaseExportImportCommand`: the command can throw after a successful validation while the wrapper exits 0 (#40).
+- Judge a run by the tool's own output as well as its exit code, which the wrappers do not reliably propagate. The line `A new encryption key and a new keystore are about to be created` (buildomatic `setup.xml`, printed before `create-ks`) makes any run a failure whatever it exited with: the repository's passwords are now encrypted with a key no other copy of the server has (review §1.4). Ant's `BUILD FAILED`, or the Windows wrappers' `Checking Ant return code: BAD`, is a failure. `js-import` also needs Ant's `BUILD SUCCESSFUL` or `VALIDATION COMPLETED`, which belongs to the validation that runs before the import only. `js-export` and `js-import` succeed only when the export/import command printed `Done` after `Processing started` and logged no `ERROR BaseExportImportCommand`: the command can throw after a successful validation while the wrapper exits 0 (#40).
 - Never modify vendor scripts. Property overrides are written to `default_master.properties` **in the buildomatic directory being invoked** (the upgrade target package's copy for upgrades; a run-scoped copy of the installed buildomatic for export/import). The pre-existing file, if any, is snapshotted first and restored by compensation. Open question Q5 (§19) tracks whether `js-ant` accepts an out-of-directory property file; if it does, prefer that.
 
 ### 7.5 REST client
@@ -529,12 +529,13 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root).
 - Rollback re-imports that snapshot. **This is best-effort**: re-import restores overwritten resources but does not delete resources the failed import created. The Plan summary and the operator guide state this explicitly.
 - A snapshot that is a readable archive with entries but no `index.xml` means none of the resources the import targets existed before it. Its rollback is a logged no-op: there is nothing to put back, and the vendor importer throws on such an archive (#41). A re-import that fails leaves the run rollback-incomplete (exit 4).
+- An import the server parks in phase `pending` (broken dependencies, or a catalog exported from another organisation; REST reference 10.1 pp.119-124) has imported nothing and never resumes by itself. `PollImport` cancels the task (`DELETE /rest_v2/import/{id}`) and fails `Recoverable`, naming the server's `error.code`, its `error.parameters` (the resource URIs) and the flag that gets past it; the snapshot re-import that follows puts back what is already there. `--broken-dependencies skip|include` is sent as the REST `brokenDependencies` query parameter and as js-import's `--broken-dependencies`; the default `fail` is the server's own and is never sent, so older servers see the request they always saw.
 - The REST import start writes `import-started.txt` before `POST /rest_v2/import`. A 408, 429 or 503 answer means the server did not accept the request: the marker is removed and the start is retried. A 502 or 504, an unreachable server, or a marker without a task id on a later execute means the server may have accepted the import: the failure is fatal, nothing is uploaded again and the snapshot is not re-imported (ADR-0017, #44).
 
 ### 9.5 Commands
 
 - `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] --out <file>`
-- `jrsctl import <archive> [--update] [--skip-user-update] [--source-keystore ...] [--strategy rest|vendor] [--plan] [--yes]`
+- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---
 
@@ -554,14 +555,16 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 3. `ConfirmDbBackup` — both modes (ADR-0012); fails without `--db-backup-confirmed`.
 
 **Phase B — backup** (rollback point B)
-4. `FullExport` (vendor strategy; includes service stop/start).
+4. `FullExport` (vendor strategy; includes service stop/start) — **samedb only**. In `newdb` mode the export moves to Phase C, after the stop (ADR-0025): the database is rebuilt from it, so nothing may change in the repository between the export and the vendor run, and the service is not restarted in between.
 5. `BackupKeystore`.
 6. `BackupWebapp` — archive of `tomcatDir/webapps/<webappName>` and installed `buildomatic/`.
 7. `BackupConfig` — `default_master.properties`, JNDI, context files.
 
 **Phase C — vendor upgrade** (rollback point C = restore B)
 8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file.
+8a. `StageKeystoreInit` — writes `keystore.init.properties` (`ks`, `ksp`) into the target buildomatic: a verbatim copy of the installation's own when it has one, else the directories where the adapter found `.jrsks` and `.jrsksp`. Without it the vendor script, which jrsctl runs as its own account, finds no keystore and `setup.xml`'s `create-ks` makes a new one (silently unless `BUILDOMATIC_MODE=interactive`), after which no password in the repository can be decrypted. The precheck refuses when no location is known; a pre-existing file is snapshotted and restored by compensation (security guide 10.1 pp.11-13; review §1.4).
 9. `StopService`.
+9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts.
 10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
 11. `StartService` + `WaitForServer`.
 

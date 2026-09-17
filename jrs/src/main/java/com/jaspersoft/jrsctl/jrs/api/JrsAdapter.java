@@ -50,6 +50,12 @@ public interface JrsAdapter {
 
   Handles.ImportStatus pollImport(Handles.ImportHandle handle);
 
+  /**
+   * Abandons an import task the server is holding ({@code DELETE /rest_v2/import/{id}}, REST
+   * reference 10.1 p.124); a task that is already gone is not an error.
+   */
+  void cancelImport(Handles.ImportHandle handle);
+
   KeystoreInfo keystore();
 
   Set<Capability> capabilities();
