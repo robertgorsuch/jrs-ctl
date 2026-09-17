@@ -117,12 +117,16 @@ public final class ConsoleCommand implements Callable<Integer> {
         }
         // review 4.9: the hook also closes the bootstrap, so Ctrl-C closes the state store and
         // releases the run lock instead of leaving them to the exiting JVM
+        // #57: after closing, halt with 0 rather than let the JVM exit with the signal's 130
         Thread hook =
             new Thread(
-                () -> {
-                  server.close();
-                  boot.close();
-                },
+                new ConsoleShutdown(
+                    List.of(server::close, boot::close),
+                    code -> {
+                      out.println("stopping the console");
+                      out.flush();
+                      Runtime.getRuntime().halt(code);
+                    }),
                 "jrsctl-console-shutdown");
         Runtime.getRuntime().addShutdownHook(hook);
         try {
