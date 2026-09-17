@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.exim;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -73,13 +74,43 @@ public interface ExportImportOperations {
       boolean skipThemes,
       Optional<Path> sourceKeystore,
       Optional<SecretRef> sourceKeystorePassword,
-      Optional<ExportImportStrategy.Kind> strategy) {
+      Optional<ExportImportStrategy.Kind> strategy,
+      BrokenDependencies brokenDependencies) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
       Objects.requireNonNull(sourceKeystore, "sourceKeystore");
       Objects.requireNonNull(sourceKeystorePassword, "sourceKeystorePassword");
       Objects.requireNonNull(strategy, "strategy");
+      Objects.requireNonNull(brokenDependencies, "brokenDependencies");
+    }
+
+    /** The options with the server's own default for broken dependencies ({@code fail}). */
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          BrokenDependencies.FAIL);
     }
   }
 

@@ -529,12 +529,13 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root).
 - Rollback re-imports that snapshot. **This is best-effort**: re-import restores overwritten resources but does not delete resources the failed import created. The Plan summary and the operator guide state this explicitly.
 - A snapshot that is a readable archive with entries but no `index.xml` means none of the resources the import targets existed before it. Its rollback is a logged no-op: there is nothing to put back, and the vendor importer throws on such an archive (#41). A re-import that fails leaves the run rollback-incomplete (exit 4).
+- An import the server parks in phase `pending` (broken dependencies, or a catalog exported from another organisation; REST reference 10.1 pp.119-124) has imported nothing and never resumes by itself. `PollImport` cancels the task (`DELETE /rest_v2/import/{id}`) and fails `Recoverable`, naming the server's `error.code`, its `error.parameters` (the resource URIs) and the flag that gets past it; the snapshot re-import that follows puts back what is already there. `--broken-dependencies skip|include` is sent as the REST `brokenDependencies` query parameter and as js-import's `--broken-dependencies`; the default `fail` is the server's own and is never sent, so older servers see the request they always saw.
 - The REST import start writes `import-started.txt` before `POST /rest_v2/import`. A 408, 429 or 503 answer means the server did not accept the request: the marker is removed and the start is retried. A 502 or 504, an unreachable server, or a marker without a task id on a later execute means the server may have accepted the import: the failure is fatal, nothing is uploaded again and the snapshot is not re-imported (ADR-0017, #44).
 
 ### 9.5 Commands
 
 - `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] --out <file>`
-- `jrsctl import <archive> [--update] [--skip-user-update] [--source-keystore ...] [--strategy rest|vendor] [--plan] [--yes]`
+- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---
 

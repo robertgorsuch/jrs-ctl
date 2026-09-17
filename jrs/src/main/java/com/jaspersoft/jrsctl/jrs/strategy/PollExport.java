@@ -97,7 +97,9 @@ final class PollExport implements Step {
               return switch (s.phase()) {
                 case INPROGRESS -> new Polling.Tick.Continue(s.message().orElse(""));
                 case READY -> new Polling.Tick.Done();
-                case FAILED ->
+                  // exports never pend (REST 10.1 p.113); a server that says so is not one the
+                  // poll can wait for
+                case FAILED, PENDING ->
                     new Polling.Tick.Failed(
                         s.message().orElse("export failed without a message")
                             + s.errorCode().map(c -> " (" + c + ")").orElse(""));

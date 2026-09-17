@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.Credentials;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
@@ -565,7 +566,11 @@ public final class RestJrsAdapter implements JrsAdapter {
             + "&includeServerSettings="
             + request.includeSettings()
             + "&skipThemes="
-            + request.skipThemes();
+            + request.skipThemes()
+            // the server default; omitted so that older servers see the request they always saw
+            + (request.brokenDependencies() == BrokenDependencies.FAIL
+                ? ""
+                : "&brokenDependencies=" + request.brokenDependencies().wire());
     RestClient.Response r =
         client.require2xx(
             client.postBytesFromFile(path, archive, "application/zip", cancelled), "POST", path);
@@ -581,18 +586,35 @@ public final class RestJrsAdapter implements JrsAdapter {
     String path = IMPORT + "/" + RestClient.encodeQuery(handle.id()) + "/state";
     RestClient.Response r = client.require2xx(client.get(path), "GET", path);
     Wire.AsyncState state = Wire.parse(r.body(), Wire.AsyncState.class, "GET", path);
+    // a pending import reports its code nested under "error" (REST 10.1 p.120); a failed one may
+    // use either shape, and the nested one wins when both are present
+    Optional<Wire.ImportError> error = Optional.ofNullable(state.error());
     return new Handles.ImportStatus(
         phase(state.phase()),
         Optional.ofNullable(state.message()),
-        Optional.ofNullable(state.errorCode()));
+        error.map(Wire.ImportError::code).or(() -> Optional.ofNullable(state.errorCode())),
+        error.map(Wire.ImportError::parameters).orElse(List.of()));
+  }
+
+  @Override
+  public void cancelImport(Handles.ImportHandle handle) {
+    Objects.requireNonNull(handle, "handle");
+    ensureSession();
+    String path = IMPORT + "/" + RestClient.encodeQuery(handle.id());
+    RestClient.Response r = client.delete(path);
+    // 404: the server already dropped the task, which is the state we want
+    if (r.status() != 404) {
+      client.require2xx(r, "DELETE", path);
+    }
   }
 
   static Handles.Phase phase(String raw) {
     String p =
         raw == null ? "" : raw.strip().toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
     return switch (p) {
-      case "inprogress", "pending", "running", "queued" -> Handles.Phase.INPROGRESS;
+      case "inprogress", "running", "queued" -> Handles.Phase.INPROGRESS;
       case "ready", "finished", "success", "succeeded", "completed" -> Handles.Phase.READY;
+      case "pending" -> Handles.Phase.PENDING;
       default -> Handles.Phase.FAILED;
     };
   }

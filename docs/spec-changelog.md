@@ -1,5 +1,11 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-17 (vendor documentation review, data safety)
+
+Changes from `docs/reviews/2026-09-17-vendor-doc-review.md`, which compared the tool with the JasperReports Server 8.1 to 10.1 upgrade, installation, administrator, security and REST guides.
+
+- §9.4, §9.5: an import the server parks in phase `pending` (REST reference 10.1 pp.119-124) is no longer polled as if it were running until the two-hour timeout. The poll cancels the task and fails with the server's nested `error.code` and the resource URIs from `error.parameters`, and `import --broken-dependencies fail|skip|include` reaches both the REST `brokenDependencies` parameter and js-import's `--broken-dependencies` (review §1.1).
+
 ## Draft 1.1 amendment — 2026-09-17 (official hotfix packages)
 
 - §8.1, §8.2: `hotfix verify` and `hotfix apply` accept an official Jaspersoft cumulative hotfix package as support publishes it, and derive a bundle from it rather than running a second apply engine (#66, ADR-0024). Detection is by shape: a ZIP with `readme.txt`, no `manifest.json`, and `jasperserver[-pro].zip` or `js-install.zip` inside. The conversion streams the package into a bundle under the jrsctl home named after the package's SHA-256, so planning and then applying converts once, and the derived manifest carries every payload hash, so the ordinary verifier checks the conversion. Webapp entries map to `webapps/<server.webappName>/`, installer entries to the installation directory. An entry is `replace` when the file exists on this server and `add` when it does not, whatever the readme's own added/modified lists say; the readme's "Deleted files" list and the glob deletions of its "Important" section become `delete` entries, expanded against this installation and never covering a path the package itself lays down. The derived id is `JRSHF-<version>-<date>-<time>`, which the manifest schema's id pattern now allows beside `JRS-<version>-HF-<nnnn>`. Such a package carries no signature, so `--allow-unsigned` is required and audited, and the plan prints the package's SHA-256 to compare with the support portal. The readme's manual steps (SQL for particular databases, optional properties, settings to re-apply in overwritten files) are plan warnings; jrsctl runs none of them.

@@ -1,6 +1,8 @@
 package com.jaspersoft.jrsctl.jrs.strategy;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.delete;
+import static com.github.tomakehurst.wiremock.client.WireMock.deleteRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -425,5 +427,41 @@ class RestStrategyImportTest {
         .isInstanceOf(com.jaspersoft.jrsctl.core.engine.StepFailure.Recoverable.class);
     assertThat(failed.failure().cause())
         .contains("server reported import imp-fail failed: schema mismatch");
+  }
+
+  @Test
+  void should_cancel_the_task_and_fail_recoverably_when_server_parks_the_import_pending()
+      throws IOException {
+    // REST 10.1 p.119: "pending" is a task that imported nothing and never resumes by itself
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-pend/state")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody(
+                        "{\"id\":\"imp-pend\",\"phase\":\"pending\",\"message\":\"Import is pending\","
+                            + "\"error\":{\"code\":\"import.broken.dependencies\","
+                            + "\"parameters\":[\"/public/ds\"]}}")));
+    wm.stubFor(
+        delete(urlPathEqualTo(rest.path("/rest_v2/import/imp-pend")))
+            .willReturn(aResponse().withStatus(204)));
+    Step poll = new PollImport(fx.polling);
+    Context ctx = fx.context(rest.config, rest.adapter);
+    RunFiles.write(RunFiles.in(ctx, RunFiles.IMPORT_HANDLE), "imp-pend");
+
+    StepResult result = poll.execute(ctx, EventSink.discard());
+
+    assertThat(result).isInstanceOf(StepResult.Failed.class);
+    StepResult.Failed failed = (StepResult.Failed) result;
+    assertThat(failed.failure())
+        .isInstanceOf(com.jaspersoft.jrsctl.core.engine.StepFailure.Recoverable.class);
+    assertThat(failed.failure().cause())
+        .contains("imp-pend")
+        .contains("import.broken.dependencies")
+        .contains("/public/ds")
+        .contains("nothing was imported");
+    assertThat(failed.failure().nextAction()).contains("--broken-dependencies skip");
+    wm.verify(deleteRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import/imp-pend"))));
   }
 }

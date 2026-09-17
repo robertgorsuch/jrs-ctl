@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.jrs.CapturingRunner;
 import com.jaspersoft.jrsctl.jrs.FakePlatform;
 import com.jaspersoft.jrsctl.jrs.RecordingSink;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import java.io.IOException;
@@ -155,6 +156,41 @@ class VendorToolsTest {
             "--include-monitoring-events",
             "--include-server-settings",
             "--skip-themes");
+  }
+
+  @Test
+  void should_pass_broken_dependencies_to_js_import_when_not_the_default() {
+    ImportRequest skip =
+        new ImportRequest(
+            Path.of("in.zip"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            BrokenDependencies.SKIP);
+    ImportRequest include =
+        new ImportRequest(
+            Path.of("in.zip"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            BrokenDependencies.INCLUDE);
+
+    assertThat(VendorTools.importArgs(skip))
+        .containsExactly("--input-zip", "in.zip", "--broken-dependencies", "skip");
+    assertThat(VendorTools.importArgs(include))
+        .containsExactly("--input-zip", "in.zip", "--broken-dependencies", "include");
   }
 
   @Test

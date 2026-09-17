@@ -25,6 +25,8 @@ public final class VendorFlags {
   public static final String UPDATE = "--update";
   public static final String SKIP_USER_UPDATE = "--skip-user-update";
   public static final String SKIP_THEMES = "--skip-themes";
+  // AG 10.1 p.271: `--broken-dependencies skip|include|cancel`; omitted for the default (cancel)
+  public static final String BROKEN_DEPENDENCIES = "--broken-dependencies";
 
   // ---- shared event/settings switches ----
   public static final String INCLUDE_ACCESS_EVENTS = "--include-access-events";

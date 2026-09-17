@@ -80,6 +80,9 @@ public final class AppFakeAdapter implements JrsAdapter {
   }
 
   @Override
+  public void cancelImport(Handles.ImportHandle handle) {}
+
+  @Override
   public KeystoreInfo keystore() {
     return new KeystoreInfo(
         true,

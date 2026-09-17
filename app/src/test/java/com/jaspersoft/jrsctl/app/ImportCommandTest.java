@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.exim.DefaultExportImportOperations;
@@ -84,6 +85,7 @@ class ImportCommandTest {
     assertThat(options.archive()).isEqualTo(archive);
     assertThat(options.update()).isTrue();
     assertThat(options.sourceKeystore()).isEmpty();
+    assertThat(options.brokenDependencies()).isEqualTo(BrokenDependencies.FAIL);
     assertThat(options.strategy()).isEmpty();
   }
 
@@ -99,6 +101,8 @@ class ImportCommandTest {
             "--monitoring",
             "--settings",
             "--skip-themes",
+            "--broken-dependencies",
+            "skip",
             "--source-keystore",
             keystore.toString(),
             "--source-keystore-password-ref",
@@ -115,6 +119,7 @@ class ImportCommandTest {
     assertThat(options.monitoring()).isTrue();
     assertThat(options.settings()).isTrue();
     assertThat(options.skipThemes()).isTrue();
+    assertThat(options.brokenDependencies()).isEqualTo(BrokenDependencies.SKIP);
     assertThat(options.sourceKeystore()).contains(keystore);
     assertThat(options.sourceKeystorePassword()).contains(new SecretRef.Env("KS_PASS"));
     assertThat(options.strategy()).contains(ExportImportStrategy.Kind.REST);

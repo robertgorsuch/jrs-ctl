@@ -106,6 +106,11 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public void cancelImport(Handles.ImportHandle handle) {
+    throw new UnsupportedOperationException("fake");
+  }
+
+  @Override
   public KeystoreInfo keystore() {
     return keystore;
   }

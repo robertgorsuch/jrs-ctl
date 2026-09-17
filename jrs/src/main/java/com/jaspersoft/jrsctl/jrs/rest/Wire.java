@@ -28,7 +28,16 @@ final class Wire {
   record ErrorBody(String message, String errorCode) {}
 
   /** Body of {@code POST /rest_v2/export|import} and of the {@code /state} polls. */
-  record AsyncState(String id, String phase, String message, String errorCode, String fileName) {}
+  record AsyncState(
+      String id,
+      String phase,
+      String message,
+      String errorCode,
+      String fileName,
+      ImportError error) {}
+
+  /** The nested error of an import that stopped in phase {@code pending} (REST 10.1 p.120). */
+  record ImportError(String code, List<String> parameters) {}
 
   /** {@code GET /rest_v2/resources}. */
   record ResourceLookupList(List<ResourceLookup> resourceLookup) {}

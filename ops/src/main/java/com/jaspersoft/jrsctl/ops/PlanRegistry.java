@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
@@ -149,6 +150,7 @@ public final class PlanRegistry {
     node.put("monitoring", o.monitoring());
     node.put("settings", o.settings());
     node.put("skipThemes", o.skipThemes());
+    node.put("brokenDependencies", o.brokenDependencies().wire());
     if (o.sourceKeystore().isPresent()) {
       node.put("sourceKeystore", o.sourceKeystore().get().toAbsolutePath().normalize().toString());
     } else {
@@ -196,7 +198,11 @@ public final class PlanRegistry {
         args.path("skipThemes").asBoolean(false),
         text(args, "sourceKeystore").map(Path::of),
         text(args, "sourceKeystorePassword").map(SecretRef::parse),
-        strategy(args));
+        strategy(args),
+        // arguments stored before the option existed describe a plan that used the server default
+        text(args, "brokenDependencies")
+            .map(BrokenDependencies::parse)
+            .orElse(BrokenDependencies.FAIL));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

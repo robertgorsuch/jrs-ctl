@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import java.nio.file.Path;
@@ -217,6 +218,10 @@ public final class VendorTools {
     }
     if (request.skipThemes()) {
       args.add(VendorFlags.SKIP_THEMES);
+    }
+    if (request.brokenDependencies() != BrokenDependencies.FAIL) {
+      args.add(VendorFlags.BROKEN_DEPENDENCIES);
+      args.add(request.brokenDependencies().vendor());
     }
     request.sourceKeystore().ifPresent(ks -> args.addAll(keystoreArgs(ks, storepass)));
     return List.copyOf(args);
