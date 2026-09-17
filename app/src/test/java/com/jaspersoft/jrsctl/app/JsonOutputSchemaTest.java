@@ -1024,6 +1024,41 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "customizations scan with registration",
+            "customizations scan",
+            0,
+            dir -> {
+              serverHome(dir);
+              customisedFile(dir);
+              Path vendor =
+                  Files.createDirectories(
+                      dir.resolve("dist").resolve("jasperserver-pro").resolve("WEB-INF"));
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "customizations",
+                      "scan",
+                      "--vendor",
+                      vendor.getParent().toString(),
+                      "--register"));
+            }));
+    s.add(
+        of(
+            "customizations scan of a path without a webapp",
+            "customizations scan",
+            2,
+            dir -> {
+              serverHome(dir);
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "customizations",
+                      "scan",
+                      "--vendor",
+                      Files.createDirectories(dir.resolve("empty")).toString()));
+            }));
+    s.add(
+        of(
             "customizations diff identical",
             "customizations diff",
             0,

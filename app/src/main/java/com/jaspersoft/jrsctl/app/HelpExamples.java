@@ -269,6 +269,15 @@ final class HelpExamples {
                     + " /opt/jrs/apache-tomcat/webapps/jasperserver-pro/WEB-INF/applicationContext-security.xml"
                     + " --original /opt/dist/applicationContext-security.xml")));
     m.put(
+        "customizations scan",
+        List.of(
+            new Example(
+                "Find what the site changed, against the unpacked vendor distribution",
+                "jrsctl customizations scan --vendor /opt/dist/jasperreports-server-pro-10.0.0-bin"),
+            new Example(
+                "Register everything found, without asking",
+                "jrsctl customizations scan --vendor /opt/dist/jasperserver-pro.war --register")));
+    m.put(
         "customizations unregister",
         List.of(
             new Example(

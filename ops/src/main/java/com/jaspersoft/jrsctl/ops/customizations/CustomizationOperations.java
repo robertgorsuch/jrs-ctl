@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.state.Customization;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Registry of operator-customised files (spec §10.3): registering snapshots the file and records
@@ -43,6 +44,55 @@ public interface CustomizationOperations {
    * upgrade's 3-way comparison can tell "unchanged by the vendor" from "customized".
    */
   Customization register(Path path, java.util.Optional<Path> pristineCopy);
+
+  /** How a file of the installed webapp differs from the vendor's copy (#72). */
+  enum Change {
+    /** Present in both and different: an operator's change. */
+    CHANGED,
+    /** Only in the installation. */
+    ADDED,
+    /** Different, but a file the installer fills in with site values; not a customization. */
+    INSTALLER,
+    /** Only in the vendor's copy. */
+    REMOVED
+  }
+
+  /** One file of {@link #scan}; {@code installed} is empty for a removed file. */
+  record ScanEntry(
+      String relativePath,
+      Change change,
+      Optional<Path> installed,
+      Optional<String> vendorSha256,
+      boolean registered) {
+    public ScanEntry {
+      Objects.requireNonNull(relativePath, "relativePath");
+      Objects.requireNonNull(change, "change");
+      Objects.requireNonNull(installed, "installed");
+      Objects.requireNonNull(vendorSha256, "vendorSha256");
+    }
+  }
+
+  /** The installed webapp against the vendor's copy. */
+  record Scan(Path installedWebapp, Path vendorWebapp, List<ScanEntry> entries) {
+    public Scan {
+      Objects.requireNonNull(installedWebapp, "installedWebapp");
+      Objects.requireNonNull(vendorWebapp, "vendorWebapp");
+      entries = List.copyOf(entries);
+    }
+  }
+
+  /**
+   * Compares the installed webapp with the vendor's untouched copy ({@code vendor}: an unpacked
+   * distribution, its webapp directory or its war) and lists what differs; read-only (#72).
+   */
+  Scan scan(Path vendor);
+
+  /**
+   * Registers every {@link Change#CHANGED} and {@link Change#ADDED} file of {@code scan} that is
+   * not registered yet: a changed file with the vendor's hash as its original, an added one with
+   * its own; returns the new registrations.
+   */
+  List<Customization> registerScan(Scan scan);
 
   boolean unregister(Path path);
 

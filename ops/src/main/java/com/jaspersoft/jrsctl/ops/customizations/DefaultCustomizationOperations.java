@@ -69,12 +69,101 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
           "pristine copy " + pristineCopy.get() + " is not a regular file",
           "point --original at the vendor's unmodified version of the file");
     }
-    String runId = runIdFor(file);
     try {
       String sha =
           pristineCopy.isPresent()
               ? services.platform().files().sha256(pristineCopy.get())
               : services.platform().files().sha256(file);
+      return record(file, sha, pristineCopy.map(p -> " (from " + p + ")").orElse(""));
+    } catch (IOException e) {
+      throw new CustomizationException(
+          "cannot read " + pristineCopy.orElse(file) + ": " + e.getMessage(),
+          "check that the file is readable",
+          e);
+    }
+  }
+
+  @Override
+  public Scan scan(Path vendor) {
+    Objects.requireNonNull(vendor, "vendor");
+    HotfixPaths paths;
+    try {
+      paths = HotfixPaths.from(services.config(), services.platform());
+    } catch (HotfixException e) {
+      throw new CustomizationException(e.getMessage(), e.remediation(), e);
+    }
+    String webappName =
+        services
+            .config()
+            .server()
+            .webappName()
+            .map(com.jaspersoft.jrsctl.core.config.Config.WebappName::yamlValue)
+            .orElse("jasperserver-pro");
+    Path installed = paths.tomcatDir().resolve("webapps").resolve(webappName);
+    if (!Files.isDirectory(installed)) {
+      throw new CustomizationException(
+          "the installed webapp " + installed + " is not a directory",
+          "check server.tomcatDir and server.webappName");
+    }
+    Path vendorWebapp = WebappScanner.vendorWebapp(vendor, webappName);
+    java.util.Set<Path> registered = new java.util.HashSet<>();
+    for (Customization c : list()) {
+      registered.add(normalise(c.path()));
+    }
+    try {
+      return new Scan(
+          installed,
+          vendorWebapp,
+          WebappScanner.compare(installed, vendorWebapp, services.platform().files(), registered));
+    } catch (IOException e) {
+      throw new CustomizationException(
+          "cannot compare " + installed + " with " + vendorWebapp + ": " + e.getMessage(),
+          "check that both are readable",
+          e);
+    }
+  }
+
+  @Override
+  public List<Customization> registerScan(Scan scan) {
+    Objects.requireNonNull(scan, "scan");
+    List<Customization> out = new java.util.ArrayList<>();
+    for (ScanEntry e : scan.entries()) {
+      if (e.registered() || e.installed().isEmpty()) {
+        continue;
+      }
+      Path file = accepted(e.installed().get());
+      if (find(services.stateStore().get(), file).isPresent()) {
+        continue;
+      }
+      try {
+        switch (e.change()) {
+          case CHANGED ->
+              out.add(
+                  record(
+                      file,
+                      e.vendorSha256().orElseThrow(),
+                      " (vendor copy in " + scan.vendorWebapp() + ")"));
+          case ADDED ->
+              out.add(
+                  record(file, services.platform().files().sha256(file), " (added by the site)"));
+          case INSTALLER, REMOVED -> {
+            // not a customization to carry across upgrades
+          }
+        }
+      } catch (IOException ex) {
+        throw new CustomizationException(
+            "cannot read " + file + ": " + ex.getMessage(), "check that the file is readable", ex);
+      }
+    }
+    return out;
+  }
+
+  /** Snapshots {@code file} and records {@code originalSha256} for it; {@code note} is audited. */
+  private Customization record(Path file, String originalSha256, String note) {
+    StateStore store = services.stateStore().get();
+    String sha = originalSha256;
+    String runId = runIdFor(file);
+    try {
       Snapshot snapshot = snapshots.create(runId, STEP, List.of(file), file.getParent());
       String ref = runId + "/" + STEP;
       Customization customization =
@@ -88,10 +177,7 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
               snapshot.dir(),
               services.platform().files().sha256(snapshot.manifestFile()),
               Optional.of(REFERENCED_BY)));
-      store.audit(
-          actor(),
-          AUDIT_REGISTERED,
-          file + " original sha256 " + sha + pristineCopy.map(p -> " (from " + p + ")").orElse(""));
+      store.audit(actor(), AUDIT_REGISTERED, file + " original sha256 " + sha + note);
       return customization;
     } catch (IOException e) {
       throw new CustomizationException(

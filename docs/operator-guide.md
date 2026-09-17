@@ -323,6 +323,22 @@ Registers an operator-customised file under `server.installDir` or `server.tomca
 - **Exit codes:** 0; **2** when the file is outside the installation, does not exist, or is already registered.
 - **Flags:** `<path>` — the customised file; `--original <file>` — the vendor's unmodified copy whose hash becomes the original; `--json` — the registration as JSON.
 
+### `jrsctl customizations scan --vendor <path> [--register] [--json]`
+
+Finds the files the site changed without registering them one by one (#72). The installed webapp (`server.tomcatDir/webapps/<webappName>`) is compared with the vendor's untouched copy of the same version. `--vendor` is the unpacked distribution, its `jasperserver-pro` (or `jasperserver`) directory, or the `.war`, which is read as a stream and never unpacked. Every file that differs is listed:
+
+- `CHANGED` — in both, different: a customization.
+- `ADDED` — only in the installation: a customization.
+- `INSTALLER` — different, but one the installer fills in with site values (`META-INF/context.xml`, `WEB-INF/hibernate.properties`, `WEB-INF/js.jdbc.properties`, `WEB-INF/js.quartz.properties`). Listed, never registered.
+- `REMOVED` — only in the vendor's copy. Listed, nothing to register.
+
+Logs, caches and work files are ignored. With `--register`, `--yes`, or a yes at the prompt, every changed and added file not yet registered is registered: a changed file with the vendor file's hash as its original, so an upgrade re-applies it automatically where the vendor left the file alone, and an added file with its own hash.
+
+- **Mutates:** nothing without registration; with it, as `customizations register` for each file.
+- **Rollback:** `customizations unregister <path>` for a file registered by mistake.
+- **Exit codes:** 0; **2** when `--vendor` holds no webapp or the installed webapp cannot be found.
+- **Flags:** `--vendor <path>` (required) — the vendor's copy; `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], registered: [...]}`.
+
 ### `jrsctl customizations unregister <path>`
 
 Forgets a registered customization: removes its row from the state store and deletes its snapshot. The file under the installation is not touched.
