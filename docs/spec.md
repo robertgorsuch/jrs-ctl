@@ -453,6 +453,7 @@ The signature covers `manifest.json` only. The manifest carries the SHA-256 of e
 
 Manifest rules (enforced by `ValidateManifest`):
 - `id` is the state-store key. `applies.versions` governs applicability.
+- An **official Jaspersoft cumulative hotfix package** is accepted in place of a bundle and converted into one (ADR-0024): a ZIP holding `readme.txt`, `jasperserver[-pro].zip` (webapp-relative) and `js-install.zip` (installation-relative), with no `manifest.json`. The derived manifest takes its version and edition from the readme, its id from the build (`JRSHF-<version>-<date>-<time>`), `replace` or `add` per file from what the server has now, and `delete` entries from the readme's deleted list and its "Important" globs. It carries no signature, so `--allow-unsigned` applies; the readme's manual SQL and properties are warnings, never steps.
 - `files[].action` is mandatory: `add | replace | delete`. `add` is for a path the server does not have (a jar whose versioned name is new is an `add` naming the old jar in `replaces`); `replace` and `delete` are for a path it has. `Preflight` refuses an `add` whose path exists and a `replace` whose path does not (§8.2).
 - `restart: none` is permitted only if no file is under `WEB-INF/lib` or `WEB-INF/classes` (§5.3).
 - Every `sql[]` entry must set `idempotent: true` and either provide `rollbackFile` or the manifest must set `"rollback": "irreversible"` with a `rollbackNote` string that is shown in the Plan summary. There is no transactional SQL promise; DDL auto-commits on several supported databases.

@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-17 (official hotfix packages)
+
+- §8.1, §8.2: `hotfix verify` and `hotfix apply` accept an official Jaspersoft cumulative hotfix package as support publishes it, and derive a bundle from it rather than running a second apply engine (#66, ADR-0024). Detection is by shape: a ZIP with `readme.txt`, no `manifest.json`, and `jasperserver[-pro].zip` or `js-install.zip` inside. The conversion streams the package into a bundle under the jrsctl home named after the package's SHA-256, so planning and then applying converts once, and the derived manifest carries every payload hash, so the ordinary verifier checks the conversion. Webapp entries map to `webapps/<server.webappName>/`, installer entries to the installation directory. An entry is `replace` when the file exists on this server and `add` when it does not, whatever the readme's own added/modified lists say; the readme's "Deleted files" list and the glob deletions of its "Important" section become `delete` entries, expanded against this installation and never covering a path the package itself lays down. The derived id is `JRSHF-<version>-<date>-<time>`, which the manifest schema's id pattern now allows beside `JRS-<version>-HF-<nnnn>`. Such a package carries no signature, so `--allow-unsigned` is required and audited, and the plan prints the package's SHA-256 to compare with the support portal. The readme's manual steps (SQL for particular databases, optional properties, settings to re-apply in overwritten files) are plan warnings; jrsctl runs none of them.
+
 ## Draft 1.1 amendment — 2026-09-16 (field test)
 
 Changes from the first field test of 1.3.0 and 1.4.0 by a JasperReports Server support engineer, whose finding was that the tool asked an administrator to learn YAML, environment variables, bundle signing and raw Markdown before doing anything useful.

@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["id", "version", "title", "applies", "files", "restart", "rollback"],
   "properties": {
-    "id": { "type": "string", "pattern": "^JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}$" },
+    "id": { "type": "string", "pattern": "^(JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}|JRSHF-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]{8}-[0-9]{4})$" },
     "version": { "type": "string", "enum": ["1"] },
     "title": { "type": "string", "minLength": 1, "maxLength": 200 },
     "description": { "type": "string" },
@@ -87,7 +87,7 @@
     }
   ],
   "$defs": {
-    "hotfixId": { "type": "string", "pattern": "^JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}$" },
+    "hotfixId": { "type": "string", "pattern": "^(JRS-[0-9]+\\.[0-9]+\\.[0-9]+-HF-[0-9]{4}|JRSHF-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]{8}-[0-9]{4})$" },
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "check": {
       "type": "object",

@@ -82,7 +82,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
   @Override
   public VerifyReport verify(Path bundle) {
     return bundles.with(
-        bundle,
+        source(bundle).bundle(),
         b -> {
           BundleVerifier.Signature signature = rt.verifier().signature(b);
           Optional<String> signedBy = signature.signedBy().map(KeyRing.TrustedKey::name);
@@ -121,11 +121,68 @@ public final class DefaultHotfixOperations implements HotfixOperations {
   @Override
   public Plan planApply(Path bundle, ApplyOptions options) {
     Objects.requireNonNull(options, "options");
-    return bundles.with(bundle, b -> planApply(bundle, b, options));
+    Source source = source(bundle);
+    return bundles.with(source.bundle(), b -> planApply(source, b, options));
   }
 
-  private Plan planApply(Path bundle, HotfixBundle b, ApplyOptions options) {
-    List<String> warnings = new ArrayList<>();
+  /** The bundle a command works from, and what the operator must be told about its origin. */
+  private record Source(Path bundle, boolean official, List<String> notes) {
+    Source {
+      notes = List.copyOf(notes);
+    }
+
+    static Source bundle(Path path) {
+      return new Source(path, false, List.of());
+    }
+  }
+
+  /**
+   * The bundle to work from: {@code given} itself, or, for an official Jaspersoft package, the
+   * bundle derived from it under the jrsctl home (#66, ADR-0024). The derived bundle is named after
+   * the package's own hash, so planning and then applying converts once.
+   */
+  private Source source(Path given) {
+    if (!OfficialPackage.looksOfficial(given)) {
+      return Source.bundle(given);
+    }
+    List<String> notes = new ArrayList<>();
+    Config config = rt.config();
+    HotfixPaths paths = HotfixPaths.from(config, rt.services().platform());
+    String webappName =
+        config
+            .server()
+            .webappName()
+            .map(Config.WebappName::yamlValue)
+            .orElse(Config.WebappName.JASPERSERVER_PRO.yamlValue());
+    String sourceHash = hash(given);
+    Path out =
+        rt.home().runs().resolve("hotfix-official-" + sourceHash.substring(0, 16) + ".jrsctl.zip");
+    notes.add(
+        "official package "
+            + given.getFileName()
+            + " (sha256 "
+            + sourceHash
+            + "); compare it with the checksum on the support portal");
+    try {
+      OfficialPackage.Converted converted =
+          Files.isRegularFile(out) && Files.isRegularFile(OfficialPackage.notesFile(out))
+              ? OfficialPackage.read(out)
+              : OfficialPackage.convert(given, out, webappName, paths);
+      notes.add("converted to the jrsctl bundle " + converted.id() + " at " + out);
+      notes.addAll(converted.notes());
+      return new Source(out, true, notes);
+    } catch (IOException e) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          "cannot read the official hotfix package " + given + ": " + e.getMessage(),
+          "check the download; it must be the ZIP as support published it",
+          e);
+    }
+  }
+
+  private Plan planApply(Source source, HotfixBundle b, ApplyOptions options) {
+    Path bundle = source.bundle();
+    List<String> warnings = new ArrayList<>(source.notes());
     BundleVerifier.Signature signature = rt.verifier().signature(b);
     if (!signature.valid()) {
       // --allow-unsigned waives a missing signature only; a present one that fails to verify may
@@ -137,13 +194,20 @@ public final class DefaultHotfixOperations implements HotfixOperations {
             "add the signer's public key with `jrsctl keys add <name> <file>`; --allow-unsigned"
                 + " does not waive a signature that fails to verify");
       }
+      String missing =
+          source.official()
+              ? "official hotfix packages carry no jrsctl signature"
+              : BundleSignatures.MISSING;
       if (!options.allowUnsigned()) {
         throw new HotfixException(
             HotfixException.SIGNATURE,
-            BundleSignatures.MISSING,
-            "have the bundle signed, or re-run with --allow-unsigned");
+            missing,
+            source.official()
+                ? "check the package against the checksum on the support portal, then re-run with"
+                    + " --allow-unsigned"
+                : "have the bundle signed, or re-run with --allow-unsigned");
       }
-      warnings.add(BundleSignatures.MISSING + "; accepted with --allow-unsigned");
+      warnings.add(missing + "; accepted with --allow-unsigned");
     }
     Manifest manifest =
         switch (validator.validate(b.manifestJson())) {

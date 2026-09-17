@@ -42,7 +42,7 @@ Download the archive for your system from the [releases page](https://github.com
 
 Unpack it on the server, then open a terminal in the unpacked folder:
 
-```bat
+```bash
 :: Windows (Command Prompt, run as administrator)
 tar -xf jrsctl-1.6.0-windows-x64.zip -C C:\Jaspersoft
 cd C:\Jaspersoft\jrsctl-1.6.0
@@ -155,7 +155,7 @@ jrsctl import C:\Backups\samples.zip --update
 
 ### Install a hotfix
 
-Hotfixes come as a signed `.zip` file. First check the file is genuine and suits your server. This changes nothing:
+Hotfixes come as a `.zip` file: either a signed jrsctl bundle, or an official Jaspersoft cumulative hotfix as support publishes it (`hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip`). First check the file suits your server. This changes nothing:
 
 ```bash
 jrsctl hotfix verify C:\Downloads\JRS-9.0.0-HF-0002.zip
@@ -166,6 +166,14 @@ Then install it. jrsctl backs up every file it will replace, and stops and resta
 ```bash
 jrsctl hotfix apply C:\Downloads\JRS-9.0.0-HF-0002.zip
 ```
+
+An official Jaspersoft package carries no jrsctl signature, so add `--allow-unsigned` and compare the checksum jrsctl prints with the one on the support portal:
+
+```bash
+jrsctl hotfix apply C:\Downloads\hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip --allow-unsigned
+```
+
+jrsctl reads the package as it is, works out which files to replace, add and delete (including the libraries an earlier hotfix left behind), and prints the readme's manual steps, such as SQL for particular databases, as warnings. It runs none of them.
 
 See what is installed:
 

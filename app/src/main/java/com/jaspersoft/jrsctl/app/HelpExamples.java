@@ -184,7 +184,10 @@ final class HelpExamples {
         List.of(
             new Example(
                 "Check a hotfix is genuine and fits this server; changes nothing",
-                "jrsctl hotfix verify JRS-10.0.0-HF-0002.zip")));
+                "jrsctl hotfix verify JRS-10.0.0-HF-0002.zip"),
+            new Example(
+                "Check an official Jaspersoft cumulative hotfix as downloaded",
+                "jrsctl hotfix verify hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip")));
     m.put(
         "hotfix apply",
         List.of(
@@ -196,7 +199,12 @@ final class HelpExamples {
                 "jrsctl hotfix apply JRS-10.0.0-HF-0002.zip"),
             new Example(
                 "Unattended, for example from a scheduler",
-                "jrsctl hotfix apply JRS-10.0.0-HF-0002.zip --yes")));
+                "jrsctl hotfix apply JRS-10.0.0-HF-0002.zip --yes"),
+            new Example(
+                "Apply an official Jaspersoft cumulative hotfix as downloaded (it carries no"
+                    + " jrsctl signature)",
+                "jrsctl hotfix apply hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip"
+                    + " --allow-unsigned")));
     m.put(
         "hotfix rollback",
         List.of(

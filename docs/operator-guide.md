@@ -218,7 +218,7 @@ Checks a bundle without touching the server: the signature over `manifest.json` 
 - **Mutates:** nothing; read-only. Reads the server's `serverInfo` for applicability.
 - **Rollback:** not applicable.
 - **Exit codes:** 0 when signature, hashes and applicability all pass; **7** when any of them fails; **2** when the bundle cannot be read or the server cannot be reached for applicability.
-- **Flags:** `<bundle>` — the ZIP; `--json` — the report as JSON (`signatureValid`, `signedBy`, `hashesValid`, `hashProblems`, `applicable`, `applicabilityProblems`, `manifestId`, `title`, `ok`).
+- **Flags:** `<bundle>` — the ZIP, a jrsctl bundle or an official Jaspersoft hotfix package; `--json` — the report as JSON (`signatureValid`, `signedBy`, `hashesValid`, `hashProblems`, `applicable`, `applicabilityProblems`, `manifestId`, `title`, `ok`).
 
 ### `jrsctl hotfix apply <bundle> [--plan] [--yes] [--allow-unsigned] [--rollback-all] [--json]`
 
@@ -228,6 +228,18 @@ Verifies the bundle, builds the plan, shows it and runs it after confirmation (s
 - **Rollback:** complete for files: a failure compensates every step back to the start of the failing phase (the whole plan with `--rollback-all`), restoring each file from its snapshot and verifying its hash; SQL is undone by the bundle's `rollbackFile` scripts, or not at all when the manifest declares `"rollback": "irreversible"` (the plan summary shows the author's `rollbackNote` and you must confirm it). After success, `hotfix rollback <id>` undoes the hotfix at any later time.
 - **Exit codes:** 0 applied; **2** planning or a precheck failed, nothing mutated (also: confirmation needed without a terminal); **3** a step failed and the plan was rolled back cleanly; **4** rollback incomplete, manual action required (the outcome block lists the snapshot paths); **5** cancelled; **6** the server is unsupported; **7** the bundle's signature is missing or untrusted, or a hash does not match (refused before planning); **8** a previous run needs recovery; **9** another jrsctl process holds the run lock.
 - **Flags:** `<bundle>` — the ZIP; `--plan` — show the plan and exit 0 without running; `--yes` — skip the confirmation; `--allow-unsigned` — apply a bundle that carries no signature; the override is written to the audit table (use it only for bundles you built yourself). A signature that is present but verifies against no trusted key is never waived: the bundle names no signer, so an unknown key cannot be told from a bundle altered after signing — add the signer's key with `keys add` or the bundle is refused (exit 7); `--rollback-all` — on failure compensate every step of the plan, not just the failing phase; `--json` — plan document, one JSON object per event, then the outcome.
+
+#### Official Jaspersoft hotfix packages
+
+`hotfix verify` and `hotfix apply` also take an official cumulative hotfix as support publishes it (`hotfix_JRSPro<version>_cumulative_<date>_<time>.zip`), so nothing has to be repackaged first (#66, ADR-0024). jrsctl reads the package and derives a bundle from it, under the jrsctl home and named after the package's own SHA-256, so planning and then applying converts it once:
+
+- `jasperserver-pro.zip` (or `jasperserver.zip`) lands under `webapps/<webappName>/`, `js-install.zip` under the installation directory, which is where the vendor readme says to extract them.
+- A file that exists here now is a `replace`, one that does not is an `add`; the readme's "Deleted files" list and the glob deletions in its "Important" section (the libraries an earlier hotfix left) become `delete` entries, resolved against this installation and never covering a file the package itself lays down.
+- Anything under `WEB-INF/lib` or `WEB-INF/classes` means the service is stopped for the swap, as for any hotfix.
+- The whole package is snapshotted and reversible: `jrsctl hotfix rollback <id>` puts the previous files back, rather than the readme's "copy your backup of the webapp over the top".
+- The derived id is `JRSHF-<version>-<date>-<time>`, for example `JRSHF-10.0.0-20260730-0457`, and `hotfix list` shows it like any other.
+
+Two things stay with the operator. An official package carries no jrsctl signature, so `--allow-unsigned` is required and the override is audited; the plan prints the package's SHA-256 to compare with the support portal. And the readme's manual steps — SQL for particular databases, optional properties, settings to apply again in files the package overwrites — are printed as warnings and never run.
 
 ### `jrsctl hotfix rollback <id> [--cascade] [--plan] [--yes] [--json]`
 
