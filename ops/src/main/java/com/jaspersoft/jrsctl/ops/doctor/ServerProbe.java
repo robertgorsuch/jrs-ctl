@@ -1,6 +1,9 @@
 package com.jaspersoft.jrsctl.ops.doctor;
 
+import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
+import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
@@ -13,17 +16,22 @@ import java.util.function.Function;
 
 /**
  * The one connection attempt {@code doctor} makes, shared by every server-dependent check (spec
- * §12.1). Invariants: the adapter is asked for its identity exactly once; when that fails the
- * {@code server} item is a FAIL carrying the adapter's remediation and every dependent check
- * becomes a SKIP saying "server unreachable" rather than a second failure for the same cause; a
- * server that answers 401 or 403 is reported as refusing the configured user's credentials, never
- * as unreachable, and without the server's HTML error page.
+ * §12.1). Invariants: the adapter is asked for its identity exactly once, without a credential when
+ * the server allows it; when that fails the {@code server} item is a FAIL carrying the adapter's
+ * remediation and every dependent check becomes a SKIP saying "server unreachable" rather than a
+ * second failure for the same cause; a server that answers 401 or 403 is reported as refusing the
+ * configured user's credentials, never as unreachable, and without the server's HTML error page;
+ * the admin password is never prompted for here (field test 2, D1): when it is not at hand without
+ * a prompt, the checks that log in are SKIPs saying "no admin password available" and the checks
+ * that need only the identity still run.
  */
 final class ServerProbe {
 
   static final String NAME = "server";
   static final String UNREACHABLE = "server unreachable";
   static final String REFUSED = "server refused the credentials";
+  static final String NO_CREDENTIALS = "no admin password available";
+  static final String FIX_SERVER = "fix the server check first";
 
   /** A live adapter with the identity it reported. */
   record Connected(JrsAdapter adapter, ServerIdentity identity) {}
@@ -31,36 +39,62 @@ final class ServerProbe {
   private final Optional<Connected> connected;
   private final ReportItem item;
   private final String skipReason;
+  private final String skipRemediation;
 
-  private ServerProbe(Optional<Connected> connected, ReportItem item) {
-    this(connected, item, UNREACHABLE);
-  }
+  /** Why a login is impossible without a prompt, or empty when the password is at hand. */
+  private final Optional<String> loginProblem;
 
-  private ServerProbe(Optional<Connected> connected, ReportItem item, String skipReason) {
+  private ServerProbe(
+      Optional<Connected> connected,
+      ReportItem item,
+      String skipReason,
+      String skipRemediation,
+      Optional<String> loginProblem) {
     this.connected = connected;
     this.item = item;
     this.skipReason = skipReason;
+    this.skipRemediation = skipRemediation;
+    this.loginProblem = loginProblem;
+  }
+
+  private static ServerProbe failed(ReportItem item, Optional<String> loginProblem) {
+    return new ServerProbe(Optional.empty(), item, UNREACHABLE, FIX_SERVER, loginProblem);
   }
 
   static ServerProbe connect(Services services) {
     Objects.requireNonNull(services, "services");
+    Optional<String> loginProblem = loginProblem(services);
+    String baseUrl =
+        services.config().server().baseUrl().map(Object::toString).orElse("the server");
     try {
       JrsAdapter adapter = services.adapter().get();
       ServerIdentity identity = adapter.identity();
       return new ServerProbe(
           Optional.of(new Connected(adapter, identity)),
-          ReportItem.pass(NAME, "reachable at " + identity.baseUrl()));
-    } catch (JrsUnreachableException e) {
+          ReportItem.pass(NAME, "reachable at " + identity.baseUrl()),
+          UNREACHABLE,
+          FIX_SERVER,
+          loginProblem);
+    } catch (SecretException e) {
+      // serverInfo answered but wants a login this run cannot give: reachable, identity unknown
+      String remediation = loginProblem.orElse(e.getMessage());
       return new ServerProbe(
-          Optional.empty(), ReportItem.fail(NAME, e.getMessage(), e.remediation()));
+          Optional.empty(),
+          ReportItem.pass(
+              NAME, "reachable at " + baseUrl + " (not logged in: " + NO_CREDENTIALS + ")"),
+          NO_CREDENTIALS,
+          remediation,
+          Optional.of(remediation));
+    } catch (JrsUnreachableException e) {
+      return failed(ReportItem.fail(NAME, e.getMessage(), e.remediation()), loginProblem);
     } catch (RestException e) {
       if (!e.authenticationFailure()) {
-        return new ServerProbe(
-            Optional.empty(),
+        return failed(
             ReportItem.fail(
                 NAME,
                 "HTTP " + e.status() + " from " + e.method() + " " + e.path(),
-                "check server.baseUrl and the jrsctl log"));
+                "check server.baseUrl and the jrsctl log"),
+            loginProblem);
       }
       String user = services.config().server().auth().username().orElse("(no user configured)");
       return new ServerProbe(
@@ -87,18 +121,43 @@ final class ServerProbe {
                   + "; on the commercial edition init proposes superuser, whose password can differ"
                   + " from jasperadmin's (jrsctl config set server.auth.username jasperadmin to use"
                   + " that account)"),
-          REFUSED);
+          REFUSED,
+          FIX_SERVER,
+          loginProblem);
     } catch (ConfigException e) {
-      return new ServerProbe(
-          Optional.empty(), ReportItem.fail(NAME, firstLine(e.getMessage()), e.remediation()));
+      return failed(
+          ReportItem.fail(NAME, firstLine(e.getMessage()), e.remediation()), loginProblem);
     } catch (RuntimeException e) {
-      return new ServerProbe(
-          Optional.empty(),
+      return failed(
           ReportItem.fail(
               NAME,
               "unexpected " + e.getClass().getSimpleName() + ": " + e.getMessage(),
-              "check server.baseUrl and the jrsctl log"));
+              "check server.baseUrl and the jrsctl log"),
+          loginProblem);
     }
+  }
+
+  /**
+   * The remediation for a login the doctor cannot attempt, or empty when the password reference is
+   * absent (a configuration problem the auth check reports itself) or resolvable without a prompt.
+   */
+  private static Optional<String> loginProblem(Services services) {
+    Config.Auth auth = services.config().server().auth();
+    if (auth.passwordRef().isEmpty() || auth.username().isEmpty()) {
+      return Optional.empty();
+    }
+    SecretRef ref = auth.passwordRef().get();
+    if (services.secrets().availableWithoutPrompt(ref)) {
+      return Optional.empty();
+    }
+    String supply =
+        switch (ref) {
+          case SecretRef.Env e -> "set " + e.name() + " in the environment";
+          case SecretRef.File f -> "create the secret file " + f.path();
+          case SecretRef.Enc c -> "unlock secrets.enc with --passphrase-file or JRSCTL_PASSPHRASE";
+        };
+    return Optional.of(
+        supply + ", or store the password with jrsctl init; the login checks then run");
   }
 
   ReportItem item() {
@@ -116,9 +175,20 @@ final class ServerProbe {
   /** Runs {@code check} against the connection, or returns a SKIP when there is none. */
   ReportItem dependent(String name, Function<Connected, ReportItem> check) {
     if (connected.isEmpty()) {
-      return ReportItem.skip(name, skipReason, "fix the server check first");
+      return ReportItem.skip(name, skipReason, skipRemediation);
     }
     return check.apply(connected.get());
+  }
+
+  /**
+   * As {@link #dependent}, for a check that logs in: a SKIP saying {@link #NO_CREDENTIALS} when the
+   * password is not at hand without a prompt.
+   */
+  ReportItem authenticated(String name, Function<Connected, ReportItem> check) {
+    if (loginProblem.isPresent()) {
+      return ReportItem.skip(name, NO_CREDENTIALS, loginProblem.get());
+    }
+    return dependent(name, check);
   }
 
   private static String firstLine(String text) {

@@ -214,6 +214,14 @@ public final class EncryptedSecretStore {
   }
 
   /** The decrypted entry, or empty when no such entry exists. */
+  /**
+   * True when {@link #get} would not ask anyone for the passphrase: the key is already derived, or
+   * the passphrase source answers without a prompt (field test 2, D1).
+   */
+  public synchronized boolean canUnlockWithoutPrompt() {
+    return cachedKey != null || passphrase.availableWithoutPrompt();
+  }
+
   public Optional<Secret> get(String name) {
     checkName(name);
     ObjectNode root = read();

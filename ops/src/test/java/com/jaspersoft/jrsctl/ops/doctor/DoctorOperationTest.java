@@ -150,6 +150,31 @@ class DoctorOperationTest {
    * whose operator never set a database password must not fail doctor, or the upgrade preflight
    * that runs it; the database is needed only for hotfixes with SQL.
    */
+  /** Seen on the real 10.0.0 server: an unset JRS_DB_PASSWORD failed the whole report. */
+  @Test
+  void should_skip_the_database_check_when_the_password_is_not_supplied_yet() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    String yaml =
+        healthyYaml(install)
+            + """
+            database:
+              type: postgresql
+              url: jdbc:postgresql://db.example.internal:5433/jasperserver
+              username: jasperdb
+              passwordRef: env:JRS_DB_PASSWORD
+            """;
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(yaml)) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem database = byName(report).get("database");
+      assertThat(database.status()).isEqualTo(Status.SKIP);
+      assertThat(database.detail())
+          .contains("database password not available")
+          .contains("env:JRS_DB_PASSWORD");
+      assertThat(report.exitCode()).as(report.items().toString()).isZero();
+    }
+  }
+
   @Test
   void should_skip_the_database_check_when_no_password_reference_is_configured() throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));
@@ -262,6 +287,71 @@ class DoctorOperationTest {
           .contains("server.auth.passwordRef")
           .doesNotContain("baseUrl");
       assertThat(byName(report).get("auth").detail()).isEqualTo("server refused the credentials");
+    }
+  }
+
+  /**
+   * Field test 2, D1: a health check must not need the admin password. Every local item runs, the
+   * server is still asked whether it is up, and only the items that log in are skipped, saying what
+   * is missing.
+   */
+  @Test
+  void should_run_every_local_item_and_skip_the_login_items_when_no_password_is_set()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(healthyYaml(install))) {
+      fake.env.remove("JRS_PASSWORD");
+
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      Map<String, ReportItem> items = byName(report);
+      assertThat(items.get("server").status()).isEqualTo(Status.PASS);
+      // keystore is among them: it asks the server for its capabilities, which logs in (seen on
+      // the real 10.0.0 server, where it threw the secret error before this gate)
+      for (String name : List.of("auth", "capabilities", "keystore")) {
+        assertThat(items.get(name).status()).as(name).isEqualTo(Status.SKIP);
+        assertThat(items.get(name).detail()).as(name).isEqualTo("no admin password available");
+        assertThat(items.get(name).remediation()).as(name).contains("JRS_PASSWORD");
+      }
+      for (String name : List.of("identity", "compat", "layout", "tomcat")) {
+        assertThat(items.get(name).status()).as(name).isNotEqualTo(Status.FAIL);
+        assertThat(items.get(name).detail()).as(name).doesNotContain("no admin password");
+      }
+      // vendor-java is a SKIP in the healthy fixture too (no vendor.javaHome), never for this
+      assertThat(items.get("vendor-java").detail()).doesNotContain("no admin password available");
+      assertThat(items.get("secrets").status()).isEqualTo(Status.WARN);
+      assertThat(items.get("secrets").detail()).contains("JRS_PASSWORD is not set");
+      assertThat(report.items()).noneMatch(i -> i.detail().contains("unexpected"));
+      assertThat(report.items()).noneMatch(i -> i.detail().equals("server unreachable"));
+      assertThat(report.exitCode()).isZero();
+      assertThat(fake.adapter.calls).noneMatch(c -> c.startsWith("login"));
+    }
+  }
+
+  @Test
+  void should_not_prompt_for_the_passphrase_when_the_password_is_stored_encrypted()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake =
+        FakeServices.in(tmp.resolve("home"))
+            .yaml(healthyYaml(install).replace("env:JRS_PASSWORD", "enc:JRS_PASSWORD"))) {
+      // no console in a test run, so this source could only ever prompt; it must not be asked
+      fake.passphrase = new com.jaspersoft.jrsctl.core.secrets.PassphraseSource.FromConsole();
+
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      Map<String, ReportItem> items = byName(report);
+      assertThat(items.get("secrets").status()).isEqualTo(Status.WARN);
+      assertThat(items.get("secrets").detail())
+          .contains("enc:JRS_PASSWORD")
+          .contains("secrets.enc is not unlocked");
+      assertThat(items.get("secrets").remediation())
+          .contains("--passphrase-file")
+          .contains("JRSCTL_PASSPHRASE");
+      assertThat(items.get("auth").status()).isEqualTo(Status.SKIP);
+      assertThat(items.get("auth").detail()).isEqualTo("no admin password available");
+      assertThat(items.get("server").status()).isEqualTo(Status.PASS);
+      assertThat(report.exitCode()).isZero();
     }
   }
 

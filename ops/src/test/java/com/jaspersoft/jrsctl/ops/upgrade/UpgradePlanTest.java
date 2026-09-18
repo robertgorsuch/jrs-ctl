@@ -482,6 +482,25 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * Doctor no longer needs the admin password (field test 2, D1), but an upgrade does: its doctor
+   * precheck treats a skipped login as a failure, so nothing starts without credentials.
+   */
+  @Test
+  void should_fail_the_doctor_precheck_when_the_admin_password_is_not_available() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.withoutAdminPassword();
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result = UpgradeFixture.step(plan, "doctor").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("doctor could not log in")
+          .contains("no admin password available");
+    }
+  }
+
   @Test
   void should_copy_master_properties_without_passwords_when_planning() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

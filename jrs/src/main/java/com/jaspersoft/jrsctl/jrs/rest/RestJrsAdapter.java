@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * The one {@link JrsAdapter} (spec §7.2, ADR-0004), driven by probed {@link Capability}s rather
@@ -69,7 +70,13 @@ public final class RestJrsAdapter implements JrsAdapter {
   private final RestClient client;
   private final Config config;
   private final CompatMatrix matrix;
-  private final Optional<Credentials> configured;
+
+  /**
+   * The configured credentials, resolved on first use so that connecting and an anonymous
+   * serverInfo never need the password (field test 2, D1).
+   */
+  private final Optional<Supplier<Credentials>> configured;
+
   private final KeystoreInspector keystoreInspector;
   private final Object lock = new Object();
   private final Map<String, String> exportFileNames = new ConcurrentHashMap<>();
@@ -90,6 +97,25 @@ public final class RestJrsAdapter implements JrsAdapter {
     this(client, config, matrix, configured, new KeystoreInspector(platform, config));
   }
 
+  /**
+   * An adapter whose configured credentials are produced on first use: {@code credentials} is
+   * called by the first login or re-authentication, and a {@link
+   * com.jaspersoft.jrsctl.core.secrets.SecretException} it throws surfaces from that request.
+   */
+  public static RestJrsAdapter withLazyCredentials(
+      RestClient client,
+      Config config,
+      Platform platform,
+      CompatMatrix matrix,
+      Supplier<Credentials> credentials) {
+    return new RestJrsAdapter(
+        client,
+        config,
+        matrix,
+        new KeystoreInspector(platform, config),
+        Optional.of(Objects.requireNonNull(credentials, "credentials")));
+  }
+
   /** Constructor with an explicit keystore inspector (tests use a fake home layout). */
   public RestJrsAdapter(
       RestClient client,
@@ -97,6 +123,20 @@ public final class RestJrsAdapter implements JrsAdapter {
       CompatMatrix matrix,
       Optional<Credentials> configured,
       KeystoreInspector keystoreInspector) {
+    this(
+        client,
+        config,
+        matrix,
+        keystoreInspector,
+        Objects.requireNonNull(configured, "configured").map(c -> (Supplier<Credentials>) () -> c));
+  }
+
+  private RestJrsAdapter(
+      RestClient client,
+      Config config,
+      CompatMatrix matrix,
+      KeystoreInspector keystoreInspector,
+      Optional<Supplier<Credentials>> configured) {
     this.client = Objects.requireNonNull(client, "client");
     this.config = Objects.requireNonNull(config, "config");
     this.matrix = Objects.requireNonNull(matrix, "matrix");
@@ -117,7 +157,7 @@ public final class RestJrsAdapter implements JrsAdapter {
     }
     session = Optional.empty();
     try {
-      login(configured.get());
+      login(configured.get().get());
       return true;
     } catch (RestException | JrsUnreachableException e) {
       return false;
@@ -151,7 +191,13 @@ public final class RestJrsAdapter implements JrsAdapter {
   }
 
   private ServerIdentity fetchIdentity() {
-    RestClient.Response r = client.get(SERVER_INFO);
+    // serverInfo answers anyone on every supported server, so it is asked without a credential
+    // first and reachability never depends on a password (field test 2, D1); a server that wants
+    // a login for it gets the configured one, resolved now
+    RestClient.Response r = client.getAnonymous(SERVER_INFO);
+    if (r.status() == 401 || r.status() == 403) {
+      r = client.get(SERVER_INFO);
+    }
     if (r.status() >= 500) {
       throw new JrsUnreachableException(
           client.baseUrl(),
@@ -457,7 +503,7 @@ public final class RestJrsAdapter implements JrsAdapter {
     if (config.server().auth().mode() == Config.AuthMode.FORM
         && session.isEmpty()
         && configured.isPresent()) {
-      login(configured.get());
+      login(configured.get().get());
     }
   }
 
@@ -690,12 +736,13 @@ public final class RestJrsAdapter implements JrsAdapter {
       return new HealthReport(true, latency, items);
     }
     try {
-      Session s = login(configured.get());
+      Credentials credentials = configured.get().get();
+      Session s = login(credentials);
       items.add(
           new HealthReport.Item(
               "login",
               HealthReport.Status.PASS,
-              "authenticated as " + configured.get().username() + " (" + s.mode() + ")",
+              "authenticated as " + credentials.username() + " (" + s.mode() + ")",
               ""));
     } catch (RestException | JrsUnreachableException e) {
       items.add(

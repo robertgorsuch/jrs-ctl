@@ -59,14 +59,94 @@ class RestJrsAdapterFactoryTest {
     return URI.create("http://localhost:" + wm.getPort() + "/jasperserver-pro");
   }
 
+  private static final String SERVER_INFO =
+      "{\"version\":\"10.0.0\",\"edition\":\"PRO\",\"editionName\":\"Professional\","
+          + "\"build\":\"20250601_0800\",\"features\":\"\",\"dateFormatPattern\":\"yyyy-MM-dd\","
+          + "\"datetimeFormatPattern\":\"yyyy-MM-dd'T'HH:mm:ss\"}";
+
+  private static final String SERVER_INFO_PATH = "/jasperserver-pro/rest_v2/serverInfo";
+
+  /**
+   * Field test 2, D1: doctor needed the admin password before it could even ask whether the server
+   * was up, because the factory resolved it at connect time. The password is now resolved by the
+   * first request that carries it, and serverInfo is asked for without credentials first.
+   */
+  @Test
+  void should_not_resolve_the_password_until_a_request_needs_it() {
+    wm.stubFor(
+        get(urlPathEqualTo(SERVER_INFO_PATH))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(SERVER_INFO)));
+    SecretResolver noPassword =
+        new SecretResolver(
+            Map.of(),
+            platform.files(),
+            new EncryptedSecretStore(
+                tmp.resolve("secrets.enc"),
+                new PassphraseSource.Fixed(Secret.fromString("pp")),
+                "host"));
+
+    JrsAdapter adapter =
+        new RestJrsAdapterFactory()
+            .connect(
+                TestConfigs.server(base(), Config.AuthMode.BASIC),
+                noPassword,
+                new Redactor(),
+                platform);
+
+    assertThat(adapter.identity().version()).isEqualTo("10.0.0");
+    wm.verify(getRequestedFor(urlPathEqualTo(SERVER_INFO_PATH)).withoutHeader("Authorization"));
+    assertThatThrownBy(() -> adapter.listFolder("/"))
+        .isInstanceOf(com.jaspersoft.jrsctl.core.secrets.SecretException.class)
+        .hasMessageContaining(TestConfigs.PASSWORD_ENV);
+  }
+
+  @Test
+  void should_retry_server_info_with_the_credentials_when_the_server_wants_a_login() {
+    wm.stubFor(
+        get(urlPathEqualTo(SERVER_INFO_PATH))
+            .atPriority(5)
+            .willReturn(aResponse().withStatus(401).withBody("<html>Unauthorized</html>")));
+    wm.stubFor(
+        get(urlPathEqualTo(SERVER_INFO_PATH))
+            .withHeader("Authorization", containing("Basic "))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(SERVER_INFO)));
+
+    JrsAdapter adapter =
+        new RestJrsAdapterFactory()
+            .connect(
+                TestConfigs.server(base(), Config.AuthMode.BASIC),
+                resolver(),
+                new Redactor(),
+                platform);
+
+    assertThat(adapter.identity().version()).isEqualTo("10.0.0");
+    wm.verify(2, getRequestedFor(urlPathEqualTo(SERVER_INFO_PATH)));
+    wm.verify(
+        1,
+        getRequestedFor(urlPathEqualTo(SERVER_INFO_PATH))
+            .withHeader("Authorization", containing("Basic ")));
+  }
+
   @Test
   void should_be_discoverable_when_loaded_through_service_loader() {
     assertThat(JrsAdapterFactory.load()).isInstanceOf(RestJrsAdapterFactory.class);
   }
 
   @Test
-  void should_not_touch_server_and_register_secret_when_connecting() {
+  void should_not_touch_the_server_when_connecting_and_register_the_secret_on_first_use() {
     Redactor redactor = new Redactor();
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
+            .willReturn(aResponse().withStatus(204)));
 
     JrsAdapter adapter =
         new RestJrsAdapterFactory()
@@ -75,17 +155,23 @@ class RestJrsAdapterFactoryTest {
 
     assertThat(adapter).isInstanceOf(RestJrsAdapter.class);
     wm.verify(0, anyRequestedFor(anyUrl()));
+    // field test 2, D1: the secret is resolved by the first request that carries it, not before
+    assertThat(redactor.redact("saw " + PASSWORD)).contains(PASSWORD);
+    adapter.listFolder("/");
     assertThat(redactor.redact("saw " + PASSWORD)).doesNotContain(PASSWORD).contains(Redactor.MASK);
   }
 
   @Test
-  void should_send_basic_auth_on_first_use_when_mode_is_basic() {
+  void should_send_basic_auth_on_the_first_authenticated_request_when_mode_is_basic() {
     wm.stubFor(
-        get(urlPathEqualTo("/jasperserver-pro/rest_v2/serverInfo"))
+        get(urlPathEqualTo(SERVER_INFO_PATH))
             .willReturn(
                 aResponse()
                     .withStatus(200)
                     .withBody("{\"version\":\"8.2.0\",\"edition\":\"PRO\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
+            .willReturn(aResponse().withStatus(204)));
     JrsAdapter adapter =
         new RestJrsAdapterFactory()
             .connect(
@@ -95,8 +181,10 @@ class RestJrsAdapterFactoryTest {
                 platform);
 
     assertThat(adapter.identity().version()).isEqualTo("8.2.0");
+    assertThat(adapter.listFolder("/")).isEmpty();
+    wm.verify(getRequestedFor(urlPathEqualTo(SERVER_INFO_PATH)).withoutHeader("Authorization"));
     wm.verify(
-        getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/serverInfo"))
+        getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
             .withHeader("Authorization", containing("Basic ")));
   }
 

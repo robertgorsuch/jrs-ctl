@@ -68,7 +68,9 @@ public final class DoctorOperation {
 
     ServerProbe probe = ServerProbe.connect(services);
     items.add(probe.item());
-    items.add(guard("auth", s -> probe.dependent("auth", c -> ServerChecks.auth(s, c))));
+    // field test 2, D1: the two items that log in are skipped, saying so, when no password is at
+    // hand without a prompt; everything else that needs only the server's identity still runs
+    items.add(guard("auth", s -> probe.authenticated("auth", c -> ServerChecks.auth(s, c))));
     items.add(guard("identity", s -> probe.dependent("identity", ServerChecks::identity)));
     items.add(
         guard(
@@ -80,7 +82,7 @@ public final class DoctorOperation {
     items.add(
         guard(
             "capabilities",
-            s -> probe.dependent("capabilities", c -> ServerChecks.capabilities(s, c))));
+            s -> probe.authenticated("capabilities", c -> ServerChecks.capabilities(s, c))));
 
     // #68: a jrsctl that reaches the server over REST only has no installation to check
     boolean local = services.config().server().namesLocalInstallation();
@@ -98,7 +100,9 @@ public final class DoctorOperation {
     items.add(guard("disk", LocalChecks::disk));
     items.add(
         local
-            ? guard("keystore", s -> probe.dependent("keystore", c -> ServerChecks.keystore(s, c)))
+            // the keystore check asks the server for its capabilities, which logs in
+            ? guard(
+                "keystore", s -> probe.authenticated("keystore", c -> ServerChecks.keystore(s, c)))
             : remote("keystore"));
     items.add(local ? guard("vendor", LocalChecks::vendor) : remote("vendor"));
     items.add(

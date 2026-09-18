@@ -66,9 +66,13 @@ public final class FakeServices implements AutoCloseable {
     return this;
   }
 
+  /**
+   * Where the store's passphrase comes from; tests swap in a console-only source to model a prompt.
+   */
+  public PassphraseSource passphrase = new PassphraseSource.Fixed(Secret.fromString(PASSPHRASE));
+
   public EncryptedSecretStore secretStore() {
-    return new EncryptedSecretStore(
-        home.secretsFile(), new PassphraseSource.Fixed(Secret.fromString(PASSPHRASE)));
+    return new EncryptedSecretStore(home.secretsFile(), passphrase);
   }
 
   public Services build() {

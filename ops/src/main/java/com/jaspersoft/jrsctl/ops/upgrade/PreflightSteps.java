@@ -59,6 +59,9 @@ final class PreflightSteps {
   /** Doctor items that, inside a run, report the run's own pending row and lock. */
   static final Set<String> SELF_REFERENTIAL = Set.of("runs", "lock");
 
+  /** Doctor items an upgrade needs as PASS, not SKIP: the vendor run and the export log in. */
+  static final Set<String> REQUIRED_PASS = Set.of("auth");
+
   private PreflightSteps() {}
 
   /** Read-only step skeleton: nothing to compensate. */
@@ -119,6 +122,17 @@ final class PreflightSteps {
             "doctor could not run: " + Failures.describe(e), "run jrsctl doctor and fix it first");
       }
       last = Optional.of(report);
+      // doctor itself runs without the admin password (field test 2, D1); an upgrade cannot, so a
+      // login the doctor skipped is a failure here
+      for (ReportItem item : report.items()) {
+        if (REQUIRED_PASS.contains(item.name()) && item.status() == ReportItem.Status.SKIP) {
+          return CheckResult.fail(
+              "doctor could not log in: " + item.detail(),
+              item.remediation().isEmpty()
+                  ? "make the admin password available and run jrsctl doctor"
+                  : item.remediation());
+        }
+      }
       List<String> failing = new ArrayList<>();
       for (ReportItem item : report.items()) {
         if (item.status() == ReportItem.Status.FAIL

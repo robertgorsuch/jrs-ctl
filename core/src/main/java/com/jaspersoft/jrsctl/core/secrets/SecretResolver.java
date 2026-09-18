@@ -35,6 +35,23 @@ public final class SecretResolver {
     };
   }
 
+  /**
+   * True when {@link #resolve} would not prompt for anything: the variable is set, the file exists
+   * (its permissions are judged by {@code resolve}), or the store's passphrase is at hand. A caller
+   * that must stay silent (field test 2, D1: {@code doctor}) asks this first.
+   */
+  public boolean availableWithoutPrompt(SecretRef ref) {
+    Objects.requireNonNull(ref, "ref");
+    return switch (ref) {
+      case SecretRef.Env e -> {
+        String v = env.get(e.name());
+        yield v != null && !v.isEmpty();
+      }
+      case SecretRef.File f -> Files.isRegularFile(f.path());
+      case SecretRef.Enc c -> store.canUnlockWithoutPrompt();
+    };
+  }
+
   private Secret fromEnv(SecretRef.Env ref) {
     String value = env.get(ref.name());
     if (value == null || value.isEmpty()) {

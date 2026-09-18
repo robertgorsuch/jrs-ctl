@@ -30,6 +30,30 @@ class SecretResolverTest {
     return new SecretResolver(env, fileOps, store);
   }
 
+  /** Field test 2, D1: a check that must not prompt asks this first. */
+  @Test
+  void should_say_whether_a_reference_resolves_without_a_prompt() throws IOException {
+    Path present = Files.writeString(tmp.resolve("s"), "x", StandardCharsets.UTF_8);
+    SecretResolver withEnv = resolver(Map.of("JRS_PASSWORD", "hunter2"));
+    SecretResolver withoutEnv = resolver(Map.of());
+    EncryptedSecretStore consoleOnly =
+        new EncryptedSecretStore(
+            tmp.resolve("secrets.enc"), new PassphraseSource.FromConsole(), "host");
+    SecretResolver promptingStore = new SecretResolver(Map.of(), fileOps, consoleOnly);
+
+    assertThat(withEnv.availableWithoutPrompt(SecretRef.parse("env:JRS_PASSWORD"))).isTrue();
+    assertThat(withoutEnv.availableWithoutPrompt(SecretRef.parse("env:JRS_PASSWORD"))).isFalse();
+    assertThat(withoutEnv.availableWithoutPrompt(new SecretRef.File(present))).isTrue();
+    assertThat(withoutEnv.availableWithoutPrompt(new SecretRef.File(tmp.resolve("gone"))))
+        .isFalse();
+    assertThat(withoutEnv.availableWithoutPrompt(SecretRef.parse("enc:JRS_PASSWORD")))
+        .as("a fixed passphrase unlocks the store without a prompt")
+        .isTrue();
+    assertThat(promptingStore.availableWithoutPrompt(SecretRef.parse("enc:JRS_PASSWORD")))
+        .as("a console-only passphrase source would prompt")
+        .isFalse();
+  }
+
   @Test
   void should_read_environment_when_ref_is_env() {
     try (Secret s =
