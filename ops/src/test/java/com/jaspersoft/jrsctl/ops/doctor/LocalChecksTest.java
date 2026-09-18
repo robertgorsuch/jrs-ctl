@@ -56,6 +56,24 @@ class LocalChecksTest {
     }
   }
 
+  /**
+   * Field test 2, U3: the disk item measured the installation's volume only, so a nearly full /home
+   * holding the jrsctl home passed. Both volumes are judged and named.
+   */
+  @Test
+  void should_measure_the_home_volume_as_well_as_the_installation() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-full"))) {
+      fake.platform.freeSpace = 100L * LocalChecks.GIB;
+      fake.platform.freeSpaceUnder.put(fake.home.root(), LocalChecks.DISK_FAIL_BYTES / 2);
+
+      ReportItem item = LocalChecks.disk(fake.build());
+
+      assertThat(item.status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(item.detail()).contains(fake.home.root().toString()).contains("backups and state");
+      assertThat(item.remediation()).contains("--home").contains("JRSCTL_HOME");
+    }
+  }
+
   @Test
   void should_skip_the_permission_and_vendor_checks_without_a_layout() throws Exception {
     try (FakeServices fake = FakeServices.in(tmp.resolve("nolayout"))) {

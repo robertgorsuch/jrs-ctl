@@ -18,7 +18,10 @@ public final class GlobalOptions {
   @Option(
       names = "--home",
       paramLabel = "<dir>",
-      description = "jrsctl home directory (default: $JRSCTL_HOME or the platform default).")
+      description =
+          "jrsctl home directory: backups, snapshots, state and logs live here (default:"
+              + " $JRSCTL_HOME, else /var/lib/jrsctl or %%ProgramData%%\\jrsctl, else ~/.jrsctl"
+              + " when that does not exist). Put it on a volume with room for a full backup.")
   Path home;
 
   @Option(

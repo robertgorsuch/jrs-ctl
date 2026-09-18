@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, backup space)
+
+- §5.6, §10.2, §12.0, §12.1: `verify-target-package` refuses an upgrade whose backups will not fit under the jrsctl home (the trees to archive, an export estimate of the larger of 1 GB and the webapp tree, 512 MB headroom, plus the margin), naming the need, what is free and `--home`/`JRSCTL_HOME`; `full-export` re-checks its own need; the upgrade plan names the backup location and its free space; `init` prints the home and its free space; `doctor`'s `disk` item measures the home's volume as well as the installation's and names both; the `--home` help names the defaults and what lives there. Upgrade sets were already pruned with their run; the operator guide said otherwise (field test 2, U3).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, export of a missing folder)
 
 - §9.3, §9.4, §7.3: `JrsAdapter.resourceExists(uri)`; export planning refuses a `--uri` that does not exist on the server (exit 2) instead of producing an archive holding only `resources/`; both export steps' postchecks refuse an archive with entries and no `index.xml`; a failed export task's `errorDescriptor` is surfaced when `message` is empty. The pre-import snapshot covers only the sidecar's folders that exist on this server, names the ones that do not in the warnings, and is left out, with the restore step, when none exists yet (field test 2, E3).

@@ -294,30 +294,59 @@ final class LocalChecks {
     return ReportItem.pass("permissions", targets.size() + " target dirs writable");
   }
 
+  /**
+   * Field test 2, U3: the jrsctl home holds every backup and the state, and it need not share a
+   * volume with the installation (the tester's 800 MB /home held it), so both are measured and the
+   * smaller decides.
+   */
   static ReportItem disk(Services s) {
-    Path probe = s.config().server().installDir().orElse(s.home().root());
-    long free;
+    Path home = s.home().root();
+    Optional<Path> install =
+        s.config().server().installDir().filter(Files::exists).filter(p -> !p.equals(home));
+    long homeFree;
     try {
-      free = s.platform().files().freeSpaceBytes(Files.exists(probe) ? probe : s.home().root());
+      homeFree = s.platform().files().freeSpaceBytes(home);
     } catch (IOException e) {
       return ReportItem.fail(
-          "disk", "cannot read free space of " + probe + ": " + e.getMessage(), "check the path");
+          "disk", "cannot read free space of " + home + ": " + e.getMessage(), "check the path");
     }
-    String snapshots;
+    long least = homeFree;
+    StringBuilder detail =
+        new StringBuilder(human(homeFree) + " free under " + home + " (backups and state)");
+    if (install.isPresent()) {
+      try {
+        long installFree = s.platform().files().freeSpaceBytes(install.get());
+        least = Math.min(least, installFree);
+        detail
+            .append(", ")
+            .append(human(installFree))
+            .append(" free under ")
+            .append(install.get())
+            .append(" (installation)");
+      } catch (IOException e) {
+        detail.append(", free space under ").append(install.get()).append(" unknown");
+      }
+    }
     try {
-      snapshots = ", snapshots use " + human(snapshotStore(s).totalBytes());
+      detail.append("; snapshots use ").append(human(snapshotStore(s).totalBytes()));
     } catch (IOException | RuntimeException e) {
-      snapshots = ", snapshot size unknown";
+      detail.append("; snapshot size unknown");
     }
-    String detail = human(free) + " free on " + probe + snapshots;
-    if (free < DISK_FAIL_BYTES) {
+    if (least < DISK_FAIL_BYTES) {
       return ReportItem.fail(
-          "disk", detail, "free at least 1 GB (5 GB recommended) or prune snapshots");
+          "disk",
+          detail.toString(),
+          "free at least 1 GB (5 GB recommended) on that volume, prune snapshots with jrsctl runs"
+              + " prune, or move the jrsctl home with --home or JRSCTL_HOME");
     }
-    if (free < DISK_WARN_BYTES) {
-      return ReportItem.warn("disk", detail, "5 GB recommended for backups and staging");
+    if (least < DISK_WARN_BYTES) {
+      return ReportItem.warn(
+          "disk",
+          detail.toString(),
+          "5 GB recommended for backups and staging; the jrsctl home can be moved with --home or"
+              + " JRSCTL_HOME");
     }
-    return ReportItem.pass("disk", detail);
+    return ReportItem.pass("disk", detail.toString());
   }
 
   /**

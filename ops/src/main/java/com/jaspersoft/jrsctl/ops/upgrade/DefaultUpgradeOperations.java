@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
@@ -123,6 +124,24 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     this.rt = Objects.requireNonNull(rt, "rt");
   }
 
+  /**
+   * Where the run's backups and export land and how to move them (field test 2, U3: the tester
+   * could not find either), with the volume's free space now.
+   */
+  private String backupsLine() {
+    String free;
+    try {
+      free = DiskSpace.human(rt.files().freeSpaceBytes(rt.home().snapshots()));
+    } catch (IOException e) {
+      free = "an unknown amount";
+    }
+    return "backups and the full export go under "
+        + rt.home().snapshots()
+        + " ("
+        + free
+        + " free); to put them on another volume run with --home <dir> or JRSCTL_HOME";
+  }
+
   @Override
   public Plan planUpgrade(UpgradeOptions options) {
     Objects.requireNonNull(options, "options");
@@ -189,6 +208,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           "make installType and the audit.* keys in the target buildomatic's"
               + " default_master.properties match the installed ones, or remove them there");
     }
+    warnings.add(backupsLine());
     if (options.tomcatDir().isPresent()) {
       // review §2.1, ADR-0026: a service registered for the old Tomcat would start the old
       // server after the vendor run; only an operator-started Tomcat can be switched in one run

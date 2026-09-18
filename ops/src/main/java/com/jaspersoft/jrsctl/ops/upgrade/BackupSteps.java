@@ -34,6 +34,11 @@ import java.util.Set;
  */
 final class BackupSteps {
 
+  /** A full export's size is unknown before it is taken: the larger of 1 GB and the webapp tree. */
+  static long exportEstimate(long webappTreeBytes) {
+    return Math.max(1L << 30, webappTreeBytes);
+  }
+
   static final String FULL_EXPORT = "full-export";
   static final String BACKUP_KEYSTORE = "backup-keystore";
   static final String BACKUP_WEBAPP = "backup-webapp";
@@ -145,6 +150,36 @@ final class BackupSteps {
         return CheckResult.fail(
             "vendor.javaHome is not set; js-export needs a JDK",
             "set vendor.javaHome in config.yaml");
+      }
+      // field test 2, U3: the export is the largest file of the run and had no space check
+      long trees;
+      try {
+        trees = DiskSpace.treeBytes(in.webappDir());
+      } catch (IOException e) {
+        trees = 0;
+      }
+      long estimate = exportEstimate(trees);
+      Path under = rt.home().snapshots();
+      List<String> problems =
+          DiskSpace.problems(
+              rt.files(), List.of(new DiskSpace.Need("full export (estimate)", under, estimate)));
+      if (!problems.isEmpty()) {
+        String free;
+        try {
+          free = DiskSpace.human(rt.files().freeSpaceBytes(rt.home().snapshots()));
+        } catch (IOException e) {
+          free = "an unknown amount";
+        }
+        return CheckResult.fail(
+            "the full export needs about "
+                + DiskSpace.human(estimate)
+                + " free under "
+                + rt.home().snapshots()
+                + "; "
+                + free
+                + " is free",
+            "free space there, prune old runs with jrsctl runs prune, or run with --home <dir> or"
+                + " JRSCTL_HOME pointing at a directory on a larger volume");
       }
       return CheckResult.pass();
     }

@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
@@ -194,6 +195,7 @@ final class InitCommand implements Callable<Integer> {
       try {
         Path written = op.write(config, target, force);
         out.println("wrote " + written);
+        out.println(homeLine(boot));
         out.flush();
         return ExitCodes.SUCCESS;
       } catch (FileAlreadyExistsException e) {
@@ -287,6 +289,7 @@ final class InitCommand implements Callable<Integer> {
         return alreadyExists(out, err, e);
       }
       out.println("wrote " + written);
+      out.println(homeLine(boot));
       if (store.isPresent()) {
         out.println(
             "stored "
@@ -387,6 +390,25 @@ final class InitCommand implements Callable<Integer> {
   private static void clear(Map<String, char[]> passwords) {
     passwords.values().forEach(c -> Arrays.fill(c, '\0'));
     passwords.clear();
+  }
+
+  /**
+   * Where backups and state live and how to move them (field test 2, U3: the tester's /home held
+   * 800 MB and nothing had said the jrsctl home was there).
+   */
+  private static String homeLine(Bootstrap boot) {
+    java.nio.file.Path root = boot.services().home().root();
+    String free;
+    try {
+      free = DiskSpace.human(boot.services().platform().files().freeSpaceBytes(root));
+    } catch (IOException e) {
+      free = "an unknown amount";
+    }
+    return "jrsctl home: "
+        + root
+        + " ("
+        + free
+        + " free; backups and state live here; move it with --home or JRSCTL_HOME)";
   }
 
   private int alreadyExists(PrintWriter out, PrintWriter err, FileAlreadyExistsException e) {

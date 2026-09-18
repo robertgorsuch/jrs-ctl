@@ -35,7 +35,8 @@ import picocli.CommandLine.Spec;
     description =
         "Upgrade JasperReports Server with the vendor scripts of a target package: doctor, full"
             + " backup (rollback point B), vendor upgrade, hotfix and customization reconcile,"
-            + " smoke test.",
+            + " smoke test. Backups and the full export go under the jrsctl home (--home,"
+            + " JRSCTL_HOME); the plan says how much room they need.",
     subcommands = {UpgradeCommand.Rollback.class})
 final class UpgradeCommand implements Callable<Integer> {
 

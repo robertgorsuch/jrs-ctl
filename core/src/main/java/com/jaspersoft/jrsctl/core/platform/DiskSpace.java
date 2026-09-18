@@ -73,6 +73,19 @@ public final class DiskSpace {
     return List.copyOf(problems);
   }
 
+  /** {@code 1.5 GB}, {@code 800.0 MB} or {@code 12 B}, for messages an operator reads. */
+  public static String human(long bytes) {
+    long gib = 1L << 30;
+    long mib = 1L << 20;
+    if (bytes >= gib) {
+      return String.format(java.util.Locale.ROOT, "%.1f GB", bytes / (double) gib);
+    }
+    if (bytes >= mib) {
+      return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (double) mib);
+    }
+    return bytes + " B";
+  }
+
   /** Bytes in the regular files under {@code root}; a file is its own size, a missing path is 0. */
   public static long treeBytes(Path root) throws IOException {
     if (Files.isRegularFile(root)) {
