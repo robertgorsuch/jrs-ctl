@@ -138,7 +138,7 @@ Detects the JasperReports Server installation (Tomcat layout, the Windows servic
 
 ### `jrsctl doctor [--allow-unsupported] [--json]`
 
-Read-only health report, the check to run before every change: tool, configuration, secrets, server reachability and identity, authentication, compatibility matrix, service controller, service manager, installation layout, keystore, database, vendor Java. Items are sorted FAIL, WARN, PASS, SKIP and every non-PASS item carries a remediation (`-> ...`).
+Read-only health report, the check to run before every change: tool, configuration, secrets, server reachability and identity, authentication, compatibility matrix, service controller, service manager, installation layout, keystore, database, vendor Java. Items are sorted FAIL, WARN, PASS, SKIP and every non-PASS item carries a remediation (`-> ...`). The problems come first, a `----` rule separates them from the items that passed or were skipped, and the closing line names them: `1 fail (server), 0 warn, 21 pass, 2 skip`, in red when anything failed, yellow when only warnings remain, green otherwise. So the last line of a long report on a short terminal still says what to fix.
 
 When the configuration names no installation (`jrsctl init --remote`, #68), the `layout`, `service`, `service-manager`, `permissions`, `keystore`, `vendor` and `vendor-java` items are SKIP with *no local installation configured*, instead of failing.
 

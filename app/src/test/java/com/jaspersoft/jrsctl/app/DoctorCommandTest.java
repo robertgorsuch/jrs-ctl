@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -151,8 +152,40 @@ class DoctorCommandTest {
         .contains("x FAIL")
         .contains("compat")
         .contains("-> use a supported")
-        .containsPattern("\\d+ pass \\d+ warn \\d+ fail \\d+ skip");
+        .containsPattern(
+            "\\d+ fail \\(compat[^)]*\\), \\d+ warn(?: \\([^)]*\\))?, \\d+ pass, \\d+ skip");
     assertThat(text.code()).isEqualTo(json.code());
+  }
+
+  /**
+   * Field test 2, D2: the failure was one line followed by many green ones. The problems come
+   * first, a rule separates them from the rest, and the summary line names them.
+   */
+  @Test
+  void should_print_the_problems_then_a_rule_then_the_rest() throws Exception {
+    Path install = InitCommandTest.fakeLayout(tmp.resolve("jrs"));
+    Path home = home(install);
+    TestAdapterFactory.adapter.version = "6.4.0"; // compat FAILs, the rest passes or skips
+
+    InitCommandTest.Run text =
+        InitCommandTest.run(
+            "doctor",
+            "--no-color",
+            "--ascii",
+            "--home",
+            home.toString(),
+            "--passphrase-file",
+            tmp.resolve("pp.txt").toString());
+
+    List<String> lines = text.out().lines().toList();
+    int rule = lines.indexOf("----");
+    assertThat(rule).as(text.out()).isGreaterThan(0);
+    assertThat(lines.subList(0, rule))
+        .allMatch(l -> l.startsWith("x FAIL") || l.startsWith("! WARN") || l.startsWith("  "));
+    assertThat(lines.subList(0, rule)).anyMatch(l -> l.startsWith("x FAIL  compat"));
+    assertThat(lines.subList(rule + 1, lines.size() - 1))
+        .allMatch(l -> l.startsWith("+ PASS") || l.startsWith("- SKIP") || l.startsWith("  "));
+    assertThat(lines.get(lines.size() - 1)).startsWith("1 fail (compat)");
   }
 
   @Test

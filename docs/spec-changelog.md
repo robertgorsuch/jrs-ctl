@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, report rendering)
+
+- §12: text reports (`doctor`, `smoke`, `hotfix verify`) print the FAIL and WARN items, a `----` rule, then the rest, and close with a line that names the problems, `1 fail (server), 0 warn, 21 pass, 2 skip`, coloured by the worst status; a problem's remediation is never dimmed, only a SKIP's (field test 2, D2: a failure was one line followed by many green ones).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, doctor without a password)
 
 - §12.1, §7.5: `doctor` never needs the admin password and never prompts. The REST adapter resolves `server.auth.passwordRef` on the first request that carries it instead of at connect time, and asks `serverInfo` without a credential first, so reachability, identity, compat, keystore, vendor-java and tomcat run whenever the server answers; `auth`, `capabilities` and `keystore` are SKIP with "no admin password available" and `database` is SKIP until its password is supplied, and a remediation naming the reference when the password is not at hand without a prompt; `secrets` reports a reference that is not supplied yet as WARN, a wrong one as FAIL. The store's passphrase is never asked for by `doctor` (`PassphraseSource.availableWithoutPrompt`, `SecretResolver.availableWithoutPrompt`). An upgrade's doctor precheck treats a skipped `auth` as a failure (field test 2, D1).
