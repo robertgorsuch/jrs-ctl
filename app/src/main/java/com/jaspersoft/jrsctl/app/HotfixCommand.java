@@ -42,8 +42,9 @@ import picocli.CommandLine.Spec;
     description = "Verify, apply, roll back and list hotfixes.",
     footerHeading = "%n",
     footer =
-        "Hotfixes from Actian Jaspersoft need no key setup. Writing your own hotfix bundles:"
-            + " jrsctl docs hotfix-authoring",
+        "Hotfixes from Jaspersoft support apply as downloaded: jrsctl hotfix apply <package.zip>"
+            + " (it asks you to confirm the checksum shown on the support portal). Bundles you"
+            + " author yourself: jrsctl docs hotfix-authoring (for bundle authors only).",
     subcommands = {
       HotfixCommand.Build.class,
       HotfixCommand.Verify.class,
@@ -426,7 +427,9 @@ final class HotfixCommand implements Runnable {
           return ExitCodes.SUCCESS;
         }
         if (hotfixes.isEmpty()) {
-          out.println("no hotfixes recorded");
+          out.println(
+              "no hotfixes recorded: jrsctl lists the hotfixes it applied itself; one applied by"
+                  + " hand, or before jrsctl was set up, is not shown");
           out.flush();
           return ExitCodes.SUCCESS;
         }
