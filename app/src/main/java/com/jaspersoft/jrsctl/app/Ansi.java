@@ -109,4 +109,18 @@ final class Ansi {
   String dim(String text) {
     return enabled ? DIM + text + RESET : text;
   }
+
+  /** The report's closing line, in the colour of its worst status; plain when colour is off. */
+  String summary(String text, ReportItem.Status worst) {
+    if (!enabled) {
+      return text;
+    }
+    String colour =
+        switch (worst) {
+          case FAIL -> RED;
+          case WARN -> YELLOW;
+          case PASS, SKIP -> GREEN;
+        };
+    return colour + text + RESET;
+  }
 }

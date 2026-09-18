@@ -53,4 +53,34 @@ public record Report(List<ReportItem> items, Counts counts) {
   public boolean ok() {
     return counts.fail() == 0;
   }
+
+  /**
+   * The closing line of a text report, problems first and by name: {@code "1 fail (server), 1 warn
+   * (disk), 21 pass, 2 skip"} (field test 2, D2). The names are in report order, so a reader who
+   * sees only this line knows what to fix.
+   */
+  public String summary() {
+    return counts.fail()
+        + " fail"
+        + names(ReportItem.Status.FAIL)
+        + ", "
+        + counts.warn()
+        + " warn"
+        + names(ReportItem.Status.WARN)
+        + ", "
+        + counts.pass()
+        + " pass, "
+        + counts.skip()
+        + " skip";
+  }
+
+  private String names(ReportItem.Status status) {
+    List<String> names = new ArrayList<>();
+    for (ReportItem item : items) {
+      if (item.status() == status) {
+        names.add(item.name());
+      }
+    }
+    return names.isEmpty() ? "" : " (" + String.join(", ", names) + ")";
+  }
 }

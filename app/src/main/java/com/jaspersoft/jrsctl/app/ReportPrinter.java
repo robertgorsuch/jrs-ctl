@@ -7,32 +7,47 @@ import java.io.PrintWriter;
 import java.util.List;
 
 /**
- * Text rendering shared by {@code doctor} and {@code smoke}: one aligned row per item ({@code
- * status name detail}), the remediation indented under every non-PASS item, then the {@code N pass
- * M warn K fail J skip} summary. Invariant: every line passes through the redactor before it is
- * written.
+ * Text rendering shared by {@code doctor}, {@code smoke} and {@code hotfix verify}: one aligned row
+ * per item ({@code status name detail}), the remediation indented under every non-PASS item, the
+ * problems (FAIL, WARN) before a rule and everything else after it, then the summary line naming
+ * the problems (field test 2, D2: a failure used to be one line followed by many green ones).
+ * Invariants: every line passes through the redactor before it is written; the remediation of a
+ * problem is never dimmed, only a SKIP's; the summary is coloured by the worst status.
  */
 final class ReportPrinter {
 
+  static final String RULE = "----";
   private static final String INDENT = "        -> ";
 
   private ReportPrinter() {}
 
   static void print(
       PrintWriter out, List<ReportItem> items, Report.Counts counts, Ansi ansi, Redactor redactor) {
+    Report report = new Report(items, counts);
     TextTable table = new TextTable();
     for (ReportItem item : items) {
       table.row(ansi.status(item.status()), item.name(), item.detail());
     }
     List<String> lines = table.lines();
+    int problems = counts.fail() + counts.warn();
     for (int i = 0; i < items.size(); i++) {
-      out.println(redactor.redact(lines.get(i)));
       ReportItem item = items.get(i);
+      if (i == problems && problems > 0) {
+        out.println(RULE);
+      }
+      out.println(redactor.redact(lines.get(i)));
       if (item.status() != ReportItem.Status.PASS && !item.remediation().isEmpty()) {
-        out.println(redactor.redact(ansi.dim(INDENT + item.remediation())));
+        String remediation = INDENT + item.remediation();
+        out.println(
+            redactor.redact(
+                item.status() == ReportItem.Status.SKIP ? ansi.dim(remediation) : remediation));
       }
     }
-    out.println(redactor.redact(counts.summary()));
+    ReportItem.Status worst =
+        counts.fail() > 0
+            ? ReportItem.Status.FAIL
+            : counts.warn() > 0 ? ReportItem.Status.WARN : ReportItem.Status.PASS;
+    out.println(redactor.redact(ansi.summary(report.summary(), worst)));
     out.flush();
   }
 }
