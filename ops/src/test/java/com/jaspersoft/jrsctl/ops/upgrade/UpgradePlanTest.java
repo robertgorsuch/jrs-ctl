@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.ops.ReportItem;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.nio.file.Files;
@@ -42,6 +46,8 @@ class UpgradePlanTest {
               "stop-service",
               "full-export",
               "run-vendor-upgrade",
+              "clear-tomcat-caches",
+              "clear-repository-cache",
               "start-service",
               "wait-for-server",
               "plan-hotfix-reapply",
@@ -69,6 +75,9 @@ class UpgradePlanTest {
           .containsKeys("server", "package", "config", "to", "mode");
       assertThat(plan.steps()).allSatisfy(s -> assertThat(s.title()).isNotBlank());
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").irreversible()).isFalse();
+      // upgrade guide 10.1 pp.34-36 "Additional tasks": caches regenerate, nothing to put back
+      assertThat(UpgradeFixture.step(plan, "clear-tomcat-caches").irreversible()).isTrue();
+      assertThat(UpgradeFixture.step(plan, "clear-repository-cache").irreversible()).isTrue();
       for (Step s : plan.byPhase().get("preflight")) {
         assertThat(s.mutating()).as(s.id()).isFalse();
       }
@@ -97,6 +106,12 @@ class UpgradePlanTest {
               "backup-keystore");
       assertThat(UpgradeFixture.ids(plan))
           .containsSubsequence("write-master-properties", "stage-keystore-init", "stop-service");
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "run-vendor-upgrade",
+              "clear-tomcat-caches",
+              "clear-repository-cache",
+              "start-service");
       assertThat(plan.summary().warnings())
           .contains(
               "Rollback restores files only. Restore the database from your own backup before"
@@ -174,7 +189,8 @@ class UpgradePlanTest {
   @Test
   void should_fail_verify_target_package_precheck_when_vendor_java_mismatches() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      // platform-support 9.0.0: JDK 8, 11 and 17; 21 is not on the sheet (review §1.2)
+      f.javaVersion("openjdk version \"21.0.4\" 2024-07-16");
       Plan plan = f.ops().planUpgrade(newdb(f));
 
       CheckResult result =
@@ -182,9 +198,154 @@ class UpgradePlanTest {
 
       assertThat(result).isInstanceOf(CheckResult.Fail.class);
       assertThat(((CheckResult.Fail) result).message())
-          .contains("Java 11")
-          .contains("needs Java 17");
+          .contains("Java 21")
+          .contains("needs Java 8, 11 or 17");
     }
+  }
+
+  @Test
+  void should_pass_verify_target_package_precheck_when_java_is_any_allowed_major()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  /** Upgrade guide 10.0 pp.11-12: 8.x reaches 10.0 as newdb only (review §1.3). */
+  @Test
+  void should_refuse_with_exit_6_when_the_mode_is_not_offered_for_the_path() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(
+              () ->
+                  f.ops()
+                      .planUpgrade(
+                          new UpgradeOptions("10.0.0", f.packageDir, Mode.SAMEDB, true, false)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("8.2.0 -> 10.0.0")
+          .hasMessageContaining("samedb")
+          .hasMessageContaining("newdb")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(6));
+    }
+  }
+
+  /**
+   * Review §2.1: 10.0 moved to Jakarta EE; the Tomcat that will host the target must be one the
+   * platform sheet certifies for it. The fixture's target is 9.0.0, certified for Tomcat 8.5 and 9.
+   */
+  @Test
+  void should_fail_verify_target_package_precheck_when_the_tomcat_is_not_certified_for_the_target()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.tomcatVersion(f.tomcatDir, "10.1.24");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("Tomcat 10.1.24")
+          .contains("not certified for JasperReports Server 9.0.0");
+      assertThat(((CheckResult.Fail) result).remediation()).contains("--tomcat-dir");
+    }
+  }
+
+  @Test
+  void should_pass_verify_target_package_precheck_when_the_tomcat_is_certified() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.tomcatVersion(f.tomcatDir, "9.0.85");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("Tomcat version"));
+    }
+  }
+
+  @Test
+  void should_warn_when_the_tomcat_version_cannot_be_read() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("Tomcat version") && w.contains("could not be read"));
+    }
+  }
+
+  /** ADR-0026: a registered service would start the old Tomcat after the vendor run. */
+  @Test
+  void should_refuse_tomcat_dir_with_exit_2_unless_the_service_is_manual() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(() -> f.ops().planUpgrade(withNewTomcat(f)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("service.kind manual")
+          .hasMessageContaining("systemd")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(2));
+    }
+  }
+
+  @Test
+  void should_copy_the_webapp_and_point_buildomatic_at_the_new_tomcat_when_tomcat_dir_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(withNewTomcat(f));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "stop-service", "full-export", "copy-webapp-to-tomcat", "run-vendor-upgrade");
+      assertThat(UpgradeFixture.step(plan, "copy-webapp-to-tomcat").detail())
+          .contains(f.newTomcatDir.toString());
+      assertThat(UpgradeFixture.step(plan, "clear-tomcat-caches").detail())
+          .contains(f.newTomcatDir.toString());
+      assertThat(UpgradeFixture.step(plan, "point-config-at-target").detail())
+          .contains("server.tomcatDir -> " + f.newTomcatDir);
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.TOMCAT_DIR_WARNING.formatted(f.newTomcatDir));
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  static UpgradeOptions withNewTomcat(UpgradeFixture f) {
+    return new UpgradeOptions(
+        UpgradeFixture.NEW_VERSION,
+        f.packageDir,
+        Mode.NEWDB,
+        true,
+        false,
+        java.util.Optional.of(f.newTomcatDir));
+  }
+
+  /** Review §1.2: doctor judges the vendor JDK against the set the platform sheet lists. */
+  @Test
+  void should_judge_doctor_vendor_java_against_every_allowed_major() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      // the fixture's server is 8.2.0, whose sheet lists JDK 8 and 11; the fixture's JDK is 17
+      ReportItem seventeen = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
+      assertThat(seventeen.status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(seventeen.detail()).contains("Java 17").contains("needs Java 8 or 11");
+
+      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      ReportItem eleven = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
+      assertThat(eleven.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(eleven.detail()).contains("Java 11").contains("one of Java 8 or 11");
+    }
+  }
+
+  private static ReportItem vendorJava(DoctorReport report) {
+    return report.items().stream()
+        .filter(i -> i.name().equals("vendor-java"))
+        .findFirst()
+        .orElseThrow();
   }
 
   @Test

@@ -142,6 +142,29 @@ class PlanRegistryTest {
   }
 
   @Test
+  void should_round_trip_the_new_tomcat_of_an_upgrade() throws IOException {
+    UpgradeOperations.UpgradeOptions options =
+        new UpgradeOperations.UpgradeOptions(
+            "10.0.0",
+            Path.of("pkg"),
+            UpgradeOperations.Mode.NEWDB,
+            true,
+            false,
+            Optional.of(Path.of("tomcat", "new")));
+
+    JsonNode args = tree(PlanRegistry.upgradeArgs(options));
+    UpgradeOperations.UpgradeOptions back = PlanRegistry.upgradeOptions(args);
+
+    assertThat(args.get("tomcatDir").asText()).endsWith("new");
+    assertThat(back.tomcatDir()).isPresent();
+    assertThat(
+            PlanRegistry.upgradeOptions(
+                    tree("{\"to\":\"10.0.0\",\"package\":\"p\",\"mode\":\"NEWDB\"}"))
+                .tomcatDir())
+        .isEmpty();
+  }
+
+  @Test
   void should_round_trip_upgrade_arguments() throws IOException {
     JsonNode rollback =
         tree(PlanRegistry.upgradeRollbackArgs("r-2026", UpgradeOperations.RollbackPoint.B));

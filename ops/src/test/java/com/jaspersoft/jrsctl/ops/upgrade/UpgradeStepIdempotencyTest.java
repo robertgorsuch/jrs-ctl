@@ -357,6 +357,89 @@ class UpgradeStepIdempotencyTest {
     return p;
   }
 
+  /**
+   * Upgrade guide 10.1 p.34: clear {@code <tomcat>/work} and {@code <tomcat>/temp} before starting.
+   */
+  @Test
+  void should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path work = f.tomcatDir.resolve("work");
+      Path temp = f.tomcatDir.resolve("temp");
+      UpgradeFixture.write(
+          work.resolve("Catalina")
+              .resolve("localhost")
+              .resolve("jasperserver-pro")
+              .resolve("x.class"),
+          "compiled");
+      UpgradeFixture.write(temp.resolve("y.tmp"), "temp");
+      assertReexecutionConverges(f, f.ops().planUpgrade(newdb(f)), "r-ctc", "clear-tomcat-caches");
+      assertThat(work).isDirectory().isEmptyDirectory();
+      assertThat(temp).isDirectory().isEmptyDirectory();
+    }
+  }
+
+  /**
+   * Upgrade guide 10.1 p.35: the repository cache is cleared with two statements; both are
+   * idempotent, so a re-execution sends them again and changes nothing.
+   */
+  @Test
+  void should_send_the_vendor_cache_sql_when_clear_repository_cache_executes_twice()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithDatabase(tmp)) {
+      assertReexecutionConverges(
+          f, f.ops().planUpgrade(newdb(f)), "r-crc", "clear-repository-cache");
+      assertThat(f.jdbc.executed)
+          .containsExactly(
+              PostUpgradeSteps.CACHE_UPDATE,
+              PostUpgradeSteps.CACHE_DELETE,
+              PostUpgradeSteps.CACHE_UPDATE,
+              PostUpgradeSteps.CACHE_DELETE);
+    }
+  }
+
+  @Test
+  void should_warn_with_the_sql_when_clear_repository_cache_has_no_database_configured()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertReexecutionConverges(
+          f, f.ops().planUpgrade(newdb(f)), "r-crc-nodb", "clear-repository-cache");
+      assertThat(f.jdbc.executed).isEmpty();
+      assertThat(f.logs()).anyMatch(m -> m.contains("JIRepositoryCache"));
+    }
+  }
+
+  @Test
+  void should_replace_the_copy_when_copy_webapp_to_tomcat_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Path copied = f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro");
+      assertReexecutionConverges(
+          f,
+          f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f)),
+          "r-cw",
+          "copy-webapp-to-tomcat");
+      assertThat(copied.resolve("WEB-INF")).isDirectory();
+      assertThat(UpgradeFixture.read(copied.resolve("version.txt")))
+          .isEqualTo(UpgradeFixture.OLD_VERSION);
+      assertThat(f.webappDir.resolve("version.txt")).exists();
+    }
+  }
+
+  @Test
+  void should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Path copied = f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro");
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      Context ctx = start(f, plan, "r-cw-c");
+      Idempotency.runUpTo(plan, ctx, "copy-webapp-to-tomcat");
+      assertThat(copied).isDirectory();
+      Step step = Idempotency.step(plan, "copy-webapp-to-tomcat");
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+      assertThat(copied).doesNotExist();
+      assertThat(f.webappDir.resolve("version.txt")).exists();
+    }
+  }
+
   @Test
   void should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

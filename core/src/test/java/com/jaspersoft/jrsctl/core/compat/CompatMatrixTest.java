@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CompatMatrixTest {
@@ -13,28 +14,43 @@ class CompatMatrixTest {
   private final CompatMatrix matrix = CompatMatrix.load();
 
   @Test
-  void should_load_unsigned_version_one_matrix_when_bundled() {
-    assertThat(matrix.matrixVersion()).isEqualTo(1);
+  void should_load_unsigned_version_two_matrix_when_bundled() {
+    // version 2 (2026-09-17): Java majors are sets, entries carry Tomcat ranges, paths carry modes
+    assertThat(matrix.matrixVersion()).isEqualTo(2);
     assertThat(matrix.signed()).isFalse();
-    assertThat(matrix.entries()).hasSize(5);
+    assertThat(matrix.entries()).hasSize(6);
     assertThat(matrix.upgradePaths()).isNotEmpty();
   }
 
   @Test
   void should_find_entry_when_version_is_inside_a_range() {
-    assertThat(matrix.find("7.1.0")).map(CompatMatrix.Entry::javaForBuildomatic).contains(8);
-    assertThat(matrix.find("7.9.1")).map(CompatMatrix.Entry::javaForBuildomatic).contains(8);
+    assertThat(matrix.find("7.1.0"))
+        .map(CompatMatrix.Entry::javaForBuildomatic)
+        .contains(Set.of(8));
+    assertThat(matrix.find("7.9.1"))
+        .map(CompatMatrix.Entry::javaForBuildomatic)
+        .contains(Set.of(8));
     assertThat(matrix.find("8.2.0"))
         .map(CompatMatrix.Entry::label)
         .contains("JasperReports Server 8.x");
-    assertThat(matrix.find("9.0.0")).map(CompatMatrix.Entry::javaForBuildomatic).contains(17);
-    assertThat(matrix.find("10.0.0")).map(CompatMatrix.Entry::javaForBuildomatic).contains(17);
+    assertThat(matrix.find("9.0.0"))
+        .map(CompatMatrix.Entry::javaForBuildomatic)
+        .contains(Set.of(8, 11, 17));
+    assertThat(matrix.find("10.0.0"))
+        .map(CompatMatrix.Entry::javaForBuildomatic)
+        .contains(Set.of(17));
+    // platform-support 10.1.0 p.20 / release notes 10.1.0 p.14: JDK 21 added; 10.0.0 is 17 only
+    assertThat(matrix.find("10.1.0"))
+        .map(CompatMatrix.Entry::javaForBuildomatic)
+        .contains(Set.of(17, 21));
+    assertThat(matrix.find("10.0.5").map(CompatMatrix.Entry::label))
+        .isNotEqualTo(matrix.find("10.1.0").map(CompatMatrix.Entry::label));
   }
 
   @Test
   void should_coerce_two_part_versions_when_looking_up() {
     assertThat(matrix.find("8.2")).isPresent();
-    assertThat(matrix.javaRequiredFor("8.2")).isEqualTo(11);
+    assertThat(matrix.javaRequiredFor("8.2")).containsExactly(8, 11);
   }
 
   @Test
@@ -57,10 +73,83 @@ class CompatMatrixTest {
 
   @Test
   void should_report_java_for_buildomatic_when_version_is_known() {
-    assertThat(matrix.javaRequiredFor("7.2.0")).isEqualTo(8);
-    assertThat(matrix.javaRequiredFor("8.0.4")).isEqualTo(11);
-    assertThat(matrix.javaRequiredFor("9.0.0")).isEqualTo(17);
-    assertThat(matrix.javaRequiredFor("10.0.0")).isEqualTo(17);
+    // platform-support sheets: 8.2 certifies JDK 8 and 11; 9.0 lists 8, 11 and 17 (17 runtime
+    // only); 10.0 is 17 only; 10.1 adds 21. The upgrade guides name no Java at all.
+    assertThat(matrix.javaRequiredFor("7.2.0")).containsExactly(8);
+    assertThat(matrix.javaRequiredFor("8.0.4")).containsExactly(8, 11);
+    assertThat(matrix.javaRequiredFor("9.0.0")).containsExactly(8, 11, 17);
+    assertThat(matrix.javaRequiredFor("10.0.0")).containsExactly(17);
+    assertThat(matrix.javaRequiredFor("10.1.0")).containsExactly(17, 21);
+    assertThat(CompatMatrix.describeJava(Set.of(17))).isEqualTo("Java 17");
+    assertThat(CompatMatrix.describeJava(Set.of(8, 11, 17))).isEqualTo("Java 8, 11 or 17");
+  }
+
+  /**
+   * Upgrade guides 10.1 pp.10-11, 10.0 pp.11-12, 9.0 pp.10-12, 8.2 §1.1.1: which source versions
+   * each target accepts depends on the mode; samedb is only ever offered from the previous release
+   * line.
+   */
+  @Test
+  void should_judge_upgrade_paths_by_mode_when_the_vendor_offers_only_one() {
+    assertThat(matrix.upgradePathSupported("9.0.0", "10.1.0", "newdb")).isTrue();
+    assertThat(matrix.upgradePathSupported("9.0.0", "10.1.0", "samedb")).isFalse();
+    assertThat(matrix.upgradePathSupported("10.0.0", "10.1.0", "samedb")).isTrue();
+    assertThat(matrix.upgradePathSupported("8.2.0", "10.0.0", "newdb")).isTrue();
+    assertThat(matrix.upgradePathSupported("8.2.0", "10.0.0", "samedb")).isFalse();
+    assertThat(matrix.upgradePathSupported("8.2.0", "10.1.0", "newdb")).isFalse();
+    assertThat(matrix.upgradePathSupported("8.2.0", "9.0.0", "samedb")).isTrue();
+    assertThat(matrix.upgradePathSupported("8.0.0", "9.0.0", "samedb")).isFalse();
+    assertThat(matrix.upgradePathSupported("8.0.0", "9.0.0", "newdb")).isTrue();
+    assertThat(matrix.upgradePathSupported("7.9.0", "8.2.0", "samedb")).isFalse();
+    assertThat(matrix.upgradePathSupported("7.9.0", "8.2.0", "newdb")).isTrue();
+    assertThat(matrix.upgradePathSupported("8.0.0", "8.2.0", "SAMEDB")).isTrue();
+    assertThat(matrix.upgradePathSupported("9.0.0", "10.1.0", "sideways")).isFalse();
+    assertThat(matrix.upgradeModes("9.0.0", "10.1.0")).containsExactly("newdb");
+    assertThat(matrix.upgradeModes("10.0.0", "10.1.0")).containsExactly("newdb", "samedb");
+    assertThat(matrix.upgradeModes("8.2.0", "10.1.0")).isEmpty();
+  }
+
+  /**
+   * Platform-support sheets: Tomcat 9 through 9.0; 10.0 moved to Jakarta EE and certifies Tomcat
+   * 10.1.24+ and 11.0.11+ (installation guide 10.1 p.58).
+   */
+  @Test
+  void should_judge_tomcat_versions_by_the_release_line() {
+    assertThat(matrix.tomcatSupported("9.0.0", "9.0.85")).isTrue();
+    assertThat(matrix.tomcatSupported("9.0.0", "10.1.24")).isFalse();
+    assertThat(matrix.tomcatSupported("10.0.0", "10.1.24")).isTrue();
+    assertThat(matrix.tomcatSupported("10.0.0", "10.1.5")).isFalse();
+    assertThat(matrix.tomcatSupported("10.0.0", "9.0.85")).isFalse();
+    assertThat(matrix.tomcatSupported("10.1.0", "11.0.11")).isTrue();
+    assertThat(matrix.tomcatSupported("10.1.0", "garbage")).isFalse();
+    assertThat(matrix.tomcatSupported("6.0.0", "9.0.85")).isFalse();
+    assertThat(matrix.find("10.1.0")).map(CompatMatrix.Entry::tomcat).isPresent();
+  }
+
+  @Test
+  void should_treat_a_path_without_modes_and_an_entry_without_tomcat_as_unrestricted()
+      throws IOException {
+    String yaml =
+        """
+        matrixVersion: 1
+        signed: false
+        entries:
+          - range: "1.x"
+            editions: [ce]
+            appServers: [Tomcat]
+            javaForBuildomatic: 21
+            databases: [PostgreSQL]
+        upgradePaths:
+          - { from: "1.x", to: "1.x" }
+        """;
+
+    CompatMatrix m =
+        CompatMatrix.load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)));
+
+    assertThat(m.javaRequiredFor("1.0.0")).containsExactly(21);
+    assertThat(m.upgradePathSupported("1.0.0", "1.2.3", "samedb")).isTrue();
+    assertThat(m.upgradePathSupported("1.0.0", "1.2.3", "newdb")).isTrue();
+    assertThat(m.tomcatSupported("1.0.0", "9.0.1")).isTrue();
   }
 
   @Test

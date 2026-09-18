@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.doctor;
 
 import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
@@ -12,6 +13,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.api.Session;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
@@ -172,25 +174,25 @@ final class ServerChecks {
           "no matrix entry for " + c.identity().version() + "; required Java unknown",
           "fix the compat check first");
     }
-    int required = entry.get().javaForBuildomatic();
+    // review §1.2: the platform sheets list more than one JDK for most release lines
+    Set<Integer> allowed = entry.get().javaForBuildomatic();
+    String need = CompatMatrix.describeJava(allowed);
     if (javaHome.isEmpty()) {
       return ReportItem.skip(
           "vendor-java",
           "vendor.javaHome is not configured",
-          "set vendor.javaHome to a Java "
-              + required
+          "set vendor.javaHome to a "
+              + need
               + " JDK for buildomatic (needed by upgrade"
               + " and vendor export/import)");
     }
     JavaVersion.Probe probe = JavaVersion.probe(s.platform().processes(), javaHome.get());
     if (probe.feature().isEmpty()) {
       return ReportItem.fail(
-          "vendor-java",
-          probe.detail(),
-          "point vendor.javaHome at a working Java " + required + " JDK");
+          "vendor-java", probe.detail(), "point vendor.javaHome at a working " + need + " JDK");
     }
     int found = probe.feature().get();
-    if (found != required) {
+    if (!allowed.contains(found)) {
       return ReportItem.fail(
           "vendor-java",
           javaHome.get()
@@ -198,11 +200,68 @@ final class ServerChecks {
               + found
               + "; JRS "
               + c.identity().version()
-              + " needs Java "
-              + required,
-          "set vendor.javaHome to a Java " + required + " JDK");
+              + " needs "
+              + need,
+          "set vendor.javaHome to a " + need + " JDK");
     }
-    return ReportItem.pass("vendor-java", javaHome.get() + " is Java " + found + " as required");
+    return ReportItem.pass(
+        "vendor-java",
+        javaHome.get()
+            + " is Java "
+            + found
+            + (allowed.size() == 1 ? " as required" : ", one of " + need));
+  }
+
+  /**
+   * Review §2.1: the running Tomcat against what the platform sheet certifies for the running
+   * server (10.0 moved to Jakarta EE and runs only on Tomcat 10.1.24+ or 11.0.11+).
+   */
+  static ReportItem tomcat(Services s, ServerProbe.Connected c, Optional<TomcatLayout> layout) {
+    Optional<Path> tomcatDir =
+        s.config().server().tomcatDir().or(() -> layout.map(TomcatLayout::tomcatDir));
+    if (tomcatDir.isEmpty()) {
+      return ReportItem.skip(
+          "tomcat", "no Tomcat directory is configured or detected", "run jrsctl init");
+    }
+    Optional<CompatMatrix.Entry> entry = s.matrix().find(c.identity().version());
+    if (entry.isEmpty()) {
+      return ReportItem.skip(
+          "tomcat",
+          "no matrix entry for " + c.identity().version() + "; certified Tomcat unknown",
+          "fix the compat check first");
+    }
+    String ranges =
+        entry.get().tomcat().isEmpty() ? "any" : String.join(" or ", entry.get().tomcat());
+    Optional<String> version = TomcatVersion.detect(tomcatDir.get());
+    if (version.isEmpty()) {
+      return ReportItem.skip(
+          "tomcat",
+          "no lib/catalina.jar or RELEASE-NOTES under " + tomcatDir.get() + "; version unknown",
+          "check server.tomcatDir; JRS " + c.identity().version() + " needs Tomcat " + ranges);
+    }
+    if (!s.matrix().tomcatSupported(c.identity().version(), version.get())) {
+      return ReportItem.fail(
+          "tomcat",
+          "Tomcat "
+              + version.get()
+              + " at "
+              + tomcatDir.get()
+              + " is not certified for JRS "
+              + c.identity().version()
+              + " (needs "
+              + ranges
+              + ")",
+          "run the server on a certified Tomcat; an upgrade to a new generation takes"
+              + " --tomcat-dir");
+    }
+    return ReportItem.pass(
+        "tomcat",
+        "Tomcat "
+            + version.get()
+            + " at "
+            + tomcatDir.get()
+            + ", certified for JRS "
+            + c.identity().version());
   }
 
   private static String shortHash(String hash) {

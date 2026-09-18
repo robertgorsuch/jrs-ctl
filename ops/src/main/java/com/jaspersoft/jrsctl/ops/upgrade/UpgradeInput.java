@@ -78,6 +78,13 @@ record UpgradeInput(
     return paths.tomcatDir();
   }
 
+  /**
+   * The Tomcat the upgraded webapp runs in: {@code --tomcat-dir} when given, else the current one.
+   */
+  Path hostTomcatDir() {
+    return options.tomcatDir().map(p -> p.toAbsolutePath().normalize()).orElse(tomcatDir());
+  }
+
   Path webappDir() {
     return tomcatDir().resolve("webapps").resolve(webappName);
   }

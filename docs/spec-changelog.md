@@ -1,5 +1,11 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-17 (vendor documentation review, upgrade matrix)
+
+- §5.7, §5.1: matrix version 2. `javaForBuildomatic` lists every JDK major the vendor platform sheet lists for a release line (8.x: 8 and 11; 9.x: 8, 11 and 17; 10.0: 17; 10.1: 17 and 21), and `doctor` and `verify-target-package` accept any of them instead of one exact major; 10.0 and 10.1 are separate entries. Upgrade paths carry the modes the vendor offers (`modes`), so `upgrade` refuses with exit 6 a pair the guides list only in the other mode (8.x to 10.0 is newdb only, 9.0 to 10.1 is newdb only) and names the mode that is offered. Entries list the certified Tomcat ranges (`tomcat`) for the Tomcat check of §10.2 (review §1.2, §1.3, §2.1).
+- §10.2: two steps after the vendor run and before the start, the vendor's "Additional tasks": `clear-tomcat-caches` empties `<tomcatDir>/work` and `<tomcatDir>/temp`, and `clear-repository-cache` runs the vendor's `JIRepositoryCache` statements through the configured database, warning with the statements when there is no database section or the database refuses. Both are irreversible by design (review §2.2).
+- §10.2, §10.4, §12.1: `upgrade --tomcat-dir <dir>` for a new Tomcat generation (JRS 10 runs only on Tomcat 10.1.24+ or 11.0.11+): the webapp is copied into it after the stop, `appServerDir` names it, its caches are cleared and `server.tomcatDir` follows it at the end; accepted only with `service.kind: manual`, because a registered service would start the old Tomcat (ADR-0026). `verify-target-package` refuses a host Tomcat the matrix does not certify for the target and warns when its version cannot be read; `doctor` gains a `tomcat` item for the running server (review §2.1).
+
 ## Draft 1.1 amendment — 2026-09-17 (vendor documentation review, data safety)
 
 Changes from `docs/reviews/2026-09-17-vendor-doc-review.md`, which compared the tool with the JasperReports Server 8.1 to 10.1 upgrade, installation, administrator, security and REST guides.

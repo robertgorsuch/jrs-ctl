@@ -33,6 +33,8 @@ Recommend: a fourth `Handles.Phase.PENDING`; parse `error.code` and `error.param
 snapshot is not needed). Same shape for export warnings (`export.broken.dependency`).
 
 ### 1.2 Compat matrix Java requirements are not what the platform sheets say
+*Fixed 2026-09-17: matrix version 2 lists allowed sets; 9.x keeps 17 as the sheet lists it (runtime only).*
+
 `core/src/main/resources/compat/matrix.yaml` requires one Java major per range (7.x→8, 8.x→11, 9.x→17,
 10.x→17) and `verify-target-package` refuses anything else. The vendor sheets:
 
@@ -51,6 +53,8 @@ Recommend: `javaForBuildomatic` becomes a list of allowed majors; split `>=10.0.
 `>=10.1.0 <11.0.0`; `doctor` reports "certified" vs "compatible" rather than pass/fail on the exact major.
 
 ### 1.3 Upgrade paths depend on mode and minor version, the matrix has neither
+*Fixed 2026-09-17 for modes and ranges; the Compact/Split invariant and Oracle `dbVersion` check are not built.*
+
 `upgradePaths` in the matrix is `{from: 8.x, to: 10.x}` style. The guides (10.1 pp.10-11, 10.0 pp.11-12, 9.0
 pp.10-12, 8.2 §1.1.1):
 
@@ -113,6 +117,8 @@ rollback aid there. *Fixed 2026-09-17, ADR-0025.*
 ## P2 — vendor upgrade steps the plan does not perform
 
 ### 2.1 New Tomcat generation and the webapp move
+*Fixed 2026-09-17 (ADR-0026): Tomcat check in doctor and preflight, `--tomcat-dir` with the copy step, `manual` service only; switching a registered service is left open.*
+
 10.0 requires Tomcat 10.1.24+ / 11.0.11+ (Jakarta), 10.1 says "the appropriate version of Tomcat must be
 installed" and shows Tomcat 11; every 9→10 and 10.0→10.1 path has the step "Copy ../webapps/jasperserver-pro
 directory from Tomcat 9.0 to Tomcat 11.0.x folder" before running js-upgrade (10.1 p.50, 10.0 pp.28-52).
@@ -124,6 +130,8 @@ preflight refuses a Tomcat the target does not certify; a `MoveWebapp` step with
 checks the running Tomcat against the running JRS.
 
 ### 2.2 Post-upgrade "Additional tasks" (10.1 pp.34-36, 47-48, 60-61)
+*Fixed 2026-09-17: `clear-tomcat-caches` and `clear-repository-cache`.*
+
 With the server still stopped: clear `<tomcat>/work` and `<tomcat>/temp`, and clear the repository cache
 with `update JIRepositoryCache set item_reference = null; delete from JIRepositoryCache;` (symptom otherwise:
 `local class incompatible`). jrsctl already has JDBC access for hotfix SQL. Recommend three idempotent

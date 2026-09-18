@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
@@ -13,6 +14,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorJava;
 import com.jaspersoft.jrsctl.ops.ReportItem;
+import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
@@ -212,30 +214,32 @@ final class PreflightSteps {
             "server unreachable, current version unknown: " + e.getMessage(),
             "start the server; the upgrade path is checked against its reported version");
       }
-      if (!rt.services().matrix().upgradePathSupported(current, to)) {
+      Optional<String> pathProblem =
+          UpgradePaths.problem(rt.services().matrix(), current, to, in.options().mode());
+      if (pathProblem.isPresent()) {
         return CheckResult.fail(
-            "upgrade path " + current + " -> " + to + " is not in the compatibility matrix",
-            "choose a supported target version; see the compat matrix in the operator guide");
+            pathProblem.get(),
+            "choose a supported target version or mode; see the compat matrix in the operator"
+                + " guide");
       }
-      int required;
+      Set<Integer> allowed;
       try {
-        required = rt.services().matrix().javaRequiredFor(to);
+        allowed = rt.services().matrix().javaRequiredFor(to);
       } catch (UnsupportedVersionException e) {
         return CheckResult.fail(
             "no compatibility matrix entry for " + to, "choose a supported target version");
       }
+      String required = CompatMatrix.describeJava(allowed);
       Optional<Path> javaHome = rt.config().vendor().javaHome();
       if (javaHome.isEmpty()) {
         return CheckResult.fail(
-            "vendor.javaHome is not set; the vendor upgrade scripts need a Java "
-                + required
-                + " JDK",
-            "set vendor.javaHome in config.yaml to a Java " + required + " JDK");
+            "vendor.javaHome is not set; the vendor upgrade scripts need a " + required + " JDK",
+            "set vendor.javaHome in config.yaml to a " + required + " JDK");
       }
       if (!Files.isDirectory(javaHome.get())) {
         return CheckResult.fail(
             "vendor.javaHome " + javaHome.get() + " is not a directory",
-            "point vendor.javaHome at an installed Java " + required + " JDK");
+            "point vendor.javaHome at an installed " + required + " JDK");
       }
       Optional<Integer> found;
       try {
@@ -246,9 +250,9 @@ final class PreflightSteps {
       if (found.isEmpty()) {
         return CheckResult.fail(
             "cannot determine the Java version of vendor.javaHome " + javaHome.get(),
-            "point vendor.javaHome at a working Java " + required + " JDK");
+            "point vendor.javaHome at a working " + required + " JDK");
       }
-      if (found.get() != required) {
+      if (!allowed.contains(found.get())) {
         return CheckResult.fail(
             "vendor.javaHome "
                 + javaHome.get()
@@ -256,9 +260,38 @@ final class PreflightSteps {
                 + found.get()
                 + "; JasperReports Server "
                 + to
-                + " needs Java "
+                + " needs "
                 + required,
-            "set vendor.javaHome to a Java " + required + " JDK");
+            "set vendor.javaHome to a " + required + " JDK");
+      }
+      // review §2.1: 10.0 moved to Jakarta EE, so the Tomcat that will host the target must be
+      // one the platform sheet certifies for it
+      Path host = in.hostTomcatDir();
+      if (in.options().tomcatDir().isPresent()) {
+        if (!Files.isDirectory(host.resolve("webapps"))) {
+          return CheckResult.fail(
+              "--tomcat-dir " + host + " has no webapps directory",
+              "point --tomcat-dir at an unpacked Apache Tomcat");
+        }
+        if (host.equals(in.tomcatDir().toAbsolutePath().normalize())) {
+          return CheckResult.fail(
+              "--tomcat-dir names the Tomcat the server already runs in",
+              "leave --tomcat-dir out, or point it at the new Tomcat");
+        }
+      }
+      Optional<String> tomcat = TomcatVersion.detect(host);
+      if (tomcat.isPresent() && !rt.services().matrix().tomcatSupported(to, tomcat.get())) {
+        return CheckResult.fail(
+            "Tomcat "
+                + tomcat.get()
+                + " at "
+                + host
+                + " is not certified for JasperReports Server "
+                + to
+                + " (needs "
+                + DefaultUpgradeOperations.tomcatRanges(rt.services().matrix(), to)
+                + ")",
+            "install a certified Tomcat and pass --tomcat-dir <its directory>");
       }
       return CheckResult.pass();
     }

@@ -51,18 +51,7 @@ public final class PlanRegistry {
     Objects.requireNonNull(hotfix, "hotfix");
     Objects.requireNonNull(exim, "exim");
     Objects.requireNonNull(upgrade, "upgrade");
-    builders.put(
-        UPGRADE,
-        args ->
-            upgrade
-                .get()
-                .planUpgrade(
-                    new UpgradeOperations.UpgradeOptions(
-                        required(args, "to"),
-                        Path.of(required(args, "package")),
-                        UpgradeOperations.Mode.valueOf(required(args, "mode")),
-                        args.path("dbBackupConfirmed").asBoolean(false),
-                        args.path("reapplyHotfixes").asBoolean(false))));
+    builders.put(UPGRADE, args -> upgrade.get().planUpgrade(upgradeOptions(args)));
     builders.put(
         UPGRADE_ROLLBACK,
         args ->
@@ -217,6 +206,17 @@ public final class PlanRegistry {
     return text(args, "strategy").flatMap(StrategyFlag::parse);
   }
 
+  public static UpgradeOperations.UpgradeOptions upgradeOptions(JsonNode args) {
+    return new UpgradeOperations.UpgradeOptions(
+        required(args, "to"),
+        Path.of(required(args, "package")),
+        UpgradeOperations.Mode.valueOf(required(args, "mode")),
+        args.path("dbBackupConfirmed").asBoolean(false),
+        args.path("reapplyHotfixes").asBoolean(false),
+        // arguments stored before the option existed describe an upgrade in the same Tomcat
+        text(args, "tomcatDir").map(Path::of));
+  }
+
   public static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("to", options.toVersion());
@@ -224,6 +224,11 @@ public final class PlanRegistry {
     node.put("mode", options.mode().name());
     node.put("dbBackupConfirmed", options.dbBackupConfirmed());
     node.put("reapplyHotfixes", options.reapplyHotfixes());
+    if (options.tomcatDir().isPresent()) {
+      node.put("tomcatDir", options.tomcatDir().get().toAbsolutePath().normalize().toString());
+    } else {
+      node.putNull("tomcatDir");
+    }
     return Json.write(node);
   }
 

@@ -39,6 +39,7 @@ public final class DoctorOperation {
           "keystore",
           "vendor",
           "vendor-java",
+          "tomcat",
           "database",
           "state",
           "runs",
@@ -106,6 +107,11 @@ public final class DoctorOperation {
                 "vendor-java",
                 s -> probe.dependent("vendor-java", c -> ServerChecks.vendorJava(s, c)))
             : remote("vendor-java"));
+    items.add(
+        local
+            ? guard(
+                "tomcat", s -> probe.dependent("tomcat", c -> ServerChecks.tomcat(s, c, layout)))
+            : remote("tomcat"));
     items.add(guard("database", DatabaseCheck::check));
     items.add(guard("state", LocalChecks::state));
     items.add(guard("runs", LocalChecks::runs));

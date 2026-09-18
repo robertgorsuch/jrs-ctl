@@ -198,7 +198,7 @@ smoke:
 
 Rules:
 - `network.mode: isolated` is enforced in the HTTP client: an allowlist containing only the `server.baseUrl` host. Any request to another host is refused, logged as `FAIL`, and audited. This makes isolated mode testable with WireMock.
-- `vendor.javaHome` is mandatory for upgrade and vendor-strategy export/import. `doctor` verifies it matches the compat matrix requirement for the detected JRS version (JRS 8.x → Java 11, JRS 9+ → Java 17). jrsctl's own runtime is never passed to buildomatic.
+- `vendor.javaHome` is mandatory for upgrade and vendor-strategy export/import. `doctor` verifies it is one of the Java majors the compat matrix lists for the detected JRS version (7.x: 8; 8.x: 8 or 11; 9.x: 8, 11 or 17; 10.0: 17; 10.1: 17 or 21, from the vendor platform-support sheets). jrsctl's own runtime is never passed to buildomatic.
 - `service.kind: manual` means jrsctl prints the stop/start instruction, waits for the operator (or `--yes` fails with exit code 2), and polls `serverInfo` until the server state changes.
 
 ### 5.2 Secrets
@@ -267,7 +267,7 @@ Rules:
 
 ### 5.7 Compatibility matrix
 
-- `compat/matrix.yaml` bundled (unsigned; it ships inside the same artifact as any key that could verify it). Lists supported JRS versions, editions, Java versions for buildomatic, app servers, databases, supported upgrade paths, and per-version capability expectations.
+- `compat/matrix.yaml` bundled (unsigned; it ships inside the same artifact as any key that could verify it). Lists supported JRS versions, editions, the Java majors buildomatic may run on (`javaForBuildomatic`, a list: every JDK the vendor platform sheet lists for the release line), the certified Tomcat version ranges (`tomcat`), app servers, databases, supported upgrade paths with the modes the vendor offers for each pair (`modes: [samedb, newdb]`; a path without `modes` allows both), and per-version capability expectations. Matrix version 2 (review §1.2, §1.3, §2.1); 10.0 and 10.1 are separate entries because 10.1 adds JDK 21.
 - `doctor` fails on unsupported combinations unless `--allow-unsupported` is passed (logged to audit; exit code unchanged).
 
 ### 5.8 Redaction
@@ -551,7 +551,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 **Phase A — preflight**
 1. `Doctor` (must pass).
-2. `VerifyTargetPackage` — target JRS distribution present, checksum verified, version in compat matrix as a supported upgrade path from current, `vendor.javaHome` matches the target's requirement.
+2. `VerifyTargetPackage` — target JRS distribution present, checksum verified, version in compat matrix as a supported upgrade path from current **in the chosen mode**, `vendor.javaHome` is one of the target's Java majors, and the Tomcat that will host the target (`--tomcat-dir`, else `server.tomcatDir`) is certified for it by the matrix's `tomcat` ranges; a Tomcat whose version cannot be read is a plan warning (review §2.1, ADR-0026).
 3. `ConfirmDbBackup` — both modes (ADR-0012); fails without `--db-backup-confirmed`.
 
 **Phase B — backup** (rollback point B)
@@ -565,7 +565,10 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 8a. `StageKeystoreInit` — writes `keystore.init.properties` (`ks`, `ksp`) into the target buildomatic: a verbatim copy of the installation's own when it has one, else the directories where the adapter found `.jrsks` and `.jrsksp`. Without it the vendor script, which jrsctl runs as its own account, finds no keystore and `setup.xml`'s `create-ks` makes a new one (silently unless `BUILDOMATIC_MODE=interactive`), after which no password in the repository can be decrypted. The precheck refuses when no location is known; a pre-existing file is snapshotted and restored by compensation (security guide 10.1 pp.11-13; review §1.4).
 9. `StopService`.
 9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts.
+9b. `CopyWebappToTomcat` — with `--tomcat-dir` only (ADR-0026): copies `webapps/<name>` into the new Tomcat, which `appServerDir` in the staged `default_master.properties` then names; compensation removes the copy, the old Tomcat is never touched. `--tomcat-dir` is accepted only with `service.kind: manual`; other kinds are refused at plan time (exit 2) because the registered service would start the old Tomcat.
 10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
+10a. `ClearTomcatCaches` — empties `<tomcatDir>/work` and `<tomcatDir>/temp` (the vendor's "Additional tasks", upgrade guide 10.1 pp.34-36); `irreversible()`: Tomcat regenerates both on start.
+10b. `ClearRepositoryCache` — `update JIRepositoryCache set item_reference = null; delete from JIRepositoryCache` through the configured database (the vendor's remedy for `local class incompatible`); `irreversible()`: the cache is rebuilt on demand. Best effort: without a `database` section, or on a JDBC failure, it warns with the two statements to run by hand rather than roll a finished vendor upgrade back to point B (review §2.2).
 11. `StartService` + `WaitForServer`.
 
 **Phase D — reconcile** (report-first; nothing mutates without confirmation)
@@ -574,7 +577,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 **Phase E — verify**
 14. `Smoke` (§12.2). Failure offers rollback to point B.
-15. `RecordUpgrade` — marks hotfixes `SUPERSEDED`/re-installed, records the upgrade snapshot set as retention-protected.
+15. `RecordUpgrade` — marks hotfixes `SUPERSEDED`/re-installed, records the upgrade snapshot set as retention-protected. `PointConfigAtTarget` then points `server.buildomaticDir` at the target's buildomatic and, with `--tomcat-dir`, `server.tomcatDir` at the new Tomcat.
 
 ### 10.3 Customizations
 
@@ -582,7 +585,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C`
 - `jrsctl customizations register|unregister|list|diff <path>`
 
@@ -635,7 +638,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 12.1 `doctor`
 
-Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present in the 7.4 buildomatic directory (WARN on a Windows UNC path, which `cmd.exe` refuses as a working directory); `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN.
+Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present in the 7.4 buildomatic directory (WARN on a Windows UNC path, which `cmd.exe` refuses as a working directory); `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN; Tomcat version at `server.tomcatDir` (else the detected layout) certified for the detected JRS version per the matrix's `tomcat` ranges, SKIP when neither `lib/catalina.jar` nor `RELEASE-NOTES` gives a version (review §2.1).
 
 ### 12.2 `smoke`
 

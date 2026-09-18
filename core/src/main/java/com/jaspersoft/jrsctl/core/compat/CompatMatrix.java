@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -16,16 +17,18 @@ import org.semver4j.Semver;
 
 /**
  * The bundled {@code compat/matrix.yaml} (spec §5.7): which JRS versions, editions, app servers,
- * databases, buildomatic JDKs, upgrade paths and capabilities jrsctl supports. Invariants: the
- * matrix is immutable once loaded; version lookups coerce {@code 8.2} to {@code 8.2.0} and match
- * semver ranges, and a version outside every range is reported as absent (or, for {@link
- * #javaRequiredFor}, as {@link UnsupportedVersionException}) rather than guessed; edition, app
- * server and database comparisons are case-insensitive. The file is unsigned and says so.
+ * databases, buildomatic JDKs, Tomcat versions, upgrade paths and capabilities jrsctl supports.
+ * Invariants: the matrix is immutable once loaded; version lookups coerce {@code 8.2} to {@code
+ * 8.2.0} and match semver ranges, and a version outside every range is reported as absent (or, for
+ * {@link #javaRequiredFor}, as {@link UnsupportedVersionException}) rather than guessed; edition,
+ * app server, database and mode comparisons are case-insensitive; an entry that lists no Tomcat
+ * ranges and a path that lists no modes restrict nothing. The file is unsigned and says so.
  */
 public final class CompatMatrix {
 
   public static final String RESOURCE = "/compat/matrix.yaml";
   private static final String ALL_EDITIONS = "all";
+  private static final Set<String> ALL_MODES = Set.of("samedb", "newdb");
 
   /** One version range of the matrix. */
   public record Entry(
@@ -33,7 +36,8 @@ public final class CompatMatrix {
       String label,
       Set<String> editions,
       Set<String> appServers,
-      int javaForBuildomatic,
+      Set<Integer> javaForBuildomatic,
+      List<String> tomcat,
       Set<String> databases,
       Set<String> commonCapabilities,
       Map<String, Set<String>> editionCapabilities) {
@@ -43,6 +47,8 @@ public final class CompatMatrix {
       Objects.requireNonNull(label, "label");
       editions = Set.copyOf(editions);
       appServers = Set.copyOf(appServers);
+      javaForBuildomatic = Collections.unmodifiableSet(new TreeSet<>(javaForBuildomatic));
+      tomcat = List.copyOf(tomcat);
       databases = Set.copyOf(databases);
       commonCapabilities = Set.copyOf(commonCapabilities);
       editionCapabilities = Map.copyOf(editionCapabilities);
@@ -57,12 +63,23 @@ public final class CompatMatrix {
   }
 
   /**
-   * A supported upgrade: any version in {@code from} to any strictly newer version in {@code to}.
+   * A supported upgrade: any version in {@code from} to any strictly newer version in {@code to},
+   * in any of {@code modes} ({@code samedb}, {@code newdb}; empty allows both).
    */
-  public record UpgradePath(String from, String to) {
+  public record UpgradePath(String from, String to, Set<String> modes) {
     public UpgradePath {
       Objects.requireNonNull(from, "from");
       Objects.requireNonNull(to, "to");
+      modes = Set.copyOf(modes);
+    }
+
+    public UpgradePath(String from, String to) {
+      this(from, to, Set.of());
+    }
+
+    /** True when the path offers {@code mode}, or restricts nothing. */
+    public boolean offers(String mode) {
+      return modes.isEmpty() || modes.contains(lower(mode));
     }
   }
 
@@ -94,7 +111,11 @@ public final class CompatMatrix {
   /** Parses a matrix document from a stream (tests). */
   public static CompatMatrix load(InputStream in) throws IOException {
     YAMLMapper mapper =
-        YAMLMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        YAMLMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            // matrix version 1 wrote one Java major; a scalar still reads as a one-element list
+            .enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+            .build();
     MatrixFile file = mapper.readValue(in, MatrixFile.class);
     List<Entry> entries =
         file.entries().stream()
@@ -115,14 +136,19 @@ public final class CompatMatrix {
                       e.label() == null ? e.range() : e.label(),
                       uppers(e.editions()),
                       lowers(e.appServers()),
-                      e.javaForBuildomatic(),
+                      e.javaForBuildomatic() == null
+                          ? Set.of()
+                          : Set.copyOf(e.javaForBuildomatic()),
+                      e.tomcat() == null ? List.of() : e.tomcat(),
                       lowers(e.databases()),
                       common,
                       perEdition);
                 })
             .toList();
     List<UpgradePath> paths =
-        file.upgradePaths().stream().map(p -> new UpgradePath(p.from(), p.to())).toList();
+        file.upgradePaths().stream()
+            .map(p -> new UpgradePath(p.from(), p.to(), lowers(p.modes())))
+            .toList();
     return new CompatMatrix(file.matrixVersion(), file.signed(), entries, paths);
   }
 
@@ -157,22 +183,66 @@ public final class CompatMatrix {
         .isPresent();
   }
 
-  /** Java feature version buildomatic needs for {@code version}. */
-  public int javaRequiredFor(String version) {
+  /** The Java feature versions buildomatic may run on for {@code version}; never empty. */
+  public Set<Integer> javaRequiredFor(String version) {
     return find(version)
         .map(Entry::javaForBuildomatic)
         .orElseThrow(() -> new UnsupportedVersionException(version));
   }
 
-  /** True when some listed path covers {@code from -> to} and {@code to} is strictly newer. */
+  /** "Java 17" or "Java 8, 11 or 17", for messages. */
+  public static String describeJava(Set<Integer> majors) {
+    List<String> sorted = new TreeSet<>(majors).stream().map(String::valueOf).toList();
+    if (sorted.size() <= 1) {
+      return "Java " + String.join("", sorted);
+    }
+    return "Java "
+        + String.join(", ", sorted.subList(0, sorted.size() - 1))
+        + " or "
+        + sorted.get(sorted.size() - 1);
+  }
+
+  /** True when some listed path covers {@code from -> to} in any mode and {@code to} is newer. */
   public boolean upgradePathSupported(String from, String to) {
+    return paths(from, to).findAny().isPresent();
+  }
+
+  /** As above, for one mode ({@code samedb} or {@code newdb}, case-insensitive). */
+  public boolean upgradePathSupported(String from, String to, String mode) {
+    return paths(from, to).anyMatch(p -> p.offers(mode));
+  }
+
+  /**
+   * The modes some listed path offers for {@code from -> to}; both when a path restricts nothing.
+   */
+  public Set<String> upgradeModes(String from, String to) {
+    Set<String> out = new TreeSet<>();
+    paths(from, to).forEach(p -> out.addAll(p.modes().isEmpty() ? ALL_MODES : p.modes()));
+    return Collections.unmodifiableSet(out);
+  }
+
+  private java.util.stream.Stream<UpgradePath> paths(String from, String to) {
     Optional<Semver> f = parse(from);
     Optional<Semver> t = parse(to);
     if (f.isEmpty() || t.isEmpty() || !t.get().isGreaterThan(f.get())) {
-      return false;
+      return java.util.stream.Stream.empty();
     }
     return upgradePaths.stream()
-        .anyMatch(p -> f.get().satisfies(p.from()) && t.get().satisfies(p.to()));
+        .filter(p -> f.get().satisfies(p.from()) && t.get().satisfies(p.to()));
+  }
+
+  /**
+   * True when the entry for {@code jrsVersion} lists a Tomcat range holding {@code tomcatVersion},
+   * or lists none; false for an unknown server version or an unparsable Tomcat version.
+   */
+  public boolean tomcatSupported(String jrsVersion, String tomcatVersion) {
+    Optional<Entry> entry = find(jrsVersion);
+    Optional<Semver> tomcat = parse(tomcatVersion);
+    if (entry.isEmpty() || tomcat.isEmpty()) {
+      return false;
+    }
+    List<String> ranges = entry.get().tomcat();
+    return ranges.isEmpty() || ranges.stream().anyMatch(r -> tomcat.get().satisfies(r));
   }
 
   /** Capabilities the adapter should find on {@code version}/{@code edition}; empty if unknown. */
@@ -225,9 +295,10 @@ public final class CompatMatrix {
       String label,
       List<String> editions,
       List<String> appServers,
-      int javaForBuildomatic,
+      List<Integer> javaForBuildomatic,
+      List<String> tomcat,
       List<String> databases,
       Map<String, List<String>> expectedCapabilities) {}
 
-  record PathYaml(String from, String to) {}
+  record PathYaml(String from, String to, List<String> modes) {}
 }

@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.jrs.service.ServiceRuntime;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.db.JdbcConnector;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import java.time.Clock;
 import java.time.Duration;
@@ -29,6 +30,7 @@ record UpgradeRuntime(
     SnapshotStore snapshots,
     Function<Services, VendorTools> vendorTools,
     Function<Services, HotfixOperations> hotfixOperations,
+    JdbcConnector jdbc,
     Sleeper sleeper)
     implements ServiceRuntime {
 
@@ -37,6 +39,7 @@ record UpgradeRuntime(
     Objects.requireNonNull(snapshots, "snapshots");
     Objects.requireNonNull(vendorTools, "vendorTools");
     Objects.requireNonNull(hotfixOperations, "hotfixOperations");
+    Objects.requireNonNull(jdbc, "jdbc");
     Objects.requireNonNull(sleeper, "sleeper");
   }
 
