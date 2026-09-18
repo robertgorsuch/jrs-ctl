@@ -69,7 +69,7 @@ already on `main`, unreleased.
 | I1 | No choice of import key | CONFIRMED | REST import query has no `keyAlias`/`secretKey` (`RestJrsAdapter.java:554-573`); the vendor path only swaps the whole keystore with `--source-keystore` (`VendorTools.java:239-250`). REST reference 10.1 p.117 documents `keyAlias` on import. |
 | I2 | The "pre-import snapshot" exports the whole repository | PARTLY | Scope comes from the archive's sidecar; without one, or with `--update` at the root, it falls back to `/` and to `--everything` (`DefaultExportImportOperations.java:257-291`). The menu prompts for an arbitrary zip and says nothing about the snapshot (`GuidedMode.java:142-152`); the plan warning exists (`:298-303`). Under the vendor strategy the snapshot still stops the service (ADR-0021 point 4). |
 | I3 | Rollback re-imports the snapshot and leaves added resources behind | CONFIRMED, BY DESIGN, documented | `RestoreFromPreImportSnapshot` is a plain re-import with `update=true`; `BEST_EFFORT_WARNING` is on every import plan; spec §9.4 line 530, operator guide `:115,:293`, recovery runbook `:56`. A true rollback would need a resource listing of the target subtree before the import and a delete of the delta. |
-| I4 | Cannot pass skip-themes, organization or a granular selection | PARTLY | `--skip-themes` exists and is sent on both strategies (`ImportCommand.java:67-68`). `organization`, `mergeOrganization` and any per-resource selection exist on no layer; the operator guide's own error table sends the operator to the raw vendor tools for `import.organizations.not.match` (`:609`). |
+| I4 | Cannot pass skip-themes, organization or a granular selection | PARTLY on the CLI, CONFIRMED in the menu | `--skip-themes` exists and is sent on both strategies (`ImportCommand.java:67-68`), but the guided menu's restore flow passes nothing except `--update` (`GuidedMode.java:142-152`), so from the menu, which the tester was using, no import option is reachable. `organization`, `mergeOrganization` and any per-resource selection exist on no layer; the operator guide's own error table sends the operator to the raw vendor tools for `import.organizations.not.match` (`:609`). |
 
 ## Server health
 
@@ -84,3 +84,14 @@ already on `main`, unreleased.
 - Spec §5.1 says the home falls back to `~/.jrsctl` "if not writable"; the code falls back only when the system home does not exist and refuses when it exists but is unwritable (`JrsctlHomeResolver.java:43-52`).
 - `JrsctlHome` Javadoc says nothing is written outside the home; the export archive and its sidecar are.
 - `docs/compatibility.md` still describes matrix v1.
+
+## Second round of feedback (2026-09-18)
+
+The tester read the verdicts above and pushed back on four "by design" items. Each changed the plan:
+
+- **The sidecar's purpose was not explained.** It scopes the pre-import snapshot and catches a keystore mismatch before the server does; the plan now adds `--no-sidecar` and a closing line on `export` that names the second file (D16).
+- **An upgrade is not always linear** (an archive from another environment, a different keystore). `upgrade --export` now accepts an archive from anywhere with a warning instead of a refusal, and decrypts it through the vendor's own routes: an alias in the staged buildomatic properties, or the source keystore staged and then adopted (D9, Task 7). Checked on the local 10.0.0 buildomatic: the newdb script takes only the export path and one option word; `import-export.xml` reads `deprecatedImportExportEncSecret.keyalias`/`.keypass` from the properties.
+- **The rollback is questionable.** For newdb it was: files only, against a rebuilt database. `upgrade rollback --restore-database` rebuilds the old database from the point-B export with the restored old buildomatic (D18, Task 7b, ADR-0029).
+- **Asked for a backup, then took one.** For newdb the two are the same thing once the rollback above exists, so the question goes for newdb and stays for samedb with the reason (D19, Task 7b). The vendor's `test` option becomes `upgrade --test` (D17, Task 7c).
+- **`--skip-themes`** exists on the CLI, but the tester was in the menu, where nothing but `--update` is reachable (I4 above, Task 8).
+

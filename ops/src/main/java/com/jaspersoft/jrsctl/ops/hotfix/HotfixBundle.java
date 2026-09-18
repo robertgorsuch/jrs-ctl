@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -42,7 +41,6 @@ public final class HotfixBundle {
   /** Ceiling on the unpacked payload of one bundle (item H7); a real hotfix is a few jars. */
   static final long MAX_BUNDLE_BYTES = 2L << 30;
 
-  private static final Pattern ENTRY_NAME = Pattern.compile("[A-Za-z0-9._\\-/]+");
   private static final int BUFFER = 64 * 1024;
 
   private final Path dir;
@@ -184,17 +182,59 @@ public final class HotfixBundle {
   }
 
   static void checkEntryName(String name) throws IOException {
-    if (name.isEmpty()
-        || name.startsWith("/")
-        || name.contains("\\")
-        || name.contains(":")
-        || !ENTRY_NAME.matcher(name).matches()) {
-      throw new IOException("ZIP entry name is not acceptable: " + name);
+    Optional<String> problem = entryNameProblem(name);
+    if (problem.isPresent()) {
+      throw new IOException("ZIP entry name is not acceptable (" + problem.get() + "): " + name);
+    }
+  }
+
+  /**
+   * Why {@code name} may not be a bundle entry, or empty when it may. The rule is a denylist:
+   * traversal, absolute and drive-relative names and control characters are refused, and every
+   * other character the vendor ships in a path (spaces, {@code +}, parentheses, non-ASCII) is
+   * allowed, since a package converted from support (ADR-0024) is read back through here.
+   */
+  static Optional<String> entryNameProblem(String name) {
+    if (name.isEmpty()) {
+      return Optional.of("empty");
+    }
+    if (name.startsWith("/") || name.contains("\\") || name.contains(":")) {
+      return Optional.of("must be a relative path with forward slashes and no drive letter");
     }
     for (String segment : name.split("/", -1)) {
-      if (segment.equals("..") || segment.isEmpty()) {
-        throw new IOException("ZIP entry name is not acceptable: " + name);
+      if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
+        return Optional.of("must not contain empty, . or .. segments");
       }
+    }
+    for (int i = 0; i < name.length(); i++) {
+      char c = name.charAt(i);
+      if (c < 0x20 || c == 0x7f) {
+        return Optional.of("must not contain control characters");
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * True when {@code zip} can be read as a ZIP and holds no {@code manifest.json} at its top level:
+   * a file that is not a bundle. False for a bundle and for a file that cannot be read, which the
+   * extraction reports itself.
+   */
+  public static boolean lacksRootManifest(Path zip) {
+    if (!Files.isRegularFile(zip)) {
+      return false;
+    }
+    try (InputStream raw = Files.newInputStream(zip);
+        ZipInputStream in = new ZipInputStream(raw, StandardCharsets.UTF_8)) {
+      ZipEntry entry;
+      while ((entry = in.getNextEntry()) != null) {
+        if (entry.getName().equals(MANIFEST)) {
+          return false;
+        }
+      }
+      return true;
+    } catch (IOException | IllegalArgumentException e) {
+      return false;
     }
   }
 

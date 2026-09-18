@@ -158,15 +158,10 @@ final class GuidedMode {
     out.println("  3) List hotfixes");
     switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
       case "1" -> {
-        Optional<String> bundle = existingFile("Hotfix file (.zip)");
-        if (bundle.isEmpty()) {
-          return;
-        }
-        if (execute("hotfix", "verify", bundle.get()) == ExitCodes.SUCCESS) {
-          execute("hotfix", "apply", bundle.get());
-        } else {
-          out.println("The hotfix did not verify, so it was not applied.");
-        }
+        // apply verifies first, shows the plan, and for an official Jaspersoft package asks you
+        // to confirm its checksum against the support portal (ADR-0027); a separate verify here
+        // used to refuse every official package, since none carries a jrsctl signature
+        existingFile("Hotfix file (.zip)").ifPresent(bundle -> execute("hotfix", "apply", bundle));
       }
       case "2" -> {
         execute("hotfix", "list");

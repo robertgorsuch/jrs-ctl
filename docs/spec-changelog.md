@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, official hotfix packages)
+
+- §8.1, §8.2: an official Jaspersoft package applied from a terminal needs no flag: `hotfix apply` prints the package's SHA-256 and asks the operator to confirm it against the support portal, and the answer is audited as `hotfix.apply.official-confirmed` (ADR-0027 amends ADR-0024 §5). `--allow-unsigned` stays required without a terminal. `hotfix verify` reports such a package ok, since it has no signature to fail. Packages are recognised on base names, case-insensitively, with one directory of prefix, a version in the inner archive's name or the webapp unpacked, and the bundle reader accepts every path character the vendor ships except traversal, absolute names and control characters. A ZIP that is neither shape is refused with exit 2 naming both. The guided menu runs `hotfix apply` directly instead of gating it on a `verify` that refused every official package (field test 2, H1, H2, H4).
+
 ## Draft 1.1 amendment — 2026-09-18 (vendor documentation review, master properties rules)
 
 - §10.2: `verify-target-package` judges two rules of the upgrade guides on the `default_master.properties` that `write-master-properties` will stage (the target package's own file, if any, with the installed keys minus passwords appended). A target file that would turn a Compact installation into a Split one or back (`installType`, absent meaning compact, or an `audit.*` key the installed file lacks) is refused with exit 6 while planning, since the vendor never converts one into the other in an upgrade (`js-migrate-to-split-*` is its own procedure; upgrade guide 10.1 pp.12-14, 64-65). An Oracle repository (`dbType=oracle`) upgraded to 10.1 or later needs `dbVersion` on one side or the other, else the precheck fails and names the file to edit (upgrade guide 10.1 p.43; review §1.3).

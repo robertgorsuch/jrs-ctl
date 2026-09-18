@@ -81,8 +81,9 @@ public final class DefaultHotfixOperations implements HotfixOperations {
 
   @Override
   public VerifyReport verify(Path bundle) {
+    Source source = source(bundle);
     return bundles.with(
-        source(bundle).bundle(),
+        source.bundle(),
         b -> {
           BundleVerifier.Signature signature = rt.verifier().signature(b);
           Optional<String> signedBy = signature.signedBy().map(KeyRing.TrustedKey::name);
@@ -114,7 +115,9 @@ public final class DefaultHotfixOperations implements HotfixOperations {
               applicability.isEmpty(),
               applicability,
               id,
-              title);
+              title,
+              source.official(),
+              source.sha256());
         });
   }
 
@@ -125,16 +128,21 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     return bundles.with(source.bundle(), b -> planApply(source, b, options));
   }
 
-  /** The bundle a command works from, and what the operator must be told about its origin. */
-  private record Source(Path bundle, boolean official, List<String> notes) {
+  /**
+   * The bundle a command works from, what the operator must be told about its origin, and the
+   * SHA-256 of the file the operator gave (empty when it does not exist; the workspace reports
+   * that).
+   */
+  private record Source(Path bundle, boolean official, List<String> notes, String sha256) {
     Source {
       notes = List.copyOf(notes);
     }
-
-    static Source bundle(Path path) {
-      return new Source(path, false, List.of());
-    }
   }
+
+  static final String NEITHER_SHAPE =
+      " is neither an official Jaspersoft hotfix package (readme.txt beside jasperserver[-pro].zip,"
+          + " js-install.zip or an unpacked jasperserver[-pro]/ tree) nor a jrsctl hotfix bundle"
+          + " (manifest.json at the root)";
 
   /**
    * The bundle to work from: {@code given} itself, or, for an official Jaspersoft package, the
@@ -142,8 +150,18 @@ public final class DefaultHotfixOperations implements HotfixOperations {
    * the package's own hash, so planning and then applying converts once.
    */
   private Source source(Path given) {
+    if (!Files.isRegularFile(given)) {
+      return new Source(given, false, List.of(), "");
+    }
     if (!OfficialPackage.looksOfficial(given)) {
-      return Source.bundle(given);
+      if (HotfixBundle.lacksRootManifest(given)) {
+        throw new HotfixException(
+            HotfixException.PRECHECK,
+            given + NEITHER_SHAPE,
+            "point jrsctl at the hotfix ZIP as support published it, or at a bundle built with"
+                + " jrsctl hotfix build");
+      }
+      return new Source(given, false, List.of(), hash(given));
     }
     List<String> notes = new ArrayList<>();
     Config config = rt.config();
@@ -170,7 +188,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
               : OfficialPackage.convert(given, out, webappName, paths);
       notes.add("converted to the jrsctl bundle " + converted.id() + " at " + out);
       notes.addAll(converted.notes());
-      return new Source(out, true, notes);
+      return new Source(out, true, notes, sourceHash);
     } catch (IOException e) {
       throw new HotfixException(
           HotfixException.PRECHECK,

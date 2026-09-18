@@ -112,6 +112,24 @@ class OfficialHotfixTest {
     return buffer.toByteArray();
   }
 
+  /** An outer ZIP with exactly the given entries, in order. */
+  private Path zip(String name, Map<String, byte[]> entries) throws IOException {
+    Path zip = Files.createDirectories(tmp.resolve("downloads")).resolve(name);
+    try (OutputStream out = Files.newOutputStream(zip);
+        ZipOutputStream zos = new ZipOutputStream(out)) {
+      for (Map.Entry<String, byte[]> e : entries.entrySet()) {
+        zos.putNextEntry(new ZipEntry(e.getKey()));
+        zos.write(e.getValue());
+        zos.closeEntry();
+      }
+    }
+    return zip;
+  }
+
+  private static byte[] utf8(String text) {
+    return text.getBytes(StandardCharsets.UTF_8);
+  }
+
   private Path fullPackage() throws IOException {
     return officialPackage(
         "hotfix_JRSPro8.2.0_cumulative_20260730_0457.zip",
@@ -252,6 +270,80 @@ class OfficialHotfixTest {
       assertThat(report.signatureValid()).isFalse();
       assertThat(report.hashesValid()).isTrue();
       assertThat(report.manifestId()).isEqualTo("JRSHF-8.2.0-20260730-0457");
+      // ADR-0027: an official package has no signature to fail, so verify reports it as ok and
+      // says what it is; apply asks the operator to confirm the checksum instead of a flag
+      assertThat(report.official()).isTrue();
+      assertThat(report.sha256()).hasSize(64);
+      assertThat(report.ok()).isTrue();
+    }
+  }
+
+  /**
+   * Field test 2, H1: support's packages do not all use the exact names ADR-0024 matched. A readme
+   * in another case, one directory of prefix and a version in the inner archive's name are the same
+   * package.
+   */
+  @Test
+  void should_recognise_a_package_whose_names_differ_in_case_and_carry_a_prefix()
+      throws IOException {
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("JRSHF-8.2.0/README.TXT", utf8(OUTER_README));
+    entries.put(
+        "JRSHF-8.2.0/jasperserver-pro-8.2.0-hotfix.zip",
+        zipBytes(Map.of(LIB + "foo-1.2.3.jar", "patched foo"), WEBAPP_README));
+    Path pkg = zip("prefixed.zip", entries);
+    assertThat(OfficialPackage.looksOfficial(pkg)).isTrue();
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(pkg, UNSIGNED);
+
+      assertThat(plan.summary().target()).contains("JRSHF-8.2.0-20260730-0457");
+      assertThat(plan.summary().filesTouched().stream().map(Path::getFileName).map(Path::toString))
+          .contains("foo-1.2.3.jar");
+    }
+  }
+
+  @Test
+  void should_recognise_a_package_that_ships_the_webapp_unpacked() throws IOException {
+    Map<String, byte[]> entries = new LinkedHashMap<>();
+    entries.put("readme.txt", utf8(OUTER_README));
+    entries.put("jasperserver-pro/readme.txt", utf8(WEBAPP_README));
+    entries.put("jasperserver-pro/" + LIB + "new-1.0.jar", utf8("brand new"));
+    Path pkg = zip("unpacked.zip", entries);
+    assertThat(OfficialPackage.looksOfficial(pkg)).isTrue();
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(pkg, UNSIGNED);
+
+      assertThat(plan.summary().filesTouched().stream().map(Path::getFileName).map(Path::toString))
+          .contains("new-1.0.jar");
+    }
+  }
+
+  /** The derived bundle is read back through the bundle reader, which must accept vendor paths. */
+  @Test
+  void should_convert_and_read_back_a_package_with_a_space_in_a_path() throws IOException {
+    Path pkg =
+        officialPackage(
+            "spaced.zip",
+            new LinkedHashMap<>(Map.of("WEB-INF/samples/My Report (v2)+final.jrxml", "<jasper/>")),
+            Map.of());
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      HotfixOperations.VerifyReport report = f.ops().verify(pkg);
+
+      assertThat(report.hashesValid()).as(String.join("; ", report.hashProblems())).isTrue();
+      assertThat(report.official()).isTrue();
+    }
+  }
+
+  @Test
+  void should_name_both_shapes_when_a_zip_is_neither() throws IOException {
+    Path odd = zip("odd.zip", Map.of("something.txt", utf8("?")));
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      assertThatThrownBy(() -> f.ops().verify(odd))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("neither an official Jaspersoft hotfix package")
+          .hasMessageContaining("readme.txt")
+          .hasMessageContaining("manifest.json")
+          .satisfies(e -> assertThat(((HotfixException) e).exitCode()).isEqualTo(2));
     }
   }
 

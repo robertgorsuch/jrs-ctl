@@ -44,6 +44,98 @@ class HotfixCommandTest {
   @AfterEach
   void tearDown() {
     HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
+    Prompter.reset();
+  }
+
+  private static String audits(Path home) {
+    try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
+      StringBuilder sb = new StringBuilder();
+      store
+          .auditRows(20)
+          .forEach(
+              a -> sb.append(a.action()).append(' ').append(a.detail().orElse("")).append('\n'));
+      return sb.toString();
+    }
+  }
+
+  /**
+   * ADR-0027: an official Jaspersoft package carries no jrsctl signature; interactively the
+   * operator confirms its checksum instead of passing a flag, and that answer is audited.
+   */
+  @Test
+  void should_apply_an_official_package_after_the_operator_confirms_the_checksum() {
+    fake.official = true;
+    fake.signatureValid = false;
+    Prompter.override(new java.io.StringReader("y\ny\n"));
+
+    InitCommandTest.Run run = apply();
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out())
+        .contains("Official Jaspersoft package " + FakeHotfixOperations.ID)
+        .contains("SHA-256 " + FakeHotfixOperations.SHA256)
+        .contains("Does this match the checksum on the support portal?")
+        .contains("Run this plan?");
+    assertThat(fake.executed).isNotEmpty();
+    assertThat(fake.lastAllowUnsigned).isTrue();
+    assertThat(audits(home))
+        .contains("hotfix.apply.official-confirmed")
+        .contains(FakeHotfixOperations.SHA256)
+        .doesNotContain("hotfix.apply.allow-unsigned");
+  }
+
+  @Test
+  void should_not_apply_an_official_package_when_the_checksum_is_not_confirmed() {
+    fake.official = true;
+    fake.signatureValid = false;
+    Prompter.override(new java.io.StringReader("n\n"));
+
+    InitCommandTest.Run run = apply();
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SIGNATURE_FAILED);
+    assertThat(run.err()).contains("checksum not confirmed");
+    assertThat(fake.executed).isEmpty();
+    assertThat(audits(home)).doesNotContain("official-confirmed");
+  }
+
+  @Test
+  void should_need_allow_unsigned_for_an_official_package_when_non_interactive() {
+    fake.official = true;
+    fake.signatureValid = false;
+
+    InitCommandTest.Run refused = apply("--yes");
+    InitCommandTest.Run allowed = apply("--plan", "--allow-unsigned");
+
+    assertThat(refused.code()).isEqualTo(ExitCodes.SIGNATURE_FAILED);
+    assertThat(refused.err())
+        .contains("official Jaspersoft package")
+        .contains(FakeHotfixOperations.SHA256)
+        .contains("--allow-unsigned")
+        .doesNotContain("keys add");
+    assertThat(allowed.code()).as(allowed.err()).isZero();
+    assertThat(audits(home)).contains("hotfix.apply.allow-unsigned");
+  }
+
+  @Test
+  void should_exit_0_from_verify_for_an_official_package() {
+    fake.official = true;
+    fake.signatureValid = false;
+
+    InitCommandTest.Run run =
+        InitCommandTest.run(
+            "hotfix",
+            "verify",
+            bundle.toString(),
+            "--home",
+            home.toString(),
+            "--no-color",
+            "--ascii");
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out())
+        .contains("official Jaspersoft package, no jrsctl signature")
+        .contains("official Jaspersoft package " + FakeHotfixOperations.ID + " ok")
+        .doesNotContain("x FAIL");
   }
 
   private InitCommandTest.Run apply(String... extra) {
