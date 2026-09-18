@@ -91,6 +91,14 @@ class ExportRunTest {
             .willReturn(aResponse().withStatus(200).withBody("{\"organization\":[]}")));
     wm.stubFor(
         get(urlPathEqualTo(CONTEXT + "/rest_v2/login")).willReturn(aResponse().withStatus(405)));
+    // field test 2, E3: planning asks whether each --uri exists before starting the export
+    wm.stubFor(
+        get(urlPathEqualTo(CONTEXT + "/rest_v2/resources/public"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/repository.folder+json")
+                    .withBody("{\"uri\":\"/public\",\"label\":\"Public\"}")));
     wm.stubFor(
         post(urlPathEqualTo(CONTEXT + "/rest_v2/export"))
             .willReturn(

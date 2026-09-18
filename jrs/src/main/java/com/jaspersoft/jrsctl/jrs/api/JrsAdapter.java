@@ -67,6 +67,13 @@ public interface JrsAdapter {
   /** URIs of the direct children of {@code folderUri}, e.g. {@code "/"}. */
   List<String> listFolder(String folderUri);
 
+  /**
+   * True when a resource (folder or otherwise) exists at {@code uri}; false when the server answers
+   * 404. Export planning asks this so a mistyped {@code --uri} is refused before anything runs
+   * instead of producing an empty archive (field test 2, E3).
+   */
+  boolean resourceExists(String uri);
+
   /** Runs the report at {@code reportUri} to PDF, streaming the bytes to {@code target}. */
   Path runReportToPdf(String reportUri, Path target);
 

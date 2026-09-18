@@ -34,10 +34,14 @@ final class Wire {
       String message,
       String errorCode,
       String fileName,
-      ImportError error) {}
+      ImportError error,
+      ErrorDescriptor errorDescriptor) {}
 
   /** The nested error of an import that stopped in phase {@code pending} (REST 10.1 p.120). */
   record ImportError(String code, List<String> parameters) {}
+
+  /** The error a failed export task reports (REST 10.1 p.113), where {@code message} is null. */
+  record ErrorDescriptor(String message, String errorCode, List<String> parameters) {}
 
   /** {@code GET /rest_v2/resources}. */
   record ResourceLookupList(List<ResourceLookup> resourceLookup) {}

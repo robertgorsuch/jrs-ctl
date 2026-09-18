@@ -278,6 +278,8 @@ Builds a signed bundle from a directory holding `manifest.json`, `payload/` and 
 
 ### `jrsctl export [--uri <uri>]... [--users-roles] [--access-events] [--audit-events] [--monitoring] [--settings] [--full-server] [--stop-service] [--strategy rest|vendor] --out <file> [--plan] [--yes] [--json]`
 
+A `--uri` that does not exist on the server is refused before anything runs (exit 2, naming it): the server would otherwise answer with an archive holding no resources, and the export used to exit 0 with it. An archive that comes back without `index.xml` fails the run and is deleted, and a failed export task is reported with the server's own error message and code.
+
 Exports repository content to a ZIP archive and writes a sidecar `<file>.jrsctl.json` next to it (when it was taken, from which server and version, the request flags, the SHA-256 of the archive and the server keystore fingerprint an import must match). Runs as a plan with one phase, `export`.
 
 **From another machine** (#68). The REST strategy needs only `server.baseUrl` and the credentials, so `export` and `import` run from any machine that reaches the server: write its configuration with `jrsctl init --remote <url>`. A plan that would need the vendor tools there (`--full-server`, `--strategy vendor`, `--source-keystore`, or a server whose REST export or import probe fails) is refused while planning, with exit **2** and the reason REST was not used, because those tools need the installation on the machine they run on. An import from another machine cannot read the server's keystore, so it warns and continues, as for a server whose keystore cannot be found. Hotfixes and upgrades change files and control the service, so they stay on the server itself.

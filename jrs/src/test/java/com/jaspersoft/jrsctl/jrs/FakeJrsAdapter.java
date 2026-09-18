@@ -131,6 +131,13 @@ public final class FakeJrsAdapter implements JrsAdapter {
     return listFolderBehaviour.get();
   }
 
+  public java.util.function.Predicate<String> resourceExistsBehaviour = uri -> true;
+
+  @Override
+  public boolean resourceExists(String uri) {
+    return resourceExistsBehaviour.test(uri);
+  }
+
   @Override
   public Path runReportToPdf(String reportUri, Path target) {
     throw new UnsupportedOperationException("fake");

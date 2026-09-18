@@ -562,11 +562,17 @@ public final class RestJrsAdapter implements JrsAdapter {
     if (state.fileName() != null) {
       exportFileNames.put(handle.id(), state.fileName());
     }
+    // a failed export carries its cause in errorDescriptor, not in message (field test 2, E3)
+    Optional<Wire.ErrorDescriptor> descriptor = Optional.ofNullable(state.errorDescriptor());
     return new Handles.ExportStatus(
         phase(state.phase()),
-        Optional.ofNullable(state.message()),
+        Optional.ofNullable(state.message())
+            .or(() -> descriptor.map(Wire.ErrorDescriptor::message))
+            .filter(m -> !m.isBlank()),
         Optional.ofNullable(state.fileName()),
-        Optional.ofNullable(state.errorCode()));
+        Optional.ofNullable(state.errorCode())
+            .or(() -> descriptor.map(Wire.ErrorDescriptor::errorCode))
+            .filter(c -> !c.isBlank()));
   }
 
   @Override
@@ -807,6 +813,21 @@ public final class RestJrsAdapter implements JrsAdapter {
       }
     }
     return List.copyOf(uris);
+  }
+
+  @Override
+  public boolean resourceExists(String uri) {
+    Objects.requireNonNull(uri, "uri");
+    ensureSession();
+    String path = RESOURCES + RestClient.encodePath(uri);
+    RestClient.Response r = client.get(path);
+    if (r.status() == 404) {
+      return false;
+    }
+    if (r.status() != 204) {
+      client.require2xx(r, "GET", path);
+    }
+    return true;
   }
 
   @Override

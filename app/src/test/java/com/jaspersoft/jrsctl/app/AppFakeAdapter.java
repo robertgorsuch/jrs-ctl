@@ -115,6 +115,11 @@ public final class AppFakeAdapter implements JrsAdapter {
   }
 
   @Override
+  public boolean resourceExists(String uri) {
+    return true;
+  }
+
+  @Override
   public Path runReportToPdf(String reportUri, Path target) {
     byte[] bytes = new byte[2048];
     byte[] magic = "%PDF-1.4\n".getBytes(StandardCharsets.US_ASCII);

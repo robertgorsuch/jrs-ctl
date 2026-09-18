@@ -39,6 +39,28 @@ class RestJrsAdapterRepositoryTest {
 
   @TempDir Path tmp;
 
+  /** Field test 2, E3: export planning asks before starting, so a mistyped uri is refused. */
+  @Test
+  void should_say_whether_a_resource_exists() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources/public/reports")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"uri\":\"/public/reports\",\"label\":\"Reports\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources/typo")))
+            .willReturn(aResponse().withStatus(404).withBody("{\"message\":\"not found\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources/broken")))
+            .willReturn(aResponse().withStatus(500)));
+
+    assertThat(f.adapter.resourceExists("/public/reports")).isTrue();
+    assertThat(f.adapter.resourceExists("/typo")).isFalse();
+    assertThatThrownBy(() -> f.adapter.resourceExists("/broken")).isInstanceOf(RestException.class);
+  }
+
   @Test
   void should_list_child_uris_when_folder_has_resources() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);

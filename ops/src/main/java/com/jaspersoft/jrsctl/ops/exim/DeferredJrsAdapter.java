@@ -103,6 +103,11 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public boolean resourceExists(String uri) {
+    return adapter().resourceExists(uri);
+  }
+
+  @Override
   public Path runReportToPdf(String reportUri, Path target) {
     return adapter().runReportToPdf(reportUri, target);
   }

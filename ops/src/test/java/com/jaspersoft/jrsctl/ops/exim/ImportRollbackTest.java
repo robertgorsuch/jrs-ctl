@@ -161,12 +161,14 @@ class ImportRollbackTest {
   }
 
   /**
-   * Issue #41: nothing the import targets existed, so the snapshot holds a lone {@code resources/}
-   * entry and no {@code index.xml}. There is nothing to put back, and the vendor importer throws on
-   * such an archive, so the rollback re-imports nothing.
+   * Issue #41 used to let an import proceed on a snapshot holding a lone {@code resources/} entry
+   * and no {@code index.xml}, with a rollback that re-imported nothing. Since field test 2 (E3)
+   * planning leaves out folders that do not exist yet, so such an archive at run time means the
+   * server exported nothing for a folder it said existed: the snapshot step fails, nothing is
+   * imported, and there is no rollback copy to pretend with.
    */
   @Test
-  void should_skip_the_reimport_and_exit_3_when_the_snapshot_holds_no_index() throws IOException {
+  void should_stop_before_the_import_when_the_snapshot_holds_no_index() throws IOException {
     adapter.exportArchive = zipOf("resources/");
     adapter.importPhases.add(Handles.Phase.FAILED);
     Plan plan = fx.ops().planImport(options(false));
@@ -175,13 +177,10 @@ class ImportRollbackTest {
 
     assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.RolledBack.class);
     assertThat(outcome.exitCode()).isEqualTo(3);
-    assertThat(adapter.imports).as("only the failed import ran").hasSize(1);
-    assertThat(fx.journal(EximFixture.RUN))
-        .containsSubsequence("import.poll:FAILED", "import.snapshot-rollback:ROLLED_BACK");
-    assertThat(fx.events)
-        .filteredOn(e -> e instanceof Event.Log)
-        .map(e -> ((Event.Log) e).message())
-        .anyMatch(m -> m.contains("nothing to restore"));
+    assertThat(adapter.imports).as("nothing was imported").isEmpty();
+    assertThat(((RunOutcome.RolledBack) outcome).cause())
+        .contains("holds no index.xml")
+        .contains("no resource matched");
   }
 
   @Test

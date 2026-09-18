@@ -149,6 +149,10 @@ final class RunJsExport implements Step {
     } catch (IOException e) {
       return CheckResult.fail("cannot inspect " + request.output(), "check the path");
     }
+    Optional<String> empty = ExportArchives.problem(request.output());
+    if (empty.isPresent()) {
+      return CheckResult.fail(empty.get(), "check the --uri values against the repository");
+    }
     return CheckResult.pass();
   }
 
