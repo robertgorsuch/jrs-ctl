@@ -201,9 +201,12 @@ final class HelpExamples {
                 "Unattended, for example from a scheduler",
                 "jrsctl hotfix apply JRS-10.0.0-HF-0002.zip --yes"),
             new Example(
-                "Apply an official Jaspersoft cumulative hotfix as downloaded (it carries no"
-                    + " jrsctl signature)",
-                "jrsctl hotfix apply hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip"
+                "Apply an official Jaspersoft cumulative hotfix as downloaded (it asks you to"
+                    + " confirm the checksum against the support portal)",
+                "jrsctl hotfix apply hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip"),
+            new Example(
+                "The same unattended, after checking the checksum yourself",
+                "jrsctl hotfix apply hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip --yes"
                     + " --allow-unsigned")));
     m.put(
         "hotfix rollback",

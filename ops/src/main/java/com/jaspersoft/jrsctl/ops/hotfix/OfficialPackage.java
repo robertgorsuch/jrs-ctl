@@ -14,6 +14,7 @@ import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,16 +37,25 @@ import java.util.zip.ZipOutputStream;
  * otherwise, so no plan is refused for replacing a file that is not there; deletes come from the
  * readme's "Deleted files" list and its "Important" globs, expanded against this installation and
  * never covering a file the package itself lays down; the derived bundle is unsigned, so applying
- * it needs {@code --allow-unsigned} as any unsigned bundle does; nothing on the server is touched
- * here.
+ * it takes a confirmed checksum or {@code --allow-unsigned} (ADR-0027); nothing on the server is
+ * touched here.
  */
 final class OfficialPackage {
 
-  /** The inner archive whose paths are relative to the installed webapp. */
-  private static final Pattern WEBAPP_ZIP = Pattern.compile("^jasperserver(-pro)?\\.zip$");
+  /**
+   * The inner archive whose paths are relative to the installed webapp, by base name, with or
+   * without a version or build suffix ({@code jasperserver-pro-10.0.0-hotfix.zip}); support's
+   * packages have used both (field test 2, H1).
+   */
+  private static final Pattern WEBAPP_ZIP =
+      Pattern.compile("(?i)^jasperserver(-pro)?(-[0-9][^/]*)?\\.zip$");
 
   /** The inner archive whose paths are relative to the installation (buildomatic and samples). */
-  private static final String INSTALL_ZIP = "js-install.zip";
+  private static final Pattern INSTALL_ZIP =
+      Pattern.compile("(?i)^js-install(-[0-9][^/]*)?\\.zip$");
+
+  /** The webapp shipped unpacked instead of as an inner archive. */
+  private static final Pattern WEBAPP_DIR = Pattern.compile("(?i)^jasperserver(-pro)?$");
 
   private static final String README = "readme.txt";
   private static final Pattern PRODUCT = Pattern.compile("^Product Name:\\s*(.+?)\\s*$");
@@ -83,26 +93,100 @@ final class OfficialPackage {
 
   /** True when {@code zip} is an official package rather than a jrsctl bundle. */
   static boolean looksOfficial(Path zip) {
-    if (!Files.isRegularFile(zip)) {
-      return false;
+    return shape(zip).map(Shape::official).orElse(false);
+  }
+
+  /** What one entry of the outer archive is to the conversion. */
+  enum Kind {
+    /** The package readme, with the release and build. */
+    README,
+    /** An inner archive whose paths are relative to the webapp. */
+    WEBAPP_ZIP,
+    /** An inner archive whose paths are relative to the installation. */
+    INSTALL_ZIP,
+    /** A file of the webapp shipped unpacked under {@code jasperserver[-pro]/}. */
+    WEBAPP_FILE,
+    /** Anything else, left alone. */
+    IGNORE
+  }
+
+  /**
+   * How the outer archive is laid out, judged on base names so the case of the readme, one
+   * directory of prefix around the package and a version in an inner archive's name all read as the
+   * same package. Invariants: {@code root} is the directory of the outer readme, empty or ending in
+   * {@code /}; {@link #official()} is true exactly when a readme and at least one payload were
+   * seen; an entry named {@code manifest.json} at the top makes the archive a jrsctl bundle, never
+   * a package.
+   */
+  record Shape(String root, Optional<String> readme, boolean payload) {
+
+    boolean official() {
+      return readme.isPresent() && payload;
     }
-    boolean readme = false;
-    boolean payload = false;
+
+    Kind kind(String name) {
+      if (readme.isPresent() && name.equals(readme.get())) {
+        return Kind.README;
+      }
+      if (!name.startsWith(root)) {
+        return Kind.IGNORE;
+      }
+      String rel = name.substring(root.length());
+      int slash = rel.indexOf('/');
+      if (slash < 0) {
+        if (WEBAPP_ZIP.matcher(rel).matches()) {
+          return Kind.WEBAPP_ZIP;
+        }
+        return INSTALL_ZIP.matcher(rel).matches() ? Kind.INSTALL_ZIP : Kind.IGNORE;
+      }
+      return WEBAPP_DIR.matcher(rel.substring(0, slash)).matches() && slash < rel.length() - 1
+          ? Kind.WEBAPP_FILE
+          : Kind.IGNORE;
+    }
+
+    /** For a {@link Kind#WEBAPP_FILE}: its path under the unpacked webapp directory. */
+    String underWebapp(String name) {
+      String rel = name.substring(root.length());
+      return rel.substring(rel.indexOf('/') + 1);
+    }
+  }
+
+  /** The layout of {@code zip}; empty when it is not a readable archive or is a jrsctl bundle. */
+  static Optional<Shape> shape(Path zip) {
+    if (!Files.isRegularFile(zip)) {
+      return Optional.empty();
+    }
+    List<String> names = new ArrayList<>();
     try (InputStream in = Files.newInputStream(zip);
         ZipInputStream z = new ZipInputStream(in)) {
       ZipEntry e;
       while ((e = z.getNextEntry()) != null) {
-        String name = e.getName();
+        String name = e.getName().replace('\\', '/');
         if (name.equals(HotfixBundle.MANIFEST)) {
-          return false;
+          return Optional.empty();
         }
-        readme |= name.equals(README);
-        payload |= WEBAPP_ZIP.matcher(name).matches() || name.equals(INSTALL_ZIP);
+        if (!e.isDirectory()) {
+          names.add(name);
+        }
       }
     } catch (IOException e) {
-      return false;
+      return Optional.empty();
     }
-    return readme && payload;
+    Optional<String> readme =
+        names.stream()
+            .filter(n -> baseName(n).equalsIgnoreCase(README))
+            .min(
+                Comparator.comparingInt((String n) -> n.length() - n.replace("/", "").length())
+                    .thenComparing(n -> n));
+    String root = readme.map(r -> r.substring(0, r.lastIndexOf('/') + 1)).orElse("");
+    Shape probe = new Shape(root, readme, true);
+    boolean payload =
+        names.stream().map(probe::kind).anyMatch(k -> k != Kind.README && k != Kind.IGNORE);
+    return Optional.of(new Shape(root, readme, payload));
+  }
+
+  private static String baseName(String name) {
+    return name.substring(name.lastIndexOf('/') + 1);
   }
 
   /**
@@ -111,7 +195,29 @@ final class OfficialPackage {
    */
   static Converted convert(Path source, Path out, String webappName, HotfixPaths paths)
       throws IOException {
+    Shape shape =
+        shape(source)
+            .orElseThrow(
+                () ->
+                    new HotfixException(
+                        HotfixException.PRECHECK,
+                        source + " is not a readable hotfix package",
+                        "point jrsctl at the hotfix ZIP as it was downloaded"));
+    if (shape.readme().isEmpty()) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          "no readme.txt in " + source,
+          "point jrsctl at the hotfix ZIP as it was downloaded, not at an unpacked copy");
+    }
+    if (!shape.payload()) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          "no jasperserver or js-install archive in " + source,
+          "point jrsctl at the hotfix ZIP as it was downloaded");
+    }
+    String webappPrefix = HotfixPaths.WEBAPPS_PREFIX + webappName + "/";
     Header header = null;
+    Readme treeReadme = null;
     List<Manifest.FileEntry> files = new ArrayList<>();
     Set<String> added = new LinkedHashSet<>();
     List<Readme> readmes = new ArrayList<>();
@@ -123,19 +229,24 @@ final class OfficialPackage {
         ZipOutputStream bundle = new ZipOutputStream(os)) {
       ZipEntry entry;
       while ((entry = outer.getNextEntry()) != null) {
-        String name = entry.getName();
         if (entry.isDirectory()) {
           continue;
         }
-        if (name.equals(README)) {
-          header = Header.parse(readLines(outer));
-          continue;
+        String name = entry.getName().replace('\\', '/');
+        switch (shape.kind(name)) {
+          case README -> header = Header.parse(readLines(outer));
+          case WEBAPP_ZIP -> readmes.add(inner(outer, webappPrefix, paths, bundle, files, added));
+          case INSTALL_ZIP -> readmes.add(inner(outer, "", paths, bundle, files, added));
+          case WEBAPP_FILE -> {
+            String under = shape.underWebapp(name);
+            if (under.equalsIgnoreCase(README)) {
+              treeReadme = Readme.parse(webappPrefix, readLines(outer));
+            } else {
+              copyEntry(outer, webappPrefix + under, entry.getName(), paths, bundle, files, added);
+            }
+          }
+          case IGNORE -> {}
         }
-        Optional<String> prefix = prefixFor(name, webappName);
-        if (prefix.isEmpty()) {
-          continue;
-        }
-        readmes.add(inner(outer, prefix.get(), paths, bundle, files, added));
       }
       if (header == null) {
         throw new HotfixException(
@@ -148,6 +259,9 @@ final class OfficialPackage {
             HotfixException.PRECHECK,
             "no jasperserver or js-install archive in " + source,
             "point jrsctl at the hotfix ZIP as it was downloaded");
+      }
+      if (treeReadme != null) {
+        readmes.add(treeReadme);
       }
       for (Readme r : readmes) {
         files.addAll(deletions(r, added, paths, notes));
@@ -163,14 +277,6 @@ final class OfficialPackage {
     }
   }
 
-  /** Where one inner archive's paths land: under the webapp, or under the installation. */
-  private static Optional<String> prefixFor(String zipName, String webappName) {
-    if (WEBAPP_ZIP.matcher(zipName).matches()) {
-      return Optional.of(HotfixPaths.WEBAPPS_PREFIX + webappName + "/");
-    }
-    return zipName.equals(INSTALL_ZIP) ? Optional.of("") : Optional.empty();
-  }
-
   /** Copies one inner archive into the bundle payload and returns its parsed readme. */
   private static Readme inner(
       InputStream source,
@@ -183,39 +289,56 @@ final class OfficialPackage {
     Readme readme = Readme.empty();
     ZipInputStream zip = new ZipInputStream(source);
     ZipEntry entry;
-    byte[] buffer = new byte[BUFFER];
     while ((entry = zip.getNextEntry()) != null) {
       if (entry.isDirectory()) {
         continue;
       }
       String name = entry.getName().replace('\\', '/');
-      if (name.equals(README)) {
+      if (name.equalsIgnoreCase(README)) {
         readme = Readme.parse(prefix, readLines(zip));
         continue;
       }
-      String path = prefix + name;
-      if (!HotfixPaths.pathProblems(path).isEmpty()) {
-        throw new HotfixException(
-            HotfixException.PRECHECK,
-            "the package holds an unusable path: " + entry.getName(),
-            "obtain the package again; it is not the layout jrsctl knows");
-      }
-      bundle.putNextEntry(new ZipEntry(HotfixBundle.PAYLOAD_DIR + "/" + path));
-      MessageDigest md = sha256();
-      DigestOutputStream digest = new DigestOutputStream(bundle, md);
-      int read;
-      while ((read = zip.read(buffer)) != -1) {
-        digest.write(buffer, 0, read);
-      }
-      bundle.closeEntry();
-      Manifest.Action action =
-          Files.isRegularFile(paths.resolve(path)) ? Manifest.Action.REPLACE : Manifest.Action.ADD;
-      files.add(
-          new Manifest.FileEntry(
-              action, path, Optional.of(HexFormat.of().formatHex(md.digest())), List.of()));
-      added.add(path);
+      copyEntry(zip, prefix + name, entry.getName(), paths, bundle, files, added);
     }
     return readme;
+  }
+
+  /**
+   * Streams one file of the package into the bundle payload at {@code path}, hashing it on the way,
+   * and records its manifest entry: {@code replace} when the file exists here now, else {@code
+   * add}.
+   */
+  private static void copyEntry(
+      InputStream in,
+      String path,
+      String original,
+      HotfixPaths paths,
+      ZipOutputStream bundle,
+      List<Manifest.FileEntry> files,
+      Set<String> added)
+      throws IOException {
+    if (!HotfixPaths.pathProblems(path).isEmpty()
+        || HotfixBundle.entryNameProblem(HotfixBundle.PAYLOAD_DIR + "/" + path).isPresent()) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          "the package holds an unusable path: " + original,
+          "obtain the package again; it is not the layout jrsctl knows");
+    }
+    bundle.putNextEntry(new ZipEntry(HotfixBundle.PAYLOAD_DIR + "/" + path));
+    MessageDigest md = sha256();
+    DigestOutputStream digest = new DigestOutputStream(bundle, md);
+    byte[] buffer = new byte[BUFFER];
+    int read;
+    while ((read = in.read(buffer)) != -1) {
+      digest.write(buffer, 0, read);
+    }
+    bundle.closeEntry();
+    Manifest.Action action =
+        Files.isRegularFile(paths.resolve(path)) ? Manifest.Action.REPLACE : Manifest.Action.ADD;
+    files.add(
+        new Manifest.FileEntry(
+            action, path, Optional.of(HexFormat.of().formatHex(md.digest())), List.of()));
+    added.add(path);
   }
 
   /**

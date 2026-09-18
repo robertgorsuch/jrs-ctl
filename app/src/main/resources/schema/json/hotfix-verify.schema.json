@@ -12,7 +12,9 @@
     "applicable",
     "applicabilityProblems",
     "manifestId",
-    "title"
+    "title",
+    "official",
+    "sha256"
   ],
   "properties": {
     "signatureValid": { "type": "boolean" },
@@ -22,6 +24,8 @@
     "applicable": { "type": "boolean" },
     "applicabilityProblems": { "type": "array", "items": { "type": "string" } },
     "manifestId": { "type": "string" },
-    "title": { "type": "string" }
+    "title": { "type": "string" },
+    "official": { "type": "boolean", "description": "An official Jaspersoft package (ADR-0024): no jrsctl signature to fail; apply asks for the checksum (ADR-0027)." },
+    "sha256": { "type": "string", "pattern": "^([0-9a-f]{64})?$", "description": "SHA-256 of the file as given, to compare with the support portal." }
   }
 }

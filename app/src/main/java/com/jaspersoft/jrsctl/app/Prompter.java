@@ -31,9 +31,10 @@ final class Prompter {
     override = Optional.of(new BufferedReader(answers));
   }
 
-  /** Restores standard input and the console. */
-  static void reset() {
+  /** Restores standard input and the console, and forgets the reader over the previous stdin. */
+  static synchronized void reset() {
     override = Optional.empty();
+    stdin = Optional.empty();
   }
 
   /** One line, stripped; empty at end of input. */

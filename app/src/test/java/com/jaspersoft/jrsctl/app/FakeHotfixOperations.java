@@ -40,9 +40,13 @@ public final class FakeHotfixOperations implements HotfixOperations {
           "atomic-swap",
           "record-installed");
 
+  public static final String SHA256 =
+      "3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b";
+
   public volatile boolean signatureValid = true;
   public volatile boolean hashesValid = true;
   public volatile boolean applicable = true;
+  public volatile boolean official;
   public volatile Optional<String> failStep = Optional.empty();
   public volatile Optional<RuntimeException> planFailure = Optional.empty();
   public volatile List<HotfixInstalled> installed = List.of();
@@ -75,7 +79,9 @@ public final class FakeHotfixOperations implements HotfixOperations {
         applicable,
         applicable ? List.of() : List.of("server 9.0.0 is outside >=8.2.0 <8.3.0"),
         ID,
-        TITLE);
+        TITLE,
+        official,
+        SHA256);
   }
 
   /** Part of the apply fingerprint; a test changes it to model a server that moved under a plan. */

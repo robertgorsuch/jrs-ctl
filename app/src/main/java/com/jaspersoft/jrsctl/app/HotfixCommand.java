@@ -154,10 +154,8 @@ final class HotfixCommand implements Runnable {
           Report r = Report.of(items(report));
           ReportPrinter.print(
               out, r.items(), r.counts(), Ansi.forStdout(global, Env.vars()), redactor);
-          out.println(
-              report.ok()
-                  ? "bundle " + report.manifestId() + " ok"
-                  : "bundle " + report.manifestId() + " rejected");
+          String noun = report.official() ? "official Jaspersoft package " : "bundle ";
+          out.println(noun + report.manifestId() + (report.ok() ? " ok" : " rejected"));
           out.flush();
         }
         return report.ok() ? ExitCodes.SUCCESS : ExitCodes.SIGNATURE_FAILED;
@@ -166,15 +164,24 @@ final class HotfixCommand implements Runnable {
 
     static List<ReportItem> items(HotfixOperations.VerifyReport report) {
       List<ReportItem> items = new ArrayList<>();
-      items.add(
-          report.signatureValid()
-              ? ReportItem.pass(
-                  "signature", "signed by " + report.signedBy().orElse("a trusted key"))
-              : ReportItem.fail(
-                  "signature",
-                  "missing, or not made by a trusted key",
-                  "add the signer's public key with `jrsctl keys add`, or use --allow-unsigned"
-                      + " on apply (audited)"));
+      if (report.signatureValid()) {
+        items.add(
+            ReportItem.pass("signature", "signed by " + report.signedBy().orElse("a trusted key")));
+      } else if (report.official()) {
+        items.add(
+            ReportItem.pass(
+                "signature",
+                "official Jaspersoft package, no jrsctl signature; SHA-256 "
+                    + report.sha256()
+                    + " (apply asks you to confirm it against the support portal)"));
+      } else {
+        items.add(
+            ReportItem.fail(
+                "signature",
+                "missing, or not made by a trusted key",
+                "add the signer's public key with `jrsctl keys add`, or use --allow-unsigned"
+                    + " on apply (audited)"));
+      }
       items.add(
           report.hashesValid()
               ? ReportItem.pass("hashes", "every listed file matches its manifest hash")
@@ -228,6 +235,7 @@ final class HotfixCommand implements Runnable {
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Services services = boot.services();
         Plan planned;
+        boolean unsignedAccepted = allowUnsigned;
         try {
           HotfixOperations ops = HotfixOps.open(services);
           HotfixOperations.VerifyReport report = ops.verify(bundle);
@@ -240,7 +248,53 @@ final class HotfixCommand implements Runnable {
                 "bundle rejected, file hashes do not match the manifest: "
                     + String.join("; ", report.hashProblems()));
           }
-          if (!report.signatureValid()) {
+          String from = bundle.toAbsolutePath().normalize().toString();
+          if (!report.signatureValid() && report.official()) {
+            // ADR-0027: an official package has no signature to check; the operator compares
+            // its checksum with the support portal instead, and that answer is audited
+            out.println(
+                "Official Jaspersoft package "
+                    + report.manifestId()
+                    + ", SHA-256 "
+                    + report.sha256()
+                    + ".");
+            out.flush();
+            if (!allowUnsigned) {
+              if (global.json() || global.nonInteractive()) {
+                return ExitCodes.fail(
+                    out,
+                    err,
+                    global.json(),
+                    ExitCodes.SIGNATURE_FAILED,
+                    "official Jaspersoft package "
+                        + report.manifestId()
+                        + " carries no jrsctl signature",
+                    Optional.of(
+                        "check its SHA-256 "
+                            + report.sha256()
+                            + " against the checksum on the support portal, then re-run with"
+                            + " --allow-unsigned"));
+              }
+              if (!Confirm.ask(out, "Does this match the checksum on the support portal? [y/N] ")) {
+                return ExitCodes.fail(
+                    out,
+                    err,
+                    global.json(),
+                    ExitCodes.SIGNATURE_FAILED,
+                    "checksum not confirmed; nothing has changed",
+                    Optional.of("download the package again from the support portal"));
+              }
+              services
+                  .stateStore()
+                  .get()
+                  .audit(
+                      "operator",
+                      "hotfix.apply.official-confirmed",
+                      report.manifestId() + " sha256 " + report.sha256() + " from " + from);
+              unsignedAccepted = true;
+            }
+          }
+          if (!report.signatureValid() && !report.official()) {
             if (!allowUnsigned) {
               return ExitCodes.fail(
                   out,
@@ -251,15 +305,17 @@ final class HotfixCommand implements Runnable {
                   Optional.of(
                       "add the key with `jrsctl keys add` or pass --allow-unsigned (audited)"));
             }
+          }
+          if (!report.signatureValid() && allowUnsigned) {
             services
                 .stateStore()
                 .get()
                 .audit(
                     "operator",
                     "hotfix.apply.allow-unsigned",
-                    report.manifestId() + " from " + bundle.toAbsolutePath().normalize());
+                    report.manifestId() + " from " + from);
           }
-          planned = ops.planApply(bundle, new HotfixOperations.ApplyOptions(allowUnsigned));
+          planned = ops.planApply(bundle, new HotfixOperations.ApplyOptions(unsignedAccepted));
         } catch (RuntimeException e) {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
@@ -268,7 +324,7 @@ final class HotfixCommand implements Runnable {
             new PlanExecutor.Request(
                 planned,
                 PlanRegistry.HOTFIX_APPLY,
-                PlanRegistry.applyArgs(bundle, allowUnsigned),
+                PlanRegistry.applyArgs(bundle, unsignedAccepted),
                 plan,
                 rollbackAll));
       }

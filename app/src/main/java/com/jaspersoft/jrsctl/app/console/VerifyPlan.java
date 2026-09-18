@@ -113,11 +113,17 @@ final class VerifyPlan {
     public StepResult execute(Context ctx, EventSink out) {
       HotfixOperations.VerifyReport report = hotfix.verify(bundle);
       List<String> problems = new ArrayList<>();
+      // an official Jaspersoft package has no signature to fail (ADR-0024, ADR-0027); the apply
+      // form's allow-unsigned switch stands in for the checksum confirmation the CLI asks for
       log(
           out,
           ctx,
-          report.signatureValid(),
-          "signature: signed by " + report.signedBy().orElse("a trusted key"),
+          report.signatureValid() || report.official(),
+          report.official()
+              ? "signature: official Jaspersoft package, no jrsctl signature; SHA-256 "
+                  + report.sha256()
+                  + " (compare it with the support portal)"
+              : "signature: signed by " + report.signedBy().orElse("a trusted key"),
           "signature: missing or not made by a trusted key",
           problems);
       log(

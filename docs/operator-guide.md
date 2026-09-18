@@ -239,7 +239,7 @@ Verifies the bundle, builds the plan, shows it and runs it after confirmation (s
 - The whole package is snapshotted and reversible: `jrsctl hotfix rollback <id>` puts the previous files back, rather than the readme's "copy your backup of the webapp over the top".
 - The derived id is `JRSHF-<version>-<date>-<time>`, for example `JRSHF-10.0.0-20260730-0457`, and `hotfix list` shows it like any other.
 
-Two things stay with the operator. An official package carries no jrsctl signature, so `--allow-unsigned` is required and the override is audited; the plan prints the package's SHA-256 to compare with the support portal. And the readme's manual steps — SQL for particular databases, optional properties, settings to apply again in files the package overwrites — are printed as warnings and never run.
+Two things stay with the operator. An official package carries no jrsctl signature, so `hotfix apply` prints its SHA-256 and asks **Does this match the checksum on the support portal?**; answer yes only after comparing it, since that answer is what stands in for a signature (it is audited as `hotfix.apply.official-confirmed`, ADR-0027). Unattended (`--yes`, `--non-interactive`, `--json`) pass `--allow-unsigned` after checking the checksum yourself. The package's file names are matched loosely (any case, one directory of prefix, a version in the inner archive's name, or the webapp unpacked), and a ZIP that is neither a package nor a jrsctl bundle is refused naming both shapes. And the readme's manual steps — SQL for particular databases, optional properties, settings to apply again in files the package overwrites — are printed as warnings and never run.
 
 ### `jrsctl hotfix rollback <id> [--cascade] [--plan] [--yes] [--json]`
 

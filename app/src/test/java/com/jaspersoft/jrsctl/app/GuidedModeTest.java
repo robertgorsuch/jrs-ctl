@@ -64,16 +64,17 @@ class GuidedModeTest {
                 "export", "--uri", "/public", "--out", "/b/public.zip", "--home", "/srv/jrsctl"));
   }
 
+  /**
+   * ADR-0027: apply does its own verification and, for an official Jaspersoft package, asks for the
+   * checksum; a verify gate in front of it refused every official package (field test 2, H1).
+   */
   @Test
-  void should_verify_a_hotfix_before_applying_it() throws Exception {
+  void should_run_apply_directly_when_a_hotfix_is_chosen() throws Exception {
     Path bundle = Files.writeString(tmp.resolve("HF-1.zip"), "zip");
 
     guided(List.of(), List.of(), "5", "1", bundle.toString(), "q");
 
-    assertThat(ran)
-        .containsExactly(
-            List.of("hotfix", "verify", bundle.toString()),
-            List.of("hotfix", "apply", bundle.toString()));
+    assertThat(ran).containsExactly(List.of("hotfix", "apply", bundle.toString()));
   }
 
   @Test

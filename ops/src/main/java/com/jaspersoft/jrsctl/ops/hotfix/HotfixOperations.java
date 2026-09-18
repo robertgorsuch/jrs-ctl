@@ -22,6 +22,12 @@ public interface HotfixOperations {
   record RollbackOptions(boolean cascade) {}
 
   /** Result of {@code hotfix verify}: signature, hashes and applicability only. */
+  /**
+   * What verification found. {@code official} is true for an official Jaspersoft package
+   * (ADR-0024), which carries no jrsctl signature to fail, so it is {@link #ok()} on hashes and
+   * applicability alone and apply asks the operator to confirm {@code sha256}, the hex SHA-256 of
+   * the file as given, against the support portal (ADR-0027).
+   */
   record VerifyReport(
       boolean signatureValid,
       Optional<String> signedBy,
@@ -30,9 +36,11 @@ public interface HotfixOperations {
       boolean applicable,
       List<String> applicabilityProblems,
       String manifestId,
-      String title) {
+      String title,
+      boolean official,
+      String sha256) {
     public boolean ok() {
-      return signatureValid && hashesValid && applicable;
+      return (signatureValid || official) && hashesValid && applicable;
     }
   }
 

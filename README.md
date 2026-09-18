@@ -167,10 +167,10 @@ Then install it. jrsctl backs up every file it will replace, and stops and resta
 jrsctl hotfix apply C:\Downloads\JRS-9.0.0-HF-0002.zip
 ```
 
-An official Jaspersoft package carries no jrsctl signature, so add `--allow-unsigned` and compare the checksum jrsctl prints with the one on the support portal:
+An official Jaspersoft package carries no jrsctl signature. jrsctl prints its SHA-256 and asks you to confirm it matches the checksum on the support portal (unattended, pass `--allow-unsigned` after checking it yourself):
 
 ```bash
-jrsctl hotfix apply C:\Downloads\hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip --allow-unsigned
+jrsctl hotfix apply C:\Downloads\hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip
 ```
 
 jrsctl reads the package as it is, works out which files to replace, add and delete (including the libraries an earlier hotfix left behind), and prints the readme's manual steps, such as SQL for particular databases, as warnings. It runs none of them.
