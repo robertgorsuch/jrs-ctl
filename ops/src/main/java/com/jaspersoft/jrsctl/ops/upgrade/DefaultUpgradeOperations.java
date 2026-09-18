@@ -177,6 +177,18 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                     .map(p -> p.toAbsolutePath().normalize())
                     .orElse(paths.tomcatDir())),
             installedBuildomatic);
+    // review §1.3: Compact and Split never cross in one upgrade; the target package's own
+    // default_master.properties must not turn the installation into the other kind
+    Optional<String> crossing =
+        MasterInvariants.installTypeProblem(
+            in.masterOverrides(), in.targetMasterProperties(rt.locator()));
+    if (crossing.isPresent()) {
+      throw new UpgradeException(
+          UpgradeException.UNSUPPORTED,
+          crossing.get(),
+          "make installType and the audit.* keys in the target buildomatic's"
+              + " default_master.properties match the installed ones, or remove them there");
+    }
     if (options.tomcatDir().isPresent()) {
       // review §2.1, ADR-0026: a service registered for the old Tomcat would start the old
       // server after the vendor run; only an operator-started Tomcat can be switched in one run

@@ -53,7 +53,7 @@ Recommend: `javaForBuildomatic` becomes a list of allowed majors; split `>=10.0.
 `>=10.1.0 <11.0.0`; `doctor` reports "certified" vs "compatible" rather than pass/fail on the exact major.
 
 ### 1.3 Upgrade paths depend on mode and minor version, the matrix has neither
-*Fixed 2026-09-17 for modes and ranges; the Compact/Split invariant and Oracle `dbVersion` check are not built.*
+*Fixed 2026-09-17 for modes and ranges; 2026-09-18 for the Compact/Split invariant (exit 6 while planning) and the Oracle `dbVersion` precheck, both in `verify-target-package` (`MasterInvariants`).*
 
 `upgradePaths` in the matrix is `{from: 8.x, to: 10.x}` style. The guides (10.1 pp.10-11, 10.0 pp.11-12, 9.0
 pp.10-12, 8.2 §1.1.1):

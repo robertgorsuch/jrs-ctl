@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (vendor documentation review, master properties rules)
+
+- §10.2: `verify-target-package` judges two rules of the upgrade guides on the `default_master.properties` that `write-master-properties` will stage (the target package's own file, if any, with the installed keys minus passwords appended). A target file that would turn a Compact installation into a Split one or back (`installType`, absent meaning compact, or an `audit.*` key the installed file lacks) is refused with exit 6 while planning, since the vendor never converts one into the other in an upgrade (`js-migrate-to-split-*` is its own procedure; upgrade guide 10.1 pp.12-14, 64-65). An Oracle repository (`dbType=oracle`) upgraded to 10.1 or later needs `dbVersion` on one side or the other, else the precheck fails and names the file to edit (upgrade guide 10.1 p.43; review §1.3).
+
 ## Draft 1.1 amendment — 2026-09-17 (vendor documentation review, upgrade matrix)
 
 - §5.7, §5.1: matrix version 2. `javaForBuildomatic` lists every JDK major the vendor platform sheet lists for a release line (8.x: 8 and 11; 9.x: 8, 11 and 17; 10.0: 17; 10.1: 17 and 21), and `doctor` and `verify-target-package` accept any of them instead of one exact major; 10.0 and 10.1 are separate entries. Upgrade paths carry the modes the vendor offers (`modes`), so `upgrade` refuses with exit 6 a pair the guides list only in the other mode (8.x to 10.0 is newdb only, 9.0 to 10.1 is newdb only) and names the mode that is offered. Entries list the certified Tomcat ranges (`tomcat`) for the Tomcat check of §10.2 (review §1.2, §1.3, §2.1).

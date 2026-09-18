@@ -395,6 +395,93 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * Upgrade guide 10.1 p.14: Compact and Split never cross in one upgrade (review §1.3). The
+   * fixture's installation is compact (no installType key).
+   */
+  @Test
+  void should_refuse_with_exit_6_when_the_target_master_properties_switch_compact_to_split()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.write(
+          f.packageDir.resolve("buildomatic").resolve("default_master.properties"),
+          "installType=split\naudit.dbHost=localhost\naudit.dbName=jsaudit\n");
+
+      assertThatThrownBy(() -> f.ops().planUpgrade(newdb(f)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("compact installation")
+          .hasMessageContaining("installType=split")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(6));
+    }
+  }
+
+  @Test
+  void
+      should_fail_verify_target_package_precheck_when_the_target_master_properties_change_after_planning()
+          throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      UpgradeFixture.write(
+          f.packageDir.resolve("buildomatic").resolve("default_master.properties"),
+          "installType=split\n");
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message()).contains("installType=split");
+      assertThat(((CheckResult.Fail) result).remediation()).contains("installType");
+    }
+  }
+
+  /** Upgrade guide 10.1 p.43: Oracle needs dbVersion from 10.1 on (review §1.3). */
+  @Test
+  void should_fail_verify_target_package_precheck_when_oracle_lacks_db_version_for_10_1()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.installedMasterProperties(
+          "dbType=oracle\ndbHost=localhost\ndbPort=1521\nsid=ORCL\ndbUsername=jasperserver\n"
+              + "dbPassword=TopSecret\n");
+      f.fake.unreachable = true; // the path check is then left to the precheck
+      Plan plan =
+          f.ops().planUpgrade(new UpgradeOptions("10.1.0", f.packageDir, Mode.NEWDB, true, false));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("dbType=oracle")
+          .contains("10.1.0")
+          .contains("dbVersion");
+      assertThat(((CheckResult.Fail) result).remediation())
+          .contains("dbVersion=")
+          .contains("default_master.properties");
+    }
+  }
+
+  @Test
+  void should_get_past_the_db_version_check_when_the_installed_master_properties_name_it()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.installedMasterProperties(
+          "dbType=oracle\ndbVersion=19c\ndbHost=localhost\ndbPort=1521\nsid=ORCL\n"
+              + "dbUsername=jasperserver\ndbPassword=TopSecret\n");
+      f.fake.unreachable = true;
+      Plan plan =
+          f.ops().planUpgrade(new UpgradeOptions("10.1.0", f.packageDir, Mode.NEWDB, true, false));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      // the unreachable server is the next finding, so the master properties passed
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("server unreachable")
+          .doesNotContain("dbVersion");
+    }
+  }
+
   @Test
   void should_copy_master_properties_without_passwords_when_planning() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

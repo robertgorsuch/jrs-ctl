@@ -199,6 +199,11 @@ public final class UpgradeFixture implements AutoCloseable {
     write(packageDir.resolve(CREATE_KEYSTORE), "");
   }
 
+  /** Replaces the installed buildomatic's {@code default_master.properties}. */
+  public void installedMasterProperties(String content) throws IOException {
+    write(installDir.resolve("buildomatic").resolve("default_master.properties"), content);
+  }
+
   /** Re-scripts the vendor Java probe, e.g. to simulate a JDK 11. */
   public void javaVersion(String banner) {
     for (String exe : List.of("java", "java.exe")) {
