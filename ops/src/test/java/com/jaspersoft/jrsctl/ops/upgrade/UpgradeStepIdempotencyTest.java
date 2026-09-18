@@ -280,6 +280,9 @@ class UpgradeStepIdempotencyTest {
       Properties written = load(target);
       assertThat(Path.of(written.getProperty("ks"))).isEqualTo(f.keystoreDir);
       assertThat(Path.of(written.getProperty("ksp"))).isEqualTo(f.keystoreDir);
+      // no Properties.store timestamp: a re-execution in a later second must write the same bytes
+      assertThat(Files.readAllLines(target, StandardCharsets.ISO_8859_1))
+          .allMatch(line -> line.startsWith("ks=") || line.startsWith("ksp="));
       assertThat(f.fake.home.runDir("r-ksi").resolve("keystore.init.properties.bak"))
           .doesNotExist();
     }
