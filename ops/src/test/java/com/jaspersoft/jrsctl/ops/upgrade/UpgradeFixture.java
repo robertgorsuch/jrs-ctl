@@ -54,7 +54,7 @@ public final class UpgradeFixture implements AutoCloseable {
       "WARNING: A new encryption key and a new keystore are about to be created.";
 
   public final FakeServices fake;
-  public final Services services;
+  public Services services;
   public final Path root;
   public final Path installDir;
   public final Path tomcatDir;
@@ -374,6 +374,15 @@ public final class UpgradeFixture implements AutoCloseable {
         }
       }
     }
+  }
+
+  /**
+   * Rebuilds the services with no admin password in the environment, as a host without JRS_PASSWORD
+   * set: doctor then skips its login checks (field test 2, D1).
+   */
+  public void withoutAdminPassword() {
+    fake.env.remove("JRS_PASSWORD");
+    services = fake.build();
   }
 
   public DefaultUpgradeOperations ops() {

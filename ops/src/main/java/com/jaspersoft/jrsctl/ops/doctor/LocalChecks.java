@@ -91,7 +91,16 @@ final class LocalChecks {
       return ReportItem.pass("secrets", "no secret references configured");
     }
     List<String> problems = new ArrayList<>();
+    List<String> unavailable = new ArrayList<>();
     for (Map.Entry<String, SecretRef> ref : refs.entrySet()) {
+      // field test 2, D1: doctor never prompts, so a reference that would (an enc: entry with no
+      // passphrase at hand) or that is simply not supplied yet is a WARN, not a FAIL; a reference
+      // that is there but wrong (an unreadable or world-readable file) stays a FAIL
+      if (!s.secrets().availableWithoutPrompt(ref.getValue())) {
+        unavailable.add(
+            ref.getKey() + " (" + ref.getValue().render() + "): " + unavailable(ref.getValue()));
+        continue;
+      }
       try (Secret unused = s.secrets().resolve(ref.getValue())) {
         // resolvable: file is owner-only, env is set, store unlocks
       } catch (SecretException e) {
@@ -99,14 +108,31 @@ final class LocalChecks {
       }
     }
     if (!problems.isEmpty()) {
+      List<String> all = new ArrayList<>(problems);
+      all.addAll(unavailable);
       return ReportItem.fail(
           "secrets",
-          String.join("; ", problems),
+          String.join("; ", all),
           "fix the reference, restrict the file to its owner, set the variable, or run jrsctl"
               + " secrets set");
     }
+    if (!unavailable.isEmpty()) {
+      return ReportItem.warn(
+          "secrets",
+          String.join("; ", unavailable),
+          "set the variable, create the file, or unlock secrets.enc with --passphrase-file or"
+              + " JRSCTL_PASSPHRASE; a command that needs the secret asks for it or stops");
+    }
     return ReportItem.pass(
         "secrets", refs.size() + " reference(s) resolvable: " + String.join(", ", refs.keySet()));
+  }
+
+  private static String unavailable(SecretRef ref) {
+    return switch (ref) {
+      case SecretRef.Env e -> "environment variable " + e.name() + " is not set";
+      case SecretRef.File f -> "secret file " + f.path() + " does not exist";
+      case SecretRef.Enc c -> "secrets.enc is not unlocked (no passphrase without a prompt)";
+    };
   }
 
   static Map<String, SecretRef> configuredRefs(Config c) {

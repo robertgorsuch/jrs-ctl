@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, doctor without a password)
+
+- §12.1, §7.5: `doctor` never needs the admin password and never prompts. The REST adapter resolves `server.auth.passwordRef` on the first request that carries it instead of at connect time, and asks `serverInfo` without a credential first, so reachability, identity, compat, keystore, vendor-java and tomcat run whenever the server answers; `auth`, `capabilities` and `keystore` are SKIP with "no admin password available" and `database` is SKIP until its password is supplied, and a remediation naming the reference when the password is not at hand without a prompt; `secrets` reports a reference that is not supplied yet as WARN, a wrong one as FAIL. The store's passphrase is never asked for by `doctor` (`PassphraseSource.availableWithoutPrompt`, `SecretResolver.availableWithoutPrompt`). An upgrade's doctor precheck treats a skipped `auth` as a failure (field test 2, D1).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, official hotfix packages)
 
 - §8.1, §8.2: an official Jaspersoft package applied from a terminal needs no flag: `hotfix apply` prints the package's SHA-256 and asks the operator to confirm it against the support portal, and the answer is audited as `hotfix.apply.official-confirmed` (ADR-0027 amends ADR-0024 §5). `--allow-unsigned` stays required without a terminal. `hotfix verify` reports such a package ok, since it has no signature to fail. Packages are recognised on base names, case-insensitively, with one directory of prefix, a version in the inner archive's name or the webapp unpacked, and the bundle reader accepts every path character the vendor ships except traversal, absolute names and control characters. A ZIP that is neither shape is refused with exit 2 naming both. The guided menu runs `hotfix apply` directly instead of gating it on a `verify` that refused every official package (field test 2, H1, H2, H4).

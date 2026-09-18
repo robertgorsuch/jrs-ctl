@@ -54,6 +54,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
@@ -140,6 +141,13 @@ public final class RestClient {
   private volatile Optional<String> basicHeader = Optional.empty();
   private volatile Optional<String> tokenParam = Optional.empty();
   private volatile Optional<String> tokenHeader = Optional.empty();
+
+  /**
+   * A credential whose secret is resolved by the first request that carries it (field test 2, D1):
+   * connecting never needs the secret, and a resolution that fails surfaces from that request as
+   * its own exception, with the credential still pending for the next one.
+   */
+  private volatile Optional<Runnable> pendingAuth = Optional.empty();
 
   private RestClient(Builder b) {
     this.baseUrl = b.baseUrl;
@@ -339,6 +347,55 @@ public final class RestClient {
     this.basicHeader = Optional.of(header);
   }
 
+  /**
+   * As {@link #useBasic(String, Secret)}, with the password supplied by the first request that
+   * carries it. {@code password} is called at most once per successful resolution.
+   */
+  public void useBasic(String username, Supplier<Secret> password) {
+    Objects.requireNonNull(username, "username");
+    Objects.requireNonNull(password, "password");
+    clearAuth();
+    this.pendingAuth = Optional.of(() -> useBasic(username, password.get()));
+  }
+
+  /** As {@link #useToken(Secret, Config.TokenLocation)}, resolved by the first request. */
+  public void useToken(Supplier<Secret> token, Config.TokenLocation location) {
+    Objects.requireNonNull(token, "token");
+    Objects.requireNonNull(location, "location");
+    clearAuth();
+    this.pendingAuth = Optional.of(() -> useToken(token.get(), location));
+  }
+
+  /** Resolves a pending credential before a request that will carry it. */
+  private synchronized void applyPendingAuth() {
+    Optional<Runnable> pending = pendingAuth;
+    if (pending.isPresent()) {
+      pending.get().run();
+      pendingAuth = Optional.empty();
+    }
+  }
+
+  /**
+   * {@code GET} with no credential at all: no pending credential is resolved, no Basic header,
+   * token or cookie-independent auth is sent. For endpoints the server answers to anyone, such as
+   * {@code serverInfo}, so that reachability can be judged without a password.
+   */
+  public Response getAnonymous(String path) {
+    URI uri = resolve(path, true);
+    enforceAllowlist(uri);
+    HttpRequest request =
+        request(
+            uri,
+            "GET",
+            JSON,
+            Optional.empty(),
+            HttpRequest.BodyPublishers.noBody(),
+            requestTimeout,
+            true);
+    return exchange(
+        request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), "GET", uri);
+  }
+
   /** Appends {@code pp=<token>} to every subsequent request (token / pre-authentication). */
   public void useToken(Secret token) {
     useToken(token, Config.TokenLocation.QUERY);
@@ -375,8 +432,9 @@ public final class RestClient {
     }
   }
 
-  /** Drops the Basic header and token; cookies are kept. */
+  /** Drops the Basic header and token, pending or applied; cookies are kept. */
   public void clearAuth() {
+    this.pendingAuth = Optional.empty();
     this.basicHeader = Optional.empty();
     this.tokenParam = Optional.empty();
     this.tokenHeader = Optional.empty();
@@ -762,6 +820,17 @@ public final class RestClient {
       Optional<String> contentType,
       HttpRequest.BodyPublisher body,
       Duration timeout) {
+    return request(uri, method, accept, contentType, body, timeout, false);
+  }
+
+  private HttpRequest request(
+      URI uri,
+      String method,
+      String accept,
+      Optional<String> contentType,
+      HttpRequest.BodyPublisher body,
+      Duration timeout,
+      boolean anonymous) {
     HttpRequest.Builder rb =
         HttpRequest.newBuilder(uri)
             .timeout(timeout)
@@ -770,8 +839,10 @@ public final class RestClient {
             .header(CORRELATION_HEADER, correlationId.isEmpty() ? "none" : correlationId)
             .method(method, body);
     contentType.ifPresent(ct -> rb.header("Content-Type", ct));
-    basicHeader.ifPresent(h -> rb.header("Authorization", h));
-    tokenHeader.ifPresent(t -> rb.header(PREAUTH_HEADER, t));
+    if (!anonymous) {
+      basicHeader.ifPresent(h -> rb.header("Authorization", h));
+      tokenHeader.ifPresent(t -> rb.header(PREAUTH_HEADER, t));
+    }
     return rb.build();
   }
 
@@ -997,9 +1068,16 @@ public final class RestClient {
   }
 
   private URI resolve(String path) {
+    return resolve(path, false);
+  }
+
+  private URI resolve(String path, boolean anonymous) {
     Objects.requireNonNull(path, "path");
+    if (!anonymous) {
+      applyPendingAuth();
+    }
     String target = isAbsolute(path) ? path : base + (path.startsWith("/") ? path : "/" + path);
-    Optional<String> token = tokenParam;
+    Optional<String> token = anonymous ? Optional.empty() : tokenParam;
     if (token.isPresent()) {
       target = target + (target.contains("?") ? "&" : "?") + "pp=" + token.get();
     }

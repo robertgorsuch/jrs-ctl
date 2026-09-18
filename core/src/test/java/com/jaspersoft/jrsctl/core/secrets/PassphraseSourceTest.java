@@ -35,6 +35,38 @@ class PassphraseSourceTest {
 
   @TempDir Path tmp;
 
+  /** Field test 2, D1: doctor asks this before touching the store, so it never prompts. */
+  @Test
+  void should_say_whether_a_passphrase_is_available_without_a_prompt() throws IOException {
+    Path file = Files.writeString(tmp.resolve("pp"), "pp\n", StandardCharsets.UTF_8);
+
+    assertThat(
+            new PassphraseSource.FromEnv(Map.of("JRSCTL_PASSPHRASE", "pp"))
+                .availableWithoutPrompt())
+        .isTrue();
+    assertThat(new PassphraseSource.FromEnv(Map.of()).availableWithoutPrompt()).isFalse();
+    assertThat(new PassphraseSource.FromFile(file, files).availableWithoutPrompt()).isTrue();
+    assertThat(
+            new PassphraseSource.FromFile(tmp.resolve("missing"), files).availableWithoutPrompt())
+        .isFalse();
+    assertThat(new PassphraseSource.FromConsole().availableWithoutPrompt()).isFalse();
+    assertThat(new PassphraseSource.Fixed(Secret.fromString("pp")).availableWithoutPrompt())
+        .isTrue();
+    assertThat(
+            new PassphraseSource.Chain(
+                    List.of(
+                        new PassphraseSource.FromEnv(Map.of()), new PassphraseSource.FromConsole()))
+                .availableWithoutPrompt())
+        .isFalse();
+    assertThat(
+            new PassphraseSource.Chain(
+                    List.of(
+                        new PassphraseSource.FromConsole(),
+                        new PassphraseSource.FromFile(file, files)))
+                .availableWithoutPrompt())
+        .isTrue();
+  }
+
   @Test
   void should_read_env_var_when_jrsctl_passphrase_is_set() {
     try (Secret s = new PassphraseSource.FromEnv(Map.of("JRSCTL_PASSPHRASE", "pp")).require()) {

@@ -71,6 +71,17 @@ final class DatabaseCheck {
           "set database.passwordRef (jrsctl config set database.passwordRef) to check the"
               + " connection");
     }
+    if (!s.secrets().availableWithoutPrompt(db.passwordRef().get())) {
+      // field test 2, D1: a password not supplied yet is a SKIP saying so, never a prompt and
+      // not a failure; a reference that is present but wrong still fails below
+      return ReportItem.skip(
+          NAME,
+          "database password not available ("
+              + db.passwordRef().get().render()
+              + "), so the connection is not checked; needed only for hotfixes with SQL",
+          "set the variable, create the file, or unlock secrets.enc with --passphrase-file or"
+              + " JRSCTL_PASSPHRASE, then run doctor again");
+    }
     Config.DatabaseType type = db.type().get();
     Optional<JdbcSettings> settings = JdbcSettings.from(s.config(), s.platform());
     if (settings.isEmpty()) {

@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.core.secrets;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import java.io.Console;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +30,13 @@ public sealed interface PassphraseSource
   /** The passphrase when this source can supply one, otherwise empty. */
   Optional<Secret> read();
 
+  /**
+   * True when {@link #read()} would answer without asking anyone: a set variable, an existing file,
+   * a fixed value. A console source is never available in this sense, so a caller that must not
+   * prompt (field test 2, D1: {@code doctor}) asks this first and leaves the store alone otherwise.
+   */
+  boolean availableWithoutPrompt();
+
   /** The passphrase, or {@link PassphraseUnavailableException} when no source has one. */
   default Secret require() {
     return read().orElseThrow(PassphraseUnavailableException::new);
@@ -45,6 +53,12 @@ public sealed interface PassphraseSource
       String v = env.get(ENV_VAR);
       return v == null || v.isEmpty() ? Optional.empty() : Optional.of(Secret.fromString(v));
     }
+
+    @Override
+    public boolean availableWithoutPrompt() {
+      String v = env.get(ENV_VAR);
+      return v != null && !v.isEmpty();
+    }
   }
 
   /**
@@ -57,6 +71,11 @@ public sealed interface PassphraseSource
     public FromFile {
       Objects.requireNonNull(path, "path");
       Objects.requireNonNull(files, "files");
+    }
+
+    @Override
+    public boolean availableWithoutPrompt() {
+      return Files.isRegularFile(path);
     }
 
     @Override
@@ -109,6 +128,11 @@ public sealed interface PassphraseSource
         Arrays.fill(chars, '\0');
       }
     }
+
+    @Override
+    public boolean availableWithoutPrompt() {
+      return false;
+    }
   }
 
   /** A passphrase supplied in code (tests, or a caller that already prompted). */
@@ -125,6 +149,11 @@ public sealed interface PassphraseSource
       } finally {
         Arrays.fill(copy, '\0');
       }
+    }
+
+    @Override
+    public boolean availableWithoutPrompt() {
+      return true;
     }
   }
 
@@ -143,6 +172,11 @@ public sealed interface PassphraseSource
         }
       }
       return Optional.empty();
+    }
+
+    @Override
+    public boolean availableWithoutPrompt() {
+      return sources.stream().anyMatch(PassphraseSource::availableWithoutPrompt);
     }
   }
 
