@@ -501,6 +501,46 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * Field test 2, U3: the tester's /home held 800 MB and the upgrade failed part-way. The whole
+   * run's backup need is judged before anything starts, and the plan says where the backups go.
+   */
+  @Test
+  void should_fail_verify_target_package_precheck_when_the_home_cannot_hold_the_backups()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.platform.freeSpaceUnder.put(f.fake.home.root(), 100L * 1024 * 1024);
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("needs about")
+          .contains("free under " + f.fake.home.root());
+      assertThat(((CheckResult.Fail) result).remediation())
+          .contains("--home")
+          .contains("JRSCTL_HOME")
+          .contains("runs prune");
+    }
+  }
+
+  @Test
+  void should_say_where_the_backups_go_and_how_to_move_them_when_planning() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(
+              w ->
+                  w.contains("backups and the full export go under " + f.fake.home.snapshots())
+                      && w.contains("free")
+                      && w.contains("--home")
+                      && w.contains("JRSCTL_HOME"));
+    }
+  }
+
   @Test
   void should_copy_master_properties_without_passwords_when_planning() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

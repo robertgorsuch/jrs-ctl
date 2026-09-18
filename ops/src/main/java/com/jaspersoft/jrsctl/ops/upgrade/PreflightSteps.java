@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.Event;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
@@ -19,6 +20,7 @@ import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -61,6 +63,9 @@ final class PreflightSteps {
 
   /** Doctor items an upgrade needs as PASS, not SKIP: the vendor run and the export log in. */
   static final Set<String> REQUIRED_PASS = Set.of("auth");
+
+  /** Room kept for the run's staging and markers under the home beyond the archives. */
+  static final long STAGING_HEADROOM_BYTES = 512L << 20;
 
   private PreflightSteps() {}
 
@@ -224,6 +229,12 @@ final class PreflightSteps {
             "the package names version " + discovered.get() + " but --to says " + to,
             "pass --to " + discovered.get() + " or point --package at the right distribution");
       }
+      // field test 2, U3: the whole run's backups must fit before anything starts; the tester's
+      // 800 MB /home held the jrsctl home and the upgrade died part-way
+      Optional<CheckResult> space = spaceProblem();
+      if (space.isPresent()) {
+        return space.get();
+      }
       // review §1.3: what write-master-properties will stage must keep the installation type
       // (upgrade guide 10.1 p.14) and, for Oracle from 10.1 on, name dbVersion (p.43)
       Map<String, String> targetMaster = in.targetMasterProperties(rt.locator());
@@ -332,6 +343,55 @@ final class PreflightSteps {
             "install a certified Tomcat and pass --tomcat-dir <its directory>");
       }
       return CheckResult.pass();
+    }
+
+    /**
+     * The run's need under the jrsctl home: the webapp and buildomatic archives, a full export (its
+     * size is unknown before it is taken, so the larger of 1 GB and the webapp tree stands in), and
+     * headroom for the run's staging; empty when the volume holds it.
+     */
+    private Optional<CheckResult> spaceProblem() {
+      long trees;
+      try {
+        trees = DiskSpace.treeBytes(in.webappDir());
+        if (Files.isDirectory(in.installedBuildomatic())) {
+          trees += DiskSpace.treeBytes(in.installedBuildomatic());
+        }
+      } catch (IOException e) {
+        return Optional.of(
+            CheckResult.fail(
+                "cannot size the trees to back up: " + e.getMessage(),
+                "check read access under " + in.webappDir()));
+      }
+      long export = BackupSteps.exportEstimate(trees);
+      Path under = rt.home().snapshots();
+      List<DiskSpace.Need> needs =
+          List.of(
+              new DiskSpace.Need("webapp and buildomatic backup", under, trees),
+              new DiskSpace.Need("full export (estimate)", under, export),
+              new DiskSpace.Need("staging headroom", under, STAGING_HEADROOM_BYTES));
+      List<String> problems = DiskSpace.problems(rt.files(), needs);
+      if (problems.isEmpty()) {
+        return Optional.empty();
+      }
+      long total = trees + export + STAGING_HEADROOM_BYTES + DiskSpace.MARGIN_BYTES;
+      String free;
+      try {
+        free = DiskSpace.human(rt.files().freeSpaceBytes(under));
+      } catch (IOException e) {
+        free = "an unknown amount";
+      }
+      return Optional.of(
+          CheckResult.fail(
+              "the upgrade needs about "
+                  + DiskSpace.human(total)
+                  + " free under "
+                  + rt.home().root()
+                  + " for the backups and the full export; "
+                  + free
+                  + " is free",
+              "free space there, prune old runs with jrsctl runs prune, or run with --home <dir>"
+                  + " or JRSCTL_HOME pointing at a directory on a larger volume"));
     }
 
     @Override

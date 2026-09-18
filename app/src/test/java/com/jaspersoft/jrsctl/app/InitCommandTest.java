@@ -118,6 +118,21 @@ class InitCommandTest {
     assertThat(run.out()).contains("wrote ").contains("server.webappName");
   }
 
+  /** Field test 2, U3: the tester could not find where the backups go or how to move them. */
+  @Test
+  void should_print_the_home_and_its_free_space() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path home = tmp.resolve("home");
+
+    Run run = run("init", "--yes", "--home", home.toString(), "--install-dir", install.toString());
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out())
+        .containsPattern(
+            "jrsctl home: .* \\([0-9.]+ (GB|MB|B) free; backups and state live here; move it with"
+                + " --home or JRSCTL_HOME\\)");
+  }
+
   @Test
   void should_refuse_to_overwrite_when_config_exists_and_no_force() throws Exception {
     Path install = fakeLayout(tmp.resolve("jrs"));

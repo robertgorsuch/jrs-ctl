@@ -263,6 +263,7 @@ Rules:
 - `snapshots/<runId>/<stepId>/` containing payload and `manifest.json` with SHA-256 per file, source paths, permissions/ACLs, owner, and timestamp.
 - Verified on creation and again before any restore.
 - Retention pruning respects `backups.*` and never prunes a snapshot referenced by an installed hotfix, by a registered customization, or by the most recent successful upgrade.
+- An upgrade's set (`snapshots/<runId>/`: the webapp and buildomatic archives, the full export, `upgrade.json`) follows its run and is pruned with it. Before an upgrade starts, `verify-target-package` refuses a run whose backups will not fit under the home (the trees to archive, an export estimate of the larger of 1 GB and the webapp tree, 512 MB headroom, plus the margin), and `full-export` re-checks its own need; the plan names the backup location, its free space and `--home`/`JRSCTL_HOME`; `init` prints the home and its free space; `doctor`'s `disk` item measures the home's volume as well as the installation's (field test 2, U3).
 - The run directories `runs/<runId>/` (bundle copies, staging, markers) follow the same rules: one goes only when its run has ended, started before the retention cut-off, and neither it nor the run it is a `<runId>-hf-<slug>` sub-run of is protected; a leftover `hotfix-verify-*` working directory goes by age; no other name under `runs/` is touched. Removed run directories are listed with the removed snapshots; the kept and protected counts stay snapshot counts (#53).
 
 ### 5.7 Compatibility matrix
