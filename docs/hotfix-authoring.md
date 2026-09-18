@@ -1,6 +1,6 @@
-# jrsctl hotfix authoring guide
+# jrsctl hotfix authoring guide (for bundle authors)
 
-This guide is for people who write hotfix bundles for JasperReports Server: Jaspersoft support and engineering, and customers who package their own fixes. It covers the bundle format, the manifest and the rules `jrsctl` enforces on it, building and signing a bundle with `jrsctl hotfix build` and `jrsctl keys`, and how to test a bundle before handing it to an operator. The normative text is spec §8 (hotfix subsystem) and §11.1 (bundle signing); the schema is `core/src/main/resources/schema/hotfix-manifest.schema.json`. This guide is embedded in the tool: `jrsctl docs hotfix-authoring`.
+You do not need this guide to apply a hotfix from Jaspersoft support: `jrsctl hotfix apply <package.zip>` takes the package as downloaded and asks you to confirm its checksum; see the operator guide, "Applying a hotfix from Jaspersoft support". This guide is for people who write hotfix bundles for JasperReports Server: Jaspersoft support and engineering, and customers who package their own fixes. It covers the bundle format, the manifest and the rules `jrsctl` enforces on it, building and signing a bundle with `jrsctl hotfix build` and `jrsctl keys`, and how to test a bundle before handing it to an operator. The normative text is spec §8 (hotfix subsystem) and §11.1 (bundle signing); the schema is `core/src/main/resources/schema/hotfix-manifest.schema.json`. This guide is embedded in the tool: `jrsctl docs hotfix-authoring`.
 
 ## Who does what
 

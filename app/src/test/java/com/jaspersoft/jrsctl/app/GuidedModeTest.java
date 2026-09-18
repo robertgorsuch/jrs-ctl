@@ -77,6 +77,29 @@ class GuidedModeTest {
     assertThat(ran).containsExactly(List.of("hotfix", "apply", bundle.toString()));
   }
 
+  /** Field test 2, H5: hotfixes are cumulative, so the entry says what a rollback does. */
+  @Test
+  void should_word_the_rollback_entry_and_offer_cascade() {
+    guided(List.of(), List.of(), "5", "2", "JRSHF-10.0.0-20260730-0457", "y", "q");
+
+    assertThat(text.toString())
+        .contains("2) Roll back a hotfix (puts back the files it replaced)")
+        .contains("Also roll back the hotfixes applied after it, if any?");
+    assertThat(ran)
+        .containsExactly(
+            List.of("hotfix", "list"),
+            List.of("hotfix", "rollback", "JRSHF-10.0.0-20260730-0457", "--cascade"));
+  }
+
+  @Test
+  void should_roll_back_without_cascade_when_the_operator_declines_it() {
+    guided(List.of(), List.of(), "5", "2", "JRS-8.2.0-HF-0001", "n", "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of("hotfix", "list"), List.of("hotfix", "rollback", "JRS-8.2.0-HF-0001"));
+  }
+
   @Test
   void should_ask_again_for_a_file_that_does_not_exist() throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");

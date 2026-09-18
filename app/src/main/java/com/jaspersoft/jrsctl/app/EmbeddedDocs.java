@@ -35,9 +35,12 @@ final class EmbeddedDocs {
           "security", "/docs/security.md",
           "hotfix-authoring", "/docs/hotfix-authoring.md");
 
-  /** Display order of the listing; the operator guide first because it is the one to read. */
+  /**
+   * Display order of the listing; the operator guide first because it is the one to read, the
+   * authoring guide last because an operator applying a hotfix never needs it (field test 2, H3).
+   */
   static final List<String> NAMES =
-      List.of("operator-guide", "recovery-runbook", "hotfix-authoring", "security", "readme");
+      List.of("operator-guide", "recovery-runbook", "security", "readme", "hotfix-authoring");
 
   private EmbeddedDocs() {}
 

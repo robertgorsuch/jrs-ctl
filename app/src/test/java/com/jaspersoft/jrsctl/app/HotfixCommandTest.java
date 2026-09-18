@@ -116,6 +116,30 @@ class HotfixCommandTest {
     assertThat(audits(home)).contains("hotfix.apply.allow-unsigned");
   }
 
+  /** Field test 2, H2, H3: the customer path comes first and never mentions manifests or keys. */
+  @Test
+  void should_lead_the_hotfix_help_with_the_official_package_path() {
+    InitCommandTest.Run run = InitCommandTest.run("hotfix", "--help");
+
+    assertThat(run.code()).isZero();
+    String help = run.out().replaceAll("\\s+", " "); // picocli wraps the footer at 80 columns
+    assertThat(help)
+        .contains("jrsctl hotfix apply <package.zip>")
+        .contains("from Jaspersoft support apply as downloaded")
+        .doesNotContain("manifest");
+    assertThat(help.indexOf("as downloaded")).isLessThan(help.indexOf("hotfix-authoring"));
+  }
+
+  @Test
+  void should_explain_an_empty_ledger() {
+    InitCommandTest.Run run =
+        InitCommandTest.run("hotfix", "list", "--home", home.toString(), "--no-color", "--ascii");
+
+    assertThat(run.code()).isZero();
+    assertThat(run.out())
+        .contains("no hotfixes recorded: jrsctl lists the hotfixes it applied itself");
+  }
+
   @Test
   void should_exit_0_from_verify_for_an_official_package() {
     fake.official = true;

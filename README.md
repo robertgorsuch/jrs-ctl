@@ -155,25 +155,15 @@ jrsctl import C:\Backups\samples.zip --update
 
 ### Install a hotfix
 
-Hotfixes come as a `.zip` file: either a signed jrsctl bundle, or an official Jaspersoft cumulative hotfix as support publishes it (`hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip`). First check the file suits your server. This changes nothing:
-
-```bash
-jrsctl hotfix verify C:\Downloads\JRS-9.0.0-HF-0002.zip
-```
-
-Then install it. jrsctl backs up every file it will replace, and stops and restarts the server if the hotfix needs it:
-
-```bash
-jrsctl hotfix apply C:\Downloads\JRS-9.0.0-HF-0002.zip
-```
-
-An official Jaspersoft package carries no jrsctl signature. jrsctl prints its SHA-256 and asks you to confirm it matches the checksum on the support portal (unattended, pass `--allow-unsigned` after checking it yourself):
+Hotfixes from Jaspersoft support come as a `.zip` package (`hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip`). Install it as downloaded. jrsctl prints the package's SHA-256 and asks you to confirm it matches the checksum on the support portal, shows what it will replace, add and delete, backs up every file it touches, and stops and restarts the server if the hotfix needs it:
 
 ```bash
 jrsctl hotfix apply C:\Downloads\hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip
 ```
 
-jrsctl reads the package as it is, works out which files to replace, add and delete (including the libraries an earlier hotfix left behind), and prints the readme's manual steps, such as SQL for particular databases, as warnings. It runs none of them.
+Unattended, pass `--allow-unsigned` after checking the checksum yourself. The readme's manual steps, such as SQL for particular databases, are printed as warnings; jrsctl runs none of them.
+
+A hotfix bundle built with jrsctl (`JRS-9.0.0-HF-0002.zip`) installs the same way; `jrsctl hotfix verify <file>` checks either kind without changing anything.
 
 See what is installed:
 

@@ -24,6 +24,23 @@ class DocsCommandTest {
         .contains("readme");
   }
 
+  /**
+   * Field test 2, H3: the authoring guide is for authors, and the listing says so and puts it last.
+   */
+  @Test
+  void should_list_the_authoring_guide_last_and_mark_it_for_authors() {
+    StringWriter out = new StringWriter();
+    picocli.CommandLine cmd = Main.commandLine();
+    cmd.setOut(new PrintWriter(out));
+
+    assertThat(cmd.execute("docs")).isZero();
+    String text = out.toString();
+    assertThat(text).contains("(for bundle authors)");
+    assertThat(text.indexOf("hotfix-authoring"))
+        .isGreaterThan(text.indexOf("readme"))
+        .isGreaterThan(text.indexOf("security"));
+  }
+
   @Test
   void should_emit_json_array_when_json_flag_given() {
     StringWriter out = new StringWriter();

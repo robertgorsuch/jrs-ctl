@@ -154,7 +154,7 @@ final class GuidedMode {
   private void hotfix() {
     out.println();
     out.println("  1) Apply a hotfix");
-    out.println("  2) Remove an installed hotfix");
+    out.println("  2) Roll back a hotfix (puts back the files it replaced)");
     out.println("  3) List hotfixes");
     switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
       case "1" -> {
@@ -165,7 +165,18 @@ final class GuidedMode {
       }
       case "2" -> {
         execute("hotfix", "list");
-        text("Hotfix id to remove").ifPresent(id -> execute("hotfix", "rollback", id));
+        Optional<String> id = text("Hotfix id to roll back");
+        if (id.isEmpty()) {
+          return;
+        }
+        // a cumulative hotfix applied later owns the same files; rollback is last-in-first-out
+        // (spec §8.3), so without --cascade a blocked rollback stops with exit 2
+        if (Prompter.yes(
+            out, "Also roll back the hotfixes applied after it, if any? [y/N] ", false)) {
+          execute("hotfix", "rollback", id.get(), "--cascade");
+        } else {
+          execute("hotfix", "rollback", id.get());
+        }
       }
       case "3" -> execute("hotfix", "list");
       default -> {

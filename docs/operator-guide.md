@@ -200,16 +200,16 @@ Every setting the configuration accepts, in schema order, with its current value
 - **Exit codes:** 0; **2** when `config.yaml` is malformed.
 - **Flags:** `--json` — an array of `{key, value, source, description}`.
 
-### `jrsctl hotfix build <dir> --key <secretRef> --out <bundle>`
+### Applying a hotfix from Jaspersoft support
 
-Builds a signed bundle from a directory holding `manifest.json`, `payload/` and optional `sql/` and `checks/` (see `jrsctl docs hotfix-authoring`): fills in the SHA-256 of every listed file, validates the completed manifest against the schema and the semantic rules (`action`, the `restart`/WEB-INF rule, the SQL rollback rule), refuses any file in the directory that the manifest does not list, signs `manifest.json` with the Ed25519 private key behind `<secretRef>` and writes the ZIP (`manifest.json` first, `SIGNATURE` second, then the files).
+This is the whole procedure for a cumulative hotfix as support publishes it (`hotfix_JRSPro<version>_cumulative_<date>_<time>.zip`):
 
-**Before you start:** this command is for the **author** of a hotfix bundle, not for an operator applying one, so `jrsctl hotfix --help` does not list it (#62); `jrsctl hotfix build --help` and `--explain` still work; an operator only needs `hotfix verify` and `hotfix apply`, and bundles from Actian Jaspersoft are already signed with the publisher key built into jrsctl. The author writes `manifest.json` (start from the template in `jrsctl docs hotfix-authoring`, section "Starting from the template") and creates a signing key once with `jrsctl keys generate <name> --private-out <file>`: `--key file:<file>` points at that private key, and every server that will apply the bundle trusts it after `jrsctl keys add <name> <name>.pub` with the public key from `<home>/keys/trusted/`.
+1. Download the package and note the checksum shown on the support portal.
+2. `jrsctl hotfix apply <package.zip>`. jrsctl reads the package as downloaded, prints its SHA-256 and asks **Does this match the checksum on the support portal?** Answer yes only after comparing them.
+3. Read the plan it shows: which files are replaced, added and deleted, whether the server is stopped for the swap, and the readme's manual steps (SQL for particular databases, optional properties) printed as warnings. Confirm to run it.
+4. `jrsctl hotfix list` shows it as `JRSHF-<version>-<date>-<time>`; `jrsctl hotfix rollback <id>` puts every file back as it was.
 
-- **Mutates:** only the output file. The source directory is never modified; the private key is held in memory as `char[]` and wiped after signing.
-- **Rollback:** not applicable; delete the output file if you do not want it.
-- **Exit codes:** 0; **1** when `--key` is not a parseable secret reference; **2** when the manifest is invalid (every problem is listed), a listed file is missing, an unlisted file is present, or the key cannot be read or is not an Ed25519 PKCS#8 key.
-- **Flags:** `<dir>` — the bundle directory; `--key <secretRef>` (required) — `file:/path` to the one-line base64 PKCS#8 key written by `keys generate`, or `env:NAME` / `enc:NAME` holding the same text; `--out <bundle>` (required) — the ZIP to write (an existing file is replaced).
+Unattended (`--yes`, `--non-interactive`, `--json`) there is no question, so pass `--allow-unsigned` after checking the checksum yourself. `jrsctl hotfix verify <package.zip>` reports on the package without changing anything. Nothing else is needed: no keys, no manifest, no bundle. The sections below describe each command; "Writing your own hotfix bundles" at the end is for authors.
 
 ### `jrsctl hotfix verify <bundle> [--json]`
 
@@ -258,6 +258,21 @@ Every hotfix recorded in the state store: id, title, installed timestamp, number
 - **Rollback:** not applicable.
 - **Exit codes:** 0; **2** when the state store cannot be opened.
 - **Flags:** `--json` — the rows as a JSON array.
+
+### Writing your own hotfix bundles (authors only)
+
+Everything above applies a hotfix. Writing one is a different job, done by Jaspersoft support and engineering or by a customer packaging its own fix: a `manifest.json`, a `payload/` directory, a signing key, and `jrsctl hotfix build`. `jrsctl docs hotfix-authoring` is the guide; the one command it uses is below.
+
+### `jrsctl hotfix build <dir> --key <secretRef> --out <bundle>`
+
+Builds a signed bundle from a directory holding `manifest.json`, `payload/` and optional `sql/` and `checks/` (see `jrsctl docs hotfix-authoring`): fills in the SHA-256 of every listed file, validates the completed manifest against the schema and the semantic rules (`action`, the `restart`/WEB-INF rule, the SQL rollback rule), refuses any file in the directory that the manifest does not list, signs `manifest.json` with the Ed25519 private key behind `<secretRef>` and writes the ZIP (`manifest.json` first, `SIGNATURE` second, then the files).
+
+**Before you start:** this command is for the **author** of a hotfix bundle, not for an operator applying one, so `jrsctl hotfix --help` does not list it (#62); `jrsctl hotfix build --help` and `--explain` still work; an operator only needs `hotfix verify` and `hotfix apply`, and bundles from Actian Jaspersoft are already signed with the publisher key built into jrsctl. The author writes `manifest.json` (start from the template in `jrsctl docs hotfix-authoring`, section "Starting from the template") and creates a signing key once with `jrsctl keys generate <name> --private-out <file>`: `--key file:<file>` points at that private key, and every server that will apply the bundle trusts it after `jrsctl keys add <name> <name>.pub` with the public key from `<home>/keys/trusted/`.
+
+- **Mutates:** only the output file. The source directory is never modified; the private key is held in memory as `char[]` and wiped after signing.
+- **Rollback:** not applicable; delete the output file if you do not want it.
+- **Exit codes:** 0; **1** when `--key` is not a parseable secret reference; **2** when the manifest is invalid (every problem is listed), a listed file is missing, an unlisted file is present, or the key cannot be read or is not an Ed25519 PKCS#8 key.
+- **Flags:** `<dir>` — the bundle directory; `--key <secretRef>` (required) — `file:/path` to the one-line base64 PKCS#8 key written by `keys generate`, or `env:NAME` / `enc:NAME` holding the same text; `--out <bundle>` (required) — the ZIP to write (an existing file is replaced).
 
 ### `jrsctl export [--uri <uri>]... [--users-roles] [--access-events] [--audit-events] [--monitoring] [--settings] [--full-server] [--stop-service] [--strategy rest|vendor] --out <file> [--plan] [--yes] [--json]`
 
