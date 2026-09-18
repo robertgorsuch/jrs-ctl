@@ -198,7 +198,7 @@ smoke:
 
 Rules:
 - `network.mode: isolated` is enforced in the HTTP client: an allowlist containing only the `server.baseUrl` host. Any request to another host is refused, logged as `FAIL`, and audited. This makes isolated mode testable with WireMock.
-- `vendor.javaHome` is mandatory for upgrade and vendor-strategy export/import. `doctor` verifies it matches the compat matrix requirement for the detected JRS version (JRS 8.x → Java 11, JRS 9+ → Java 17). jrsctl's own runtime is never passed to buildomatic.
+- `vendor.javaHome` is mandatory for upgrade and vendor-strategy export/import. `doctor` verifies it is one of the Java majors the compat matrix lists for the detected JRS version (7.x: 8; 8.x: 8 or 11; 9.x: 8, 11 or 17; 10.0: 17; 10.1: 17 or 21, from the vendor platform-support sheets). jrsctl's own runtime is never passed to buildomatic.
 - `service.kind: manual` means jrsctl prints the stop/start instruction, waits for the operator (or `--yes` fails with exit code 2), and polls `serverInfo` until the server state changes.
 
 ### 5.2 Secrets
@@ -267,7 +267,7 @@ Rules:
 
 ### 5.7 Compatibility matrix
 
-- `compat/matrix.yaml` bundled (unsigned; it ships inside the same artifact as any key that could verify it). Lists supported JRS versions, editions, Java versions for buildomatic, app servers, databases, supported upgrade paths, and per-version capability expectations.
+- `compat/matrix.yaml` bundled (unsigned; it ships inside the same artifact as any key that could verify it). Lists supported JRS versions, editions, the Java majors buildomatic may run on (`javaForBuildomatic`, a list: every JDK the vendor platform sheet lists for the release line), the certified Tomcat version ranges (`tomcat`), app servers, databases, supported upgrade paths with the modes the vendor offers for each pair (`modes: [samedb, newdb]`; a path without `modes` allows both), and per-version capability expectations. Matrix version 2 (review §1.2, §1.3, §2.1); 10.0 and 10.1 are separate entries because 10.1 adds JDK 21.
 - `doctor` fails on unsupported combinations unless `--allow-unsupported` is passed (logged to audit; exit code unchanged).
 
 ### 5.8 Redaction

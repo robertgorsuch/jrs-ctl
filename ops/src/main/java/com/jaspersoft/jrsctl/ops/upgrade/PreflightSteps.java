@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
@@ -212,30 +213,32 @@ final class PreflightSteps {
             "server unreachable, current version unknown: " + e.getMessage(),
             "start the server; the upgrade path is checked against its reported version");
       }
-      if (!rt.services().matrix().upgradePathSupported(current, to)) {
+      Optional<String> pathProblem =
+          UpgradePaths.problem(rt.services().matrix(), current, to, in.options().mode());
+      if (pathProblem.isPresent()) {
         return CheckResult.fail(
-            "upgrade path " + current + " -> " + to + " is not in the compatibility matrix",
-            "choose a supported target version; see the compat matrix in the operator guide");
+            pathProblem.get(),
+            "choose a supported target version or mode; see the compat matrix in the operator"
+                + " guide");
       }
-      int required;
+      Set<Integer> allowed;
       try {
-        required = rt.services().matrix().javaRequiredFor(to);
+        allowed = rt.services().matrix().javaRequiredFor(to);
       } catch (UnsupportedVersionException e) {
         return CheckResult.fail(
             "no compatibility matrix entry for " + to, "choose a supported target version");
       }
+      String required = CompatMatrix.describeJava(allowed);
       Optional<Path> javaHome = rt.config().vendor().javaHome();
       if (javaHome.isEmpty()) {
         return CheckResult.fail(
-            "vendor.javaHome is not set; the vendor upgrade scripts need a Java "
-                + required
-                + " JDK",
-            "set vendor.javaHome in config.yaml to a Java " + required + " JDK");
+            "vendor.javaHome is not set; the vendor upgrade scripts need a " + required + " JDK",
+            "set vendor.javaHome in config.yaml to a " + required + " JDK");
       }
       if (!Files.isDirectory(javaHome.get())) {
         return CheckResult.fail(
             "vendor.javaHome " + javaHome.get() + " is not a directory",
-            "point vendor.javaHome at an installed Java " + required + " JDK");
+            "point vendor.javaHome at an installed " + required + " JDK");
       }
       Optional<Integer> found;
       try {
@@ -246,9 +249,9 @@ final class PreflightSteps {
       if (found.isEmpty()) {
         return CheckResult.fail(
             "cannot determine the Java version of vendor.javaHome " + javaHome.get(),
-            "point vendor.javaHome at a working Java " + required + " JDK");
+            "point vendor.javaHome at a working " + required + " JDK");
       }
-      if (found.get() != required) {
+      if (!allowed.contains(found.get())) {
         return CheckResult.fail(
             "vendor.javaHome "
                 + javaHome.get()
@@ -256,9 +259,9 @@ final class PreflightSteps {
                 + found.get()
                 + "; JasperReports Server "
                 + to
-                + " needs Java "
+                + " needs "
                 + required,
-            "set vendor.javaHome to a Java " + required + " JDK");
+            "set vendor.javaHome to a " + required + " JDK");
       }
       return CheckResult.pass();
     }

@@ -33,6 +33,8 @@ Recommend: a fourth `Handles.Phase.PENDING`; parse `error.code` and `error.param
 snapshot is not needed). Same shape for export warnings (`export.broken.dependency`).
 
 ### 1.2 Compat matrix Java requirements are not what the platform sheets say
+*Fixed 2026-09-17: matrix version 2 lists allowed sets; 9.x keeps 17 as the sheet lists it (runtime only).*
+
 `core/src/main/resources/compat/matrix.yaml` requires one Java major per range (7.x→8, 8.x→11, 9.x→17,
 10.x→17) and `verify-target-package` refuses anything else. The vendor sheets:
 
@@ -51,6 +53,8 @@ Recommend: `javaForBuildomatic` becomes a list of allowed majors; split `>=10.0.
 `>=10.1.0 <11.0.0`; `doctor` reports "certified" vs "compatible" rather than pass/fail on the exact major.
 
 ### 1.3 Upgrade paths depend on mode and minor version, the matrix has neither
+*Fixed 2026-09-17 for modes and ranges; the Compact/Split invariant and Oracle `dbVersion` check are not built.*
+
 `upgradePaths` in the matrix is `{from: 8.x, to: 10.x}` style. The guides (10.1 pp.10-11, 10.0 pp.11-12, 9.0
 pp.10-12, 8.2 §1.1.1):
 

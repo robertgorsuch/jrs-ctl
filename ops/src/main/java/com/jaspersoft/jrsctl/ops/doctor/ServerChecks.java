@@ -172,25 +172,25 @@ final class ServerChecks {
           "no matrix entry for " + c.identity().version() + "; required Java unknown",
           "fix the compat check first");
     }
-    int required = entry.get().javaForBuildomatic();
+    // review §1.2: the platform sheets list more than one JDK for most release lines
+    Set<Integer> allowed = entry.get().javaForBuildomatic();
+    String need = CompatMatrix.describeJava(allowed);
     if (javaHome.isEmpty()) {
       return ReportItem.skip(
           "vendor-java",
           "vendor.javaHome is not configured",
-          "set vendor.javaHome to a Java "
-              + required
+          "set vendor.javaHome to a "
+              + need
               + " JDK for buildomatic (needed by upgrade"
               + " and vendor export/import)");
     }
     JavaVersion.Probe probe = JavaVersion.probe(s.platform().processes(), javaHome.get());
     if (probe.feature().isEmpty()) {
       return ReportItem.fail(
-          "vendor-java",
-          probe.detail(),
-          "point vendor.javaHome at a working Java " + required + " JDK");
+          "vendor-java", probe.detail(), "point vendor.javaHome at a working " + need + " JDK");
     }
     int found = probe.feature().get();
-    if (found != required) {
+    if (!allowed.contains(found)) {
       return ReportItem.fail(
           "vendor-java",
           javaHome.get()
@@ -198,11 +198,16 @@ final class ServerChecks {
               + found
               + "; JRS "
               + c.identity().version()
-              + " needs Java "
-              + required,
-          "set vendor.javaHome to a Java " + required + " JDK");
+              + " needs "
+              + need,
+          "set vendor.javaHome to a " + need + " JDK");
     }
-    return ReportItem.pass("vendor-java", javaHome.get() + " is Java " + found + " as required");
+    return ReportItem.pass(
+        "vendor-java",
+        javaHome.get()
+            + " is Java "
+            + found
+            + (allowed.size() == 1 ? " as required" : ", one of " + need));
   }
 
   private static String shortHash(String hash) {

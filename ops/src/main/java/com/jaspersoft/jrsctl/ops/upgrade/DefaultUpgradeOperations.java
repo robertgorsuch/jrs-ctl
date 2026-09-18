@@ -115,15 +115,14 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     List<String> warnings = new ArrayList<>();
     if (identity.isPresent()) {
       String current = identity.get().version();
-      if (!rt.services().matrix().upgradePathSupported(current, options.toVersion())) {
+      Optional<String> pathProblem =
+          UpgradePaths.problem(
+              rt.services().matrix(), current, options.toVersion(), options.mode());
+      if (pathProblem.isPresent()) {
         throw new UpgradeException(
             UpgradeException.UNSUPPORTED,
-            "upgrade path "
-                + current
-                + " -> "
-                + options.toVersion()
-                + " is not in the compatibility matrix",
-            "choose a supported target version");
+            pathProblem.get(),
+            "choose a supported target version or mode");
       }
     } else {
       warnings.add(

@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.ops.ReportItem;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
+import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.nio.file.Files;
@@ -174,7 +178,8 @@ class UpgradePlanTest {
   @Test
   void should_fail_verify_target_package_precheck_when_vendor_java_mismatches() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      // platform-support 9.0.0: JDK 8, 11 and 17; 21 is not on the sheet (review §1.2)
+      f.javaVersion("openjdk version \"21.0.4\" 2024-07-16");
       Plan plan = f.ops().planUpgrade(newdb(f));
 
       CheckResult result =
@@ -182,9 +187,63 @@ class UpgradePlanTest {
 
       assertThat(result).isInstanceOf(CheckResult.Fail.class);
       assertThat(((CheckResult.Fail) result).message())
-          .contains("Java 11")
-          .contains("needs Java 17");
+          .contains("Java 21")
+          .contains("needs Java 8, 11 or 17");
     }
+  }
+
+  @Test
+  void should_pass_verify_target_package_precheck_when_java_is_any_allowed_major()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  /** Upgrade guide 10.0 pp.11-12: 8.x reaches 10.0 as newdb only (review §1.3). */
+  @Test
+  void should_refuse_with_exit_6_when_the_mode_is_not_offered_for_the_path() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(
+              () ->
+                  f.ops()
+                      .planUpgrade(
+                          new UpgradeOptions("10.0.0", f.packageDir, Mode.SAMEDB, true, false)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("8.2.0 -> 10.0.0")
+          .hasMessageContaining("samedb")
+          .hasMessageContaining("newdb")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(6));
+    }
+  }
+
+  /** Review §1.2: doctor judges the vendor JDK against the set the platform sheet lists. */
+  @Test
+  void should_judge_doctor_vendor_java_against_every_allowed_major() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      // the fixture's server is 8.2.0, whose sheet lists JDK 8 and 11; the fixture's JDK is 17
+      ReportItem seventeen = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
+      assertThat(seventeen.status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(seventeen.detail()).contains("Java 17").contains("needs Java 8 or 11");
+
+      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      ReportItem eleven = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
+      assertThat(eleven.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(eleven.detail()).contains("Java 11").contains("one of Java 8 or 11");
+    }
+  }
+
+  private static ReportItem vendorJava(DoctorReport report) {
+    return report.items().stream()
+        .filter(i -> i.name().equals("vendor-java"))
+        .findFirst()
+        .orElseThrow();
   }
 
   @Test
