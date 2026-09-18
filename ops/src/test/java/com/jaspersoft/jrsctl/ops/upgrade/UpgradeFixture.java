@@ -19,6 +19,7 @@ import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.FakePlatform;
 import com.jaspersoft.jrsctl.ops.FakeServices;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.db.FakeJdbcConnector;
 import com.jaspersoft.jrsctl.ops.hotfix.DefaultHotfixOperations;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -62,11 +63,15 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Path javaHome;
   public final Path keystoreDir;
   public final Path vendorLog;
+
+  /** What the repository-cache step sends; the connector never touches a real database. */
+  public final FakeJdbcConnector jdbc = new FakeJdbcConnector();
+
   public final List<Event> events = new ArrayList<>();
   public final Platform.OsFamily os;
   public String javaBanner = "openjdk version \"17.0.2\" 2022-01-18";
 
-  private UpgradeFixture(Path root) throws IOException {
+  private UpgradeFixture(Path root, boolean withDatabase) throws IOException {
     this.root = root;
     this.os = Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow();
     this.installDir = Files.createDirectories(root.resolve("jrs"));
@@ -117,12 +122,37 @@ public final class UpgradeFixture implements AutoCloseable {
         network:
           mode: public
         """
-            .formatted(slashes(installDir), slashes(tomcatDir), slashes(javaHome)));
+                .formatted(slashes(installDir), slashes(tomcatDir), slashes(javaHome))
+            + (withDatabase ? databaseYaml(root) : ""));
+    if (withDatabase) {
+      Files.createDirectories(root.resolve("drivers"));
+    }
     this.services = fake.build();
   }
 
   public static UpgradeFixture create(Path root) throws IOException {
-    return new UpgradeFixture(root);
+    return new UpgradeFixture(root, false);
+  }
+
+  /**
+   * A database section that matches the fixture's default_master.properties and names no password
+   * reference, so the doctor's database item is SKIP rather than a connection attempt, while {@code
+   * JdbcSettings.from} still resolves and the JDBC steps run against {@link #jdbc}.
+   */
+  static String databaseYaml(Path root) {
+    return """
+        database:
+          type: postgresql
+          url: jdbc:postgresql://localhost:5432/jasperserver
+          username: jasperdb
+          driverDir: %s
+        """
+        .formatted(slashes(root.resolve("drivers")));
+  }
+
+  /** As {@link #create}, with a database section so JDBC steps run against {@link #jdbc}. */
+  public static UpgradeFixture createWithDatabase(Path root) throws IOException {
+    return new UpgradeFixture(root, true);
   }
 
   /**
@@ -328,6 +358,7 @@ public final class UpgradeFixture implements AutoCloseable {
                 s.redactor(),
                 Duration.ofMinutes(2)),
         DefaultHotfixOperations::new,
+        jdbc,
         Sleeper.none());
   }
 

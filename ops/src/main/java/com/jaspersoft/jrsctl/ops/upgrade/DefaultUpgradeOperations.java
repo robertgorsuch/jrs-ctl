@@ -20,6 +20,7 @@ import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import com.jaspersoft.jrsctl.ops.hotfix.DefaultHotfixOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixException;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
@@ -97,6 +98,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                     VendorTools.DEFAULT_TIMEOUT,
                     s.config().envSecretNames()),
             DefaultHotfixOperations::new,
+            new DefaultJdbcConnector(),
             Sleeper.system()));
   }
 
@@ -201,6 +203,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       steps.add(new BackupSteps.FullExport(rt, in, Phases.VENDOR_UPGRADE));
     }
     steps.add(new VendorSteps.RunVendorUpgrade(rt, in));
+    // the vendor's "Additional tasks", done while the server is still down (review §2.2)
+    steps.add(new PostUpgradeSteps.ClearTomcatCaches(rt, in));
+    steps.add(new PostUpgradeSteps.ClearRepositoryCache(rt));
     steps.add(ServiceSteps.start(rt, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
     steps.add(ServiceSteps.waitForServer(rt, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
     List<Step> embedded = new ArrayList<>();

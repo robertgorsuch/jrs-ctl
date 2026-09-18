@@ -566,6 +566,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 9. `StopService`.
 9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts.
 10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
+10a. `ClearTomcatCaches` — empties `<tomcatDir>/work` and `<tomcatDir>/temp` (the vendor's "Additional tasks", upgrade guide 10.1 pp.34-36); `irreversible()`: Tomcat regenerates both on start.
+10b. `ClearRepositoryCache` — `update JIRepositoryCache set item_reference = null; delete from JIRepositoryCache` through the configured database (the vendor's remedy for `local class incompatible`); `irreversible()`: the cache is rebuilt on demand. Best effort: without a `database` section, or on a JDBC failure, it warns with the two statements to run by hand rather than roll a finished vendor upgrade back to point B (review §2.2).
 11. `StartService` + `WaitForServer`.
 
 **Phase D — reconcile** (report-first; nothing mutates without confirmation)

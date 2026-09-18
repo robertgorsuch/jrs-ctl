@@ -46,6 +46,8 @@ class UpgradePlanTest {
               "stop-service",
               "full-export",
               "run-vendor-upgrade",
+              "clear-tomcat-caches",
+              "clear-repository-cache",
               "start-service",
               "wait-for-server",
               "plan-hotfix-reapply",
@@ -73,6 +75,9 @@ class UpgradePlanTest {
           .containsKeys("server", "package", "config", "to", "mode");
       assertThat(plan.steps()).allSatisfy(s -> assertThat(s.title()).isNotBlank());
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").irreversible()).isFalse();
+      // upgrade guide 10.1 pp.34-36 "Additional tasks": caches regenerate, nothing to put back
+      assertThat(UpgradeFixture.step(plan, "clear-tomcat-caches").irreversible()).isTrue();
+      assertThat(UpgradeFixture.step(plan, "clear-repository-cache").irreversible()).isTrue();
       for (Step s : plan.byPhase().get("preflight")) {
         assertThat(s.mutating()).as(s.id()).isFalse();
       }
@@ -101,6 +106,12 @@ class UpgradePlanTest {
               "backup-keystore");
       assertThat(UpgradeFixture.ids(plan))
           .containsSubsequence("write-master-properties", "stage-keystore-init", "stop-service");
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "run-vendor-upgrade",
+              "clear-tomcat-caches",
+              "clear-repository-cache",
+              "start-service");
       assertThat(plan.summary().warnings())
           .contains(
               "Rollback restores files only. Restore the database from your own backup before"

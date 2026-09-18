@@ -120,6 +120,13 @@ import org.junit.jupiter.api.Test;
  * <tr><td>jrs.service ServiceSteps.StartService (upgrade suite)</td>
  *     <td>UpgradeStepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
+ * <tr><td>upgrade PostUpgradeSteps.ClearTomcatCaches</td>
+ *     <td>UpgradeStepIdempotencyTest#should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice</td>
+ *     <td>irreversible: caches regenerate, compensation is a no-op</td></tr>
+ * <tr><td>upgrade PostUpgradeSteps.ClearRepositoryCache</td>
+ *     <td>UpgradeStepIdempotencyTest#should_send_the_vendor_cache_sql_when_clear_repository_cache_executes_twice;
+ *         UpgradeStepIdempotencyTest#should_warn_with_the_sql_when_clear_repository_cache_has_no_database_configured</td>
+ *     <td>irreversible: the cache is rebuilt on demand, compensation is a no-op</td></tr>
  * <tr><td>upgrade ReconcileSteps.PlanHotfixReapply</td>
  *     <td>UpgradeStepIdempotencyTest#should_converge_when_plan_hotfix_reapply_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_converge_when_plan_hotfix_reapply_compensates_twice</td></tr>
@@ -366,6 +373,15 @@ class IdempotencyCoverageTest {
                   + "should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice;"
                   + U
                   + "should_converge_when_run_vendor_upgrade_compensates_twice"),
+          Map.entry(
+              OPS + "upgrade.PostUpgradeSteps$ClearTomcatCaches",
+              U + "should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice"),
+          Map.entry(
+              OPS + "upgrade.PostUpgradeSteps$ClearRepositoryCache",
+              U
+                  + "should_send_the_vendor_cache_sql_when_clear_repository_cache_executes_twice;"
+                  + U
+                  + "should_warn_with_the_sql_when_clear_repository_cache_has_no_database_configured"),
           Map.entry(
               OPS + "upgrade.ReconcileSteps$PlanHotfixReapply",
               U

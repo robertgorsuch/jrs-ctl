@@ -128,6 +128,8 @@ preflight refuses a Tomcat the target does not certify; a `MoveWebapp` step with
 checks the running Tomcat against the running JRS.
 
 ### 2.2 Post-upgrade "Additional tasks" (10.1 pp.34-36, 47-48, 60-61)
+*Fixed 2026-09-17: `clear-tomcat-caches` and `clear-repository-cache`.*
+
 With the server still stopped: clear `<tomcat>/work` and `<tomcat>/temp`, and clear the repository cache
 with `update JIRepositoryCache set item_reference = null; delete from JIRepositoryCache;` (symptom otherwise:
 `local class incompatible`). jrsctl already has JDBC access for hotfix SQL. Recommend three idempotent
