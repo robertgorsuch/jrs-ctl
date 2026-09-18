@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
@@ -11,6 +12,7 @@ import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
@@ -20,6 +22,7 @@ import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import com.jaspersoft.jrsctl.ops.hotfix.DefaultHotfixOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixException;
@@ -78,6 +81,20 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " the vendor upgrade has run: a repository change made after that export (a scheduled"
           + " report, an edited user) would be lost when js-upgrade-newdb rebuilds the database"
           + " from it (ADR-0025).";
+
+  /** Review §2.1, ADR-0026: what the operator still owns when the webapp moves to a new Tomcat. */
+  static final String TOMCAT_DIR_WARNING =
+      "The webapp is copied into %s before the vendor run and the upgraded server starts there;"
+          + " that Tomcat must listen on the same port as server.baseUrl, carry the JAVA_OPTS the"
+          + " vendor requires for it (installation guide: --add-opens on Tomcat 11), and be"
+          + " registered as the service afterwards. The old Tomcat is left as it was.";
+
+  static String tomcatRanges(CompatMatrix matrix, String version) {
+    return matrix
+        .find(version)
+        .map(e -> e.tomcat().isEmpty() ? "(any)" : String.join(" or ", e.tomcat()))
+        .orElse("(unknown version)");
+  }
 
   static final String PASSWORD_WARNING =
       "database passwords are not copied into the target default_master.properties (spec §7.4);"
@@ -153,8 +170,39 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
             webappName,
             target,
             identity,
-            VendorSteps.masterOverrides(installedMaster, paths.tomcatDir()),
+            VendorSteps.masterOverrides(
+                installedMaster,
+                options
+                    .tomcatDir()
+                    .map(p -> p.toAbsolutePath().normalize())
+                    .orElse(paths.tomcatDir())),
             installedBuildomatic);
+    if (options.tomcatDir().isPresent()) {
+      // review §2.1, ADR-0026: a service registered for the old Tomcat would start the old
+      // server after the vendor run; only an operator-started Tomcat can be switched in one run
+      Optional<ServiceConfig.Kind> kind = config.service().kind();
+      if (kind.isEmpty() || kind.get() != ServiceConfig.Kind.MANUAL) {
+        throw new UpgradeException(
+            UpgradeException.PRECHECK,
+            "--tomcat-dir needs service.kind manual: a "
+                + kind.map(k -> k.name().toLowerCase(java.util.Locale.ROOT)).orElse("configured")
+                + " service starts the Tomcat it was registered for, not "
+                + in.hostTomcatDir(),
+            "set service.kind to manual for this upgrade (jrsctl asks you to stop and start"
+                + " Tomcat), then register the new Tomcat as the service afterwards");
+      }
+      warnings.add(TOMCAT_DIR_WARNING.formatted(in.hostTomcatDir()));
+    }
+    Optional<String> hostTomcat = TomcatVersion.detect(in.hostTomcatDir());
+    if (hostTomcat.isEmpty()) {
+      warnings.add(
+          "the Tomcat version at "
+              + in.hostTomcatDir()
+              + " could not be read (no lib/catalina.jar or RELEASE-NOTES); JasperReports Server "
+              + options.toVersion()
+              + " needs Tomcat "
+              + tomcatRanges(rt.services().matrix(), options.toVersion()));
+    }
     List<String> problems = target.problems(rt.locator().scriptExtension());
     if (!problems.isEmpty()) {
       warnings.add(
@@ -201,6 +249,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       // (review §1.6, ADR-0025). A vendor-phase rollback restarts the service through the stop
       // step's compensation.
       steps.add(new BackupSteps.FullExport(rt, in, Phases.VENDOR_UPGRADE));
+    }
+    if (options.tomcatDir().isPresent()) {
+      steps.add(new TomcatSteps.CopyWebappToTomcat(rt, in));
     }
     steps.add(new VendorSteps.RunVendorUpgrade(rt, in));
     // the vendor's "Additional tasks", done while the server is still down (review §2.2)

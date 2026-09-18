@@ -79,6 +79,15 @@ final class UpgradeCommand implements Callable<Integer> {
           "Re-apply every installed hotfix classified REAPPLICABLE after the vendor upgrade.")
   boolean reapplyHotfixes;
 
+  @Option(
+      names = "--tomcat-dir",
+      paramLabel = "<dir>",
+      description =
+          "A new Apache Tomcat to run the upgraded server in (a new generation, e.g. 10.1 or 11 for"
+              + " JasperReports Server 10): the webapp is copied there before the vendor run."
+              + " Needs service.kind manual.")
+  Path tomcatDir;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -116,7 +125,12 @@ final class UpgradeCommand implements Callable<Integer> {
       Services services = boot.services();
       UpgradeOperations.UpgradeOptions options =
           new UpgradeOperations.UpgradeOptions(
-              to, packageDir, parsed, dbBackupConfirmed, reapplyHotfixes);
+              to,
+              packageDir,
+              parsed,
+              dbBackupConfirmed,
+              reapplyHotfixes,
+              Optional.ofNullable(tomcatDir));
       Plan planned;
       try {
         planned = new DefaultUpgradeOperations(services).planUpgrade(options);

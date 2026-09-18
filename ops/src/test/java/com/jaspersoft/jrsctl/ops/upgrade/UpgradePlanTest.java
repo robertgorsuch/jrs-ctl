@@ -234,6 +234,97 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * Review §2.1: 10.0 moved to Jakarta EE; the Tomcat that will host the target must be one the
+   * platform sheet certifies for it. The fixture's target is 9.0.0, certified for Tomcat 8.5 and 9.
+   */
+  @Test
+  void should_fail_verify_target_package_precheck_when_the_tomcat_is_not_certified_for_the_target()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.tomcatVersion(f.tomcatDir, "10.1.24");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message())
+          .contains("Tomcat 10.1.24")
+          .contains("not certified for JasperReports Server 9.0.0");
+      assertThat(((CheckResult.Fail) result).remediation()).contains("--tomcat-dir");
+    }
+  }
+
+  @Test
+  void should_pass_verify_target_package_precheck_when_the_tomcat_is_certified() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeFixture.tomcatVersion(f.tomcatDir, "9.0.85");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("Tomcat version"));
+    }
+  }
+
+  @Test
+  void should_warn_when_the_tomcat_version_cannot_be_read() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("Tomcat version") && w.contains("could not be read"));
+    }
+  }
+
+  /** ADR-0026: a registered service would start the old Tomcat after the vendor run. */
+  @Test
+  void should_refuse_tomcat_dir_with_exit_2_unless_the_service_is_manual() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(() -> f.ops().planUpgrade(withNewTomcat(f)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("service.kind manual")
+          .hasMessageContaining("systemd")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(2));
+    }
+  }
+
+  @Test
+  void should_copy_the_webapp_and_point_buildomatic_at_the_new_tomcat_when_tomcat_dir_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(withNewTomcat(f));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "stop-service", "full-export", "copy-webapp-to-tomcat", "run-vendor-upgrade");
+      assertThat(UpgradeFixture.step(plan, "copy-webapp-to-tomcat").detail())
+          .contains(f.newTomcatDir.toString());
+      assertThat(UpgradeFixture.step(plan, "clear-tomcat-caches").detail())
+          .contains(f.newTomcatDir.toString());
+      assertThat(UpgradeFixture.step(plan, "point-config-at-target").detail())
+          .contains("server.tomcatDir -> " + f.newTomcatDir);
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.TOMCAT_DIR_WARNING.formatted(f.newTomcatDir));
+      CheckResult result =
+          UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
+      assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  static UpgradeOptions withNewTomcat(UpgradeFixture f) {
+    return new UpgradeOptions(
+        UpgradeFixture.NEW_VERSION,
+        f.packageDir,
+        Mode.NEWDB,
+        true,
+        false,
+        java.util.Optional.of(f.newTomcatDir));
+  }
+
   /** Review §1.2: doctor judges the vendor JDK against the set the platform sheet lists. */
   @Test
   void should_judge_doctor_vendor_java_against_every_allowed_major() throws Exception {

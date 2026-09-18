@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Upgrade orchestration entry points (spec §10). Invariants: planning never mutates the server or
@@ -53,11 +54,13 @@ public interface UpgradeOperations {
       Path packageDir,
       Mode mode,
       boolean dbBackupConfirmed,
-      boolean reapplyHotfixes) {
+      boolean reapplyHotfixes,
+      Optional<Path> tomcatDir) {
     public UpgradeOptions {
       Objects.requireNonNull(toVersion, "toVersion");
       Objects.requireNonNull(packageDir, "packageDir");
       Objects.requireNonNull(mode, "mode");
+      Objects.requireNonNull(tomcatDir, "tomcatDir");
       if (toVersion.isBlank()) {
         throw new IllegalArgumentException("toVersion must not be blank");
       }
@@ -65,6 +68,16 @@ public interface UpgradeOperations {
     }
 
     /** A {@code newdb} upgrade with the database backup confirmed, as every run requires. */
+    /** The options with the webapp staying in the Tomcat the server runs in now. */
+    public UpgradeOptions(
+        String toVersion,
+        Path packageDir,
+        Mode mode,
+        boolean dbBackupConfirmed,
+        boolean reapplyHotfixes) {
+      this(toVersion, packageDir, mode, dbBackupConfirmed, reapplyHotfixes, Optional.empty());
+    }
+
     public static UpgradeOptions newdb(String toVersion, Path packageDir) {
       return new UpgradeOptions(toVersion, packageDir, Mode.NEWDB, true, false);
     }

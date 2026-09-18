@@ -117,6 +117,8 @@ rollback aid there. *Fixed 2026-09-17, ADR-0025.*
 ## P2 — vendor upgrade steps the plan does not perform
 
 ### 2.1 New Tomcat generation and the webapp move
+*Fixed 2026-09-17 (ADR-0026): Tomcat check in doctor and preflight, `--tomcat-dir` with the copy step, `manual` service only; switching a registered service is left open.*
+
 10.0 requires Tomcat 10.1.24+ / 11.0.11+ (Jakarta), 10.1 says "the appropriate version of Tomcat must be
 installed" and shows Tomcat 11; every 9→10 and 10.0→10.1 path has the step "Copy ../webapps/jasperserver-pro
 directory from Tomcat 9.0 to Tomcat 11.0.x folder" before running js-upgrade (10.1 p.50, 10.0 pp.28-52).

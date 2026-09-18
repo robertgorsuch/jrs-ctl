@@ -246,6 +246,30 @@ class UpgradeRunTest {
     }
   }
 
+  /** Review §2.1: the upgraded server runs in the new Tomcat and jrsctl follows it. */
+  @Test
+  void should_upgrade_into_the_new_tomcat_and_repoint_config_when_tomcat_dir_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-tomcat", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      Path staged = f.packageDir.resolve("buildomatic").resolve("default_master.properties");
+      java.util.Properties master = new java.util.Properties();
+      try (var in = Files.newBufferedReader(staged, java.nio.charset.StandardCharsets.ISO_8859_1)) {
+        master.load(in);
+      }
+      assertThat(Path.of(master.getProperty("appServerDir")))
+          .isEqualTo(f.newTomcatDir.toAbsolutePath().normalize());
+      assertThat(f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro").resolve("WEB-INF"))
+          .isDirectory();
+      Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(after.server().tomcatDir()).contains(f.newTomcatDir.toAbsolutePath().normalize());
+    }
+  }
+
   /** Review finding 1.13: a service the operator had stopped is not this run's to start. */
   @Test
   void should_leave_a_service_the_operator_had_stopped_stopped_when_rolling_back()

@@ -882,8 +882,9 @@ const OPS = {
       radioRow('mode', 'Mode', [['samedb', 'samedb (upgrade the schema in place)'], ['newdb', 'newdb (drop and recreate the database from the full export)']], 'samedb'),
       checkField('dbBackupConfirmed', 'I have a database backup', 'jrsctl does not back up the database and cannot undo either mode. Required.'),
       checkField('reapplyHotfixes', 'Re-apply installed hotfixes where still applicable', null, true),
+      field('New Tomcat', textInput('tomcatDir', { mono: true, placeholder: 'C:\\apache-tomcat-10.1.24' }), 'Only for a new Tomcat generation (JasperReports Server 10 needs Tomcat 10.1.24+ or 11.0.11+); the webapp is copied there. Needs service.kind manual.'),
     ],
-    args: (v) => ({ to: v.to, package: v.package, mode: v.mode, dbBackupConfirmed: !!v.dbBackupConfirmed, reapplyHotfixes: !!v.reapplyHotfixes }),
+    args: (v) => ({ to: v.to, package: v.package, mode: v.mode, dbBackupConfirmed: !!v.dbBackupConfirmed, reapplyHotfixes: !!v.reapplyHotfixes, tomcatDir: v.tomcatDir || null }),
     validate: (v) => (!v.to || !v.package ? 'Enter the target version and the package path.' : !v.dbBackupConfirmed ? 'Confirm the database backup before an upgrade; jrsctl cannot undo the database change in either mode.' : null),
   },
 };

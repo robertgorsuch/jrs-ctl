@@ -72,6 +72,7 @@ class DoctorOperationTest {
       assertThat(items.get("keystore").status()).isEqualTo(Status.PASS);
       assertThat(items.get("vendor").status()).isEqualTo(Status.PASS);
       assertThat(items.get("vendor-java").status()).isEqualTo(Status.SKIP);
+      assertThat(items.get("tomcat").status()).isEqualTo(Status.SKIP);
       assertThat(items.get("database").status()).isEqualTo(Status.SKIP);
       assertThat(items.get("runs").status()).isEqualTo(Status.PASS);
       assertThat(items.get("lock").status()).isEqualTo(Status.PASS);
@@ -90,6 +91,31 @@ class DoctorOperationTest {
    * Issue #68: from a machine that only reaches the server over REST, the checks of a local
    * installation are skipped and say why, instead of failing and pointing at jrsctl init.
    */
+  /** Review §2.1: the running Tomcat against the platform sheet; the fixture's server is 8.2.0. */
+  @Test
+  void should_judge_the_tomcat_version_against_the_matrix_when_it_can_be_read() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path tomcat = install.resolve("apache-tomcat");
+    // one Services per home: a second build in the same home keeps the state db open
+    Files.writeString(tomcat.resolve("RELEASE-NOTES"), "Apache Tomcat Version 9.0.85\n");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-9")).yaml(healthyYaml(install))) {
+      ReportItem certified =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT)).get("tomcat");
+      assertThat(certified.status()).isEqualTo(Status.PASS);
+      assertThat(certified.detail()).contains("Tomcat 9.0.85").contains("certified");
+    }
+
+    Files.writeString(tomcat.resolve("RELEASE-NOTES"), "Apache Tomcat Version 10.1.24\n");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-10")).yaml(healthyYaml(install))) {
+      ReportItem jakarta =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT)).get("tomcat");
+      assertThat(jakarta.status()).isEqualTo(Status.FAIL);
+      assertThat(jakarta.detail())
+          .contains("Tomcat 10.1.24")
+          .contains("not certified for JRS 8.2.0");
+    }
+  }
+
   @Test
   void should_skip_the_local_installation_checks_when_the_configuration_names_no_installation()
       throws Exception {

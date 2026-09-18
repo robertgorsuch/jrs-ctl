@@ -120,6 +120,9 @@ import org.junit.jupiter.api.Test;
  * <tr><td>jrs.service ServiceSteps.StartService (upgrade suite)</td>
  *     <td>UpgradeStepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
+ * <tr><td>upgrade TomcatSteps.CopyWebappToTomcat</td>
+ *     <td>UpgradeStepIdempotencyTest#should_replace_the_copy_when_copy_webapp_to_tomcat_executes_twice</td>
+ *     <td>UpgradeStepIdempotencyTest#should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice</td></tr>
  * <tr><td>upgrade PostUpgradeSteps.ClearTomcatCaches</td>
  *     <td>UpgradeStepIdempotencyTest#should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice</td>
  *     <td>irreversible: caches regenerate, compensation is a no-op</td></tr>
@@ -373,6 +376,12 @@ class IdempotencyCoverageTest {
                   + "should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice;"
                   + U
                   + "should_converge_when_run_vendor_upgrade_compensates_twice"),
+          Map.entry(
+              OPS + "upgrade.TomcatSteps$CopyWebappToTomcat",
+              U
+                  + "should_replace_the_copy_when_copy_webapp_to_tomcat_executes_twice;"
+                  + U
+                  + "should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice"),
           Map.entry(
               OPS + "upgrade.PostUpgradeSteps$ClearTomcatCaches",
               U + "should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice"),

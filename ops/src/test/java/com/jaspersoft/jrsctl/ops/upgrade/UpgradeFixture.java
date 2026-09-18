@@ -64,6 +64,11 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Path keystoreDir;
   public final Path vendorLog;
 
+  /**
+   * An unpacked second Tomcat (certified for the fixture's 9.0.0 target) for {@code --tomcat-dir}.
+   */
+  public final Path newTomcatDir;
+
   /** What the repository-cache step sends; the connector never touches a real database. */
   public final FakeJdbcConnector jdbc = new FakeJdbcConnector();
 
@@ -71,7 +76,8 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Platform.OsFamily os;
   public String javaBanner = "openjdk version \"17.0.2\" 2022-01-18";
 
-  private UpgradeFixture(Path root, boolean withDatabase) throws IOException {
+  private UpgradeFixture(Path root, boolean withDatabase, boolean manualService)
+      throws IOException {
     this.root = root;
     this.os = Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow();
     this.installDir = Files.createDirectories(root.resolve("jrs"));
@@ -81,6 +87,9 @@ public final class UpgradeFixture implements AutoCloseable {
     this.javaHome = Files.createDirectories(root.resolve("jdk17"));
     this.keystoreDir = Files.createDirectories(root.resolve("jrs-home"));
     this.vendorLog = packageDir.resolve("js-ant.log");
+    this.newTomcatDir = Files.createDirectories(root.resolve("tomcat-new"));
+    Files.createDirectories(newTomcatDir.resolve("webapps"));
+    tomcatVersion(newTomcatDir, "9.0.90");
     layout();
     targetPackage();
     Files.createDirectories(javaHome.resolve("bin"));
@@ -114,7 +123,7 @@ public final class UpgradeFixture implements AutoCloseable {
             username: jasperadmin
             passwordRef: env:JRS_PASSWORD
         service:
-          kind: systemd
+          kind: %s
           name: jasperreports
           stopTimeoutSeconds: 30
         vendor:
@@ -122,7 +131,11 @@ public final class UpgradeFixture implements AutoCloseable {
         network:
           mode: public
         """
-                .formatted(slashes(installDir), slashes(tomcatDir), slashes(javaHome))
+                .formatted(
+                    slashes(installDir),
+                    slashes(tomcatDir),
+                    manualService ? "manual" : "systemd",
+                    slashes(javaHome))
             + (withDatabase ? databaseYaml(root) : ""));
     if (withDatabase) {
       Files.createDirectories(root.resolve("drivers"));
@@ -131,7 +144,22 @@ public final class UpgradeFixture implements AutoCloseable {
   }
 
   public static UpgradeFixture create(Path root) throws IOException {
-    return new UpgradeFixture(root, false);
+    return new UpgradeFixture(root, false, false);
+  }
+
+  /**
+   * As {@link #create}, with {@code service.kind: manual}, the only kind an upgrade with {@code
+   * --tomcat-dir} accepts (ADR-0026); the fake controller still answers stop and start.
+   */
+  public static UpgradeFixture createWithManualService(Path root) throws IOException {
+    return new UpgradeFixture(root, false, true);
+  }
+
+  /** Writes the Tomcat {@code RELEASE-NOTES} line jrsctl reads the version from. */
+  public static void tomcatVersion(Path tomcatDir, String version) throws IOException {
+    write(
+        tomcatDir.resolve("RELEASE-NOTES"),
+        "================================\nApache Tomcat Version " + version + "\n");
   }
 
   /**
@@ -152,7 +180,7 @@ public final class UpgradeFixture implements AutoCloseable {
 
   /** As {@link #create}, with a database section so JDBC steps run against {@link #jdbc}. */
   public static UpgradeFixture createWithDatabase(Path root) throws IOException {
-    return new UpgradeFixture(root, true);
+    return new UpgradeFixture(root, true, false);
   }
 
   /**

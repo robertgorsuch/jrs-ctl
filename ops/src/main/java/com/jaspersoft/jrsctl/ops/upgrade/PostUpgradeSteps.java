@@ -55,7 +55,7 @@ final class PostUpgradeSteps {
     }
 
     private List<Path> dirs() {
-      Path tomcat = in.paths().tomcatDir();
+      Path tomcat = in.hostTomcatDir();
       return List.of(tomcat.resolve("work"), tomcat.resolve("temp"));
     }
 
@@ -88,7 +88,7 @@ final class PostUpgradeSteps {
 
     @Override
     public CheckResult precheck(Context ctx) {
-      Path tomcat = in.paths().tomcatDir();
+      Path tomcat = in.hostTomcatDir();
       return Files.isDirectory(tomcat)
           ? CheckResult.pass()
           : CheckResult.fail(tomcat + " is not a directory", "check server.tomcatDir");

@@ -551,7 +551,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 **Phase A — preflight**
 1. `Doctor` (must pass).
-2. `VerifyTargetPackage` — target JRS distribution present, checksum verified, version in compat matrix as a supported upgrade path from current, `vendor.javaHome` matches the target's requirement.
+2. `VerifyTargetPackage` — target JRS distribution present, checksum verified, version in compat matrix as a supported upgrade path from current **in the chosen mode**, `vendor.javaHome` is one of the target's Java majors, and the Tomcat that will host the target (`--tomcat-dir`, else `server.tomcatDir`) is certified for it by the matrix's `tomcat` ranges; a Tomcat whose version cannot be read is a plan warning (review §2.1, ADR-0026).
 3. `ConfirmDbBackup` — both modes (ADR-0012); fails without `--db-backup-confirmed`.
 
 **Phase B — backup** (rollback point B)
@@ -565,6 +565,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 8a. `StageKeystoreInit` — writes `keystore.init.properties` (`ks`, `ksp`) into the target buildomatic: a verbatim copy of the installation's own when it has one, else the directories where the adapter found `.jrsks` and `.jrsksp`. Without it the vendor script, which jrsctl runs as its own account, finds no keystore and `setup.xml`'s `create-ks` makes a new one (silently unless `BUILDOMATIC_MODE=interactive`), after which no password in the repository can be decrypted. The precheck refuses when no location is known; a pre-existing file is snapshotted and restored by compensation (security guide 10.1 pp.11-13; review §1.4).
 9. `StopService`.
 9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts.
+9b. `CopyWebappToTomcat` — with `--tomcat-dir` only (ADR-0026): copies `webapps/<name>` into the new Tomcat, which `appServerDir` in the staged `default_master.properties` then names; compensation removes the copy, the old Tomcat is never touched. `--tomcat-dir` is accepted only with `service.kind: manual`; other kinds are refused at plan time (exit 2) because the registered service would start the old Tomcat.
 10. `RunVendorUpgrade` — `js-upgrade-newdb <point-B full export>` or `js-upgrade-samedb`; streamed output; `JAVA_HOME=vendor.javaHome`. A package without the wrapper gets what the wrapper runs: `js-ant upgrade-minimal-<ce|pro>` with `-Dstrategy=standard -DimportFile=<export>` or `-Dstrategy=inDatabase`.
 10a. `ClearTomcatCaches` — empties `<tomcatDir>/work` and `<tomcatDir>/temp` (the vendor's "Additional tasks", upgrade guide 10.1 pp.34-36); `irreversible()`: Tomcat regenerates both on start.
 10b. `ClearRepositoryCache` — `update JIRepositoryCache set item_reference = null; delete from JIRepositoryCache` through the configured database (the vendor's remedy for `local class incompatible`); `irreversible()`: the cache is rebuilt on demand. Best effort: without a `database` section, or on a JDBC failure, it warns with the two statements to run by hand rather than roll a finished vendor upgrade back to point B (review §2.2).
@@ -576,7 +577,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 **Phase E — verify**
 14. `Smoke` (§12.2). Failure offers rollback to point B.
-15. `RecordUpgrade` — marks hotfixes `SUPERSEDED`/re-installed, records the upgrade snapshot set as retention-protected.
+15. `RecordUpgrade` — marks hotfixes `SUPERSEDED`/re-installed, records the upgrade snapshot set as retention-protected. `PointConfigAtTarget` then points `server.buildomaticDir` at the target's buildomatic and, with `--tomcat-dir`, `server.tomcatDir` at the new Tomcat.
 
 ### 10.3 Customizations
 
@@ -584,7 +585,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C`
 - `jrsctl customizations register|unregister|list|diff <path>`
 
@@ -637,7 +638,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 12.1 `doctor`
 
-Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present in the 7.4 buildomatic directory (WARN on a Windows UNC path, which `cmd.exe` refuses as a working directory); `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN.
+Checks (each returns PASS/WARN/FAIL with remediation text): bundled runtime integrity; config schema; secret file permissions; server reachable; auth works; version/edition/tenancy detected; compat matrix match; capability probes vs. expected; install dir layout; service controller can query state; write access to target dirs; disk space; keystore present and readable for `runAsUser`; vendor scripts present in the 7.4 buildomatic directory (WARN on a Windows UNC path, which `cmd.exe` refuses as a working directory); `vendor.javaHome` version matches matrix; database connectivity (if configured); pending runs; run lock free; snapshot store health; network mode consistency (isolated mode with proxy configured = WARN); running elevated without need = WARN; Tomcat version at `server.tomcatDir` (else the detected layout) certified for the detected JRS version per the matrix's `tomcat` ranges, SKIP when neither `lib/catalina.jar` nor `RELEASE-NOTES` gives a version (review §2.1).
 
 ### 12.2 `smoke`
 

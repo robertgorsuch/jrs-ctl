@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorJava;
 import com.jaspersoft.jrsctl.ops.ReportItem;
+import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
@@ -262,6 +263,35 @@ final class PreflightSteps {
                 + " needs "
                 + required,
             "set vendor.javaHome to a " + required + " JDK");
+      }
+      // review §2.1: 10.0 moved to Jakarta EE, so the Tomcat that will host the target must be
+      // one the platform sheet certifies for it
+      Path host = in.hostTomcatDir();
+      if (in.options().tomcatDir().isPresent()) {
+        if (!Files.isDirectory(host.resolve("webapps"))) {
+          return CheckResult.fail(
+              "--tomcat-dir " + host + " has no webapps directory",
+              "point --tomcat-dir at an unpacked Apache Tomcat");
+        }
+        if (host.equals(in.tomcatDir().toAbsolutePath().normalize())) {
+          return CheckResult.fail(
+              "--tomcat-dir names the Tomcat the server already runs in",
+              "leave --tomcat-dir out, or point it at the new Tomcat");
+        }
+      }
+      Optional<String> tomcat = TomcatVersion.detect(host);
+      if (tomcat.isPresent() && !rt.services().matrix().tomcatSupported(to, tomcat.get())) {
+        return CheckResult.fail(
+            "Tomcat "
+                + tomcat.get()
+                + " at "
+                + host
+                + " is not certified for JasperReports Server "
+                + to
+                + " (needs "
+                + DefaultUpgradeOperations.tomcatRanges(rt.services().matrix(), to)
+                + ")",
+            "install a certified Tomcat and pass --tomcat-dir <its directory>");
       }
       return CheckResult.pass();
     }

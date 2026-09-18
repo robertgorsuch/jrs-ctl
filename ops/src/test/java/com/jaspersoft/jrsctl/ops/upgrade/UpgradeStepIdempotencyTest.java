@@ -409,6 +409,38 @@ class UpgradeStepIdempotencyTest {
   }
 
   @Test
+  void should_replace_the_copy_when_copy_webapp_to_tomcat_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Path copied = f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro");
+      assertReexecutionConverges(
+          f,
+          f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f)),
+          "r-cw",
+          "copy-webapp-to-tomcat");
+      assertThat(copied.resolve("WEB-INF")).isDirectory();
+      assertThat(UpgradeFixture.read(copied.resolve("version.txt")))
+          .isEqualTo(UpgradeFixture.OLD_VERSION);
+      assertThat(f.webappDir.resolve("version.txt")).exists();
+    }
+  }
+
+  @Test
+  void should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Path copied = f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro");
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      Context ctx = start(f, plan, "r-cw-c");
+      Idempotency.runUpTo(plan, ctx, "copy-webapp-to-tomcat");
+      assertThat(copied).isDirectory();
+      Step step = Idempotency.step(plan, "copy-webapp-to-tomcat");
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+      assertThat(copied).doesNotExist();
+      assertThat(f.webappDir.resolve("version.txt")).exists();
+    }
+  }
+
+  @Test
   void should_run_the_vendor_script_once_when_run_vendor_upgrade_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       assertReexecutionConverges(f, f.ops().planUpgrade(newdb(f)), "r-vu", "run-vendor-upgrade");

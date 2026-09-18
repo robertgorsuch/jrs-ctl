@@ -87,6 +87,7 @@ final class JrsctlConfigSteps {
     public String detail() {
       return "server.buildomaticDir -> "
           + target()
+          + in.options().tomcatDir().map(t -> "; server.tomcatDir -> " + t).orElse("")
           + "; previous config.yaml kept with the backups";
     }
 
@@ -116,11 +117,28 @@ final class JrsctlConfigSteps {
         ConfigLoader loader = new ConfigLoader();
         Config current = loader.load(file, Map.of(), Map.of());
         Optional<Path> was = current.server().buildomaticDir();
-        if (was.map(p -> p.toAbsolutePath().normalize()).equals(Optional.of(target()))) {
+        Optional<Path> newTomcat =
+            in.options().tomcatDir().map(p -> p.toAbsolutePath().normalize());
+        boolean tomcatDone =
+            newTomcat.isEmpty()
+                || current
+                    .server()
+                    .tomcatDir()
+                    .map(p -> p.toAbsolutePath().normalize())
+                    .equals(newTomcat);
+        if (was.map(p -> p.toAbsolutePath().normalize()).equals(Optional.of(target()))
+            && tomcatDone) {
           Logs.info(rt, ctx, out, this, "server.buildomaticDir already names " + target());
           return StepResult.ok();
         }
         Config updated = loader.fileWith(file, "server.buildomaticDir", target().toString());
+        if (newTomcat.isPresent()) {
+          // review §2.1: the upgraded server runs in the new Tomcat from now on
+          Path tmpTomcat = file.resolveSibling(file.getFileName() + ".tomcat");
+          ConfigWriter.write(updated, tmpTomcat);
+          updated = loader.fileWith(tmpTomcat, "server.tomcatDir", newTomcat.get().toString());
+          Files.deleteIfExists(tmpTomcat);
+        }
         Path tmp = file.resolveSibling(file.getFileName() + ".new");
         ConfigWriter.write(updated, tmp);
         Durability.sync(tmp);
