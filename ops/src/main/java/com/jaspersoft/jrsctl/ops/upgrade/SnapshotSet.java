@@ -2,8 +2,13 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Where one upgrade run keeps its rollback-point-B artefacts under {@code snapshots/<runId>/}: the
@@ -21,6 +26,7 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
   static final String BUILDOMATIC_ARCHIVE = "buildomatic";
   static final String MANIFEST = "upgrade.json";
   static final String SHA_SUFFIX = ".sha256";
+  static final String EXTERNAL_RECORD = "full-export.external";
 
   SnapshotSet {
     Objects.requireNonNull(dir, "dir");
@@ -37,6 +43,34 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
 
   Path fullExport() {
     return dir.resolve(FULL_EXPORT);
+  }
+
+  /** Where {@code adopt-full-export} records an export taken elsewhere: its path, then its hash. */
+  Path externalRecord() {
+    return dir.resolve(EXTERNAL_RECORD);
+  }
+
+  /** An export adopted from outside the home (ADR-0028), as recorded. */
+  record ExternalExport(Path path, String sha256) {}
+
+  Optional<ExternalExport> externalExport() throws IOException {
+    if (!Files.isRegularFile(externalRecord())) {
+      return Optional.empty();
+    }
+    List<String> lines = Files.readAllLines(externalRecord(), StandardCharsets.UTF_8);
+    if (lines.size() < 2 || lines.get(0).isBlank() || lines.get(1).isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(new ExternalExport(Path.of(lines.get(0).strip()), lines.get(1).strip()));
+  }
+
+  /** The export js-upgrade-newdb consumes: the adopted one when recorded, else this run's own. */
+  Path resolveFullExport() {
+    try {
+      return externalExport().map(ExternalExport::path).orElse(fullExport());
+    } catch (IOException e) {
+      return fullExport();
+    }
   }
 
   Path archivesDir() {

@@ -12,6 +12,7 @@ public final class UpgradeException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;
 
+  public static final int USAGE = 1;
   public static final int PRECHECK = 2;
   public static final int UNSUPPORTED = 6;
 

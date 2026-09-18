@@ -16,14 +16,14 @@ import java.util.zip.ZipInputStream;
  * not judged here (the step's size check reports it), only an archive with entries and no {@code
  * index.xml}.
  */
-final class ExportArchives {
+public final class ExportArchives {
 
   static final String INDEX = "index.xml";
 
   private ExportArchives() {}
 
   /** Why {@code archive} is not a usable export, or empty when it holds {@code index.xml}. */
-  static Optional<String> problem(Path archive) {
+  public static Optional<String> problem(Path archive) {
     int entries = 0;
     String first = "";
     try (InputStream in = Files.newInputStream(archive);

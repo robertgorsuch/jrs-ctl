@@ -257,6 +257,8 @@ final class VerifySteps {
               set.dir().relativize(p).toString().replace('\\', '/'), rt.files().sha256(p));
         }
       }
+      // an export adopted from outside the home (ADR-0028) is recorded by its own path
+      set.externalExport().ifPresent(e -> artefacts.put("external:" + e.path(), e.sha256()));
       m.put("artefacts", artefacts);
       m.put("recordedAt", rt.clock().instant().toString());
       return m;

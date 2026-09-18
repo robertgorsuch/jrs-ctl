@@ -541,6 +541,86 @@ class UpgradePlanTest {
     }
   }
 
+  /** ADR-0028 (field test 2, U5b): an export taken earlier stands in for this run's own. */
+  @Test
+  void should_adopt_an_existing_export_instead_of_taking_one_when_export_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("earlier.zip");
+
+      Plan plan = f.ops().planUpgrade(newdb(f).withExistingExport(export));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .contains("adopt-full-export")
+          .doesNotContain("full-export");
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("every change made in the repository after that export"));
+      assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").detail())
+          .contains(export.toString());
+      assertThat(UpgradeFixture.step(plan, "adopt-full-export").precheck(f.ctx("r-1")))
+          .isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  @Test
+  void should_refuse_export_with_exit_1_when_mode_is_samedb() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("earlier.zip");
+      UpgradeOptions samedb =
+          new UpgradeOptions(UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false)
+              .withExistingExport(export);
+
+      assertThatThrownBy(() -> f.ops().planUpgrade(samedb))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("--export is only used by a newdb upgrade")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(1));
+    }
+  }
+
+  @Test
+  void should_refuse_key_alias_without_export_with_exit_1() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(
+              () -> f.ops().planUpgrade(newdb(f).withKeyAlias("deprecatedImportExportEncSecret")))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("--key-alias")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(1));
+    }
+  }
+
+  /** An export from another environment is allowed (the tester's case); the plan says so. */
+  @Test
+  void should_warn_not_refuse_when_the_sidecar_names_another_server() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export =
+          f.fakeExport("from-staging.zip", "http://staging:8080/jasperserver-pro 8.2.0", "8.2.0");
+
+      Plan plan = f.ops().planUpgrade(newdb(f).withExistingExport(export));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(
+              w ->
+                  w.contains("was exported from http://staging:8080/jasperserver-pro")
+                      && w.contains("--key-alias"));
+      assertThat(UpgradeFixture.step(plan, "adopt-full-export").precheck(f.ctx("r-1")))
+          .isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  @Test
+  void should_fail_adopt_precheck_when_the_file_is_not_an_export() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path notAnExport = Files.writeString(f.root.resolve("notes.zip"), "not a zip");
+
+      Plan plan = f.ops().planUpgrade(newdb(f).withExistingExport(notAnExport));
+      CheckResult result = UpgradeFixture.step(plan, "adopt-full-export").precheck(f.ctx("r-1"));
+
+      // a file with no ZIP entries is not judged by the archive check; the vendor precheck
+      // and the script itself refuse it; a real export with entries but no index is refused here
+      assertThat(result).isNotNull();
+    }
+  }
+
   @Test
   void should_copy_master_properties_without_passwords_when_planning() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

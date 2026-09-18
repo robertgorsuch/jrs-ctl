@@ -8,6 +8,9 @@ import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.Durability;
+import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
@@ -25,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +83,22 @@ final class VendorSteps {
   private VendorSteps() {}
 
   static Map<String, String> masterOverrides(Map<String, String> installed, Path tomcatDir) {
+    return masterOverrides(installed, tomcatDir, Optional.empty());
+  }
+
+  /**
+   * The buildomatic property naming the key an import decrypts with: {@code bin/import-export.xml}
+   * passes it as {@code --keyalias} to every import, so an export taken on another server and
+   * encrypted with a shared alias (jrsctl's {@code export --portable}) can be imported by the newdb
+   * upgrade (ADR-0028; the script itself takes no key argument).
+   */
+  static final String KEY_ALIAS_PROPERTY = "deprecatedImportExportEncSecret.keyalias";
+
+  /** Its password, when the alias has one; the one password key jrsctl writes itself (ADR-0028). */
+  static final String KEY_PASS_PROPERTY = "deprecatedImportExportEncSecret.keypass";
+
+  static Map<String, String> masterOverrides(
+      Map<String, String> installed, Path tomcatDir, Optional<String> keyAlias) {
     Map<String, String> overrides = new LinkedHashMap<>();
     for (Map.Entry<String, String> e : installed.entrySet()) {
       if (!MasterProperties.isPasswordKey(e.getKey())) {
@@ -87,6 +107,7 @@ final class VendorSteps {
     }
     overrides.put(APP_SERVER_TYPE, TOMCAT);
     overrides.put(APP_SERVER_DIR, tomcatDir.toAbsolutePath().normalize().toString());
+    keyAlias.ifPresent(alias -> overrides.put(KEY_ALIAS_PROPERTY, alias));
     return Map.copyOf(overrides);
   }
 
@@ -373,9 +394,28 @@ final class VendorSteps {
     @Override
     public StepResult execute(Context ctx, EventSink out) {
       Path runDir = ctx.home().runDir(ctx.runId());
+      Map<String, String> overrides = new LinkedHashMap<>(in.masterOverrides());
+      Optional<SecretRef> keyPassword = in.options().keyPassword();
+      if (keyPassword.isPresent()) {
+        // ADR-0028: the key's password is the one password key jrsctl writes itself, resolved
+        // here rather than at plan time, and registered with the redactor first
+        try (Secret secret = rt.services().secrets().resolve(keyPassword.get())) {
+          rt.services().redactor().register(secret);
+          char[] chars = secret.chars();
+          try {
+            overrides.put(KEY_PASS_PROPERTY, new String(chars));
+          } finally {
+            Arrays.fill(chars, '\0');
+          }
+        } catch (SecretException e) {
+          return Failures.recoverable(
+              "cannot resolve the key password: " + e.getMessage(),
+              "fix " + keyPassword.get().render());
+        }
+      }
       try {
         MasterProperties.Staged staged =
-            MasterProperties.stage(buildomaticDir(), in.masterOverrides(), runDir);
+            MasterProperties.stage(buildomaticDir(), overrides, runDir);
         Logs.info(
             rt,
             ctx,
@@ -455,9 +495,17 @@ final class VendorSteps {
       };
     }
 
-    /** The point-B full export, the one argument {@code js-upgrade-newdb} requires (ADR-0012). */
+    /**
+     * The point-B full export, the one argument {@code js-upgrade-newdb} requires (ADR-0012): the
+     * export this run took, or the one {@code adopt-full-export} recorded (ADR-0028).
+     */
     private Path fullExport(Context ctx) {
-      return in.snapshots(ctx).fullExport().toAbsolutePath().normalize();
+      return in.snapshots(ctx).resolveFullExport().toAbsolutePath().normalize();
+    }
+
+    /** How the plan names the export before the run id is known. */
+    private String exportPlaceholder() {
+      return in.options().existingExport().map(Path::toString).orElse("<point-B full export>");
     }
 
     /** Arguments for the vendor wrapper: the full export for newdb, nothing for samedb. */
@@ -503,12 +551,12 @@ final class VendorSteps {
     public String detail() {
       boolean newdb = in.options().mode() == UpgradeOperations.Mode.NEWDB;
       return scriptName()
-          + (newdb ? " <point-B full export>" : "")
+          + (newdb ? " " + exportPlaceholder() : "")
           + " if shipped, else js-ant "
           + antTarget()
           + " -Dstrategy="
           + strategy()
-          + (newdb ? " -DimportFile=<point-B full export>" : "")
+          + (newdb ? " -DimportFile=" + exportPlaceholder() : "")
           + "; JAVA_HOME="
           + rt.config().vendor().javaHome().map(Path::toString).orElse("<unset>")
           + "; timeout "
@@ -545,6 +593,23 @@ final class VendorSteps {
                 + fullExport(ctx)
                 + " is missing; js-upgrade-newdb rebuilds the repository database from it",
             "resume the run so the backup phase writes it, or start the upgrade again");
+      }
+      if (in.options().mode() == UpgradeOperations.Mode.NEWDB) {
+        // an adopted export (ADR-0028) sits outside the home: check it is still the file that
+        // was adopted before the vendor script drops the database and imports it
+        try {
+          Optional<SnapshotSet.ExternalExport> external = in.snapshots(ctx).externalExport();
+          if (external.isPresent()
+              && !rt.files().sha256(external.get().path()).equals(external.get().sha256())) {
+            return CheckResult.fail(
+                external.get().path() + " changed since it was adopted",
+                "run the upgrade again so the export is adopted afresh");
+          }
+        } catch (IOException e) {
+          return CheckResult.fail(
+              "cannot verify the adopted export: " + e.getMessage(),
+              "check read access to the export archive");
+        }
       }
       return CheckResult.pass();
     }
