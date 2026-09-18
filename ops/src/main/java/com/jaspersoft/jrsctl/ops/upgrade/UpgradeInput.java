@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
@@ -91,6 +92,17 @@ record UpgradeInput(
 
   Optional<Path> targetBuildomatic() {
     return target.buildomatic().map(b -> b.dir());
+  }
+
+  /**
+   * The target buildomatic's {@code default_master.properties} as it is right now, minus password
+   * keys, or empty when there is none: read afresh so a precheck sees a file the operator edited
+   * after the plan was built. This is the file {@code write-master-properties} appends the
+   * installed keys to.
+   */
+  Map<String, String> targetMasterProperties(BuildomaticLocator locator) {
+    Path dir = targetBuildomatic().orElse(target.dir().resolve(BUILDOMATIC));
+    return locator.at(dir).map(Buildomatic::masterProperties).orElse(Map.of());
   }
 
   Optional<String> currentVersion() {

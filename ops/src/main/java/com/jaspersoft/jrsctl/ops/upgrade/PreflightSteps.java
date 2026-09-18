@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
+import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorJava;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -188,7 +190,9 @@ final class PreflightSteps {
     @Override
     public String detail() {
       return in.target().dir()
-          + ": vendor scripts, webapp, upgrade path in the compat matrix, vendor.javaHome";
+          + ": vendor scripts, webapp, default_master.properties keeps the installation type (and"
+          + " names dbVersion for Oracle from 10.1), upgrade path in the compat matrix,"
+          + " vendor.javaHome, host Tomcat";
     }
 
     @Override
@@ -205,6 +209,26 @@ final class PreflightSteps {
         return CheckResult.fail(
             "the package names version " + discovered.get() + " but --to says " + to,
             "pass --to " + discovered.get() + " or point --package at the right distribution");
+      }
+      // review §1.3: what write-master-properties will stage must keep the installation type
+      // (upgrade guide 10.1 p.14) and, for Oracle from 10.1 on, name dbVersion (p.43)
+      Map<String, String> targetMaster = in.targetMasterProperties(rt.locator());
+      Optional<String> crossing =
+          MasterInvariants.installTypeProblem(in.masterOverrides(), targetMaster);
+      if (crossing.isPresent()) {
+        return CheckResult.fail(
+            crossing.get(),
+            "make installType and the audit.* keys in the target buildomatic's"
+                + " default_master.properties match the installed ones, or remove them there");
+      }
+      Optional<String> dbVersion =
+          MasterInvariants.dbVersionProblem(in.masterOverrides(), targetMaster, to);
+      if (dbVersion.isPresent()) {
+        return CheckResult.fail(
+            dbVersion.get(),
+            "add dbVersion=<your Oracle version> to "
+                + in.installedBuildomatic().resolve(Buildomatic.MASTER_PROPERTIES)
+                + " (it is carried over) or to the target buildomatic's copy");
       }
       String current;
       try {
