@@ -258,13 +258,17 @@ final class HelpExamples {
         "upgrade",
         List.of(
             new Example(
-                "Back up the database yourself, then look at the plan; changes nothing",
+                "Look at the plan; changes nothing",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
-                    + " --db-backup-confirmed --plan"),
+                    + " --plan"),
             new Example(
-                "Run the upgrade",
+                "Run the upgrade (newdb: jrsctl exports the repository first and can rebuild the"
+                    + " database from that export)",
+                "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"),
+            new Example(
+                "Migrate the schema in place instead; back up the database yourself first",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
-                    + " --db-backup-confirmed")));
+                    + " --mode samedb --db-backup-confirmed")));
     m.put(
         "upgrade rollback",
         List.of(

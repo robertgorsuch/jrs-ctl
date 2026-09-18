@@ -688,6 +688,16 @@ final class VendorSteps {
           UTF_8);
       Durability.sync(file);
       Durability.syncDirectory(file.getParent());
+      // ADR-0029: the snapshot set keeps the fact that the script was launched; the compensation
+      // of this step erases the attempt marker but never this, and a database rollback refuses to
+      // rebuild a database the script never touched
+      SnapshotSet set = in.snapshots(ctx);
+      Files.createDirectories(set.dir());
+      Files.writeString(
+          set.vendorStarted(),
+          scriptName() + " started at " + rt.clock().instant() + System.lineSeparator(),
+          UTF_8);
+      Durability.sync(set.vendorStarted());
     }
 
     /**

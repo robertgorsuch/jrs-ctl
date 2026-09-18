@@ -546,8 +546,9 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 10.1 Modes and rollback semantics
 
 - `--mode newdb` is the **default**. The vendor's `js-upgrade-newdb` **drops the repository database named in `default_master.properties`, recreates it with the target schema and imports the point-B full export into it** (its own `upgrade-newdb.help` lists those steps; ADR-0012). jrsctl cannot undo that. `RunVendorUpgrade` passes the point-B full export as the script's argument; the vendor wrapper refuses to run without one.
-- `--mode samedb` migrates the existing database schema in place. jrsctl cannot undo that migration either.
-- Database backup is out of scope (§1.3). **Both modes therefore require `--db-backup-confirmed`** (audited with the mode), `doctor` records the operator's confirmation, and the Plan summary states in plain text: "Rollback restores files only. Restore the database from your own backup before running rollback." Rollback to point B restores webapp, keystore, configuration and buildomatic; after a `newdb` run the rollback plan names the point-B `full-export.zip` as the repository-level backup the operator may re-import with the restored buildomatic's `js-import`.
+- `--mode samedb` migrates the existing database schema in place. jrsctl cannot undo that migration.
+- Database backup is out of scope (§1.3). **`samedb` therefore requires `--db-backup-confirmed`** (audited; the gate says why: the in-place migration is not undone by an export), and its Plan summary states in plain text: "Rollback restores files only. Restore the database from your own backup before running rollback." **`newdb` asks for no backup** (ADR-0029): jrsctl's own point-B full export, taken with the service stopped (ADR-0025), is the repository backup, and the newdb plan says so: "jrsctl backs up the files, the keystore and a full export of the repository; js-upgrade-newdb drops and recreates the database from that export, and upgrade rollback --restore-database rebuilds it from the same export". A `--db-backup-confirmed` given to a newdb command is accepted and ignored.
+- Rollback to point B restores webapp, keystore, configuration and buildomatic. After a `newdb` run, `upgrade rollback --restore-database` also rebuilds the repository database from the point-B export (the run's own `full-export.zip`, or the archive adopted with `--export`) with the restored buildomatic: `rebuild-database` (`js-ant init-js-db-<ce|pro>`, the target the newdb script itself runs first) then `reimport-full-export` (`js-import --input-zip <export> --update` with events and settings), both `irreversible()`, each run at most once per rollback run. It is refused (exit 2) unless `snapshots/<runId>/vendor-upgrade.started` says the vendor script was launched, which `RunVendorUpgrade` writes as it starts and no compensation erases, since a database the script never touched must not be dropped; and refused (exit 6) for a samedb run. Without the flag the rollback is files only and its plan names the export and the flag (ADR-0029).
 
 ### 10.2 Orchestration plan
 
@@ -588,7 +589,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 10.4 Commands
 
 - `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--plan] [--yes]`
-- `jrsctl upgrade rollback <runId> --to-point B|C`
+- `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 
 ---

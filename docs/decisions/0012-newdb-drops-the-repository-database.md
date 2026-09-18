@@ -1,6 +1,6 @@
 # ADR-0012: `newdb` drops the repository database, so both upgrade modes are gated
 
-Status: accepted, 2026-09-13. Supersedes the `newdb` sentence of spec §10.1 (Draft 1.1).
+Status: accepted, 2026-09-13. Supersedes the `newdb` sentence of spec §10.1 (Draft 1.1). Superseded for `newdb` by ADR-0029 (2026-09-18): the newdb gate is gone, its own full export is the backup, and `upgrade rollback --restore-database` rebuilds the database from it; the samedb gate and the files-only rollback stand.
 
 ## Context
 

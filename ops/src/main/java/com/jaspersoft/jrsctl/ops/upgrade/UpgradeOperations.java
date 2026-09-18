@@ -49,6 +49,18 @@ public interface UpgradeOperations {
     C
   }
 
+  /**
+   * What a rollback restores: the point-B files always, and with {@code restoreDatabase} the
+   * repository database of a newdb run, rebuilt from the point-B export with the restored
+   * buildomatic (ADR-0029). Refused at plan time for a samedb run (exit 6) and for a run whose
+   * vendor script never started (exit 2).
+   */
+  record RollbackOptions(RollbackPoint toPoint, boolean restoreDatabase) {
+    public RollbackOptions {
+      Objects.requireNonNull(toPoint, "toPoint");
+    }
+  }
+
   /** Everything the operator chooses on the command line. */
   /**
    * What the operator asked for. {@code existingExport} is an export taken earlier, here or on
@@ -157,5 +169,9 @@ public interface UpgradeOperations {
 
   Plan planUpgrade(UpgradeOptions options);
 
-  Plan planRollback(String runId, RollbackPoint point);
+  Plan planRollback(String runId, RollbackOptions options);
+
+  default Plan planRollback(String runId, RollbackPoint point) {
+    return planRollback(runId, new RollbackOptions(point, false));
+  }
 }

@@ -27,6 +27,7 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
   static final String MANIFEST = "upgrade.json";
   static final String SHA_SUFFIX = ".sha256";
   static final String EXTERNAL_RECORD = "full-export.external";
+  static final String VENDOR_STARTED = "vendor-upgrade.started";
 
   SnapshotSet {
     Objects.requireNonNull(dir, "dir");
@@ -48,6 +49,30 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
   /** Where {@code adopt-full-export} records an export taken elsewhere: its path, then its hash. */
   Path externalRecord() {
     return dir.resolve(EXTERNAL_RECORD);
+  }
+
+  /**
+   * Written the moment the vendor script is launched and never removed, not even by the
+   * compensation that restores point B: which script, and when. A database rollback (ADR-0029)
+   * rebuilds nothing unless this says {@code js-upgrade-newdb} ran.
+   */
+  Path vendorStarted() {
+    return dir.resolve(VENDOR_STARTED);
+  }
+
+  /** The vendor script named by {@link #vendorStarted()}, when it was written. */
+  Optional<String> vendorScriptStarted() throws IOException {
+    if (!Files.isRegularFile(vendorStarted())) {
+      return Optional.empty();
+    }
+    for (String line : Files.readAllLines(vendorStarted(), StandardCharsets.UTF_8)) {
+      if (!line.isBlank()) {
+        String stripped = line.strip();
+        int space = stripped.indexOf(' ');
+        return Optional.of(space < 0 ? stripped : stripped.substring(0, space));
+      }
+    }
+    return Optional.empty();
   }
 
   /** An export adopted from outside the home (ADR-0028), as recorded. */
