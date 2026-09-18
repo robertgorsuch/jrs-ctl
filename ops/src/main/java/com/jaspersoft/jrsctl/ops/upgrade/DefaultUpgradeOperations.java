@@ -20,6 +20,7 @@ import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
+import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -124,6 +125,79 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     this.rt = Objects.requireNonNull(rt, "rt");
   }
 
+  /** {@code %s} is the adopted export (ADR-0028). */
+  public static final String EXISTING_EXPORT_WARNING =
+      "js-upgrade-newdb rebuilds the repository from %s: every change made in the repository"
+          + " after that export was taken is discarded";
+
+  /**
+   * ADR-0028: {@code --export} feeds the newdb script and nothing else; a key without an export
+   * names nothing. Usage errors, since the operator asked for a combination that means nothing.
+   */
+  private static void refuseInconsistentOptions(UpgradeOptions options) {
+    if (options.existingExport().isPresent() && options.mode() == Mode.SAMEDB) {
+      throw new UpgradeException(
+          UpgradeException.USAGE,
+          "--export is only used by a newdb upgrade; samedb migrates the database in place and"
+              + " imports nothing",
+          "leave --export out, or use --mode newdb");
+    }
+    if ((options.keyAlias().isPresent() || options.keyPassword().isPresent())
+        && options.existingExport().isEmpty()) {
+      throw new UpgradeException(
+          UpgradeException.USAGE,
+          "--key-alias and --key-password-ref describe an export taken elsewhere; there is none",
+          "pass the export with --export <file>");
+    }
+    if (options.keyPassword().isPresent() && options.keyAlias().isEmpty()) {
+      throw new UpgradeException(
+          UpgradeException.USAGE,
+          "--key-password-ref needs --key-alias",
+          "pass --key-alias <alias> with it");
+    }
+  }
+
+  /**
+   * What the operator must know about an adopted export: the vendor script discards every later
+   * change, and, when the export's sidecar says so, it came from another server or version, which
+   * is allowed (field test 2: an upgrade is not always linear) but worth a line.
+   */
+  private static List<String> existingExportWarnings(
+      Path export, Optional<ServerIdentity> identity) {
+    List<String> out = new ArrayList<>();
+    out.add(EXISTING_EXPORT_WARNING.formatted(export));
+    try {
+      Optional<Sidecar> sidecar = Sidecar.read(Sidecar.pathFor(export));
+      if (sidecar.isEmpty()) {
+        out.add(
+            "no "
+                + Sidecar.pathFor(export).getFileName()
+                + " beside "
+                + export
+                + ": where it was exported from cannot be checked; an export from another server"
+                + " needs --key-alias when it was made portable");
+      } else if (identity.isPresent()
+          && (!sidecar.get().serverIdentity().equals(identity.get().fingerprintInput())
+              || !sidecar.get().serverVersion().equals(identity.get().version()))) {
+        out.add(
+            export
+                + " was exported from "
+                + sidecar.get().serverIdentity()
+                + " (version "
+                + sidecar.get().serverVersion()
+                + "); this server is "
+                + identity.get().fingerprintInput()
+                + " (version "
+                + identity.get().version()
+                + "): pass --key-alias when the export was made portable, since the vendor"
+                + " import otherwise decrypts it with this server's keystore");
+      }
+    } catch (IOException | IllegalArgumentException e) {
+      out.add("sidecar beside " + export + " is unreadable (" + e.getMessage() + ")");
+    }
+    return out;
+  }
+
   /**
    * Where the run's backups and export land and how to move them (field test 2, U3: the tester
    * could not find either), with the volume's free space now.
@@ -149,6 +223,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     HotfixPaths paths = paths(config);
     String webappName = webappName(config, paths);
     TargetPackage target = TargetPackage.inspect(options.packageDir(), rt.locator());
+    refuseInconsistentOptions(options);
     Optional<ServerIdentity> identity = identity();
     List<String> warnings = new ArrayList<>();
     if (identity.isPresent()) {
@@ -194,7 +269,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 options
                     .tomcatDir()
                     .map(p -> p.toAbsolutePath().normalize())
-                    .orElse(paths.tomcatDir())),
+                    .orElse(paths.tomcatDir()),
+                options.keyAlias()),
             installedBuildomatic);
     // review §1.3: Compact and Split never cross in one upgrade; the target package's own
     // default_master.properties must not turn the installation into the other kind
@@ -209,6 +285,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               + " default_master.properties match the installed ones, or remove them there");
     }
     warnings.add(backupsLine());
+    options
+        .existingExport()
+        .ifPresent(export -> warnings.addAll(existingExportWarnings(export, identity)));
     if (options.tomcatDir().isPresent()) {
       // review §2.1, ADR-0026: a service registered for the old Tomcat would start the old
       // server after the vendor run; only an operator-started Tomcat can be switched in one run
@@ -280,7 +359,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       // and nothing restarts the server before the vendor run; the vendor's own order
       // (review §1.6, ADR-0025). A vendor-phase rollback restarts the service through the stop
       // step's compensation.
-      steps.add(new BackupSteps.FullExport(rt, in, Phases.VENDOR_UPGRADE));
+      if (options.existingExport().isPresent()) {
+        steps.add(new BackupSteps.AdoptFullExport(rt, in));
+      } else {
+        steps.add(new BackupSteps.FullExport(rt, in, Phases.VENDOR_UPGRADE));
+      }
     }
     if (options.tomcatDir().isPresent()) {
       steps.add(new TomcatSteps.CopyWebappToTomcat(rt, in));
@@ -490,7 +573,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                         ? "the vendor script dropped and recreated the repository database, which"
                             + " this rollback does not restore: restore it from your own backup, or"
                             + " re-import "
-                            + set.fullExport()
+                            + set.resolveFullExport()
                             + " with the restored buildomatic's js-import"
                         : "the vendor script migrated the repository database in place, which"
                             + " this rollback does not restore")));

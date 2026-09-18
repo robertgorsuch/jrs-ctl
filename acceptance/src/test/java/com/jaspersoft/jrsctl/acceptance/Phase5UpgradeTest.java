@@ -560,6 +560,70 @@ class Phase5UpgradeTest {
   }
 
   @Test
+  @Order(2)
+  void upgrade_export_adopts_an_archive_taken_earlier_and_is_refused_for_samedb() throws Exception {
+    // ADR-0028 (field test 2, U5b): an export taken earlier stands in for the run's own.
+    Path earlier = tmp.resolve("earlier-export.zip");
+    try (java.util.zip.ZipOutputStream out =
+        new java.util.zip.ZipOutputStream(Files.newOutputStream(earlier))) {
+      out.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
+      out.write("<export/>".getBytes(StandardCharsets.UTF_8));
+      out.closeEntry();
+    }
+
+    Cli.Result plan =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--db-backup-confirmed",
+                "--export",
+                earlier.toString(),
+                "--key-alias",
+                "deprecatedImportExportEncSecret",
+                "--plan")
+            .assertExit(0);
+    assertThat(plan.stdout())
+        .contains("adopt the export taken earlier")
+        .contains("every change made in the repository after that export")
+        .contains(earlier.getFileName().toString())
+        .doesNotContain("full repository export with js-export");
+
+    Cli.Result samedb =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--mode",
+                "samedb",
+                "--db-backup-confirmed",
+                "--export",
+                earlier.toString(),
+                "--plan")
+            .assertExit(1);
+    assertThat(samedb.stderr()).contains("--export is only used by a newdb upgrade");
+
+    Cli.Result aliasAlone =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--db-backup-confirmed",
+                "--key-alias",
+                "deprecatedImportExportEncSecret",
+                "--plan")
+            .assertExit(1);
+    assertThat(aliasAlone.stderr()).contains("--export");
+    assertThat(webapp.resolve(MARKER)).doesNotExist();
+  }
+
+  @Test
   @Order(3)
   void upgrade_yes_runs_the_vendor_script_and_keeps_point_b_backups() throws Exception {
     // The package's js-upgrade-newdb refuses to run without an existing export file, so a green

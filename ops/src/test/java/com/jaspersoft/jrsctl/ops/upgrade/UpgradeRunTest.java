@@ -65,6 +65,41 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * ADR-0028: the adopted export is what js-upgrade-newdb receives, the key alias and its password
+   * reach the vendor import through the staged properties and never the command line, and the
+   * rollback plan names the archive the operator supplied.
+   */
+  @Test
+  void should_pass_the_adopted_export_to_the_wrapper_and_stage_the_key_alias() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("portable.zip");
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  newdb(f)
+                      .withExistingExport(export)
+                      .withKeyAlias("deprecatedImportExportEncSecret")
+                      .withKeyPassword(
+                          com.jaspersoft.jrsctl.core.secrets.SecretRef.parse("env:JRS_PASSWORD")));
+
+      RunOutcome outcome = f.run(plan, "r-adopt", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(outcome.toString()).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.vendorLogText()).contains(export.toString()).doesNotContain("keyalias");
+      assertThat(f.stagedMasterProperties())
+          .containsEntry(
+              "deprecatedImportExportEncSecret.keyalias", "deprecatedImportExportEncSecret")
+          .containsEntry("deprecatedImportExportEncSecret.keypass", "s3cret-pass");
+      assertThat(f.fake.home.snapshots().resolve("r-adopt").resolve("full-export.external"))
+          .exists();
+      assertThat(f.fake.home.snapshots().resolve("r-adopt").resolve("full-export.zip"))
+          .doesNotExist();
+      Plan rollback = f.ops().planRollback("r-adopt", RollbackPoint.B);
+      assertThat(rollback.summary().warnings()).anyMatch(w -> w.contains(export.toString()));
+    }
+  }
+
   @Test
   void should_back_up_upgrade_and_record_when_vendor_script_succeeds() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

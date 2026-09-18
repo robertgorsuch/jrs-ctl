@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations;
@@ -89,6 +90,32 @@ final class UpgradeCommand implements Callable<Integer> {
               + " Needs service.kind manual.")
   Path tomcatDir;
 
+  @Option(
+      names = "--export",
+      paramLabel = "<file>",
+      description =
+          "An export taken earlier, from this server or another one (js-export --everything or"
+              + " jrsctl export --full-server), to upgrade from instead of exporting now; newdb"
+              + " only. Everything changed in the repository after it was taken is lost.")
+  Path export;
+
+  @Option(
+      names = "--key-alias",
+      paramLabel = "<alias>",
+      description =
+          "Alias the export was encrypted with (jrsctl export --portable uses"
+              + " deprecatedImportExportEncSecret); written to the target buildomatic's properties"
+              + " for the import. Needs --export.")
+  String keyAlias;
+
+  @Option(
+      names = "--key-password-ref",
+      paramLabel = "<ref>",
+      description =
+          "Password of that key, as env:NAME, file:/path or enc:NAME, when the alias has one."
+              + " Needs --key-alias.")
+  String keyPasswordRef;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -122,6 +149,13 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
     }
+    Optional<SecretRef> keyPassword;
+    try {
+      keyPassword = Optional.ofNullable(keyPasswordRef).map(SecretRef::parse);
+    } catch (IllegalArgumentException e) {
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.USAGE, "--key-password-ref: " + e.getMessage());
+    }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       UpgradeOperations.UpgradeOptions options =
@@ -131,7 +165,10 @@ final class UpgradeCommand implements Callable<Integer> {
               parsed,
               dbBackupConfirmed,
               reapplyHotfixes,
-              Optional.ofNullable(tomcatDir));
+              Optional.ofNullable(tomcatDir),
+              Optional.ofNullable(export),
+              Optional.ofNullable(keyAlias),
+              keyPassword);
       Plan planned;
       try {
         planned = new DefaultUpgradeOperations(services).planUpgrade(options);

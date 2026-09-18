@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, upgrade from an existing export)
+
+- §7.4, §10.2 step 9a, §10.4: `upgrade --export <file>` adopts an export taken earlier, from this server or another one, as the newdb script's input (`adopt-full-export` replaces `full-export`; the file is hashed and recorded under the snapshot set, not copied; a sidecar naming another server or version is a warning; every later repository change is declared lost); `--key-alias` and `--key-password-ref` reach the vendor import through the staged `default_master.properties`, the one password key jrsctl writes itself; `--export` with samedb, or a key without an export, is a usage error. `--source-keystore` for the upgrade is deferred pending a live check (ADR-0028; field test 2, U5b).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, backup space)
 
 - §5.6, §10.2, §12.0, §12.1: `verify-target-package` refuses an upgrade whose backups will not fit under the jrsctl home (the trees to archive, an export estimate of the larger of 1 GB and the webapp tree, 512 MB headroom, plus the margin), naming the need, what is free and `--home`/`JRSCTL_HOME`; `full-export` re-checks its own need; the upgrade plan names the backup location and its free space; `init` prints the home and its free space; `doctor`'s `disk` item measures the home's volume as well as the installation's and names both; the `--home` help names the defaults and what lives there. Upgrade sets were already pruned with their run; the operator guide said otherwise (field test 2, U3).

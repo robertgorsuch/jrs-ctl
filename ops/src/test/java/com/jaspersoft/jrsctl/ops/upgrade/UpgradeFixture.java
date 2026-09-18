@@ -199,6 +199,64 @@ public final class UpgradeFixture implements AutoCloseable {
     write(packageDir.resolve(CREATE_KEYSTORE), "");
   }
 
+  /** A JasperReports Server export archive (index.xml plus a resource) outside the home. */
+  public Path fakeExport(String name) throws IOException {
+    Path zip = Files.createDirectories(root.resolve("exports")).resolve(name);
+    try (java.io.OutputStream out = Files.newOutputStream(zip);
+        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(out)) {
+      zos.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
+      zos.write("<export/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      zos.closeEntry();
+      zos.putNextEntry(new java.util.zip.ZipEntry("resources/public/x.xml"));
+      zos.write("<x/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      zos.closeEntry();
+    }
+    return zip;
+  }
+
+  /** As {@link #fakeExport(String)}, with a sidecar naming the exporting server and version. */
+  public Path fakeExport(String name, String serverIdentity, String version) throws IOException {
+    Path zip = fakeExport(name);
+    com.jaspersoft.jrsctl.jrs.strategy.Sidecar.write(
+        com.jaspersoft.jrsctl.jrs.strategy.Sidecar.pathFor(zip),
+        new com.jaspersoft.jrsctl.jrs.strategy.Sidecar(
+            java.time.Instant.EPOCH,
+            serverIdentity,
+            version,
+            Optional.empty(),
+            new com.jaspersoft.jrsctl.jrs.strategy.Sidecar.Flags(
+                com.jaspersoft.jrsctl.jrs.api.ExportRequest.Scope.EVERYTHING,
+                List.of(),
+                true,
+                true,
+                true,
+                true,
+                true,
+                true),
+            services.platform().files().sha256(zip),
+            com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.REST));
+    return zip;
+  }
+
+  /** The target buildomatic's staged default_master.properties, every key including passwords. */
+  public java.util.Map<String, String> stagedMasterProperties() throws IOException {
+    java.util.Properties p = new java.util.Properties();
+    try (java.io.InputStream in =
+        Files.newInputStream(
+            packageDir.resolve("buildomatic").resolve("default_master.properties"))) {
+      p.load(in);
+    }
+    java.util.Map<String, String> out = new java.util.TreeMap<>();
+    for (String k : p.stringPropertyNames()) {
+      out.put(k, p.getProperty(k));
+    }
+    return out;
+  }
+
+  public String vendorLogText() throws IOException {
+    return Files.exists(vendorLog) ? Files.readString(vendorLog) : "";
+  }
+
   /** Replaces the installed buildomatic's {@code default_master.properties}. */
   public void installedMasterProperties(String content) throws IOException {
     write(installDir.resolve("buildomatic").resolve("default_master.properties"), content);

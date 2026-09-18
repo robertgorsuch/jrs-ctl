@@ -12,9 +12,11 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
+import com.jaspersoft.jrsctl.jrs.strategy.ExportArchives;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -37,6 +39,112 @@ final class BackupSteps {
   /** A full export's size is unknown before it is taken: the larger of 1 GB and the webapp tree. */
   static long exportEstimate(long webappTreeBytes) {
     return Math.max(1L << 30, webappTreeBytes);
+  }
+
+  static final String ADOPT_FULL_EXPORT = "adopt-full-export";
+
+  /**
+   * Takes an export the operator supplied (ADR-0028) as the point-B full export of a newdb run:
+   * records its path and SHA-256 under {@code snapshots/<runId>/} so {@code run-vendor-upgrade},
+   * {@code record-upgrade} and the rollback plan find it, without copying a file that may not fit
+   * under the home (field test 2, U3). Invariants: the archive itself is never written to; the
+   * precheck refuses a file that is not a JasperReports Server export (no {@code index.xml});
+   * re-execution rewrites the same record; compensation removes it; the hash recorded here is
+   * checked again right before the vendor run.
+   */
+  static final class AdoptFullExport implements Step {
+    private final UpgradeRuntime rt;
+    private final UpgradeInput in;
+
+    AdoptFullExport(UpgradeRuntime rt, UpgradeInput in) {
+      this.rt = Objects.requireNonNull(rt, "rt");
+      this.in = Objects.requireNonNull(in, "in");
+    }
+
+    private Path export() {
+      return in.options().existingExport().orElseThrow();
+    }
+
+    @Override
+    public String id() {
+      return ADOPT_FULL_EXPORT;
+    }
+
+    @Override
+    public String title() {
+      return "adopt the export taken earlier as the point-B full export";
+    }
+
+    @Override
+    public String phase() {
+      return Phases.VENDOR_UPGRADE;
+    }
+
+    @Override
+    public String detail() {
+      return export()
+          + " (recorded under "
+          + SnapshotSet.placeholder(rt.home())
+          + "/"
+          + SnapshotSet.EXTERNAL_RECORD
+          + "; not copied)";
+    }
+
+    @Override
+    public boolean mutating() {
+      return true;
+    }
+
+    @Override
+    public CheckResult precheck(Context ctx) {
+      if (!Files.isRegularFile(export())) {
+        return CheckResult.fail(
+            "--export " + export() + " does not exist", "point --export at the export archive");
+      }
+      Optional<String> problem = ExportArchives.problem(export());
+      if (problem.isPresent()) {
+        return CheckResult.fail(
+            problem.get(),
+            "pass an export made with js-export --everything or jrsctl export --full-server");
+      }
+      return CheckResult.pass();
+    }
+
+    @Override
+    public StepResult execute(Context ctx, EventSink out) {
+      SnapshotSet set = in.snapshots(ctx);
+      try {
+        String sha = rt.files().sha256(export());
+        Files.createDirectories(set.dir());
+        Files.writeString(
+            set.externalRecord(), export() + "\n" + sha + "\n", StandardCharsets.UTF_8);
+        Logs.info(rt, ctx, out, this, "adopted " + export() + " (sha256 " + sha + ")");
+        return StepResult.ok();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot record the adopted export: " + e.getMessage(),
+            "check read access to " + export() + " and write access under " + set.dir());
+      }
+    }
+
+    @Override
+    public CheckResult postcheck(Context ctx) {
+      return Files.isRegularFile(in.snapshots(ctx).externalRecord())
+          ? CheckResult.pass()
+          : CheckResult.fail("the adopted export was not recorded", "run again");
+    }
+
+    @Override
+    public StepResult compensate(Context ctx, EventSink out) {
+      try {
+        Files.deleteIfExists(in.snapshots(ctx).externalRecord());
+        return StepResult.ok();
+      } catch (IOException e) {
+        return Failures.recoverable(
+            "cannot remove " + in.snapshots(ctx).externalRecord() + ": " + e.getMessage(),
+            "delete it by hand");
+      }
+    }
   }
 
   static final String FULL_EXPORT = "full-export";

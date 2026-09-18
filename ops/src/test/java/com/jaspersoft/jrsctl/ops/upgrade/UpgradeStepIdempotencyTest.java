@@ -208,6 +208,36 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /** ADR-0028: the record names the operator's export; rewriting it is the same as writing it. */
+  @Test
+  void should_rewrite_the_record_when_adopt_full_export_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("earlier.zip");
+      Plan plan = f.ops().planUpgrade(newdb(f).withExistingExport(export));
+
+      assertReexecutionConverges(f, plan, "r-ae", "adopt-full-export");
+
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-ae", f.os);
+      assertThat(set.externalExport()).isPresent();
+      assertThat(set.externalExport().orElseThrow().path()).isEqualTo(export);
+      assertThat(set.resolveFullExport()).isEqualTo(export);
+      assertThat(set.fullExport()).doesNotExist();
+    }
+  }
+
+  @Test
+  void should_converge_when_adopt_full_export_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("earlier.zip");
+      Plan plan = f.ops().planUpgrade(newdb(f).withExistingExport(export));
+
+      assertCompensationConverges(f, plan, "r-ac", "adopt-full-export");
+
+      assertThat(SnapshotSet.of(f.fake.home, "r-ac", f.os).externalExport()).isEmpty();
+      assertThat(export).exists();
+    }
+  }
+
   @Test
   void should_converge_when_backup_keystore_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

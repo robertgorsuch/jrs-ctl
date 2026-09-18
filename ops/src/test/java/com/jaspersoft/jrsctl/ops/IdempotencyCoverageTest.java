@@ -346,6 +346,12 @@ class IdempotencyCoverageTest {
               OPS + "upgrade.BackupSteps$FullExport",
               U + "should_reuse_the_export_when_full_export_executes_twice"),
           Map.entry(
+              OPS + "upgrade.BackupSteps$AdoptFullExport",
+              U
+                  + "should_rewrite_the_record_when_adopt_full_export_executes_twice;"
+                  + U
+                  + "should_converge_when_adopt_full_export_compensates_twice"),
+          Map.entry(
               OPS + "upgrade.BackupSteps$BackupKeystore",
               U + "should_converge_when_backup_keystore_executes_twice"),
           Map.entry(

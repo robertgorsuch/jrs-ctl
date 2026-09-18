@@ -214,7 +214,11 @@ public final class PlanRegistry {
         args.path("dbBackupConfirmed").asBoolean(false),
         args.path("reapplyHotfixes").asBoolean(false),
         // arguments stored before the option existed describe an upgrade in the same Tomcat
-        text(args, "tomcatDir").map(Path::of));
+        text(args, "tomcatDir").map(Path::of),
+        // and one that takes its own export with the server's own key (ADR-0028)
+        text(args, "export").map(Path::of),
+        text(args, "keyAlias"),
+        text(args, "keyPasswordRef").map(SecretRef::parse));
   }
 
   public static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
@@ -228,6 +232,21 @@ public final class PlanRegistry {
       node.put("tomcatDir", options.tomcatDir().get().toAbsolutePath().normalize().toString());
     } else {
       node.putNull("tomcatDir");
+    }
+    if (options.existingExport().isPresent()) {
+      node.put("export", options.existingExport().get().toString());
+    } else {
+      node.putNull("export");
+    }
+    if (options.keyAlias().isPresent()) {
+      node.put("keyAlias", options.keyAlias().get());
+    } else {
+      node.putNull("keyAlias");
+    }
+    if (options.keyPassword().isPresent()) {
+      node.put("keyPasswordRef", options.keyPassword().get().render());
+    } else {
+      node.putNull("keyPasswordRef");
     }
     return Json.write(node);
   }
