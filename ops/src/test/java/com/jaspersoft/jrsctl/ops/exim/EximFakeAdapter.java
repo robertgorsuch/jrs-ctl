@@ -147,6 +147,17 @@ final class EximFakeAdapter implements JrsAdapter {
     return List.of("/public");
   }
 
+  /** The URIs that exist on the fake server; empty means every URI exists. */
+  Optional<Set<String>> existing = Optional.empty();
+
+  final List<String> existenceChecks = new ArrayList<>();
+
+  @Override
+  public boolean resourceExists(String uri) {
+    existenceChecks.add(uri);
+    return existing.map(s -> s.contains(uri)).orElse(true);
+  }
+
   @Override
   public Path runReportToPdf(String reportUri, Path target) {
     throw new UnsupportedOperationException("not used by export/import");

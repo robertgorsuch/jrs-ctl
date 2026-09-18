@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Streams the finished export to {@code <output>.part} and renames it onto {@code output} (spec
@@ -132,6 +133,10 @@ final class DownloadExport implements Step {
       }
     } catch (IOException e) {
       return CheckResult.fail("cannot inspect " + output + ": " + e.getMessage(), "check the path");
+    }
+    Optional<String> empty = ExportArchives.problem(output);
+    if (empty.isPresent()) {
+      return CheckResult.fail(empty.get(), "check the --uri values against the repository");
     }
     return CheckResult.pass();
   }

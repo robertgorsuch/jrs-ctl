@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.JsonParser;
@@ -103,6 +104,10 @@ class Phase8JsonSchemaTest {
     server.stubFor(
         get(urlPathEqualTo(WEBAPP + "/rest_v2/resources"))
             .willReturn(okJson("{\"resourceLookup\":[]}")));
+    // field test 2, E3: export planning asks whether each --uri exists
+    server.stubFor(
+        get(urlPathMatching(WEBAPP + "/rest_v2/resources/.+"))
+            .willReturn(okJson("{\"uri\":\"/public\",\"label\":\"Public\"}")));
     server.stubFor(
         get(urlPathEqualTo(WEBAPP + "/rest_v2/jobs")).willReturn(okJson("{\"jobsummary\":[]}")));
     server.stubFor(

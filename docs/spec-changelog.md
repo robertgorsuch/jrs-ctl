@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, export of a missing folder)
+
+- §9.3, §9.4, §7.3: `JrsAdapter.resourceExists(uri)`; export planning refuses a `--uri` that does not exist on the server (exit 2) instead of producing an archive holding only `resources/`; both export steps' postchecks refuse an archive with entries and no `index.xml`; a failed export task's `errorDescriptor` is surfaced when `message` is empty. The pre-import snapshot covers only the sidecar's folders that exist on this server, names the ones that do not in the warnings, and is left out, with the restore step, when none exists yet (field test 2, E3).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, report rendering)
 
 - §12: text reports (`doctor`, `smoke`, `hotfix verify`) print the FAIL and WARN items, a `----` rule, then the rest, and close with a line that names the problems, `1 fail (server), 0 warn, 21 pass, 2 skip`, coloured by the worst status; a problem's remediation is never dimmed, only a SKIP's (field test 2, D2: a failure was one line followed by many green ones).

@@ -310,6 +310,60 @@ class DefaultExportImportOperationsTest {
     assertThat(adapter.imports).isEmpty();
   }
 
+  /** Field test 2, E3: a mistyped --uri is refused before anything runs. */
+  @Test
+  void should_refuse_planning_when_a_uri_does_not_exist_on_the_server() {
+    adapter.existing = Optional.of(Set.of("/public"));
+
+    assertThatThrownBy(
+            () ->
+                fx.ops()
+                    .planExport(export(Set.of("/public", "/typo"), false, tmp.resolve("x.zip"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("/typo does not exist on the server");
+    assertThat(adapter.existenceChecks).containsExactlyInAnyOrder("/public", "/typo");
+  }
+
+  @Test
+  void should_not_ask_the_server_about_the_root_or_a_full_server_export() {
+    adapter.existing = Optional.of(Set.of());
+
+    fx.ops().planExport(export(Set.of(), false, tmp.resolve("root.zip")));
+    fx.ops().planExport(export(Set.of(), true, tmp.resolve("full.zip")));
+
+    assertThat(adapter.existenceChecks).isEmpty();
+  }
+
+  /**
+   * Importing new content is the ordinary case: a folder the archive holds need not exist on the
+   * target yet, so the snapshot covers what does exist and says what does not.
+   */
+  @Test
+  void should_snapshot_only_the_sidecar_uris_that_exist_when_planning_an_import()
+      throws IOException {
+    sidecar(List.of("/public/a", "/public/b"), false);
+    adapter.existing = Optional.of(Set.of("/public/a"));
+
+    Plan plan = fx.ops().planImport(importOf(archive, true));
+
+    assertThat(plan.summary().resourcesTouched()).containsExactly("/public/a");
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("/public/b does not exist on this server yet"));
+  }
+
+  @Test
+  void should_skip_the_snapshot_when_none_of_the_sidecar_uris_exist_yet() throws IOException {
+    sidecar(List.of("/public/new"), false);
+    adapter.existing = Optional.of(Set.of());
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.steps().stream().map(Step::id))
+        .noneMatch(id -> id.startsWith("snapshot") || id.contains("restore"));
+    assertThat(plan.summary().warnings()).anyMatch(w -> w.contains("no pre-import snapshot"));
+    assertThat(plan.summary().backupLocations()).isEmpty();
+  }
+
   @Test
   void should_use_sidecar_uris_for_snapshot_when_sidecar_is_a_subtree_export() throws IOException {
     sidecar(List.of("/organizations/org_1", "/public/reports"), false);

@@ -182,6 +182,15 @@ public final class FakeJrsAdapter implements JrsAdapter {
     return List.copyOf(children);
   }
 
+  /** URIs the fake server answers 404 for; everything else exists. */
+  public final Set<String> missingResources = new HashSet<>();
+
+  @Override
+  public boolean resourceExists(String uri) {
+    calls.add("resourceExists " + uri);
+    return !missingResources.contains(uri);
+  }
+
   @Override
   public Path runReportToPdf(String reportUri, Path target) {
     calls.add("runReportToPdf " + reportUri);

@@ -578,6 +578,11 @@ class StepIdempotencyTest {
     }
 
     @Override
+    public boolean resourceExists(String uri) {
+      return true;
+    }
+
+    @Override
     public Path runReportToPdf(String reportUri, Path target) {
       throw new UnsupportedOperationException("not used");
     }

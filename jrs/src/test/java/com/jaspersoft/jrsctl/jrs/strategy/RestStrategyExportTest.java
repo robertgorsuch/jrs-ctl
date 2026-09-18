@@ -96,10 +96,16 @@ class RestStrategyExportTest {
   }
 
   private byte[] stubDownload() {
-    byte[] archive = new byte[TWO_MB];
-    Arrays.fill(archive, (byte) 'z');
-    archive[0] = 'P';
-    archive[1] = 'K';
+    // a real archive with index.xml, as a JasperReports Server export always is, padded to the
+    // size the streaming tests want
+    byte[] payload = new byte[TWO_MB];
+    Arrays.fill(payload, (byte) 'z');
+    byte[] archive = zip(java.util.Map.of("index.xml", payload, "resources/", new byte[0]));
+    stubDownload(archive);
+    return archive;
+  }
+
+  private void stubDownload(byte[] archive) {
     wm.stubFor(
         get(urlPathEqualTo(rest.path("/rest_v2/export/exp-1/export.zip")))
             .willReturn(
@@ -107,7 +113,60 @@ class RestStrategyExportTest {
                     .withStatus(200)
                     .withHeader("Content-Type", "application/zip")
                     .withBody(archive)));
-    return archive;
+  }
+
+  private static byte[] zip(java.util.Map<String, byte[]> entries) {
+    java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+    try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(bytes)) {
+      for (var e : entries.entrySet()) {
+        out.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
+        out.write(e.getValue());
+        out.closeEntry();
+      }
+    } catch (IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+    return bytes.toByteArray();
+  }
+
+  /** Field test 2, E3: a failed export carries its cause in errorDescriptor, not in message. */
+  @Test
+  void should_report_the_error_descriptor_when_the_export_task_fails() throws IOException {
+    stubStart();
+    stubStates(
+        "{\"phase\":\"inprogress\"}",
+        "{\"phase\":\"failed\",\"errorDescriptor\":{\"message\":\"Resource /a/b not found\","
+            + "\"errorCode\":\"resource.not.found\",\"parameters\":[\"/a/b\"]}}");
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).cause())
+        .contains("Resource /a/b not found")
+        .contains("resource.not.found")
+        .doesNotContain("without a message");
+  }
+
+  /**
+   * Field test 2, E3: an export whose uris matched nothing used to exit 0 with an empty archive.
+   */
+  @Test
+  void should_fail_the_download_when_the_archive_holds_no_index() throws IOException {
+    stubStart();
+    stubStates("{\"phase\":\"ready\"}");
+    stubDownload(zip(java.util.Map.of("resources/", new byte[0])));
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).cause())
+        .contains("holds no index.xml")
+        .contains("no resource matched");
+    assertThat(Files.exists(output)).isFalse();
   }
 
   @Test

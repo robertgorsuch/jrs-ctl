@@ -94,6 +94,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.stopService());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
+    refuseMissingUris(adapter, request);
     Strategies.Selection selection =
         strategies.select(services.config(), adapter, request, options.strategy());
     requireLocalInstallation(selection, options.strategy(), options.fullServer(), "export");
@@ -170,20 +171,23 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     List<String> warnings = new ArrayList<>();
     warnings.add(BEST_EFFORT_WARNING);
     Optional<Sidecar> sidecar = readSidecar(archive, warnings);
-    ExportRequest snapshotRequest =
-        snapshotRequest(sidecar, options.update(), snapshotPath(archive, archiveHash));
-    ImportRequest restore =
-        new ImportRequest(
-            snapshotRequest.output(),
-            true,
-            false,
-            snapshotRequest.includeAccessEvents(),
-            snapshotRequest.includeAuditEvents(),
-            snapshotRequest.includeMonitoring(),
-            snapshotRequest.includeSettings(),
-            false,
-            Optional.empty(),
-            Optional.empty());
+    Optional<ExportRequest> snapshot =
+        snapshotRequest(
+            sidecar, options.update(), snapshotPath(archive, archiveHash), adapter, warnings);
+    Optional<ImportRequest> restore =
+        snapshot.map(
+            s ->
+                new ImportRequest(
+                    s.output(),
+                    true,
+                    false,
+                    s.includeAccessEvents(),
+                    s.includeAuditEvents(),
+                    s.includeMonitoring(),
+                    s.includeSettings(),
+                    false,
+                    Optional.empty(),
+                    Optional.empty()));
     if (strategy.requiresServiceStop()) {
       warnings.add(
           "the service will be stopped for the vendor snapshot and import and started again"
@@ -192,7 +196,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     if (options.update()) {
       warnings.add(
           "--update overwrites existing resources under "
-              + PreImportSnapshot.describe(snapshotRequest));
+              + snapshot
+                  .map(PreImportSnapshot::describe)
+                  .orElse("the archive's folders (none of which exists here yet)"));
     }
 
     List<Step> importSteps = strategy.importSteps(request);
@@ -206,22 +212,39 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     for (Step s : importSteps.subList(0, firstMutating)) {
       steps.add(Rephased.into(PRECHECK_PHASE, s));
     }
-    steps.addAll(PreImportSnapshot.steps(strategy, snapshotRequest));
-    steps.add(
-        new RestoreFromPreImportSnapshot(importPhase, strategy, snapshotRequest.output(), restore));
+    if (snapshot.isPresent()) {
+      steps.addAll(PreImportSnapshot.steps(strategy, snapshot.get()));
+      steps.add(
+          new RestoreFromPreImportSnapshot(
+              importPhase, strategy, snapshot.get().output(), restore.get()));
+    }
     steps.addAll(importSteps.subList(firstMutating, importSteps.size()));
 
     Map<String, String> rollback = new LinkedHashMap<>();
-    rollback.put(BACKUP_PHASE, "delete the pre-import snapshot");
-    rollback.put(importPhase, "re-import the pre-import snapshot with update (best effort)");
+    if (snapshot.isPresent()) {
+      rollback.put(BACKUP_PHASE, "delete the pre-import snapshot");
+      rollback.put(importPhase, "re-import the pre-import snapshot with update (best effort)");
+    } else {
+      rollback.put(
+          importPhase,
+          "nothing to put back: none of the archive's resources existed before the import");
+    }
+    List<String> touched =
+        snapshot
+            .map(DefaultExportImportOperations::sortedUris)
+            .orElseGet(
+                () ->
+                    sidecar
+                        .map(sc -> List.copyOf(new TreeSet<>(sc.flags().uris())))
+                        .orElse(List.of("/")));
     PlanSummary summary =
         new PlanSummary(
             IMPORT_OPERATION,
             archive.getFileName().toString(),
             List.of(),
-            sortedUris(snapshotRequest),
+            touched,
             strategy.requiresServiceStop(),
-            List.of(snapshotRequest.output()),
+            snapshot.map(s -> List.of(s.output())).orElse(List.of()),
             rollback,
             strategyLine(selection),
             warnings);
@@ -249,12 +272,43 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   }
 
   /**
-   * The affected subtree: the sidecar's uris (the whole repository when it lists none or was a
-   * full-server export), else "/"; a full-server snapshot when {@code update} targets the root.
-   * Users and roles are included when the sidecar says the archive carries them, or always when
-   * there is no sidecar to tell.
+   * Refuses an export whose {@code --uri} names nothing on the server (field test 2, E3): the
+   * server would otherwise answer with an archive holding no resources, and the run would exit 0.
+   * The root and a full-server export are not asked about.
    */
-  static ExportRequest snapshotRequest(Optional<Sidecar> sidecar, boolean update, Path output) {
+  private static void refuseMissingUris(JrsAdapter adapter, ExportRequest request) {
+    if (request.fullServer()) {
+      return;
+    }
+    List<String> missing = new ArrayList<>();
+    for (String uri : sortedUris(request)) {
+      if (!uri.equals("/") && !adapter.resourceExists(uri)) {
+        missing.add(uri);
+      }
+    }
+    if (!missing.isEmpty()) {
+      throw new IllegalArgumentException(
+          String.join(", ", missing)
+              + (missing.size() == 1 ? " does" : " do")
+              + " not exist on the server; check the folder in the repository browser or with"
+              + " jrsctl console, and pass --uri with the exact path");
+    }
+  }
+
+  /**
+   * The affected subtree: the sidecar's uris that exist on this server (the whole repository when
+   * it lists none or was a full-server export), else "/"; a full-server snapshot when {@code
+   * update} targets the root. Users and roles are included when the sidecar says the archive
+   * carries them, or always when there is no sidecar to tell. Empty when the sidecar names folders
+   * and none of them exists here yet (field test 2, E3): importing new content is the ordinary
+   * case, and then there is nothing to put back, which the warnings say.
+   */
+  static Optional<ExportRequest> snapshotRequest(
+      Optional<Sidecar> sidecar,
+      boolean update,
+      Path output,
+      JrsAdapter adapter,
+      List<String> warnings) {
     Set<String> uris = new TreeSet<>();
     boolean usersRoles = true;
     boolean access = false;
@@ -275,19 +329,37 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     if (uris.isEmpty() || uris.contains("/")) {
       uris.clear();
       uris.add("/");
+    } else {
+      Set<String> present = new TreeSet<>();
+      for (String uri : uris) {
+        if (adapter.resourceExists(uri)) {
+          present.add(uri);
+        } else {
+          warnings.add(
+              uri + " does not exist on this server yet, so there is nothing to snapshot for it");
+        }
+      }
+      if (present.isEmpty()) {
+        warnings.add(
+            "no pre-import snapshot: none of the archive's resources exists on this server yet,"
+                + " so a rollback would have nothing to put back");
+        return Optional.empty();
+      }
+      uris = present;
     }
     boolean root = uris.contains("/");
     boolean fullServer = update && root;
-    return new ExportRequest(
-        fullServer ? ExportRequest.Scope.EVERYTHING : ExportRequest.Scope.REPOSITORY,
-        uris,
-        usersRoles || fullServer,
-        access,
-        audit,
-        monitoring,
-        settings,
-        fullServer,
-        output);
+    return Optional.of(
+        new ExportRequest(
+            fullServer ? ExportRequest.Scope.EVERYTHING : ExportRequest.Scope.REPOSITORY,
+            uris,
+            usersRoles || fullServer,
+            access,
+            audit,
+            monitoring,
+            settings,
+            fullServer,
+            output));
   }
 
   private static Optional<Sidecar> readSidecar(Path archive, List<String> warnings) {
