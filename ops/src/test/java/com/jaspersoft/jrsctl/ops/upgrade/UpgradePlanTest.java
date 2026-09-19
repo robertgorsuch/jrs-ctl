@@ -619,6 +619,19 @@ class UpgradePlanTest {
     }
   }
 
+  /** Review §3.2 (issue #112): on a clustered licence the plan says this node is the only one. */
+  @Test
+  void should_warn_that_other_nodes_stay_on_old_code_when_the_licence_is_clustered()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.adapter.capabilities.add(com.jaspersoft.jrsctl.jrs.api.Capability.CLUSTERING);
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(plan.summary().warnings())
+          .contains(com.jaspersoft.jrsctl.ops.ClusterNotice.WARNING);
+    }
+  }
+
   static UpgradeOptions samedbTo(UpgradeFixture f, String to) {
     return new UpgradeOptions(to, f.packageDir, Mode.SAMEDB, true, false);
   }

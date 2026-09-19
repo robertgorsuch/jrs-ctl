@@ -13,6 +13,13 @@ public enum Capability {
   KEYSTORE_ENCRYPTION,
   /** Organizations (multi-tenancy) enabled; PRO only. */
   ORGS,
+  /**
+   * The licence includes clustering ({@code GET /rest_v2/licenseFeatures} answers {@code cl: true};
+   * REST reference pp.20-22, issue #112). A property of the deployment's licence, not of the
+   * release line, so the compat matrix never expects it and {@code doctor} compares nothing against
+   * it; it only says that nodes other than this one may exist.
+   */
+  CLUSTERING,
   /** Token-based authentication is accepted. */
   TOKEN_AUTH,
   /** Pre-authentication ({@code pp=}) is configured. */

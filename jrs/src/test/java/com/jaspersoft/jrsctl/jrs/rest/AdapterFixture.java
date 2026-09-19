@@ -85,6 +85,21 @@ final class AdapterFixture {
     probe("/rest_v2/import/jrsctl-probe/state", 404);
     probe("/rest_v2/organizations", 200);
     probe("/rest_v2/login", 405);
+    // issue #112: the keys service answers on 7.5+ (204 with no custom keys, as 10.0.0 does),
+    // and a commercial licence without clustering
+    probe("/rest_v2/keys/", 204);
+    licenseFeatures(false);
+  }
+
+  /** {@code GET /rest_v2/licenseFeatures} as the 10.0.0 server answers it (issue #112). */
+  void licenseFeatures(boolean clustered) {
+    wm.stubFor(
+        any(urlPathEqualTo(CONTEXT + "/rest_v2/licenseFeatures"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"mt\":true,\"cl\":" + clustered + ",\"aud\":true}")));
   }
 
   /**

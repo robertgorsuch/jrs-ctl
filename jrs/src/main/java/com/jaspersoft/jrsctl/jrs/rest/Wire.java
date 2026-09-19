@@ -27,6 +27,12 @@ final class Wire {
   /** The JSON error every JRS answers with for a missing task or resource. */
   record ErrorBody(String message, String errorCode) {}
 
+  /**
+   * {@code GET /rest_v2/licenseFeatures} (REST reference 10.1 pp.20-22): {@code mt} is
+   * multi-tenancy, {@code cl} clustering; the other feature flags are ignored.
+   */
+  record LicenseFeatures(Boolean mt, Boolean cl) {}
+
   /** Body of {@code POST /rest_v2/export|import} and of the {@code /state} polls. */
   record AsyncState(
       String id,

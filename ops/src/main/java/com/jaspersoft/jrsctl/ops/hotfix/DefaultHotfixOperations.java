@@ -22,6 +22,7 @@ import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
+import com.jaspersoft.jrsctl.ops.ClusterNotice;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import java.io.IOException;
@@ -263,6 +264,8 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     identity.ifPresentOrElse(
         i -> warnings.addAll(Applicability.check(manifest, i)),
         () -> warnings.add("server unreachable at plan time; validate-manifest will refuse"));
+    // review §3.2 (issue #112): a hotfix applied here reaches this node only
+    ClusterNotice.warning(rt.services()).ifPresent(warnings::add);
     if (!manifest.sql().isEmpty() && dbType.isEmpty()) {
       warnings.add("the manifest carries SQL but the database section is not configured");
     }

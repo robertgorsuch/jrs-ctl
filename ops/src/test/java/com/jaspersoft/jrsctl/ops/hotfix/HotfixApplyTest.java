@@ -32,6 +32,25 @@ class HotfixApplyTest {
 
   @TempDir Path tmp;
 
+  /** Review §3.2 (issue #112): on a clustered licence the plan says this node is the only one. */
+  @Test
+  void should_warn_that_other_nodes_stay_on_old_code_when_the_licence_is_clustered()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      f.fake.adapter.capabilities.add(com.jaspersoft.jrsctl.jrs.api.Capability.CLUSTERING);
+      Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);
+
+      assertThat(plan.summary().warnings())
+          .contains(com.jaspersoft.jrsctl.ops.ClusterNotice.WARNING);
+    }
+    try (HotfixFixture f = HotfixFixture.create(tmp.resolve("single"))) {
+      Plan plan = f.ops().planApply(f.buildWebInf(), SIGNED);
+
+      assertThat(plan.summary().warnings())
+          .doesNotContain(com.jaspersoft.jrsctl.ops.ClusterNotice.WARNING);
+    }
+  }
+
   @Test
   void should_list_expected_steps_and_phases_when_restart_required() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
