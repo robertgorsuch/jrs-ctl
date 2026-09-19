@@ -261,6 +261,8 @@ Progress on the plan, with the live checks against the real 10.0.0 PRO server (`
 - **Task 10:** tables wrap their last column at the terminal width (`COLUMNS`, else 80; 40 to 400), the documentation and `--explain` wrap at the same width and `--help` follows it; long tokens are never split.
 - **Task 11:** `export --key-alias`/`--portable` and `import --key-alias` name the key an archive is encrypted and decrypted with, through the REST body and query and the vendor `--keyalias`; the sidecar records the alias, the import adopts it and skips the fingerprint check; the menu and the console carry the same choices. Not verified against a real server; the REST field and query names are the 10.1 reference's.
 - **Task 12:** `export --organization` and `import --organization [--merge-organization]` through the REST body and query and the vendor `--organization`/`--merge-organization`; the sidecar records the organisation; an organisation import snapshots `/organizations/<id>` rather than the root; menu and console carry the fields. Vendor flags confirmed in the 10.0 administrator guide (pp.263, 267); not verified against a real multi-tenant server.
+- **Task 13:** `docs/compatibility.md` regenerated for matrix v2; spec §5.1 says what the home resolver does; the operator guide carries the by-design answers (fixed plan, the sidecar's purpose, what a failed import leaves, the newdb rollback); the review lists every finding's status.
+- **Task 14:** the four hand-offs are open as issues #99 (hotfix ledger and hand-applied hotfixes), #100 (true import rollback), #101 (a `backups.dir` key), #102 (line editing in the menu, the ADR-0023 trigger).
 
 ## Known gaps
 
