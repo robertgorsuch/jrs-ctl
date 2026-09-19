@@ -33,7 +33,7 @@ final class Hotfixes {
           try (PreparedStatement ps =
               c.prepareStatement(
                   "INSERT INTO hotfixes_installed(id, version, title, installed_run_id,"
-                      + " snapshot_ref, state, installed_at) VALUES (?,?,?,?,?,?,?)")) {
+                      + " snapshot_ref, state, installed_at, origin) VALUES (?,?,?,?,?,?,?,?)")) {
             ps.setString(1, hotfix.id());
             ps.setString(2, hotfix.version());
             ps.setString(3, hotfix.title());
@@ -41,6 +41,7 @@ final class Hotfixes {
             ps.setString(5, hotfix.snapshotRef().orElse(null));
             ps.setString(6, hotfix.state().name());
             ps.setString(7, Timestamps.encode(hotfix.installedAt()));
+            ps.setString(8, hotfix.origin().name());
             ps.executeUpdate();
           }
           try (PreparedStatement ps =
@@ -126,7 +127,8 @@ final class Hotfixes {
         rs.getString("installed_run_id"),
         Db.optString(rs, "snapshot_ref"),
         HotfixState.valueOf(rs.getString("state")),
-        Db.instant(rs, "installed_at"));
+        Db.instant(rs, "installed_at"),
+        HotfixInstalled.Origin.valueOf(rs.getString("origin")));
   }
 
   List<HotfixFile> hotfixFiles(String hotfixId) {

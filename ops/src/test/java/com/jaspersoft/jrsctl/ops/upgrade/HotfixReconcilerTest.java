@@ -50,6 +50,32 @@ class HotfixReconcilerTest {
         f.fake.home.runDir(runId).resolve("bundle").resolve("manifest.json"), json);
   }
 
+  /** ADR-0030 (issue #99): a recorded hotfix has no bundle and is never re-applied. */
+  @Test
+  void should_classify_superseded_when_the_hotfix_was_recorded_by_hand() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      HotfixInstalled recorded =
+          new HotfixInstalled(
+              "JRSHF-8.2.0-20260730-0457",
+              "8.2.0",
+              "cumulative hotfix",
+              "recorded",
+              Optional.empty(),
+              HotfixState.INSTALLED,
+              Instant.EPOCH,
+              HotfixInstalled.Origin.RECORDED);
+      HotfixPaths paths = HotfixPaths.from(f.services.config(), f.services.platform());
+
+      HotfixReconciler.Classification c =
+          HotfixReconciler.classify(
+              f.runtime(), paths, recorded, TARGET, HotfixReconciler.installed(paths));
+
+      assertThat(c.status()).isEqualTo(HotfixReconciler.Status.SUPERSEDED);
+      assertThat(c.reasons()).singleElement().asString().contains("applied outside jrsctl");
+      assertThat(c.bundleAvailable()).isFalse();
+    }
+  }
+
   @Test
   void should_classify_reapplicable_when_applies_matches_and_replaces_targets_exist()
       throws Exception {

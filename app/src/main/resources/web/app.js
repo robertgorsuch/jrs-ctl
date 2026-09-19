@@ -746,6 +746,8 @@ function hotfixesPanel(hotfixes, full) {
       { label: 'Installed', cell: (x) => fmtDate(x.installedAt), class: 'nowrap' },
       { label: 'Files', cell: (x) => (typeof x.files === 'number' ? String(x.files) : Array.isArray(x.files) ? String(x.files.length) : '') },
       full ? { label: 'State', cell: (x) => (x.state === 'installed' || !x.state ? chip('pass', 'Installed') : x.state === 'rolled_back' ? chip('warn', 'Rolled back', 'undo') : chip('pending', x.state)) } : null,
+      // ADR-0030: a recorded row was applied by hand; jrsctl owns no files and cannot roll it back
+      full ? { label: 'Origin', cell: (x) => (x.origin === 'recorded' ? h('span', { class: 'muted', title: 'Applied by hand and recorded with jrsctl hotfix record; rollback is not possible.' }, 'recorded (by hand)') : 'jrsctl') } : null,
       { label: '', class: 'actions', cell: (x) => hotfixAction(x) },
     ].filter(Boolean), rows, 'No hotfixes installed.'));
 }

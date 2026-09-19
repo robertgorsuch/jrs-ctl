@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/hotfix-record.schema.json",
+  "title": "jrsctl hotfix record --json (spec §8.4, ADR-0030)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "version", "state", "origin", "recordedAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "version": { "type": "string" },
+    "state": { "type": "string", "enum": ["INSTALLED"] },
+    "origin": { "type": "string", "enum": ["RECORDED"], "description": "Applied by hand and entered from the package readme; nothing on the server was touched." },
+    "recordedAt": { "type": "string", "format": "date-time" }
+  }
+}

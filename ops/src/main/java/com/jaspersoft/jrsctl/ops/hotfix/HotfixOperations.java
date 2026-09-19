@@ -54,4 +54,13 @@ public interface HotfixOperations {
   Plan planRollback(String hotfixId, RollbackOptions options);
 
   List<HotfixInstalled> list();
+
+  /**
+   * Records an official package the operator applied by hand (ADR-0030, issue #99): an {@code
+   * INSTALLED} row with {@link HotfixInstalled.Origin#RECORDED}, the id and title the package's
+   * readme gives it, no file ownership and no snapshot. Refused when the id is already in the
+   * ledger or the file is not an official package. Writes the state store and an audit row only;
+   * nothing on the server is touched.
+   */
+  HotfixInstalled record(Path officialPackage);
 }

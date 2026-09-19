@@ -162,6 +162,73 @@ class HotfixCommandTest {
         .doesNotContain("x FAIL");
   }
 
+  /** ADR-0030 (issue #99): the command records the package through the operations and says so. */
+  @Test
+  void should_record_a_hand_applied_package_and_print_what_that_means() throws Exception {
+    Path pkg = Files.writeString(tmp.resolve("hotfix-by-hand.zip"), "zip");
+
+    InitCommandTest.Run run =
+        InitCommandTest.run(
+            "hotfix", "record", pkg.toString(), "--home", home.toString(), "--no-color", "--ascii");
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(fake.lastRecorded).contains(pkg);
+    assertThat(run.out())
+        .contains("recorded " + FakeHotfixOperations.ID)
+        .contains("cannot be rolled back")
+        .contains("will not re-apply");
+
+    InitCommandTest.Run json =
+        InitCommandTest.run(
+            "hotfix", "record", pkg.toString(), "--json", "--home", home.toString());
+    assertThat(json.code()).isEqualTo(ExitCodes.SUCCESS);
+    JsonNode doc = documents(json.out()).get(0);
+    assertThat(doc.get("origin").asText()).isEqualTo("RECORDED");
+    assertThat(doc.get("id").asText()).isEqualTo(FakeHotfixOperations.ID);
+  }
+
+  @Test
+  void should_show_the_origin_of_each_row_when_listing() throws Exception {
+    try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
+      store.recordHotfixInstalled(
+          new HotfixInstalled(
+              "JRSHF-10.0.0-20260730-0457",
+              "10.0.0",
+              "cumulative hotfix",
+              "recorded",
+              Optional.empty(),
+              HotfixState.INSTALLED,
+              Instant.parse("2026-09-02T10:00:00Z"),
+              HotfixInstalled.Origin.RECORDED),
+          List.of());
+      store.recordHotfixInstalled(
+          new HotfixInstalled(
+              FakeHotfixOperations.ID,
+              "1",
+              FakeHotfixOperations.TITLE,
+              "r-1",
+              Optional.of("snap-1"),
+              HotfixState.INSTALLED,
+              Instant.parse("2026-09-01T10:00:00Z")),
+          List.of());
+      fake.installed = store.hotfixes();
+    }
+
+    InitCommandTest.Run run =
+        InitCommandTest.run("hotfix", "list", "--home", home.toString(), "--no-color", "--ascii");
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(run.out()).contains("ORIGIN").contains("recorded (by hand)").contains("jrsctl");
+
+    InitCommandTest.Run json =
+        InitCommandTest.run("hotfix", "list", "--json", "--home", home.toString());
+    List<JsonNode> rows = documents(json.out());
+    assertThat(rows).hasSize(2);
+    assertThat(rows)
+        .extracting(r -> r.get("origin").asText())
+        .containsExactlyInAnyOrder("JRSCTL", "RECORDED");
+  }
+
   private InitCommandTest.Run apply(String... extra) {
     List<String> args = new ArrayList<>(List.of("hotfix", "apply", bundle.toString()));
     args.addAll(List.of(extra));

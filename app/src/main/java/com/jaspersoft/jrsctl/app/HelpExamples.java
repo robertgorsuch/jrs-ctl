@@ -220,6 +220,12 @@ final class HelpExamples {
         "hotfix list",
         List.of(new Example("Show installed and rolled-back hotfixes", "jrsctl hotfix list")));
     m.put(
+        "hotfix record",
+        List.of(
+            new Example(
+                "Enter an official package that was applied by hand, so list and upgrade know it",
+                "jrsctl hotfix record hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip")));
+    m.put(
         "hotfix build",
         List.of(
             new Example(

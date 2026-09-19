@@ -265,9 +265,19 @@ Undoes an installed hotfix: restores every file it replaced or deleted from the 
 - **Exit codes:** 0; **2** the id is unknown, not `INSTALLED`, blocked by a later hotfix (without `--cascade`), or its installing run's bundle copy is gone; **3**, **4**, **5**, **8**, **9** as for every mutating command.
 - **Flags:** `<id>` — the hotfix id from `hotfix list`; `--cascade` — roll back the later hotfixes that block this one first, newest to oldest, in one plan; `--plan`, `--yes`, `--json` — as for every mutating command.
 
+### `jrsctl hotfix record <package.zip> [--json]`
+
+Enters an official Jaspersoft hotfix package that was applied by hand (or before jrsctl was set up) into the ledger, so `hotfix list` shows what this server carries (ADR-0030, #99). The row takes its id (`JRSHF-<version>-<date>-<time>`), title and release from the package's `readme.txt`, exactly as `hotfix apply` derives them for an official package, and is marked `recorded (by hand)`. Nothing on the server is touched and nothing is verified against the webapp: the row says what you state was applied.
+
+- **Mutates:** only the state store (the row and an audit entry).
+- **Rollback:** not applicable; and a recorded hotfix cannot be rolled back later either, since jrsctl owns none of its files and took no snapshot. `hotfix rollback <id>` refuses it (exit 2); remove such a hotfix by hand following the vendor's readme.
+- **Exit codes:** 0; **2** when the file is not an official package (no `readme.txt` beside the payload, or no release and build in it) or the id is already in the ledger.
+- **Flags:** `--json` — `{"id", "title", "version", "state", "origin", "recordedAt"}`.
+- **Upgrades:** `plan-hotfix-reapply` lists a recorded hotfix as `SUPERSEDED` ("applied outside jrsctl and only recorded") and never re-applies it; apply the vendor's package for the new version by hand, or through jrsctl this time.
+
 ### `jrsctl hotfix list [--json]`
 
-Every hotfix recorded in the state store: id, title, installed timestamp, number of files, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED` after an upgrade that did not re-apply it) and the run that installed it.
+Every hotfix recorded in the state store: id, title, installed timestamp, number of files, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED` after an upgrade that did not re-apply it), the run that installed it, and its origin: `jrsctl` for one `hotfix apply` put in place (files owned, rollback possible) or `recorded (by hand)` for one entered with `hotfix record` (nothing to roll back). `--json` carries `origin` as `JRSCTL` or `RECORDED`.
 
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.

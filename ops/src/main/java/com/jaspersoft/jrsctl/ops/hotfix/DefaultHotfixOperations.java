@@ -357,6 +357,14 @@ public final class DefaultHotfixOperations implements HotfixOperations {
           hotfixId + " is not installed (state " + target.state() + ")",
           "run jrsctl hotfix list");
     }
+    if (target.recorded()) {
+      // ADR-0030 (issue #99): a recorded row owns no files and no snapshot
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          hotfixId + " was applied outside jrsctl and only recorded; nothing to put back",
+          "remove the hotfix by hand following the vendor's readme; the row stays as the inventory"
+              + " of what was applied to this server");
+    }
     List<HotfixInstalled> installed = store.installedHotfixes();
     Map<String, Integer> order = new LinkedHashMap<>();
     for (int i = 0; i < installed.size(); i++) {
@@ -473,6 +481,62 @@ public final class DefaultHotfixOperations implements HotfixOperations {
   public List<HotfixInstalled> list() {
     return rt.store().hotfixes();
   }
+
+  static final String AUDIT_RECORDED = "hotfix.recorded";
+
+  @Override
+  public HotfixInstalled record(Path officialPackage) {
+    Objects.requireNonNull(officialPackage, "officialPackage");
+    if (!Files.isRegularFile(officialPackage)) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          officialPackage + " does not exist",
+          "point jrsctl hotfix record at the hotfix ZIP as support published it");
+    }
+    OfficialPackage.Described described;
+    try {
+      described = OfficialPackage.describe(officialPackage);
+    } catch (IOException e) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          "cannot read " + officialPackage + ": " + e.getMessage(),
+          "check the file, then run again");
+    }
+    StateStore store = rt.store();
+    Optional<HotfixInstalled> existing = store.hotfix(described.id());
+    if (existing.isPresent()) {
+      HotfixInstalled h = existing.get();
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          described.id()
+              + " is already in the ledger ("
+              + h.state()
+              + ", "
+              + (h.recorded() ? "recorded" : "applied by jrsctl in run " + h.installedRunId())
+              + ")",
+          "run jrsctl hotfix list; a rolled-back row must be removed before the same id is"
+              + " recorded again");
+    }
+    HotfixInstalled row =
+        new HotfixInstalled(
+            described.id(),
+            described.release(),
+            described.title(),
+            RECORDED_RUN_ID,
+            Optional.empty(),
+            HotfixState.INSTALLED,
+            rt.services().clock().instant(),
+            HotfixInstalled.Origin.RECORDED);
+    store.recordHotfixInstalled(row, List.of());
+    store.audit(
+        rt.actor(),
+        AUDIT_RECORDED,
+        described.id() + " recorded from " + officialPackage.getFileName() + " (applied by hand)");
+    return row;
+  }
+
+  /** The run id of a row no run wrote: recorded hotfixes have no run directory or bundle copy. */
+  static final String RECORDED_RUN_ID = "recorded";
 
   private Optional<Manifest> storedManifest(Path bundleDir) {
     Path file = bundleDir.resolve(HotfixBundle.MANIFEST);

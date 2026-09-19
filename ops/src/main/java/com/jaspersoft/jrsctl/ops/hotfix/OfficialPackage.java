@@ -92,6 +92,49 @@ final class OfficialPackage {
   }
 
   /** True when {@code zip} is an official package rather than a jrsctl bundle. */
+  /** What {@code hotfix record} stores about a package applied by hand (ADR-0030, issue #99). */
+  record Described(String id, String title, String release) {}
+
+  /**
+   * The identity the package's outer readme gives it, without converting anything: the same id,
+   * title and release {@link #convert} would derive, so a hotfix recorded by hand and one applied
+   * through jrsctl share an id and cannot both be in the ledger.
+   */
+  static Described describe(Path zip) throws IOException {
+    Shape shape =
+        shape(zip)
+            .orElseThrow(
+                () ->
+                    new HotfixException(
+                        HotfixException.PRECHECK,
+                        zip + " is not a readable hotfix package",
+                        "point jrsctl at the hotfix ZIP as it was downloaded"));
+    if (shape.readme().isEmpty() || !shape.payload()) {
+      throw new HotfixException(
+          HotfixException.PRECHECK,
+          zip + NEITHER_SHAPE_SHORT,
+          "point jrsctl at the hotfix ZIP as support published it");
+    }
+    try (InputStream in = Files.newInputStream(zip);
+        ZipInputStream outer = new ZipInputStream(in)) {
+      ZipEntry entry;
+      while ((entry = outer.getNextEntry()) != null) {
+        if (!entry.isDirectory() && shape.kind(entry.getName().replace('\\', '/')) == Kind.README) {
+          Header header = Header.parse(readLines(outer));
+          return new Described(header.id(), header.title(), header.release());
+        }
+      }
+    }
+    throw new HotfixException(
+        HotfixException.PRECHECK,
+        "no readme.txt in " + zip,
+        "point jrsctl at the hotfix ZIP as it was downloaded, not at an unpacked copy");
+  }
+
+  static final String NEITHER_SHAPE_SHORT =
+      " is not an official Jaspersoft hotfix package (readme.txt beside jasperserver[-pro].zip,"
+          + " js-install.zip or an unpacked jasperserver[-pro]/ tree)";
+
   static boolean looksOfficial(Path zip) {
     return shape(zip).map(Shape::official).orElse(false);
   }

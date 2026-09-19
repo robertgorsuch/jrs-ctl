@@ -95,6 +95,58 @@ class OfficialHotfixTest {
     return zip;
   }
 
+  /** ADR-0030 (issue #99): a package applied by hand is entered from its readme, once. */
+  @Test
+  void should_record_a_hand_applied_package_as_a_recorded_row_that_cannot_be_rolled_back()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Path pkg =
+          zip(
+              "hotfix.zip",
+              Map.of(
+                  "readme.txt",
+                  utf8(OUTER_README),
+                  "jasperserver-pro.zip",
+                  zipBytes(Map.of("WEB-INF/lib/fix.jar", "new"), null)));
+
+      HotfixInstalled row = f.ops().record(pkg);
+
+      assertThat(row.id()).startsWith("JRSHF-");
+      assertThat(row.origin()).isEqualTo(HotfixInstalled.Origin.RECORDED);
+      assertThat(row.recorded()).isTrue();
+      assertThat(row.snapshotRef()).isEmpty();
+      assertThat(row.installedRunId()).isEqualTo(DefaultHotfixOperations.RECORDED_RUN_ID);
+      assertThat(f.ops().list()).extracting(HotfixInstalled::id).containsExactly(row.id());
+      assertThat(f.store().hotfixFiles(row.id())).isEmpty();
+      assertThat(f.store().auditRows(20)).anyMatch(a -> a.action().equals("hotfix.recorded"));
+
+      assertThatThrownBy(() -> f.ops().record(pkg))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("already in the ledger")
+          .hasMessageContaining("recorded");
+      assertThatThrownBy(
+              () -> f.ops().planRollback(row.id(), new HotfixOperations.RollbackOptions(false)))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("applied outside jrsctl")
+          .satisfies(e -> assertThat(((HotfixException) e).exitCode()).isEqualTo(2));
+    }
+  }
+
+  @Test
+  void should_refuse_to_record_a_file_that_is_not_an_official_package() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Path notOfficial = zip("plain.zip", Map.of("a.txt", utf8("x")));
+
+      assertThatThrownBy(() -> f.ops().record(notOfficial))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("not an official Jaspersoft hotfix package");
+      assertThatThrownBy(() -> f.ops().record(tmp.resolve("missing.zip")))
+          .isInstanceOf(HotfixException.class)
+          .hasMessageContaining("does not exist");
+      assertThat(f.ops().list()).isEmpty();
+    }
+  }
+
   private static byte[] zipBytes(Map<String, String> files, String readme) throws IOException {
     var buffer = new java.io.ByteArrayOutputStream();
     try (ZipOutputStream zos = new ZipOutputStream(buffer)) {

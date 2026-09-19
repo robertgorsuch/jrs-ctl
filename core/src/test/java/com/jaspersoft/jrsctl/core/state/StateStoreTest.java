@@ -107,7 +107,7 @@ class StateStoreTest {
 
   @Test
   void should_apply_migrations_and_create_the_db_when_opened_on_an_empty_home() {
-    assertThat(store.schemaVersion()).isEqualTo(2);
+    assertThat(store.schemaVersion()).isEqualTo(3);
     assertThat(Files.exists(home.stateDb())).isTrue();
   }
 
@@ -118,7 +118,7 @@ class StateStoreTest {
 
     store = StateStore.open(home, CLOCK);
 
-    assertThat(store.schemaVersion()).isEqualTo(2);
+    assertThat(store.schemaVersion()).isEqualTo(3);
     assertThat(store.run("r1")).isPresent();
     assertThat(store.executeUpdate("UPDATE runs SET operation='x' WHERE run_id='r1'")).isEqualTo(1);
   }
@@ -385,6 +385,33 @@ class StateStoreTest {
   private static HotfixInstalled hotfix(String id, Instant at) {
     return new HotfixInstalled(
         id, "1.0", "Fix " + id, "r1", Optional.empty(), HotfixState.INSTALLED, at);
+  }
+
+  /** ADR-0030 (issue #99): a recorded row keeps its origin; the older constructor means jrsctl. */
+  @Test
+  void should_keep_the_origin_of_a_recorded_hotfix_when_read_back() {
+    HotfixInstalled recorded =
+        new HotfixInstalled(
+            "JRSHF-10.0.0-20260730-0457",
+            "10.0.0",
+            "JasperReports Server Pro 10.0.0 cumulative hotfix 20260730_0457",
+            "recorded",
+            Optional.empty(),
+            HotfixState.INSTALLED,
+            NOW,
+            HotfixInstalled.Origin.RECORDED);
+    store.recordHotfixInstalled(recorded, List.of());
+    store.recordHotfixInstalled(hotfix("HF-J", NOW), List.of());
+
+    assertThat(store.hotfix("JRSHF-10.0.0-20260730-0457"))
+        .get()
+        .satisfies(
+            h -> {
+              assertThat(h.origin()).isEqualTo(HotfixInstalled.Origin.RECORDED);
+              assertThat(h.recorded()).isTrue();
+            });
+    assertThat(store.hotfix("HF-J")).get().extracting(HotfixInstalled::recorded).isEqualTo(false);
+    assertThat(store.installedHotfixes()).hasSize(2);
   }
 
   @Test

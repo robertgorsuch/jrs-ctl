@@ -111,7 +111,7 @@ The tester read the verdicts above and pushed back on four "by design" items. Ea
 | H2, H3 | fixed by Task 2 (PR #86): the customer path first, authoring last |
 | H4 | by design (D2); the customer-facing path no longer names manifests or signatures |
 | H5 | fixed by Task 2 (PR #86): the rollback entry says what it does and offers `--cascade` |
-| H6 | fixed by Task 2 (PR #86) for the wording; the adopt command is handed off (Task 14 issue) |
+| H6 | fixed 2026-09-19 (issue #99, ADR-0030): `jrsctl hotfix record <package.zip>` enters a hand-applied official package into the ledger as a `RECORDED` row that lists, refuses rollback and is superseded by an upgrade |
 | U1 | by design (spec §0, §6.2), stated on `upgrade` (Task 13); the concrete needs are Tasks 7, 7c |
 | U2 | fixed in 1.7.0 (ADR-0025) |
 | U3 | fixed by Task 6 (PR #90): the space is budgeted and the home is shown; a `backups.dir` key is handed off (Task 14 issue) |

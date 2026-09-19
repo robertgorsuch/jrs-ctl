@@ -64,7 +64,8 @@ final class HotfixViews {
               h.installedAt(),
               files.get(h.id()).size(),
               h.state().name().toLowerCase(Locale.ROOT),
-              blockedBy));
+              blockedBy,
+              h.origin().name().toLowerCase(Locale.ROOT)));
     }
     return new HotfixesDoc(rows);
   }

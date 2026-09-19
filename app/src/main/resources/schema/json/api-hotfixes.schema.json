@@ -11,14 +11,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title", "installedAt", "files", "state", "blockedBy"],
+        "required": ["id", "title", "installedAt", "files", "state", "blockedBy", "origin"],
         "properties": {
           "id": { "type": "string" },
           "title": { "type": "string" },
           "installedAt": { "type": "string" },
           "files": { "type": "integer", "minimum": 0 },
           "state": { "enum": ["installed", "rolled_back"] },
-          "blockedBy": { "type": "array", "items": { "type": "string" } }
+          "blockedBy": { "type": "array", "items": { "type": "string" } },
+          "origin": { "enum": ["jrsctl", "recorded"], "description": "recorded: applied by hand and entered with hotfix record (ADR-0030); no rollback." }
         }
       }
     }

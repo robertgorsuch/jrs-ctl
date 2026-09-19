@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
+import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -128,6 +129,26 @@ public final class FakeHotfixOperations implements HotfixOperations {
         steps,
         summary,
         PlanFingerprint.of(Map.of("bundle", bundle.toString(), "server", server)));
+  }
+
+  public volatile Optional<Path> lastRecorded = Optional.empty();
+
+  @Override
+  public HotfixInstalled record(Path officialPackage) {
+    planFailure.ifPresent(
+        e -> {
+          throw e;
+        });
+    lastRecorded = Optional.of(officialPackage);
+    return new HotfixInstalled(
+        ID,
+        "1",
+        TITLE,
+        "recorded",
+        Optional.empty(),
+        HotfixState.INSTALLED,
+        java.time.Instant.parse("2026-09-19T12:00:00Z"),
+        HotfixInstalled.Origin.RECORDED);
   }
 
   @Override

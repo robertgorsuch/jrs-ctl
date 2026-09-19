@@ -25,7 +25,7 @@ final class Migrations {
 
   /** Ordered list of scripts; add new versions at the end, never edit an applied script. */
   static final List<String> SCRIPTS =
-      List.of("V001__init.sql", "V002__timestamps_and_path_keys.sql");
+      List.of("V001__init.sql", "V002__timestamps_and_path_keys.sql", "V003__hotfix_origin.sql");
 
   private static final String RESOURCE_DIR = "db/migrations/";
 
