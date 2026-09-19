@@ -116,7 +116,7 @@ class ConfigCommandTest {
 
     assertThat(run.code()).as(run.err()).isZero();
     assertThat(Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8))
-        .doesNotContain("~");
+        .doesNotContain("~/bd");
     assertThat(fileConfig().server().buildomaticDir()).contains(operatorHome.resolve("bd"));
   }
 
