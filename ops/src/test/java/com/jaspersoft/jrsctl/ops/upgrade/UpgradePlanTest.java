@@ -96,6 +96,7 @@ class UpgradePlanTest {
           .containsExactly(
               "doctor",
               "verify-target-package",
+              "verify-vendor-preconditions",
               "backup-keystore",
               "backup-webapp",
               "backup-config",
@@ -110,6 +111,7 @@ class UpgradePlanTest {
               "wait-for-server",
               "plan-hotfix-reapply",
               "plan-customization-reapply",
+              "check-analytics-jndi",
               "smoke",
               "record-upgrade",
               "point-config-at-target");
@@ -153,7 +155,11 @@ class UpgradePlanTest {
                       UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false));
 
       assertThat(UpgradeFixture.ids(plan))
-          .startsWith("doctor", "verify-target-package", "confirm-db-backup");
+          .startsWith(
+              "doctor",
+              "verify-target-package",
+              "verify-vendor-preconditions",
+              "confirm-db-backup");
       // samedb migrates the database in place, so the server may serve between the export and
       // the vendor run; only newdb rebuilds the database from that export (review §1.6)
       assertThat(UpgradeFixture.ids(plan))
@@ -249,6 +255,7 @@ class UpgradePlanTest {
           .containsExactly(
               "doctor",
               "verify-target-package",
+              "verify-vendor-preconditions",
               "write-master-properties",
               "stage-keystore-init",
               "run-vendor-test",
@@ -529,6 +536,91 @@ class UpgradePlanTest {
           UpgradeFixture.step(plan, "verify-target-package").precheck(f.ctx("r-1"));
       assertThat(result).as(result.toString()).isInstanceOf(CheckResult.Pass.class);
     }
+  }
+
+  /** Issue #108: the vendor preconditions step sits right after the package check, read-only. */
+  @Test
+  void should_verify_the_vendor_preconditions_before_anything_is_stopped() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      Step step = UpgradeFixture.step(plan, "verify-vendor-preconditions");
+      assertThat(step.phase()).isEqualTo("preflight");
+      assertThat(step.mutating()).isFalse();
+      assertThat(step.detail())
+          .contains("jaspersoft.jrs.license")
+          .contains("conf_source/db/<dbType>/jdbc")
+          .contains("js.password-storage-config.properties");
+      // a 9.0.0 community-shaped fixture on PostgreSQL: nothing applies, so it passes
+      assertThat(step.precheck(f.ctx("r-1"))).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  /** Issue #108: the analytics JNDI check is a verify step for a 9.0.x target only. */
+  @Test
+  void should_check_the_analytics_jndi_resources_for_a_9_0_target_only() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan nine = f.ops().planUpgrade(newdb(f));
+      Plan ten = f.ops().planUpgrade(UpgradeOptions.newdb("10.0.0", f.packageDir));
+
+      Step check = UpgradeFixture.step(nine, "check-analytics-jndi");
+      assertThat(check.phase()).isEqualTo("verify");
+      assertThat(check.mutating()).isFalse();
+      assertThat(check.detail())
+          .contains("jdbc/jasperserverSystemAnalytics")
+          .contains("jdbc/jasperserverAuditAnalytics");
+      assertThat(UpgradeFixture.ids(ten)).doesNotContain("check-analytics-jndi");
+    }
+  }
+
+  /** Issue #108: the password migration follows the vendor run on a samedb upgrade to 10.1+. */
+  @Test
+  void should_add_migrate_passwords_after_the_vendor_run_when_samedb_to_10_1_asks_for_it()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.adapter.identity = com.jaspersoft.jrsctl.ops.FakeJrsAdapter.identity("10.0.0");
+      Plan plan = f.ops().planUpgrade(samedbTo(f, "10.1.0").withMigratePasswords(true));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence("run-vendor-upgrade", "migrate-passwords", "clear-tomcat-caches");
+      Step step = UpgradeFixture.step(plan, "migrate-passwords");
+      assertThat(step.phase()).isEqualTo("vendor-upgrade");
+      assertThat(step.irreversible()).isTrue();
+      assertThat(step.detail())
+          .contains("js-ant migrate-passwords-dry-run")
+          .contains("js-ant migrate-passwords");
+      assertThat(UpgradeFixture.ids(f.ops().planUpgrade(samedbTo(f, "10.1.0"))))
+          .doesNotContain("migrate-passwords");
+    }
+  }
+
+  @Test
+  void should_refuse_migrate_passwords_with_exit_2_when_the_target_is_below_10_1()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(() -> f.ops().planUpgrade(samedbTo(f, "9.0.0").withMigratePasswords(true)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("10.1.0 or later")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(2));
+    }
+  }
+
+  @Test
+  void should_warn_and_skip_migrate_passwords_when_mode_newdb() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.adapter.identity = com.jaspersoft.jrsctl.ops.FakeJrsAdapter.identity("10.0.0");
+      Plan plan =
+          f.ops()
+              .planUpgrade(UpgradeOptions.newdb("10.1.0", f.packageDir).withMigratePasswords(true));
+
+      assertThat(UpgradeFixture.ids(plan)).doesNotContain("migrate-passwords");
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.MIGRATE_PASSWORDS_NEWDB_WARNING);
+    }
+  }
+
+  static UpgradeOptions samedbTo(UpgradeFixture f, String to) {
+    return new UpgradeOptions(to, f.packageDir, Mode.SAMEDB, true, false);
   }
 
   static UpgradeOptions withNewTomcat(UpgradeFixture f) {

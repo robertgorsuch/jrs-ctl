@@ -70,7 +70,10 @@ public interface UpgradeOperations {
    * (ADR-0028); {@code keyAlias} and {@code keyPassword} name the key that export was encrypted
    * with, written into the target buildomatic's properties for the vendor import; {@code
    * includeEvents} asks a newdb upgrade to import the access, audit and monitoring events the
-   * vendor script leaves behind (issue #106), and means nothing for samedb.
+   * vendor script leaves behind (issue #106), and means nothing for samedb; {@code
+   * migratePasswords} asks a samedb upgrade to 10.1 or later to run the vendor's password migration
+   * after the vendor run (issue #108), is refused for an older target and ignored with a warning
+   * for newdb.
    */
   record UpgradeOptions(
       String toVersion,
@@ -82,7 +85,8 @@ public interface UpgradeOperations {
       Optional<Path> existingExport,
       Optional<String> keyAlias,
       Optional<SecretRef> keyPassword,
-      boolean includeEvents) {
+      boolean includeEvents,
+      boolean migratePasswords) {
     public UpgradeOptions {
       Objects.requireNonNull(toVersion, "toVersion");
       Objects.requireNonNull(packageDir, "packageDir");
@@ -96,6 +100,32 @@ public interface UpgradeOperations {
       }
       packageDir = packageDir.toAbsolutePath().normalize();
       existingExport = existingExport.map(p -> p.toAbsolutePath().normalize());
+    }
+
+    /** The options with the events and the passwords left where the vendor script leaves them. */
+    public UpgradeOptions(
+        String toVersion,
+        Path packageDir,
+        Mode mode,
+        boolean dbBackupConfirmed,
+        boolean reapplyHotfixes,
+        Optional<Path> tomcatDir,
+        Optional<Path> existingExport,
+        Optional<String> keyAlias,
+        Optional<SecretRef> keyPassword,
+        boolean includeEvents) {
+      this(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          includeEvents,
+          false);
     }
 
     /** The options with the events left where the vendor script leaves them. */
@@ -119,7 +149,23 @@ public interface UpgradeOperations {
           existingExport,
           keyAlias,
           keyPassword,
+          false,
           false);
+    }
+
+    public UpgradeOptions withMigratePasswords(boolean migrate) {
+      return new UpgradeOptions(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          includeEvents,
+          migrate);
     }
 
     /** The options with this run's own export and the server's own key. */
@@ -153,7 +199,8 @@ public interface UpgradeOperations {
           existingExport,
           keyAlias,
           keyPassword,
-          include);
+          include,
+          migratePasswords);
     }
 
     /** The options with the webapp staying in the Tomcat the server runs in now. */
@@ -177,7 +224,8 @@ public interface UpgradeOperations {
           Optional.of(export),
           keyAlias,
           keyPassword,
-          includeEvents);
+          includeEvents,
+          migratePasswords);
     }
 
     public UpgradeOptions withKeyAlias(String alias) {
@@ -191,7 +239,8 @@ public interface UpgradeOperations {
           existingExport,
           Optional.of(alias),
           keyPassword,
-          includeEvents);
+          includeEvents,
+          migratePasswords);
     }
 
     public UpgradeOptions withKeyPassword(SecretRef ref) {

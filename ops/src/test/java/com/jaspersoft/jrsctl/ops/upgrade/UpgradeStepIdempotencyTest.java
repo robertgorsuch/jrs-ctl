@@ -176,8 +176,10 @@ class UpgradeStepIdempotencyTest {
           List.of(
               "doctor",
               "verify-target-package",
+              "verify-vendor-preconditions",
               "full-export-wait-for-server",
               "wait-for-server",
+              "check-analytics-jndi",
               "smoke");
       List<String> seen = new ArrayList<>();
       for (Step step : plan.steps()) {
@@ -287,6 +289,40 @@ class UpgradeStepIdempotencyTest {
   void should_converge_when_unstage_target_package_compensates_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       assertCompensationConverges(f, f.ops().planTest(newdb(f)), "r-utc", "unstage-target-package");
+    }
+  }
+
+  /**
+   * Issue #108: the dry run and the migration each run once; a resume after the marker runs neither
+   * again, and a second js-ant migrate-passwords would only skip users already migrated.
+   */
+  @Test
+  void should_migrate_once_when_migrate_passwords_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.fake.adapter.identity = com.jaspersoft.jrsctl.ops.FakeJrsAdapter.identity("10.0.0");
+      // the fake vendor run deploys webapp-new; the target must be what --to says
+      Files.writeString(f.packageDir.resolve("webapp-new").resolve("version.txt"), "10.1.0");
+      // a 10.1 commercial target wants the licence in the user home, and the migration utility
+      // its settings file in the target webapp (issue #108)
+      Files.writeString(f.userHome.resolve("jaspersoft.jrs.license"), "lic");
+      Files.writeString(
+          f.packageDir
+              .resolve("jasperserver-pro")
+              .resolve("WEB-INF")
+              .resolve("js.password-storage-config.properties"),
+          "password.strategy=modern\n");
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  new UpgradeOptions("10.1.0", f.packageDir, Mode.SAMEDB, true, false)
+                      .withMigratePasswords(true));
+
+      assertReexecutionConverges(f, plan, "r-pw", "migrate-passwords");
+
+      assertThat(count(f.vendorLogText(), "migrate-passwords-dry-run")).isEqualTo(1);
+      assertThat(count(f.vendorLogText(), "migrate-passwords")).isEqualTo(2);
+      assertThat(f.vendorLogText().indexOf("migrate-passwords-dry-run"))
+          .isLessThan(f.vendorLogText().lastIndexOf("migrate-passwords"));
     }
   }
 

@@ -181,6 +181,29 @@ class PlanRegistryTest {
         .isFalse();
   }
 
+  /**
+   * Issue #108: the password migration choice survives the stored arguments; older ones mean no.
+   */
+  @Test
+  void should_round_trip_migrate_passwords_of_an_upgrade() throws IOException {
+    UpgradeOperations.UpgradeOptions options =
+        UpgradeOperations.UpgradeOptions.newdb("10.1.0", Path.of("pkg"))
+            .withIncludeEvents(true)
+            .withMigratePasswords(true);
+
+    JsonNode args = tree(PlanRegistry.upgradeArgs(options));
+
+    assertThat(args.get("migratePasswords").asBoolean()).isTrue();
+    UpgradeOperations.UpgradeOptions back = PlanRegistry.upgradeOptions(args);
+    assertThat(back.migratePasswords()).isTrue();
+    assertThat(back.includeEvents()).as("chaining keeps the other flag").isTrue();
+    assertThat(
+            PlanRegistry.upgradeOptions(
+                    tree("{\"to\":\"10.1.0\",\"package\":\"p\",\"mode\":\"SAMEDB\"}"))
+                .migratePasswords())
+        .isFalse();
+  }
+
   /** Issue #107: the version override survives the stored arguments; older arguments mean no. */
   @Test
   void should_round_trip_force_version_of_an_import() throws IOException {
