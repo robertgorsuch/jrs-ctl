@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.core.config;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -37,7 +38,8 @@ public final class JrsctlHomeResolver {
     Objects.requireNonNull(choice, "choice");
     String fromEnv = env.get(ENV_VAR);
     if (fromEnv != null && !fromEnv.isBlank()) {
-      return new JrsctlHome(Path.of(fromEnv.strip()).toAbsolutePath().normalize());
+      return new JrsctlHome(
+          Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize());
     }
     Path root = platform.defaultHome().toAbsolutePath().normalize();
     if (choice.systemHomeUnwritable() && root.equals(normalise(choice.home()))) {

@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
 import com.jaspersoft.jrsctl.core.platform.DiskSpace;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
@@ -109,6 +110,7 @@ final class InitCommand implements Callable<Integer> {
           new Field("service.name", "Service name", false),
           new Field("database.url", "Repository database JDBC URL", false),
           new Field("database.username", "Repository database user", false),
+          new Field("database.driverDir", "JDBC driver directory", true),
           new Field("vendor.javaHome", "Java for buildomatic", true));
 
   static final String SERVER_SECRET = "JRS_PASSWORD";
@@ -331,11 +333,17 @@ final class InitCommand implements Callable<Integer> {
         String value = answer.get();
         if (value.isEmpty()) {
           settled = true;
-        } else if (field.directory() && !Files.isDirectory(Path.of(value))) {
-          out.println("    no such directory: " + value + " (press Enter to keep the old value)");
+        } else if (field.directory()
+            && !Files.isDirectory(Path.of(UserPaths.expand(value, Env.vars())))) {
+          out.println(
+              "    no such directory: "
+                  + UserPaths.expand(value, Env.vars())
+                  + " (press Enter to keep the old value)");
         } else {
           try {
-            config = loader.withOverrides(config, Map.of(field.key(), value));
+            // a directory is stored expanded, since the service account has another home
+            String stored = field.directory() ? UserPaths.expand(value, Env.vars()) : value;
+            config = loader.withOverrides(config, Map.of(field.key(), stored));
             settled = true;
           } catch (ConfigException e) {
             out.println("    not accepted: " + e.getMessage());

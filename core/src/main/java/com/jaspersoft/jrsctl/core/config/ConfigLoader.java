@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
@@ -102,7 +103,7 @@ public final class ConfigLoader {
       put(tree, flag.getKey(), coerce(flag.getValue(), type));
     }
     validate(tree);
-    return toConfig(tree);
+    return toConfig(tree, env);
   }
 
   /** Where a key's effective value comes from, highest precedence first. */
@@ -152,7 +153,7 @@ public final class ConfigLoader {
     ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
     put(tree, key, coerce(raw, leafKeys.get(key)));
     validate(tree);
-    return toConfig(tree);
+    return toConfig(tree, Map.of());
   }
 
   /** As {@link #fileWith} with {@code key} removed, so its default (or nothing) applies. */
@@ -165,7 +166,7 @@ public final class ConfigLoader {
       obj.remove(segments[segments.length - 1]);
     }
     validate(tree);
-    return toConfig(tree);
+    return toConfig(tree, Map.of());
   }
 
   private void requireKnown(String key) {
@@ -188,7 +189,7 @@ public final class ConfigLoader {
       put(tree, o.getKey(), coerce(o.getValue(), type));
     }
     validate(tree);
-    return toConfig(tree);
+    return toConfig(tree, Map.of());
   }
 
   /** Validates an already merged tree and maps it; exposed for {@code doctor}. */
@@ -197,7 +198,7 @@ public final class ConfigLoader {
       throw new ConfigException("configuration root is not a mapping", "check config.yaml");
     }
     validate(obj);
-    return toConfig(obj);
+    return toConfig(obj, Map.of());
   }
 
   /** Every leaf key the schema knows, in schema order. */
@@ -393,7 +394,11 @@ public final class ConfigLoader {
 
   // ---- tree to records --------------------------------------------------------------------------
 
-  private static Config toConfig(ObjectNode root) {
+  /**
+   * Maps a validated tree; {@code env} supplies the home directory a leading {@code ~} in a path
+   * value stands for (field test 2, G3), so a path is expanded once, here, for every source.
+   */
+  private static Config toConfig(ObjectNode root, Map<String, String> env) {
     JsonNode server = root.path("server");
     JsonNode auth = server.path("auth");
     JsonNode service = root.path("service");
@@ -413,9 +418,9 @@ public final class ConfigLoader {
             text(server, "baseUrl").map(v -> uri("server.baseUrl", v)),
             text(server, "webappName")
                 .map(v -> yamlEnum("server.webappName", Config.WebappName.class, v)),
-            text(server, "installDir").map(v -> path("server.installDir", v)),
-            text(server, "tomcatDir").map(v -> path("server.tomcatDir", v)),
-            text(server, "buildomaticDir").map(v -> path("server.buildomaticDir", v)),
+            text(server, "installDir").map(v -> path("server.installDir", v, env)),
+            text(server, "tomcatDir").map(v -> path("server.tomcatDir", v, env)),
+            text(server, "buildomaticDir").map(v -> path("server.buildomaticDir", v, env)),
             text(server, "runAsUser"),
             new Config.Auth(
                 text(auth, "mode")
@@ -429,7 +434,7 @@ public final class ConfigLoader {
         new Config.Service(
             text(service, "kind").map(v -> serviceKind("service.kind", v)),
             text(service, "name"),
-            text(service, "scriptPath").map(v -> path("service.scriptPath", v)),
+            text(service, "scriptPath").map(v -> path("service.scriptPath", v, env)),
             integer(service, "stopTimeoutSeconds")
                 .orElse(Config.Service.DEFAULT_STOP_TIMEOUT_SECONDS),
             integer(service, "forceStopAfterSeconds")),
@@ -439,8 +444,8 @@ public final class ConfigLoader {
             text(database, "url"),
             text(database, "username"),
             text(database, "passwordRef").map(v -> secretRef("database.passwordRef", v)),
-            text(database, "driverDir").map(v -> path("database.driverDir", v))),
-        new Config.Vendor(text(vendor, "javaHome").map(v -> path("vendor.javaHome", v))),
+            text(database, "driverDir").map(v -> path("database.driverDir", v, env))),
+        new Config.Vendor(text(vendor, "javaHome").map(v -> path("vendor.javaHome", v, env))),
         new Config.Network(
             text(network, "mode")
                 .map(v -> yamlEnum("network.mode", Config.NetworkMode.class, v))
@@ -452,7 +457,7 @@ public final class ConfigLoader {
                 text(proxy, "passwordRef").map(v -> secretRef("network.proxy.passwordRef", v)),
                 strings(proxy, "noProxy")),
             new Config.TrustStore(
-                text(trust, "path").map(v -> path("network.trustStore.path", v)),
+                text(trust, "path").map(v -> path("network.trustStore.path", v, env)),
                 text(trust, "passwordRef")
                     .map(v -> secretRef("network.trustStore.passwordRef", v)))),
         new Config.Console(
@@ -460,8 +465,8 @@ public final class ConfigLoader {
             integer(console, "port").orElse(Config.Console.DEFAULT_PORT),
             new Config.Tls(
                 bool(tls, "enabled").orElse(false),
-                text(tls, "certPath").map(v -> path("console.tls.certPath", v)),
-                text(tls, "keyPath").map(v -> path("console.tls.keyPath", v))),
+                text(tls, "certPath").map(v -> path("console.tls.certPath", v, env)),
+                text(tls, "keyPath").map(v -> path("console.tls.keyPath", v, env))),
             new Config.ConsoleAuth(
                 text(consoleAuth, "mode")
                     .map(v -> yamlEnum("console.auth.mode", Config.ConsoleAuthMode.class, v))
@@ -513,9 +518,9 @@ public final class ConfigLoader {
     }
   }
 
-  private static Path path(String key, String value) {
+  private static Path path(String key, String value, Map<String, String> env) {
     try {
-      return Path.of(value);
+      return Path.of(UserPaths.expand(value, env));
     } catch (InvalidPathException e) {
       throw invalid(key, "is not a valid path (" + e.getReason() + ")");
     }

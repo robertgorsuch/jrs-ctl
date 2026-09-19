@@ -1,5 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
+import java.nio.file.Path;
 import picocli.CommandLine;
 
 /**
@@ -30,6 +32,8 @@ public final class Main {
     return Explain.install(
         HelpExamples.install(
             new CommandLine(new JrsctlCommand())
+                // a leading ~ means the operator's home in every Path option (field test 2, G3)
+                .registerConverter(Path.class, s -> Path.of(UserPaths.expand(s, Env.vars())))
                 .setCaseInsensitiveEnumValuesAllowed(true)
                 .setExecutionExceptionHandler(new ExitCodes.Handler())
                 .setParameterExceptionHandler(new ExitCodes.ParameterHandler())));

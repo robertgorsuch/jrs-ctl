@@ -91,6 +91,35 @@ class ConfigCommandTest {
     assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
   }
 
+  /** Field test 2, G9: a directory setting that does not exist is refused when it is written. */
+  @Test
+  void should_refuse_config_set_of_a_directory_key_that_does_not_exist() throws IOException {
+    InitCommandTest.Run run = jrsctl("config", "set", "server.buildomaticDir", "/zugzug/whatever");
+
+    assertThat(run.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(run.err()).contains("no such directory: /zugzug/whatever");
+    assertThat(Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8))
+        .doesNotContain("zugzug");
+  }
+
+  /**
+   * Field test 2, G3: {@code ~} is the operator's home when the setting is checked, and the file
+   * gets the expanded path, since the service account that reads it later has another home.
+   */
+  @Test
+  void should_accept_a_tilde_path_that_exists_and_store_it_expanded() throws IOException {
+    Path operatorHome = Files.createDirectories(tmp.resolve("operator"));
+    Files.createDirectories(operatorHome.resolve("bd"));
+    Env.override(Map.of("HOME", operatorHome.toString()));
+
+    InitCommandTest.Run run = jrsctl("config", "set", "server.buildomaticDir", "~/bd");
+
+    assertThat(run.code()).as(run.err()).isZero();
+    assertThat(Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8))
+        .doesNotContain("~/bd");
+    assertThat(fileConfig().server().buildomaticDir()).contains(operatorHome.resolve("bd"));
+  }
+
   @Test
   void should_refuse_a_password_on_the_command_line_without_echoing_it() {
     InitCommandTest.Run run = jrsctl("config", "set", "server.auth.passwordRef", "Hunter2-Secret");

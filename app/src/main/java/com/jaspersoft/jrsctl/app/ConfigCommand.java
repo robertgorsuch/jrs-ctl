@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
@@ -207,6 +208,22 @@ final class ConfigCommand implements Runnable {
             }
             raw = answer.get();
           }
+          // field test 2, G9: a directory or file setting must exist when it is written; --set
+          // at load time stays syntax-only (D10), doctor reports a tree that vanished later
+          Optional<String> missing = missingPath(key, raw);
+          if (ConfigKeys.pathKind(key) != ConfigKeys.PathKind.NONE) {
+            // stored expanded: the service account that reads the file later has another home
+            raw = UserPaths.expand(raw, Env.vars());
+          }
+          if (missing.isPresent()) {
+            return ExitCodes.fail(
+                out,
+                err,
+                global.json(),
+                ExitCodes.USAGE,
+                missing.get(),
+                Optional.of("check the path, or create it first; nothing changed"));
+          }
           Config updated;
           try {
             updated = loader.fileWith(file, key, raw);
@@ -250,6 +267,22 @@ final class ConfigCommand implements Runnable {
     private int fail(PrintWriter out, PrintWriter err, String message, String remediation) {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, message, Optional.of(remediation));
+    }
+
+    /** The refusal for a path setting whose target is not there, after {@code ~} expansion. */
+    static Optional<String> missingPath(String key, String raw) {
+      String expanded = UserPaths.expand(raw, Env.vars());
+      return switch (ConfigKeys.pathKind(key)) {
+        case DIRECTORY ->
+            Files.isDirectory(Path.of(expanded))
+                ? Optional.empty()
+                : Optional.of("no such directory: " + expanded);
+        case FILE ->
+            Files.isRegularFile(Path.of(expanded))
+                ? Optional.empty()
+                : Optional.of("no such file: " + expanded);
+        case NONE -> Optional.empty();
+      };
     }
 
     private static boolean isReference(String candidate) {

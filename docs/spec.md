@@ -149,6 +149,7 @@ Maven multi-module project. Package root: `com.jaspersoft.jrsctl`.
 - Single config directory: `$JRSCTL_HOME` (default: `%ProgramData%\jrsctl` on Windows, `/var/lib/jrsctl` on Linux; falls back to `~/.jrsctl` if not writable).
 - Files: `config.yaml`, `state.db` (§5.4), `runs.lock` (§5.5), `snapshots/`, `runs/` (per-run temp and staging), `keys/`, `secrets.enc` (§5.2), `console.token` (§11.2).
 - Every config key overridable by env var `JRSCTL_<UPPER_SNAKE_KEY>` and by CLI flag. Precedence: flag > env > file > default.
+- A leading `~` (alone, or `~/` and `~\`) in any path means the operator's home directory (`HOME`, else `USERPROFILE`, else the JVM's `user.home`) everywhere jrsctl reads one: `--home` and `JRSCTL_HOME`, every `Path` option, every path-valued key from the file, the environment or `--set`, and the guided menu's answers; `~user` and an inner `~` are left as typed (`UserPaths`, field test 2, G3). `config set` and `init`'s review refuse a directory or file setting whose target does not exist (exit 1, `no such directory: <expanded path>`) and store the expanded path, since the service account that reads the file later has another home; `--set` at load time stays syntax-only and `doctor` reports a tree that vanished after it was written (field test 2, G9).
 - `jrsctl init` (§12.0) detects the installation and writes `config.yaml`; `doctor` validates it.
 - `config.yaml` schema (JSON Schema in `core/src/main/resources/schema/config.schema.json`):
 

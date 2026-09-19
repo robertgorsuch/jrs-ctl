@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, tilde and path existence)
+
+- §5.1: a leading `~` means the operator's home directory everywhere jrsctl takes a path (`--home`, `JRSCTL_HOME`, `Path` options, path keys from the file, the environment or `--set`, the guided menu); `config set` and `init`'s review refuse a directory or file setting that does not exist (exit 1) and store the expanded path; `database.driverDir` joins the reviewed fields (field test 2, G3, G9).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, guided menu)
 
 - New §17.1 "Guided mode": the menu is a front end over the CLI that prints each command line and runs it in-process; it lists the embedded documents (entry 8) and names `jrsctl --help`, `jrsctl console` and `--json`; settings are shown once and changed in a loop until Enter, an unknown key re-asked; the installation directory must exist; export entries are labelled by mechanism (REST, or the vendor js-export with an optional stop) and ask the scope; the restore entry says where the pre-import copy goes and asks `--update`, `--skip-themes`, `--broken-dependencies` and `--strategy`; the upgrade entry asks the mode, a new Tomcat, an existing export with its key alias, offers the `--test` rehearsal and asks the samedb backup question only (field test 2, G1, G5, G6, G7, G9, E1, E2, I2, I4).
