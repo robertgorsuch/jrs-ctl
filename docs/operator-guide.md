@@ -422,21 +422,25 @@ Registers an operator-customised file under `server.installDir` or `server.tomca
 - **Exit codes:** 0; **2** when the file is outside the installation, does not exist, or is already registered.
 - **Flags:** `<path>` — the customised file; `--original <file>` — the vendor's unmodified copy whose hash becomes the original; `--json` — the registration as JSON.
 
-### `jrsctl customizations scan --vendor <path> [--register] [--json]`
+### `jrsctl customizations scan --vendor <path> [--tomcat] [--register] [--json]`
 
 Finds the files the site changed without registering them one by one (#72). The installed webapp (`server.tomcatDir/webapps/<webappName>`) is compared with the vendor's untouched copy of the same version. `--vendor` is the unpacked distribution, its `jasperserver-pro` (or `jasperserver`) directory, or the `.war`, which is read as a stream and never unpacked. Every file that differs is listed:
 
 - `CHANGED` — in both, different: a customization.
 - `ADDED` — only in the installation: a customization.
-- `INSTALLER` — a file the installer writes with site values, whether it differs from the vendor's copy or the vendor has none: `META-INF/context.xml`, `WEB-INF/js.quartz.properties`, `WEB-INF/classes/keystore.init.properties`, and, depending on the repository database, `WEB-INF/hibernate.properties` and `WEB-INF/js.jdbc.properties`. Listed, never registered.
+- `INSTALLER` — a file the installer writes with site values, whether it differs from the vendor's copy or the vendor has none: `META-INF/context.xml`, `WEB-INF/js.quartz.properties`, `WEB-INF/classes/keystore.init.properties`, and, depending on the repository database, `WEB-INF/classes/hibernate.properties` (`WEB-INF/hibernate.properties` before 8.2) and `WEB-INF/js.jdbc.properties`. Listed, never registered.
 - `REMOVED` — only in the vendor's copy. Listed, nothing to register.
+
+**`scripts/` is an overlay** (#117). Since 8.0 the front end is the `jasperserver-ui` webpack project: a customised `scripts/` tree is rebuilt and copied whole, under hashed bundle names, so a per-file comparison of it is always a conflict. The scan says so when it lists a file there, and `customizations register` warns for one. Carry the change in your `jasperserver-ui` project (the vendor's JavaScript customisation material describes it), rebuild it, and copy the rebuilt `scripts/` over the new webapp after the upgrade; do not rely on an upgrade to re-apply single files.
+
+**`--tomcat`** (#117) adds a second section for the files outside the webapp that the upgrade guides tell you to carry over to a new Tomcat: `bin/setenv.sh` and `setenv.bat`, `conf/server.xml`, `conf/Catalina/localhost/*.xml`, and the `lib/*.jar` files Tomcat does not ship (a JDBC driver, say). There is no pristine Tomcat to compare with, so this is a list of what to carry over and not a claim that a file changed; a jar is left out when its name is one a Tomcat 9, 10 or 11 distribution ships. Register one with `customizations register <tomcatDir>/<path>` and an upgrade checks it in place; it does not copy it to a different Tomcat (`--tomcat-dir`), which is the operator's step.
 
 Logs, caches and work files are ignored, and so are backup copies left beside an edited file (`*.bak`, `*.bak-<date>`, `*.orig`, `*.old`, `*~`). With `--register`, `--yes`, or a yes at the prompt, every changed and added file not yet registered is registered: a changed file with the vendor file's hash as its original, so an upgrade re-applies it automatically where the vendor left the file alone, and an added file with its own hash.
 
 - **Mutates:** nothing without registration; with it, as `customizations register` for each file.
 - **Rollback:** `customizations unregister <path>` for a file registered by mistake.
 - **Exit codes:** 0; **2** when `--vendor` holds no webapp or the installed webapp cannot be found.
-- **Flags:** `--vendor <path>` (required) — the vendor's copy; `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], registered: [...]}`.
+- **Flags:** `--vendor <path>` (required) — the vendor's copy; `--tomcat` — also list the Tomcat-side files to carry over; `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], tomcat: [{path, kind, registered}] (with --tomcat), registered: [...]}`.
 
 ### `jrsctl customizations unregister <path>`
 

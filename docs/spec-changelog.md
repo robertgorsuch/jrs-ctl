@@ -3,6 +3,9 @@
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §4.3, import size and theme guards)
 
 - §9.3: `import` measures the archive. Above 2 GB it does not use REST when the strategy was left to the rules: the vendor tools when the machine has an installation, else a refusal at planning (exit 2). `--strategy rest` is respected and warns (ADR-0033). When the sidecar's source major differs from the target's, themes are skipped by default and the plan says so; new `--themes` turns that off; `--themes` with `--skip-themes` is a usage error (exit 1). `ImportOptions` gains `keepThemes` and the stored plan arguments `keepThemes`.
+## Draft 1.1 amendment — 2026-09-19 (vendor review §5.1–5.2, customizations scanner)
+
+- §10.3: `customizations scan` treats `WEB-INF/classes/hibernate.properties` (the path since 8.2) as installer-written like the pre-8.2 one; new `--tomcat` lists `bin/setenv.*`, `conf/server.xml`, `conf/Catalina/localhost/*.xml` and `lib/*.jar` names Tomcat does not ship, as a list of what to carry over with no comparison (ADR-0034); the `--json` document gains an optional `tomcat` array. A file under `scripts/` earns a note in the scan and a warning from `register`, which still registers it: since 8.0 `scripts/` is the rebuilt `jasperserver-ui` overlay and a per-file comparison always conflicts.
 
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §3.3, doctor items with vendor backing)
 

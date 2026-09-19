@@ -21,6 +21,20 @@
         }
       }
     },
+    "tomcat": {
+      "type": "array",
+      "description": "Present with --tomcat: the Tomcat-side files to carry over (issue #117).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "registered"],
+        "properties": {
+          "path": { "type": "string", "description": "Relative to server.tomcatDir, with / separators." },
+          "kind": { "enum": ["SETENV", "SERVER_XML", "CONTEXT_FRAGMENT", "LIBRARY"] },
+          "registered": { "type": "boolean" }
+        }
+      }
+    },
     "registered": {
       "type": "array",
       "description": "Customizations registered by this run (--register).",
