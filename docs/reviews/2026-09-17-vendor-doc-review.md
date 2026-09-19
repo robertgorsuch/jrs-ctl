@@ -256,6 +256,7 @@ themes may be incompatible, so `import` should default `skipThemes` on when the 
 differs from the target's major.
 
 ### 4.4 `--everything` already covers users, roles, permissions, jobs and settings
+*Fixed 2026-09-19 (issue #116): the help text, the operator guide and the export plan summary say what `--full-server` covers and that events are the exception; `--users-roles` on a full-server export is called redundant in the plan.*
 AG p.266: `--everything` equals `--uris --repository-permissions --report-jobs --calendars --users --roles`
 plus UI-modified settings, minus events. The CLI help text and plan summary should say so; today the
 `--users-roles` flag looks additive to `--full-server`.

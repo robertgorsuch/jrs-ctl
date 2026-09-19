@@ -59,6 +59,19 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   public static final String IMPORT_PHASE = "import";
   public static final String SNAPSHOT_DIR = "pre-import";
 
+  /**
+   * Issue #116 (administrator guide p.266): what {@code js-export --everything} already carries, in
+   * every full-server export plan summary.
+   */
+  static final String FULL_SERVER_COVERS =
+      "a full-server export already carries the repository, users, roles, permissions, report jobs,"
+          + " calendars and the settings changed in the UI; events are left out unless"
+          + " --access-events, --audit-events or --monitoring is given";
+
+  /** Issue #116: {@code --users-roles} on a full-server export adds nothing. */
+  static final String USERS_ROLES_REDUNDANT =
+      "--users-roles is redundant with --full-server, which already includes users and roles";
+
   /** Spec §9.4 (issue #100, ADR-0031), verbatim in every import plan summary. */
   public static final String ROLLBACK_WARNING =
       "Rollback deletes the resources the failed import created under the snapshotted folders"
@@ -130,6 +143,12 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     }
     if (Files.exists(out)) {
       warnings.add(out + " exists and will be replaced");
+    }
+    if (request.fullServer() || request.scope() == ExportRequest.Scope.EVERYTHING) {
+      warnings.add(FULL_SERVER_COVERS);
+      if (request.includeUsersRoles()) {
+        warnings.add(USERS_ROLES_REDUNDANT);
+      }
     }
     PlanSummary summary =
         new PlanSummary(

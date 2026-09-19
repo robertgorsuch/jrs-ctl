@@ -47,7 +47,10 @@ final class ExportCommand implements Callable<Integer> {
       description = "Repository URI to export; repeatable. Default: the whole repository.")
   List<String> uris = new ArrayList<>();
 
-  @Option(names = "--users-roles", description = "Include users and roles.")
+  @Option(
+      names = "--users-roles",
+      description =
+          "Include users and roles in a --uri export. A --full-server export already has them.")
   boolean usersRoles;
 
   @Option(names = "--access-events", description = "Include access events.")
@@ -64,7 +67,11 @@ final class ExportCommand implements Callable<Integer> {
 
   @Option(
       names = "--full-server",
-      description = "Export everything with the vendor tools; the server keeps running.")
+      description =
+          "Export everything with the vendor tools (js-export --everything); the server keeps"
+              + " running. Already carries the repository, users, roles, permissions, report jobs,"
+              + " calendars and the settings changed in the UI; events only with"
+              + " --access-events, --audit-events or --monitoring.")
   boolean fullServer;
 
   @Option(

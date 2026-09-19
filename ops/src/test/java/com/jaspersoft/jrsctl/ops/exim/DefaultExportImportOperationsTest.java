@@ -146,6 +146,53 @@ class DefaultExportImportOperationsTest {
     assertThat(plan.summary().warnings()).anyMatch(w -> w.contains("service will be stopped"));
   }
 
+  /**
+   * Issue #116: the plan says what {@code --everything} already carries, and that events are not in
+   * it.
+   */
+  @Test
+  void should_say_what_a_full_server_export_covers_and_that_users_roles_is_redundant() {
+    Plan plan = fx.ops().planExport(export(Set.of(), true, tmp.resolve("full.zip")));
+
+    assertThat(plan.summary().warnings())
+        .anyMatch(
+            w ->
+                w.contains("already carries")
+                    && w.contains("users, roles")
+                    && w.contains("events are left out")
+                    && w.contains("--audit-events"))
+        .anyMatch(w -> w.contains("--users-roles is redundant with --full-server"));
+  }
+
+  @Test
+  void should_not_call_users_roles_redundant_when_it_was_not_given_with_full_server() {
+    Plan plan =
+        fx.ops()
+            .planExport(
+                new ExportOptions(
+                    Set.of(),
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    tmp.resolve("full.zip"),
+                    Optional.empty(),
+                    false));
+
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("already carries"))
+        .noneMatch(w -> w.contains("redundant"));
+  }
+
+  @Test
+  void should_add_no_full_server_note_when_exporting_uris() {
+    Plan plan = fx.ops().planExport(export(Set.of("/public"), false, tmp.resolve("p.zip")));
+
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("already carries"));
+  }
+
   /** Issue #67: a full-server export runs js-export against the running server by default. */
   @Test
   void should_keep_the_service_running_and_say_so_when_a_full_server_export_does_not_ask_to_stop() {
