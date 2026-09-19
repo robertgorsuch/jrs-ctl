@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,26 @@ class WindowsTomcatProcessesTest {
         + (commandLine == null ? "-" : b64(commandLine))
         + " "
         + (ports == null ? "-" : ports);
+  }
+
+  /** {@code netstat -ano} output listing each of {@code pidPorts} ("pid:port") as a listener. */
+  private static Response netstat(String... pidPorts) {
+    List<String> lines = new java.util.ArrayList<>();
+    lines.add("");
+    lines.add("Active Connections");
+    lines.add("");
+    lines.add("  Proto  Local Address          Foreign Address        State           PID");
+    for (String pp : pidPorts) {
+      String[] parts = pp.split(":", -1);
+      lines.add(
+          "  TCP    0.0.0.0:"
+              + parts[1]
+              + "            0.0.0.0:0              LISTENING       "
+              + parts[0]);
+    }
+    lines.add("  TCP    10.1.2.3:50000         93.184.216.34:443      ESTABLISHED     4321");
+    lines.add("  UDP    0.0.0.0:5353           *:*                                    1234");
+    return Response.ok(lines.toArray(String[]::new));
   }
 
   private static String catalinaCommandLine(Path tomcat) {
@@ -88,6 +109,7 @@ class WindowsTomcatProcessesTest {
     Path tomcat = tomcatWithPorts(install);
     FakeProcessRunner runner = new FakeProcessRunner();
     WindowsTomcatProcesses finder = new WindowsTomcatProcesses(runner, ROOT);
+    runner.on(finder.netstatCommand(), netstat("35260:8006", "35260:8082", "4:445"));
     runner.on(
         finder.command(),
         Response.ok(
@@ -118,9 +140,10 @@ class WindowsTomcatProcessesTest {
     Path tomcat = tomcatWithPorts(install);
     FakeProcessRunner runner = new FakeProcessRunner();
     WindowsTomcatProcesses finder = new WindowsTomcatProcesses(runner, ROOT);
+    runner.on(finder.netstatCommand(), netstat("9916:8080"));
     runner.on(
         finder.command(),
-        Response.ok(row(9916, "java.exe", null, null, "8080"), WindowsTomcatProcesses.END));
+        Response.ok(row(9916, "java.exe", null, null, "-"), WindowsTomcatProcesses.END));
 
     assertThat(catalina(runner, finder, tomcat).state()).isEqualTo(State.STOPPED);
   }
@@ -131,9 +154,10 @@ class WindowsTomcatProcessesTest {
     Path tomcat = tomcatWithPorts(install);
     FakeProcessRunner runner = new FakeProcessRunner();
     WindowsTomcatProcesses finder = new WindowsTomcatProcesses(runner, ROOT);
+    runner.on(finder.netstatCommand(), netstat("4040:8082"));
     runner.on(
         finder.command(),
-        Response.ok(row(4040, "java.exe", null, null, "8082"), WindowsTomcatProcesses.END));
+        Response.ok(row(4040, "java.exe", null, null, "-"), WindowsTomcatProcesses.END));
 
     assertThat(catalina(runner, finder, tomcat).state()).isEqualTo(State.UNKNOWN);
   }
@@ -184,16 +208,81 @@ class WindowsTomcatProcessesTest {
   void should_throw_rather_than_report_nothing_when_the_scan_cannot_run() {
     FakeProcessRunner failing = new FakeProcessRunner();
     WindowsTomcatProcesses exits = new WindowsTomcatProcesses(failing, ROOT);
+    failing.on(exits.netstatCommand(), netstat());
     failing.on(exits.command(), Response.failing(1, "Get-CimInstance : Access denied"));
 
     FakeProcessRunner truncated = new FakeProcessRunner();
     WindowsTomcatProcesses cutOff = new WindowsTomcatProcesses(truncated, ROOT);
+    truncated.on(cutOff.netstatCommand(), netstat());
     truncated.on(cutOff.command(), Response.ok(row(11, "java.exe", null, null, "-")));
 
     assertThatThrownBy(exits::find)
         .isInstanceOf(TomcatScanException.class)
         .hasMessageContaining("exit 1");
     assertThatThrownBy(cutOff::find).isInstanceOf(TomcatScanException.class);
+  }
+
+  /**
+   * The listening ports come from {@code netstat -ano}, not from {@code Get-NetTCPConnection}: 0.03
+   * s against 0.9 s on the development host, and the same 36 listeners. A listener is a TCP row
+   * whose foreign address is any-address port 0, so the localised state text is never read.
+   */
+  @Test
+  void should_read_listeners_from_netstat_whatever_language_its_state_column_is_in() {
+    List<String> lines =
+        List.of(
+            "  Proto  Lokale Adresse         Remoteadresse          Status          PID",
+            "  TCP    0.0.0.0:8080           0.0.0.0:0              ABH\u00d6REN       4040",
+            "  TCP    [::]:8080              [::]:0                 ABH\u00d6REN       4040",
+            "  TCP    [::]:8005              [::]:0                 LISTENING       4040",
+            "  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1836",
+            "  TCP    10.1.2.3:50000         93.184.216.34:443      ESTABLISHED     4321",
+            "  TCP    127.0.0.1:5432         127.0.0.1:50001        HERGESTELLT     77",
+            "  UDP    0.0.0.0:5353           *:*                                    1234",
+            "  TCP    0.0.0.0:99999          0.0.0.0:0              LISTENING       5",
+            "  TCP    0.0.0.0:80             0.0.0.0:0              LISTENING       notapid",
+            "garbage");
+
+    Map<Long, Set<Integer>> byPid = WindowsTomcatProcesses.parseListeners(lines);
+
+    assertThat(byPid.keySet()).containsExactlyInAnyOrder(4040L, 1836L);
+    assertThat(byPid.get(4040L)).containsExactlyInAnyOrder(8080, 8005);
+    assertThat(byPid.get(1836L)).containsExactly(135);
+  }
+
+  @Test
+  void should_take_a_process_s_ports_from_netstat_and_none_when_it_listens_on_nothing() {
+    FakeProcessRunner runner = new FakeProcessRunner();
+    WindowsTomcatProcesses finder = new WindowsTomcatProcesses(runner, ROOT);
+    runner.on(finder.netstatCommand(), netstat("11:8082"));
+    runner.on(
+        finder.command(),
+        Response.ok(
+            row(11, "java.exe", null, null, "-"),
+            row(12, "java.exe", null, null, "-"),
+            WindowsTomcatProcesses.END));
+
+    List<TomcatProcessFinder.TomcatProcess> found = finder.find();
+
+    assertThat(found).extracting(TomcatProcessFinder.TomcatProcess::pid).containsExactly(11L, 12L);
+    assertThat(found.get(0).listeningPorts()).containsExactly(8082);
+    assertThat(found.get(1).listeningPorts()).isEmpty();
+  }
+
+  @Test
+  void should_throw_rather_than_report_no_ports_when_netstat_cannot_run() {
+    FakeProcessRunner failing = new FakeProcessRunner();
+    WindowsTomcatProcesses finder = new WindowsTomcatProcesses(failing, ROOT);
+    failing.on(finder.netstatCommand(), Response.failing(1, "The requested operation failed"));
+    failing.on(finder.command(), Response.ok(WindowsTomcatProcesses.END));
+
+    assertThatThrownBy(finder::find)
+        .isInstanceOf(TomcatScanException.class)
+        .hasMessageContaining("listening ports")
+        .hasMessageContaining("exit 1");
+    assertThat(WindowsTomcatProcesses.netstatCommand("D:\\WINDOWS"))
+        .containsExactly("D:\\WINDOWS\\System32\\netstat.exe", "-ano");
+    assertThat(WindowsTomcatProcesses.netstatCommand(null).get(0)).startsWith("C:\\Windows\\");
   }
 
   @Test
@@ -208,7 +297,7 @@ class WindowsTomcatProcessesTest {
             Base64.getDecoder().decode(command.get(command.size() - 1)), StandardCharsets.UTF_16LE);
     assertThat(script)
         .contains("Win32_Process")
-        .contains("Get-NetTCPConnection")
+        .doesNotContain("Get-NetTCPConnection")
         .contains("'" + WindowsTomcatProcesses.END + "'");
     assertThat(WindowsTomcatProcesses.command(null).get(0)).startsWith("C:\\Windows\\");
   }
