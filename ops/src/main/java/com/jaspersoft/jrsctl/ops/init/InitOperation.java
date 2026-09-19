@@ -511,7 +511,8 @@ public final class InitOperation {
     List<String> names = new ArrayList<>();
     run(
         runner,
-        List.of("systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"),
+        List.of(
+            "systemctl", "list-units", "--type=service,socket", "--all", "--no-legend", "--plain"),
         line -> {
           String stripped = line.strip();
           if (!stripped.isEmpty()) {
@@ -520,13 +521,42 @@ public final class InitOperation {
           }
         });
     return choose(
-        names,
+        preferSockets(names),
         name ->
             mentions(
                 query(
                     runner,
-                    List.of("systemctl", "show", name, "-p", "ExecStart", "-p", "ExecStop")),
+                    List.of(
+                        "systemctl",
+                        "show",
+                        serviceUnitOf(name),
+                        "-p",
+                        "ExecStart",
+                        "-p",
+                        "ExecStop")),
                 tomcatDir));
+  }
+
+  /**
+   * A socket-activated Tomcat (the vendor's AWS images control it through {@code tomcat.socket},
+   * AWS guide p.30, issue #113) must be driven through its socket: stopping the service alone
+   * leaves the socket to start it again on the next request. So {@code X.service} (or {@code X})
+   * gives way to {@code X.socket} whenever both are listed, each name once, order kept.
+   */
+  static List<String> preferSockets(List<String> names) {
+    Set<String> listed = new LinkedHashSet<>(names);
+    Set<String> out = new LinkedHashSet<>();
+    for (String name : names) {
+      String stem = name.endsWith(".service") ? name.substring(0, name.length() - 8) : name;
+      String socket = stem + ".socket";
+      out.add(!name.endsWith(".socket") && listed.contains(socket) ? socket : name);
+    }
+    return List.copyOf(out);
+  }
+
+  /** The unit whose {@code ExecStart} names the Tomcat: {@code X.service} for {@code X.socket}. */
+  static String serviceUnitOf(String unit) {
+    return unit.endsWith(".socket") ? unit.substring(0, unit.length() - 7) + ".service" : unit;
   }
 
   private static List<String> query(ProcessRunner runner, List<String> command) {

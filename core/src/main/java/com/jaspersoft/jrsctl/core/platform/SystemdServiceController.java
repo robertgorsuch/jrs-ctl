@@ -4,6 +4,7 @@ import static java.util.Objects.requireNonNull;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -14,11 +15,16 @@ import java.util.function.BooleanSupplier;
  * the first line of {@code systemctl is-active <unit>} ({@code active}, {@code inactive}, {@code
  * failed}, {@code activating}, {@code deactivating}); {@code stop}/{@code start} block for at most
  * the given timeout and then poll for the remainder, so a unit with a long {@code TimeoutStopSec}
- * is still reported truthfully.
+ * is still reported truthfully. A unit named {@code X.socket} is a socket-activated Tomcat (the
+ * vendor's AWS images, AWS guide p.30, issue #113): its state is that of {@code X.service}, the
+ * JVM, and stop and start act on both units, because a socket left listening starts the service
+ * again on the next request, in the middle of a run.
  */
 public final class SystemdServiceController extends PollingServiceController {
 
   private final String unit;
+  private final String serviceUnit;
+  private final List<String> controlled;
   private final TomcatProcessFinder processes;
   private final Optional<Path> installDir;
 
@@ -38,13 +44,16 @@ public final class SystemdServiceController extends PollingServiceController {
       Duration pollInterval) {
     super(runner, pollInterval);
     this.unit = requireNonNull(unit, "unit");
+    this.serviceUnit = serviceUnitOf(unit);
+    this.controlled = unit.endsWith(SOCKET) ? List.of(unit, serviceUnit) : List.of(unit);
     this.processes = requireNonNull(processes, "processes");
     this.installDir = requireNonNull(installDir, "installDir");
   }
 
   @Override
   public State state() {
-    Optional<Invocation> query = invoke(List.of("systemctl", "is-active", unit), QUERY_TIMEOUT);
+    Optional<Invocation> query =
+        invoke(List.of("systemctl", "is-active", serviceUnit), QUERY_TIMEOUT);
     if (query.isEmpty()) {
       return State.UNKNOWN;
     }
@@ -87,10 +96,12 @@ public final class SystemdServiceController extends PollingServiceController {
   @Override
   public State stop(Duration timeout, BooleanSupplier cancelled) {
     long start = System.nanoTime();
-    if (state() == State.STOPPED) {
+    // a socket unit is stopped even when its service is already inactive: the socket alone
+    // would start the service again on the next request
+    if (state() == State.STOPPED && controlled.size() == 1) {
       return State.STOPPED;
     }
-    control(List.of("systemctl", "stop", unit), timeout, State.STOPPED, REMEDIATION);
+    control(command("stop"), timeout, State.STOPPED, REMEDIATION);
     return await(State.STOPPED, remaining(start, timeout), cancelled);
   }
 
@@ -105,12 +116,32 @@ public final class SystemdServiceController extends PollingServiceController {
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
-    control(List.of("systemctl", "start", unit), timeout, State.RUNNING, REMEDIATION);
+    control(command("start"), timeout, State.RUNNING, REMEDIATION);
     return await(State.RUNNING, remaining(start, timeout), cancelled);
   }
 
   @Override
   public String describe() {
-    return "systemd unit " + unit;
+    return unit.endsWith(SOCKET)
+        ? "systemd socket unit " + unit + " with " + serviceUnit
+        : "systemd unit " + unit;
+  }
+
+  static final String SOCKET = ".socket";
+
+  /** {@code X.socket} is driven through {@code X.service}; any other unit stands for itself. */
+  static String serviceUnitOf(String unit) {
+    return unit.endsWith(SOCKET)
+        ? unit.substring(0, unit.length() - SOCKET.length()) + ".service"
+        : unit;
+  }
+
+  /** {@code systemctl <operation>} over every unit this controller drives, socket first. */
+  List<String> command(String operation) {
+    List<String> cmd = new ArrayList<>();
+    cmd.add("systemctl");
+    cmd.add(operation);
+    cmd.addAll(controlled);
+    return List.copyOf(cmd);
   }
 }

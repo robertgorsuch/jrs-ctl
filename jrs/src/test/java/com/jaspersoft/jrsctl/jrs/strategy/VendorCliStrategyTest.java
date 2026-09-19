@@ -164,7 +164,7 @@ class VendorCliStrategyTest {
         .isPresent()
         .get()
         .satisfies(s -> assertThat(s.strategy()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI));
-    ProcessRunner.Request req = fx.processes.last();
+    ProcessRunner.Request req = lastVendorRequest();
     assertThat(req.command().get(0))
         .isEqualTo(installDir.resolve("buildomatic").resolve("js-export.sh").toString());
     assertThat(req.command())
@@ -201,7 +201,8 @@ class VendorCliStrategyTest {
     assertThat(fx.service.calls()).containsExactly("stop", "start");
     assertThat(fx.service.state())
         .isEqualTo(com.jaspersoft.jrsctl.core.platform.ServiceController.State.RUNNING);
-    assertThat(fx.processes.requests()).isEmpty();
+    // #113: the start step lists services to find a bundled database; no vendor tool ran
+    assertThat(vendorRequests()).isEmpty();
   }
 
   @Test
@@ -229,7 +230,7 @@ class VendorCliStrategyTest {
 
     assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
     assertThat(fx.service.calls()).containsExactly("stop", "start");
-    assertThat(fx.processes.last().command())
+    assertThat(lastVendorRequest().command())
         .containsSequence("--input-zip", tmp.resolve("in.zip").toString(), "--update");
     assertThat(fx.journal())
         .containsSubsequence(
@@ -411,5 +412,17 @@ class VendorCliStrategyTest {
 
     assertThat(outcome).isNotInstanceOf(RunOutcome.Succeeded.class);
     assertThat(fx.journal()).contains("import.js-import:FAILED");
+  }
+
+  /** The process requests other than the service-manager listings the start step makes (#113). */
+  private List<ProcessRunner.Request> vendorRequests() {
+    return fx.processes.requests().stream()
+        .filter(r -> !List.of("systemctl", "sc.exe").contains(r.command().get(0)))
+        .toList();
+  }
+
+  private ProcessRunner.Request lastVendorRequest() {
+    List<ProcessRunner.Request> requests = vendorRequests();
+    return requests.get(requests.size() - 1);
   }
 }

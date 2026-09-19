@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
+import com.jaspersoft.jrsctl.core.platform.StalePidFile;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
@@ -19,9 +20,11 @@ import com.jaspersoft.jrsctl.core.selfcheck.SelfCheck;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StateStoreException;
+import com.jaspersoft.jrsctl.jrs.service.CompanionDatabase;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
+import com.jaspersoft.jrsctl.ops.JsConfig;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
@@ -34,6 +37,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.LongPredicate;
 import java.util.stream.Collectors;
 
 /**
@@ -533,5 +537,190 @@ final class LocalChecks {
       return String.format(Locale.ROOT, "%.1f MB", bytes / (double) mib);
     }
     return bytes + " B";
+  }
+
+  // ---------------------------------------------------------------- vendor-backed items (#113)
+
+  static final String TELEMETRY = "telemetry";
+  static final String AUDIT = "audit";
+  static final String DATABASE_SERVICE = "database-service";
+  static final String PID_FILE = "pid-file";
+
+  private static final String NO_JS_CONFIG_REMEDIATION =
+      "nothing to do now; the switch arrives with a cumulative hotfix, so run doctor again after"
+          + " the next hotfix apply";
+
+  /**
+   * {@code heartbeat.enabled} uploads usage telemetry to the vendor (administrator guide); it is a
+   * WARN because an isolated host must not call out, and because a cumulative hotfix can set it.
+   */
+  static ReportItem telemetry(Services s, Optional<TomcatLayout> layout) {
+    if (layout.isEmpty()) {
+      return ReportItem.skip(TELEMETRY, "no install layout", "fix the layout check first");
+    }
+    boolean isolated = s.config().network().mode() == Config.NetworkMode.ISOLATED;
+    return telemetryItem(
+        JsConfig.read(layout.get().webappDir()), isolated, layout.get().webappDir());
+  }
+
+  static ReportItem telemetryItem(Optional<JsConfig> cfg, boolean isolated, Path webappDir) {
+    if (cfg.isEmpty()) {
+      return ReportItem.skip(
+          TELEMETRY, "no " + JsConfig.RELATIVE + " under " + webappDir, NO_JS_CONFIG_REMEDIATION);
+    }
+    Optional<Boolean> on = cfg.get().flag(JsConfig.HEARTBEAT);
+    if (on.isEmpty()) {
+      return ReportItem.pass(
+          TELEMETRY,
+          JsConfig.HEARTBEAT + " is not set in " + cfg.get().file() + "; no telemetry upload");
+    }
+    if (on.get()) {
+      return ReportItem.warn(
+          TELEMETRY,
+          JsConfig.HEARTBEAT
+              + "=true in "
+              + cfg.get().file()
+              + ": the server uploads usage telemetry to the vendor"
+              + (isolated ? ", and network.mode is isolated" : ""),
+          "set "
+              + JsConfig.HEARTBEAT
+              + "=false in "
+              + JsConfig.RELATIVE
+              + " and restart the server if this host must not call out (administrator guide); a"
+              + " cumulative hotfix can set it again, so run doctor after every hotfix apply");
+    }
+    return ReportItem.pass(TELEMETRY, JsConfig.HEARTBEAT + "=false in " + cfg.get().file());
+  }
+
+  /**
+   * {@code feature.audit_monitoring.enabled} decides whether the events table grows: an export that
+   * includes events can then be very large (administrator guide pp.250, 416), and a newdb upgrade
+   * has events to lose.
+   */
+  static ReportItem audit(Optional<TomcatLayout> layout) {
+    if (layout.isEmpty()) {
+      return ReportItem.skip(AUDIT, "no install layout", "fix the layout check first");
+    }
+    return auditItem(JsConfig.read(layout.get().webappDir()), layout.get().webappDir());
+  }
+
+  static ReportItem auditItem(Optional<JsConfig> cfg, Path webappDir) {
+    if (cfg.isEmpty()) {
+      return ReportItem.skip(
+          AUDIT, "no " + JsConfig.RELATIVE + " under " + webappDir, NO_JS_CONFIG_REMEDIATION);
+    }
+    Optional<Boolean> on = cfg.get().flag(JsConfig.AUDIT);
+    if (on.isEmpty()) {
+      return ReportItem.pass(
+          AUDIT,
+          JsConfig.AUDIT
+              + " is not set in "
+              + cfg.get().file()
+              + "; audit and monitoring events are not collected");
+    }
+    if (on.get()) {
+      return ReportItem.warn(
+          AUDIT,
+          JsConfig.AUDIT
+              + "=true in "
+              + cfg.get().file()
+              + ": audit and monitoring events are collected, so an export that includes them can"
+              + " be very large (administrator guide pp.250, 416) and a newdb upgrade loses them"
+              + " unless --include-events is given",
+          "size the export volume for the events table, or leave events out of the exports and"
+              + " upgrades that do not need them (upgrade --include-events carries them)");
+    }
+    return ReportItem.pass(
+        AUDIT, JsConfig.AUDIT + "=false in " + cfg.get().file() + "; event exports stay small");
+  }
+
+  /**
+   * The bundled PostgreSQL service the installer registers beside the Tomcat one; the vendor starts
+   * the database first (installation guide p.51), and so does jrsctl's start-service step.
+   */
+  static ReportItem databaseService(Services s) {
+    Optional<ServiceConfig.Kind> kind = s.config().service().kind();
+    if (kind.isEmpty()) {
+      return ReportItem.skip(DATABASE_SERVICE, "service.kind is not configured", "run jrsctl init");
+    }
+    Optional<ServiceController> companion;
+    try {
+      companion = CompanionDatabase.controller(s.platform(), s.config().toServiceConfig());
+    } catch (RuntimeException e) {
+      return ReportItem.warn(
+          DATABASE_SERVICE,
+          "cannot look for the bundled database service: " + e.getMessage(),
+          "check service.* in config.yaml");
+    }
+    return databaseServiceItem(kind.get(), companion);
+  }
+
+  static ReportItem databaseServiceItem(
+      ServiceConfig.Kind kind, Optional<ServiceController> companion) {
+    switch (kind) {
+      case CTLSCRIPT -> {
+        return ReportItem.pass(
+            DATABASE_SERVICE, "not applicable: ctlscript.sh starts the bundled database itself");
+      }
+      case CATALINA, MANUAL -> {
+        return ReportItem.pass(
+            DATABASE_SERVICE,
+            "not applicable: service.kind "
+                + kind.name().toLowerCase(Locale.ROOT)
+                + " has no service manager to register a database service with");
+      }
+      case WINDOWS_SERVICE, SYSTEMD -> {}
+    }
+    if (companion.isEmpty()) {
+      return ReportItem.pass(
+          DATABASE_SERVICE,
+          "no bundled PostgreSQL service registered beside the Tomcat service; the repository"
+              + " database is managed elsewhere");
+    }
+    ServiceController.State state = companion.get().state();
+    if (state == ServiceController.State.RUNNING) {
+      return ReportItem.pass(
+          DATABASE_SERVICE,
+          companion.get().describe() + " is RUNNING; " + CompanionDatabase.VENDOR_NOTE);
+    }
+    return ReportItem.warn(
+        DATABASE_SERVICE,
+        companion.get().describe()
+            + " is "
+            + state
+            + "; Tomcat cannot reach the repository without it",
+        "start it before Tomcat ("
+            + CompanionDatabase.VENDOR_NOTE
+            + "); jrsctl's start-service step starts it first");
+  }
+
+  /**
+   * A {@code catalina.pid} naming a process that is gone makes {@code catalina.sh start} refuse
+   * (installation guide p.237); the start-service step removes such a file, doctor only names it.
+   */
+  static ReportItem pidFile(Optional<TomcatLayout> layout) {
+    if (layout.isEmpty()) {
+      return ReportItem.skip(PID_FILE, "no install layout", "fix the layout check first");
+    }
+    return pidFileItem(layout.get().tomcatDir(), StalePidFile.LIVE_PROCESSES);
+  }
+
+  static ReportItem pidFileItem(Path tomcatDir, LongPredicate alive) {
+    Optional<StalePidFile.Named> named = StalePidFile.find(tomcatDir);
+    if (named.isEmpty()) {
+      return ReportItem.pass(PID_FILE, "no " + tomcatDir.resolve(StalePidFile.RELATIVE));
+    }
+    StalePidFile.Named n = named.get();
+    if (!n.stale(alive)) {
+      return ReportItem.pass(PID_FILE, n.file() + " names running process " + n.pid().get());
+    }
+    return ReportItem.warn(
+        PID_FILE,
+        n.file()
+            + " names "
+            + n.pid().map(p -> "process " + p + ", which is not running").orElse("no process")
+            + "; catalina.sh refuses to start while it exists (installation guide p.237)",
+        "delete the file before starting the server by hand; jrsctl's start-service step removes a"
+            + " stale one itself");
   }
 }

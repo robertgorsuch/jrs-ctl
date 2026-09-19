@@ -35,12 +35,16 @@ public final class DoctorOperation {
           "layout",
           "service",
           LocalChecks.SERVICE_MANAGER,
+          LocalChecks.DATABASE_SERVICE,
+          LocalChecks.PID_FILE,
           "permissions",
           "disk",
           "keystore",
           "vendor",
           "vendor-java",
           "tomcat",
+          LocalChecks.TELEMETRY,
+          LocalChecks.AUDIT,
           "database",
           "state",
           "runs",
@@ -98,6 +102,14 @@ public final class DoctorOperation {
             : remote(LocalChecks.SERVICE_MANAGER));
     items.add(
         local
+            ? guard(LocalChecks.DATABASE_SERVICE, LocalChecks::databaseService)
+            : remote(LocalChecks.DATABASE_SERVICE));
+    items.add(
+        local
+            ? guard(LocalChecks.PID_FILE, s -> LocalChecks.pidFile(layout))
+            : remote(LocalChecks.PID_FILE));
+    items.add(
+        local
             ? guard("permissions", s -> LocalChecks.permissions(s, layout))
             : remote("permissions"));
     items.add(guard("disk", LocalChecks::disk));
@@ -119,6 +131,14 @@ public final class DoctorOperation {
             ? guard(
                 "tomcat", s -> probe.dependent("tomcat", c -> ServerChecks.tomcat(s, c, layout)))
             : remote("tomcat"));
+    items.add(
+        local
+            ? guard(LocalChecks.TELEMETRY, s -> LocalChecks.telemetry(s, layout))
+            : remote(LocalChecks.TELEMETRY));
+    items.add(
+        local
+            ? guard(LocalChecks.AUDIT, s -> LocalChecks.audit(layout))
+            : remote(LocalChecks.AUDIT));
     items.add(guard("database", DatabaseCheck::check));
     items.add(guard("state", LocalChecks::state));
     items.add(guard("runs", LocalChecks::runs));

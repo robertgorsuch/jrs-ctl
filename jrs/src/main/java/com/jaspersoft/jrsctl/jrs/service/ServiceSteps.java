@@ -131,6 +131,33 @@ public final class ServiceSteps {
       if (controller.state() == ServiceController.State.RUNNING) {
         return StepResult.ok();
       }
+      // installation guide p.51 (issue #113): the bundled database first, then Tomcat
+      Optional<ServiceController> database = rt.databaseController();
+      if (database.isPresent() && database.get().state() != ServiceController.State.RUNNING) {
+        ServiceController.State db;
+        try {
+          db = database.get().start(WAIT_CAP, cancelled);
+        } catch (ServiceControlException e) {
+          return recoverable(
+              "the bundled database service "
+                  + database.get().describe()
+                  + " refused to start: "
+                  + e.getMessage(),
+              RIGHTS_REMEDIATION);
+        }
+        if (db != ServiceController.State.RUNNING) {
+          return recoverable(
+              "the bundled database service did not start within "
+                  + WAIT_CAP.toMinutes()
+                  + " minutes (state "
+                  + db
+                  + ", "
+                  + database.get().describe()
+                  + "); "
+                  + CompanionDatabase.VENDOR_NOTE,
+              "start the database service by hand, then run again");
+        }
+      }
       ServiceController.State result = controller.start(WAIT_CAP, cancelled);
       if (result == ServiceController.State.RUNNING) {
         return StepResult.ok();

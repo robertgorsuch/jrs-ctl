@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * What the shared service steps need from an operation's runtime. Invariants: {@link #controller()}
@@ -17,6 +18,15 @@ import java.util.Objects;
 public interface ServiceRuntime {
 
   ServiceController controller();
+
+  /**
+   * The bundled database service that must be up before Tomcat starts, when this host registers one
+   * beside the Tomcat service ({@link CompanionDatabase}, installation guide p.51); empty by
+   * default and for every kind without a service manager.
+   */
+  default Optional<ServiceController> databaseController() {
+    return Optional.empty();
+  }
 
   /** The configured stop timeout ({@code service.stopTimeoutSeconds}). */
   Duration serviceTimeout();

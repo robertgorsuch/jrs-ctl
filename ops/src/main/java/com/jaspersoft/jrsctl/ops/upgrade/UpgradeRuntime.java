@@ -8,6 +8,7 @@ import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.service.CompanionDatabase;
 import com.jaspersoft.jrsctl.jrs.service.ServiceRuntime;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
@@ -17,6 +18,7 @@ import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -79,6 +81,11 @@ record UpgradeRuntime(
   @Override
   public ServiceController controller() {
     return services.platform().services(config().toServiceConfig());
+  }
+
+  @Override
+  public Optional<ServiceController> databaseController() {
+    return CompanionDatabase.controller(services.platform(), config().toServiceConfig());
   }
 
   @Override
