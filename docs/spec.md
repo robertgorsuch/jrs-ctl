@@ -773,6 +773,10 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 - `docs/BUILD_STATUS.md` — maintained by the agent: phase status, stubbed components, unsigned artifacts, known gaps.
 - Embedded help: `jrsctl help <command>` and `jrsctl <command> --explain`.
 
+### 17.1 Guided mode
+
+`jrsctl` without a command, on a terminal and without `--json` or `--non-interactive`, opens a menu (#71). It is a front end over the CLI and nothing more: every entry builds an ordinary command line, prints it (`Running: jrsctl …`) and runs it in-process through the same command tree, so plans, confirmations, the run lock, audit and exit codes are exactly the CLI's, and the menu never runs a plan without the confirmation the CLI asks for. The global options it was started with are passed on to every command. It offers every option the vendor's documented paths need (field test 2, I4 and G1 to G7): the export scope and strategy (REST, or the vendor tools with an optional stop), the import's `--update`, `--skip-themes`, `--broken-dependencies` and `--strategy`, and the upgrade's mode, `--tomcat-dir`, `--export` with `--key-alias`, the `--test` rehearsal and, for samedb, the backup confirmation. Enter keeps the command's default for every question; a file, directory or choice that is not acceptable is asked again; an empty answer where one is required returns to the menu; end of input quits with exit 0. Settings are shown once and changed in a loop until Enter, with an unknown key re-asked rather than sent. The eighth entry lists the embedded documents (`docs <name>`), and the footer names `jrsctl --help`, `jrsctl console` and `--json`. Before the menu, runs that need recovery are announced. The menu writes nothing itself and does not do line editing beyond the terminal's own (ADR-0023).
+
 ---
 
 ## 18. Exit codes

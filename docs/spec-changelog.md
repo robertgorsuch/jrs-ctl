@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, guided menu)
+
+- New §17.1 "Guided mode": the menu is a front end over the CLI that prints each command line and runs it in-process; it lists the embedded documents (entry 8) and names `jrsctl --help`, `jrsctl console` and `--json`; settings are shown once and changed in a loop until Enter, an unknown key re-asked; the installation directory must exist; export entries are labelled by mechanism (REST, or the vendor js-export with an optional stop) and ask the scope; the restore entry says where the pre-import copy goes and asks `--update`, `--skip-themes`, `--broken-dependencies` and `--strategy`; the upgrade entry asks the mode, a new Tomcat, an existing export with its key alias, offers the `--test` rehearsal and asks the samedb backup question only (field test 2, G1, G5, G6, G7, G9, E1, E2, I2, I4).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, upgrade rehearsal)
 
 - §10.2 "Rehearsal", §10.4: `upgrade --test` runs the vendor's own validation (`js-upgrade-<mode> test`, the wrapper's `pre-upgrade-test-<ce|pro>`, which takes no export) after the same preflight and staging as the upgrade, then puts the package back as it was; nothing is stopped, backed up or changed; operation `upgrade.test`; a failure exits 2 with the vendor's lines. The guided menu offers it before the real run (field test 2, U1: the tester wanted to try the upgrade before committing to it).
