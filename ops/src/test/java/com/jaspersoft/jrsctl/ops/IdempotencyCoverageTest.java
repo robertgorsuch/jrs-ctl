@@ -346,6 +346,15 @@ class IdempotencyCoverageTest {
               OPS + "upgrade.BackupSteps$FullExport",
               U + "should_reuse_the_export_when_full_export_executes_twice"),
           Map.entry(
+              OPS + "upgrade.RehearsalSteps$RunVendorTest",
+              U + "should_not_mutate_when_run_vendor_test_executes_twice"),
+          Map.entry(
+              OPS + "upgrade.RehearsalSteps$UnstageTargetPackage",
+              U
+                  + "should_converge_when_unstage_target_package_executes_twice;"
+                  + U
+                  + "should_converge_when_unstage_target_package_compensates_twice"),
+          Map.entry(
               OPS + "upgrade.DatabaseRestoreSteps$RebuildDatabase",
               U
                   + "should_run_init_once_when_rebuild_database_executes_twice;"

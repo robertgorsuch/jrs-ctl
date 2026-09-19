@@ -102,7 +102,7 @@ no version probe runs.
 | `hotfix.verify` | `{bundle}` |
 | `export` | `{uris: [], usersRoles, accessEvents, fullServer, strategy: "rest"\|"vendor"\|null, out}` |
 | `import` | `{archive, update, skipUserUpdate, sourceKeystore, sourceKeystorePassword, strategy}` |
-| `upgrade` | `{to, package, mode: "newdb"\|"samedb", dbBackupConfirmed, reapplyHotfixes}` |
+| `upgrade` | `{to, package, mode: "newdb"\|"samedb", dbBackupConfirmed (samedb only), reapplyHotfixes}` |
 
 Response:
 

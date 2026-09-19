@@ -262,6 +262,10 @@ final class HelpExamples {
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
                     + " --plan"),
             new Example(
+                "Rehearse with the vendor's own validation; changes nothing",
+                "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
+                    + " --test"),
+            new Example(
                 "Run the upgrade (newdb: jrsctl exports the repository first and can rebuild the"
                     + " database from that export)",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"),

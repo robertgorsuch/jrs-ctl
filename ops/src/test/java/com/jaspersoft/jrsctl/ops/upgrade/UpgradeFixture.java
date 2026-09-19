@@ -47,6 +47,9 @@ public final class UpgradeFixture implements AutoCloseable {
   /** Marker file in the package: the fake js-ant copies the new webapp, then exits 3. */
   static final String FAIL_AFTER_COPY = "fail-after-copy";
 
+  /** Marker file in the package: the fake vendor validation ({@code test}) reports a failure. */
+  static final String FAIL_TEST = "fail-test";
+
   static final String CREATE_KEYSTORE = "create-keystore";
 
   /** What buildomatic's setup.xml prints before create-ks when it found no keystore. */
@@ -189,6 +192,10 @@ public final class UpgradeFixture implements AutoCloseable {
    */
   public void failVendorScriptAfterCopy() throws IOException {
     write(packageDir.resolve(FAIL_AFTER_COPY), "");
+  }
+
+  public void failVendorTest() throws IOException {
+    write(packageDir.resolve(FAIL_TEST), "");
   }
 
   /**
@@ -378,6 +385,7 @@ public final class UpgradeFixture implements AutoCloseable {
         buildomatic.resolve("js-ant.bat"),
         "@echo off\r\n"
             + "echo js-ant fake target=%1 JAVA_HOME=%JAVA_HOME%\r\n"
+            + "if \"%1\"==\"pre-upgrade-test-pro\" goto :validate\r\n"
             + "xcopy /E /Y /I /Q \"%~dp0..\\webapp-new\" \""
             + target
             + "\" >nul\r\n"
@@ -391,11 +399,23 @@ public final class UpgradeFixture implements AutoCloseable {
             + FAIL_AFTER_COPY
             + "\" (echo BUILD FAILED after copying the webapp & exit /b 3)\r\n"
             + "echo %* >> \"%~dp0..\\js-ant.log\"\r\n"
+            + "exit /b 0\r\n"
+            + ":validate\r\n"
+            + "if exist \"%~dp0..\\"
+            + FAIL_TEST
+            + "\" (echo BUILD FAILED: cannot connect & exit /b 1)\r\n"
+            + "echo BUILD SUCCESSFUL\r\n"
             + "exit /b 0\r\n");
     write(
         buildomatic.resolve("js-ant.sh"),
         "#!/bin/sh\n"
             + "echo \"js-ant fake target=$1 JAVA_HOME=$JAVA_HOME\"\n"
+            + "if [ \"$1\" = \"pre-upgrade-test-pro\" ]; then\n"
+            + "  if [ -f \"$(dirname \"$0\")/../"
+            + FAIL_TEST
+            + "\" ]; then echo \"BUILD FAILED: cannot connect\"; exit 1; fi\n"
+            + "  echo BUILD SUCCESSFUL; exit 0\n"
+            + "fi\n"
             + "cp -R \"$(dirname \"$0\")/../webapp-new/.\" \""
             + target
             + "/\" || exit 1\n"
@@ -426,6 +446,8 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-upgrade-newdb.bat"),
         "@echo off\r\n"
+            + "if \"%~1\"==\"test\" (call \"%~dp0js-ant.bat\" pre-upgrade-test-pro"
+            + " -Dstrategy=standard & exit /b %errorlevel%)\r\n"
             + "if \"%~1\"==\"\" (echo JasperReports Server import file[path-to-file-and-filename]"
             + " expected as input & exit /b 1)\r\n"
             + "if not exist \"%~1\" (echo import file %~1 does not exist & exit /b 1)\r\n"
@@ -435,6 +457,8 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-upgrade-newdb.sh"),
         "#!/bin/sh\n"
+            + "if [ \"$1\" = \"test\" ]; then exec \"$(dirname \"$0\")/js-ant.sh\""
+            + " pre-upgrade-test-pro -Dstrategy=standard; fi\n"
             + "if [ -z \"$1\" ]; then echo \"JasperReports Server import file expected as"
             + " input\"; exit 1; fi\n"
             + "if [ ! -f \"$1\" ]; then echo \"import file $1 does not exist\"; exit 1; fi\n"
@@ -443,11 +467,15 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-upgrade-samedb.bat"),
         "@echo off\r\n"
+            + "if \"%~1\"==\"test\" (call \"%~dp0js-ant.bat\" pre-upgrade-test-pro"
+            + " -Dstrategy=inDatabase & exit /b %errorlevel%)\r\n"
             + "call \"%~dp0js-ant.bat\" upgrade-minimal-pro -Dstrategy=inDatabase\r\n"
             + "exit /b %errorlevel%\r\n");
     write(
         buildomatic.resolve("js-upgrade-samedb.sh"),
         "#!/bin/sh\n"
+            + "if [ \"$1\" = \"test\" ]; then exec \"$(dirname \"$0\")/js-ant.sh\""
+            + " pre-upgrade-test-pro -Dstrategy=inDatabase; fi\n"
             + "exec \"$(dirname \"$0\")/js-ant.sh\" upgrade-minimal-pro -Dstrategy=inDatabase\n");
   }
 

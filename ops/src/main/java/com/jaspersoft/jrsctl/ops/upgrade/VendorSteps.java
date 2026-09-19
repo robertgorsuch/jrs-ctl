@@ -460,6 +460,25 @@ final class VendorSteps {
     }
   }
 
+  /** {@code ce} or {@code pro}: from the server identity, else from the webapp name. */
+  static String edition(UpgradeInput in) {
+    ServerIdentity.Edition edition =
+        in.identity().map(ServerIdentity::edition).orElse(ServerIdentity.Edition.UNKNOWN);
+    return switch (edition) {
+      case CE -> "ce";
+      case PRO -> "pro";
+      case UNKNOWN -> in.webappName().endsWith("-pro") ? "pro" : "ce";
+    };
+  }
+
+  /** The {@code -Dstrategy} value the vendor wrapper passes for the mode. */
+  static String strategy(UpgradeOperations.Mode mode) {
+    return switch (mode) {
+      case NEWDB -> STRATEGY_NEWDB;
+      case SAMEDB -> STRATEGY_SAMEDB;
+    };
+  }
+
   static final class RunVendorUpgrade implements Step {
     private final UpgradeRuntime rt;
     private final UpgradeInput in;
@@ -477,22 +496,12 @@ final class VendorSteps {
       return ANT_TARGET_PREFIX + edition();
     }
 
-    /** {@code ce} or {@code pro}: from the server identity, else from the webapp name. */
     String edition() {
-      ServerIdentity.Edition edition =
-          in.identity().map(ServerIdentity::edition).orElse(ServerIdentity.Edition.UNKNOWN);
-      return switch (edition) {
-        case CE -> "ce";
-        case PRO -> "pro";
-        case UNKNOWN -> in.webappName().endsWith("-pro") ? "pro" : "ce";
-      };
+      return VendorSteps.edition(in);
     }
 
     String strategy() {
-      return switch (in.options().mode()) {
-        case NEWDB -> STRATEGY_NEWDB;
-        case SAMEDB -> STRATEGY_SAMEDB;
-      };
+      return VendorSteps.strategy(in.options().mode());
     }
 
     /**
