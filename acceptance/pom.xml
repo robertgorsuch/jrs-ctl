@@ -22,6 +22,13 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <!-- When -Dphase=N is given, only tests tagged "phaseN" run; otherwise every phase runs. -->
     <acceptance.groups/>
+    <!-- The phase classes are independent: each works in its own @TempDir, WireMock takes a dynamic
+         port, and the stand-in Tomcat processes are found by their own catalina.base path. They
+         run in this many forks at once (one class at a time per fork). A class that is measured
+         longest, Phase8CrashRecoveryTest, sets the floor of the module's wall clock, so more
+         forks than about 3 add nothing on a 4 vCPU runner. -Dacceptance.forkCount=1 restores the
+         old sequential run (use it to tell a real failure from a contention one). -->
+    <acceptance.forkCount>4</acceptance.forkCount>
   </properties>
 
   <dependencies>
@@ -38,8 +45,11 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <forkCount>1</forkCount>
+          <forkCount>${acceptance.forkCount}</forkCount>
           <reuseForks>true</reuseForks>
+          <!-- the classes that take longest (Phase8*, Phase5) start first, so the last fork is not
+               left running one long class after the others finished -->
+          <runOrder>reversealphabetical</runOrder>
           <groups>${acceptance.groups}</groups>
           <excludedGroups>${excluded.groups}</excludedGroups>
           <systemPropertyVariables>

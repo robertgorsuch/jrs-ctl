@@ -14,6 +14,7 @@ Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-cha
 - `docs/spec-changelog.md` and `docs/BUILD_STATUS.md` merge with git's `union` driver (`.gitattributes`): a local rebase keeps both sides. GitHub's own merge does not apply it, so rebase locally before merging a PR that touches them.
 - Tests tagged `needs-jrs` / `needs-docker` are excluded by default (no Docker here); they are release gates, not phase gates.
 - The unit under acceptance test is the shaded jar `app/target/jrsctl.jar`; acceptance never imports app classes.
+- Acceptance classes run in four forks at once (`acceptance.forkCount`, ADR-free: they share nothing). A new acceptance test must use its own `@TempDir`, a dynamic port and a process marker that includes its own directory; if one fails only under load, rerun with `-Dacceptance.forkCount=1` before calling it a real failure.
 
 ## Module map (spec §4)
 
