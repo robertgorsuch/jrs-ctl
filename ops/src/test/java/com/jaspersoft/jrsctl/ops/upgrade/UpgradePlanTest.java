@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.ops.ReportItem;
+import com.jaspersoft.jrsctl.ops.TomcatJavaOpts;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
@@ -456,7 +457,54 @@ class UpgradePlanTest {
           .isInstanceOf(UpgradeException.class)
           .hasMessageContaining("service.kind manual")
           .hasMessageContaining("systemd")
-          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(2));
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(2))
+          // ADR-0026 amendment (issue #109): the refusal says how to re-register the service
+          .satisfies(
+              e ->
+                  assertThat(((UpgradeException) e).remediation())
+                      .contains("systemctl cat jasperreports")
+                      .contains(f.newTomcatDir.toString())
+                      .contains("systemctl daemon-reload"));
+    }
+  }
+
+  /** ADR-0026 amendment (issue #109): the manual plan carries the switch steps for this host. */
+  @Test
+  void should_state_the_service_switch_steps_in_the_summary_when_the_service_is_manual()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(withNewTomcat(f));
+
+      // the fixture runs on the build host's operating system, so only what both share is pinned
+      assertThat(plan.summary().warnings())
+          .anySatisfy(
+              w ->
+                  assertThat(w)
+                      .startsWith(DefaultUpgradeOperations.SERVICE_SWITCH_WARNING)
+                      .contains("start the upgraded server with")
+                      .contains(f.newTomcatDir.toString())
+                      .contains("re-register it for the new Tomcat")
+                      .contains("<name>"));
+      // a Tomcat 9 is not judged for --add-opens
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("--add-opens:"));
+    }
+  }
+
+  /** Installation guide 10.1 pp.84-86 (issue #109): a Tomcat 10+ without the Java 17/21 options. */
+  @Test
+  void should_warn_when_the_host_tomcat_setenv_carries_no_add_opens() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      UpgradeFixture.tomcatVersion(f.newTomcatDir, "11.0.11");
+      Plan plan = f.ops().planUpgrade(withNewTomcat(f));
+
+      Path setenv = TomcatJavaOpts.setenv(f.newTomcatDir, f.services.platform().os());
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.ADD_OPENS_WARNING.formatted(setenv));
+
+      Files.createDirectories(setenv.getParent());
+      Files.writeString(setenv, "JAVA_OPTS=--add-opens java.base/java.lang=ALL-UNNAMED\n");
+      assertThat(f.ops().planUpgrade(withNewTomcat(f)).summary().warnings())
+          .noneMatch(w -> w.contains("--add-opens:"));
     }
   }
 

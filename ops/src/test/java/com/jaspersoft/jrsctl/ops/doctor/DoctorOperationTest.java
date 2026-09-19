@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.jaspersoft.jrsctl.core.state.AuditEntry;
 import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
+import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.FakeLayout;
 import com.jaspersoft.jrsctl.ops.FakeServices;
 import com.jaspersoft.jrsctl.ops.ReportItem;
@@ -113,6 +114,40 @@ class DoctorOperationTest {
       assertThat(jakarta.detail())
           .contains("Tomcat 10.1.24")
           .contains("not certified for JRS 8.2.0");
+    }
+  }
+
+  /**
+   * Issue #109, installation guide 10.1 pp.84-86: a certified Tomcat of the Jakarta generation
+   * whose setenv carries none of the Java 17/21 options is a WARN naming the file, never a FAIL
+   * (the vendor's own installer starts 10.0.0 on Tomcat 10.1 and Java 17 without them).
+   */
+  @Test
+  void should_warn_on_a_certified_tomcat_10_whose_setenv_carries_no_add_opens() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path tomcat = install.resolve("apache-tomcat");
+    Files.writeString(tomcat.resolve("RELEASE-NOTES"), "Apache Tomcat Version 10.1.41\n");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-bare")).yaml(healthyYaml(install))) {
+      fake.adapter.identity = FakeJrsAdapter.identity("10.0.0");
+      ReportItem bare =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT)).get("tomcat");
+      assertThat(bare.status()).isEqualTo(Status.WARN);
+      assertThat(bare.detail())
+          .contains("certified for JRS 10.0.0")
+          .contains(tomcat.resolve("bin").resolve("setenv.sh").toString())
+          .contains("no --add-opens");
+      assertThat(bare.remediation()).contains("installation guide 10.1 pp.84-86");
+    }
+
+    Files.createDirectories(tomcat.resolve("bin"));
+    Files.writeString(
+        tomcat.resolve("bin").resolve("setenv.sh"),
+        "export JAVA_OPTS=\"$JAVA_OPTS --add-opens java.base/java.lang=ALL-UNNAMED\"\n");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-opts")).yaml(healthyYaml(install))) {
+      fake.adapter.identity = FakeJrsAdapter.identity("10.0.0");
+      ReportItem withOpts =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT)).get("tomcat");
+      assertThat(withOpts.status()).isEqualTo(Status.PASS);
     }
   }
 

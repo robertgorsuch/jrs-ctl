@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (vendor review §2.1, the service switch for `--tomcat-dir`)
+
+- §10.2 step 9b, §12.1: the ADR-0026 open point is decided as *refuse, but say how*. `--tomcat-dir` still needs `service.kind: manual`; the refusal's remediation now carries the platform's own re-registration steps for the configured kind with the real paths and service name (a Windows service through `service.bat remove` and `install`, a systemd unit through its `CATALINA_HOME`, `ExecStart` and `ExecStop` and `daemon-reload`, a `catalina` script through `jrsctl config set service.scriptPath`, a `ctlscript` by switching to the `catalina` kind), and with `manual` the plan summary carries the same steps for this operating system with `<name>` as a placeholder. The plan warns, and `doctor`'s `tomcat` item is WARN, when a Tomcat of major 10 or later has no `--add-opens` in its `bin/setenv.sh|bat`, naming the file (installation guide 10.1 pp.84-86; advice, since the vendor's bundled installer starts without them). ADR-0026 amended (issue #109).
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §2.6, no 10.1 catalog into an older server)
 
 - §9.4, §9.5: an import whose sidecar records a source version of 10.1.0 or later is refused at plan time (exit 2, nothing snapshotted or imported) when this server is below 10.1.0, naming both versions and the remedies ("Resources exported from version 10.1.0 cannot be imported into older versions", release notes 10.1 p.6). `import --force-version` attempts it anyway with a plan warning and an audit row; the option survives the stored plan arguments. Without a sidecar, or with a version that does not parse, nothing is judged (issue #107).
