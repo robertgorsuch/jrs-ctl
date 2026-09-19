@@ -249,6 +249,7 @@ The reference spells the import setting switch `includeServerSetting` (singular,
 records have none of them, which blocks organisation-scoped work on multi-tenant servers.
 
 ### 4.3 Size and theme guards
+*Fixed 2026-09-19 (issue #115, ADR-0033): an import above 2 GB leaves REST for the vendor tools (refused when there are none here, a warning under `--strategy rest`); themes are skipped across a major version unless `--themes` is given.*
 "Jaspersoft does not recommend uploading files greater than 2 gigabytes" over REST (p.118): choose the
 vendor strategy automatically above that size. Themes are repository resources (Themes guide §2-3); old
 themes may be incompatible, so `import` should default `skipThemes` on when the sidecar's source version

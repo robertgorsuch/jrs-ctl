@@ -161,6 +161,7 @@ public final class PlanRegistry {
     putText(node, "organization", o.organization());
     node.put("mergeOrganization", o.mergeOrganization());
     node.put("forceVersion", o.forceVersion());
+    node.put("keepThemes", o.keepThemes());
     return Json.write(node);
   }
 
@@ -216,7 +217,9 @@ public final class PlanRegistry {
         text(args, "organization"),
         args.path("mergeOrganization").asBoolean(false),
         // arguments stored before the option existed describe an import that was not forced
-        args.path("forceVersion").asBoolean(false));
+        args.path("forceVersion").asBoolean(false),
+        // arguments stored before the option existed describe an import with the themes default
+        args.path("keepThemes").asBoolean(false));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

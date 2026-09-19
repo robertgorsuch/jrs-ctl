@@ -109,6 +109,20 @@ class ImportCommandTest {
     assertThat(fake.lastImport.orElseThrow().forceVersion()).isFalse();
   }
 
+  /** Issue #115: themes are skipped across a major version unless {@code --themes} says not. */
+  @Test
+  void should_pass_themes_to_the_operation_and_refuse_it_with_skip_themes() {
+    assertThat(importOf("--themes", "--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().keepThemes()).isTrue();
+
+    assertThat(importOf("--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().keepThemes()).isFalse();
+
+    InitCommandTest.Run both = importOf("--themes", "--skip-themes", "--plan");
+    assertThat(both.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(both.err()).contains("--themes and --skip-themes contradict");
+  }
+
   /** Field test 2, I4: the target organisation, merged when the ids differ. */
   @Test
   void should_pass_the_organisation_and_merge_switch_and_refuse_merge_alone() {

@@ -417,6 +417,133 @@ class DefaultExportImportOperationsTest {
     assertThat(ids(fx.ops().planImport(importOf(archive, false)))).isNotEmpty();
   }
 
+  // ---- issue #115: size and themes ------------------------------------------------------------
+
+  /** An import above the REST limit leaves REST for the vendor tools when this machine has them. */
+  @Test
+  void should_choose_the_vendor_tools_when_the_archive_is_above_the_rest_limit()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan plan =
+        new DefaultExportImportOperations(fx.services, fx.strategies, 4)
+            .planImport(importOf(archive, false));
+
+    assertThat(plan.summary().strategy()).startsWith("vendor").contains("2 GB");
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("public.zip") && w.contains("vendor import tools are used"));
+  }
+
+  @Test
+  void should_keep_rest_when_the_archive_is_within_the_limit() throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan plan =
+        new DefaultExportImportOperations(fx.services, fx.strategies, 7)
+            .planImport(importOf(archive, false));
+
+    assertThat(plan.summary().strategy()).startsWith("rest (");
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("2 GB"));
+  }
+
+  @Test
+  void should_only_warn_when_rest_is_forced_above_the_limit() throws IOException {
+    sidecar(List.of("/public"), false);
+    ImportOptions forced =
+        new ImportOptions(
+            archive,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(ExportImportStrategy.Kind.REST));
+
+    Plan plan = new DefaultExportImportOperations(fx.services, fx.strategies, 4).planImport(forced);
+
+    assertThat(plan.summary().strategy()).startsWith("rest (");
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("--strategy rest was given") && w.contains("attempted anyway"));
+  }
+
+  @Test
+  void should_refuse_a_large_archive_when_no_vendor_tools_are_available_here() throws IOException {
+    Path remote = tmp.resolve("remote");
+    Files.createDirectories(remote);
+    try (EximFixture noTools =
+        new EximFixture(
+            remote,
+            () -> adapter,
+            """
+            server:
+              baseUrl: http://localhost:8080/jasperserver-pro
+              auth:
+                username: jasperadmin
+                passwordRef: env:JRS_PASSWORD
+            network:
+              mode: public
+            """)) {
+      sidecar(List.of("/public"), false);
+
+      assertThatThrownBy(
+              () ->
+                  new DefaultExportImportOperations(noTools.services, noTools.strategies, 4)
+                      .planImport(importOf(archive, false)))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("public.zip")
+          .hasMessageContaining("--strategy rest");
+    }
+  }
+
+  @Test
+  void should_skip_themes_and_say_so_when_the_archive_is_from_another_major_version()
+      throws IOException {
+    sidecar(List.of("/public"), false, "9.0.0");
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.summary().warnings())
+        .anyMatch(
+            w ->
+                w.contains("themes are not imported")
+                    && w.contains("9.0.0")
+                    && w.contains("--themes"));
+    fx.run(plan, EximFixture.RUN);
+    assertThat(adapter.imports).isNotEmpty();
+    assertThat(adapter.imports.get(adapter.imports.size() - 1).request().skipThemes()).isTrue();
+  }
+
+  @Test
+  void should_import_themes_across_a_major_version_when_asked_to() throws IOException {
+    sidecar(List.of("/public"), false, "9.0.0");
+
+    Plan plan = fx.ops().planImport(importOf(archive, false).withKeepThemes(true));
+
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("themes are not imported"));
+    fx.run(plan, EximFixture.RUN);
+    assertThat(adapter.imports.get(adapter.imports.size() - 1).request().skipThemes()).isFalse();
+  }
+
+  @Test
+  void should_not_change_the_themes_choice_within_a_major_version() throws IOException {
+    sidecar(List.of("/public"), false, "8.1.0");
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("themes are not imported"));
+  }
+
+  @Test
+  void should_not_judge_the_themes_when_there_is_no_sidecar() {
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("themes are not imported"));
+  }
+
   @Test
   void should_refuse_planning_when_archive_is_missing() {
     assertThatThrownBy(() -> fx.ops().planImport(importOf(tmp.resolve("nope.zip"), false)))
