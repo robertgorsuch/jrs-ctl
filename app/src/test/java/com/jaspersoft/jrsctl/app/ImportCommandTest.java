@@ -71,7 +71,7 @@ class ImportCommandTest {
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(run.out())
         .contains("Plan  import  public.zip")
-        .contains("! " + DefaultExportImportOperations.BEST_EFFORT_WARNING)
+        .contains("! " + DefaultExportImportOperations.ROLLBACK_WARNING)
         .contains("  precheck")
         .contains("  backup")
         .contains("  import")
@@ -193,7 +193,7 @@ class ImportCommandTest {
     JsonNode plan = HotfixCommandTest.documents(run.out()).get(0);
     assertThat(plan.get("operation").asText()).isEqualTo("import");
     assertThat(plan.get("summary").get("warnings").get(0).asText())
-        .isEqualTo(DefaultExportImportOperations.BEST_EFFORT_WARNING);
+        .isEqualTo(DefaultExportImportOperations.ROLLBACK_WARNING);
     assertThat(plan.get("summary").get("backupLocations")).hasSize(1);
     assertThat(plan.get("steps").get(1).get("phase").asText()).isEqualTo("backup");
   }

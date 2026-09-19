@@ -285,6 +285,7 @@ class DefaultExportImportOperationsTest {
         .containsExactly(
             "precheck.import.check-keystore",
             "backup.pre-import-snapshot",
+            "backup.pre-import-listing",
             "backup.export.start",
             "backup.export.poll",
             "backup.export.download",
@@ -301,13 +302,14 @@ class DefaultExportImportOperationsTest {
     assertThat(plan.summary().target()).isEqualTo("public.zip");
     assertThat(plan.summary().resourcesTouched()).containsExactly("/public");
     assertThat(plan.summary().warnings())
-        .contains(DefaultExportImportOperations.BEST_EFFORT_WARNING)
+        .contains(DefaultExportImportOperations.ROLLBACK_WARNING)
         .noneMatch(w -> w.contains("no sidecar"));
     assertThat(plan.summary().strategy()).startsWith("rest (").contains("IMPORT_ASYNC");
     assertThat(plan.summary().serviceRestart()).isFalse();
     assertThat(plan.steps().get(1).detail()).startsWith("/public -> ");
-    assertThat(plan.steps().get(2).detail()).isEqualTo("uris /public");
-    assertThat(plan.steps().get(6).mutating()).isTrue();
+    assertThat(plan.steps().get(2).detail()).startsWith("every URI under /public -> ");
+    assertThat(plan.steps().get(3).detail()).isEqualTo("uris /public");
+    assertThat(plan.steps().get(7).mutating()).isTrue();
     assertThat(adapter.imports).as("planning must not import").isEmpty();
   }
 
@@ -316,12 +318,14 @@ class DefaultExportImportOperationsTest {
     Plan plan = fx.ops().planImport(importOf(archive, true));
 
     assertThat(plan.summary().warnings())
-        .contains(DefaultExportImportOperations.BEST_EFFORT_WARNING)
+        .contains(DefaultExportImportOperations.ROLLBACK_WARNING)
         .anyMatch(w -> w.contains("no sidecar"))
         .anyMatch(w -> w.contains("--update"));
     assertThat(plan.summary().resourcesTouched()).containsExactly("/");
     assertThat(plan.steps().get(1).detail()).startsWith("full server -> ");
-    assertThat(plan.steps().get(2).detail()).isEqualTo("everything");
+    // issue #100: the listing of the root follows the snapshot announcement
+    assertThat(plan.steps().get(2).detail()).startsWith("every URI under / -> ");
+    assertThat(plan.steps().get(3).detail()).isEqualTo("everything");
   }
 
   @Test
@@ -350,6 +354,7 @@ class DefaultExportImportOperationsTest {
             "precheck.import.check-keystore",
             "precheck.import.locate-vendor-tools",
             "backup.pre-import-snapshot",
+            "backup.pre-import-listing",
             "backup.export.locate-vendor-tools",
             "backup.export.stop-service")
         .contains("import.snapshot-rollback", "import.stop-service", "import.js-import");
@@ -482,7 +487,12 @@ class DefaultExportImportOperationsTest {
 
     assertThat(plan.summary().resourcesTouched())
         .containsExactly("/organizations/org_1", "/public/reports");
+    // issue #100: the listing names the same folders, then the export step follows
     assertThat(plan.steps().get(2).detail())
+        .startsWith("every URI under ")
+        .contains("/organizations/org_1")
+        .contains("/public/reports");
+    assertThat(plan.steps().get(3).detail())
         .startsWith("uris ")
         .contains("/organizations/org_1")
         .contains("/public/reports");

@@ -45,8 +45,8 @@ import org.semver4j.Semver;
  * needs the server only to read its identity and capabilities; the snapshot lives under {@code
  * snapshots/pre-import/} with a name derived from the archive's hash, so {@code runs recover}
  * rebuilds an identical plan from the stored options; the summary always carries {@link
- * #BEST_EFFORT_WARNING}; the fingerprint covers the server identity, the archive or output path
- * (and the archive's SHA-256), the request flags and the resolved configuration.
+ * #ROLLBACK_WARNING}; the fingerprint covers the server identity, the archive or output path (and
+ * the archive's SHA-256), the request flags and the resolved configuration.
  */
 public final class DefaultExportImportOperations implements ExportImportOperations {
 
@@ -58,10 +58,12 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   public static final String IMPORT_PHASE = "import";
   public static final String SNAPSHOT_DIR = "pre-import";
 
-  /** Spec §9.4, verbatim in every import plan summary. */
-  public static final String BEST_EFFORT_WARNING =
-      "Rollback re-imports the pre-import snapshot; it restores overwritten resources but cannot"
-          + " delete resources the failed import created.";
+  /** Spec §9.4 (issue #100, ADR-0031), verbatim in every import plan summary. */
+  public static final String ROLLBACK_WARNING =
+      "Rollback deletes the resources the failed import created under the snapshotted folders"
+          + " (judged against a listing taken just before the import; anything anyone else creates"
+          + " there in between is deleted with them) and re-imports the pre-import snapshot, which"
+          + " puts back what the import overwrote.";
 
   private final Services services;
   private final Strategies strategies;
@@ -177,7 +179,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     ExportImportStrategy strategy = selection.strategy();
 
     List<String> warnings = new ArrayList<>();
-    warnings.add(BEST_EFFORT_WARNING);
+    warnings.add(ROLLBACK_WARNING);
     if (options.keyAlias().isEmpty() && request.keyAlias().isPresent()) {
       warnings.add(
           "the archive was exported with key alias "
@@ -234,17 +236,24 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       steps.add(Rephased.into(PRECHECK_PHASE, s));
     }
     if (snapshot.isPresent()) {
-      steps.addAll(PreImportSnapshot.steps(strategy, snapshot.get()));
+      List<Step> backup = new ArrayList<>(PreImportSnapshot.steps(strategy, snapshot.get()));
+      // issue #100: the listing goes right after the announcement, while the server is up and
+      // before a vendor snapshot stops it, so the rollback knows what the import added
+      List<String> roots = RecordRepositoryListing.rootsOf(snapshot.get());
+      backup.add(1, new RecordRepositoryListing(roots));
+      steps.addAll(backup);
       steps.add(
           new RestoreFromPreImportSnapshot(
-              importPhase, strategy, snapshot.get().output(), restore.get()));
+              importPhase, strategy, snapshot.get().output(), restore.get(), roots));
     }
     steps.addAll(importSteps.subList(firstMutating, importSteps.size()));
 
     Map<String, String> rollback = new LinkedHashMap<>();
     if (snapshot.isPresent()) {
       rollback.put(BACKUP_PHASE, "delete the pre-import snapshot");
-      rollback.put(importPhase, "re-import the pre-import snapshot with update (best effort)");
+      rollback.put(
+          importPhase,
+          "delete what the import created, then re-import the pre-import snapshot with update");
     } else {
       rollback.put(
           importPhase,

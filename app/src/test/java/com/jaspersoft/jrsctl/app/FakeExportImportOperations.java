@@ -101,7 +101,7 @@ public final class FakeExportImportOperations implements ExportImportOperations 
             List.of(snapshot),
             Map.of("import", "re-import the pre-import snapshot with update (best effort)"),
             "rest (REST: IMPORT_ASYNC probe passed, service stays up)",
-            List.of(DefaultExportImportOperations.BEST_EFFORT_WARNING));
+            List.of(DefaultExportImportOperations.ROLLBACK_WARNING));
     lastPlanId = "fake-import-" + UUID.randomUUID();
     return new Plan(
         lastPlanId, steps, summary, PlanFingerprint.of(Map.of("archive", archive.toString())));

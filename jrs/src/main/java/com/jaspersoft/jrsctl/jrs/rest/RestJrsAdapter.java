@@ -896,6 +896,65 @@ public final class RestJrsAdapter implements JrsAdapter {
     return List.copyOf(uris);
   }
 
+  /** Page size of the recursive listing; the server caps a page and paginates with offset. */
+  static final int LIST_PAGE = 500;
+
+  /**
+   * Issue #100: {@code GET /rest_v2/resources?folderUri=..&recursive=true} in pages of {@link
+   * #LIST_PAGE}, following the {@code Total-Count} header the server sends (REST reference 10.1,
+   * resources service); without the header a short page ends the walk. Folders and resources alike;
+   * 204 means an empty subtree.
+   */
+  @Override
+  public List<String> listTree(String folderUri) {
+    Objects.requireNonNull(folderUri, "folderUri");
+    ensureSession();
+    List<String> uris = new ArrayList<>();
+    int offset = 0;
+    while (true) {
+      String path =
+          RESOURCES
+              + "?folderUri="
+              + RestClient.encodeQuery(folderUri)
+              + "&recursive=true&limit="
+              + LIST_PAGE
+              + "&offset="
+              + offset;
+      RestClient.Response r = client.get(path);
+      if (r.status() == 204) {
+        break;
+      }
+      client.require2xx(r, "GET", path);
+      Wire.ResourceLookupList list =
+          Wire.parse(r.body(), Wire.ResourceLookupList.class, "GET", RESOURCES);
+      int returned = 0;
+      if (list.resourceLookup() != null) {
+        for (Wire.ResourceLookup l : list.resourceLookup()) {
+          returned++;
+          if (l != null && l.uri() != null && !l.uri().equals(folderUri)) {
+            uris.add(l.uri());
+          }
+        }
+      }
+      offset += returned;
+      int reached = offset;
+      Optional<Integer> total = r.header("Total-Count").flatMap(RestJrsAdapter::parseInt);
+      boolean more = total.map(t -> reached < t).orElse(returned == LIST_PAGE);
+      if (returned == 0 || !more) {
+        break;
+      }
+    }
+    return List.copyOf(uris);
+  }
+
+  private static Optional<Integer> parseInt(String text) {
+    try {
+      return Optional.of(Integer.parseInt(text.strip()));
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
+  }
+
   @Override
   public boolean resourceExists(String uri) {
     Objects.requireNonNull(uri, "uri");

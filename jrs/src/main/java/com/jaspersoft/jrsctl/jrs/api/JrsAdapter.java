@@ -68,6 +68,34 @@ public interface JrsAdapter {
   List<String> listFolder(String folderUri);
 
   /**
+   * URIs of every resource and folder under {@code folderUri}, at any depth, the folder itself
+   * excluded (issue #100: the import rollback lists the target subtree before and after a failed
+   * import and deletes the difference). This default walks {@link #listFolder} breadth-first and
+   * treats a child that cannot be listed as a leaf; the REST adapter asks the server for the
+   * recursive listing in pages instead.
+   */
+  default List<String> listTree(String folderUri) {
+    java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+    java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>();
+    queue.add(folderUri);
+    while (!queue.isEmpty()) {
+      String folder = queue.poll();
+      List<String> children;
+      try {
+        children = listFolder(folder);
+      } catch (RuntimeException notAFolder) {
+        continue;
+      }
+      for (String child : children) {
+        if (!child.equals(folder) && !child.equals(folderUri) && seen.add(child)) {
+          queue.add(child);
+        }
+      }
+    }
+    return List.copyOf(seen);
+  }
+
+  /**
    * True when a resource (folder or otherwise) exists at {@code uri}; false when the server answers
    * 404. Export planning asks this so a mistyped {@code --uri} is refused before anything runs
    * instead of producing an empty archive (field test 2, E3).

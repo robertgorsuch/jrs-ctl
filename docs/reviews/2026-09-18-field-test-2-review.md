@@ -125,7 +125,7 @@ The tester read the verdicts above and pushed back on four "by design" items. Ea
 | E5 | fixed by Task 12 |
 | I1 | fixed by Task 11 (PR #98) |
 | I2 | fixed by Task 8 (PR #95): the restore entry says what the snapshot is; the scope comes from the sidecar (Task 5) |
-| I3 | by design, documented in four places; a true rollback is handed off (Task 14 issue) |
+| I3 | fixed 2026-09-19 (issue #100, ADR-0031): the rollback lists the target subtree before the import and deletes what the failed import added before re-importing the snapshot |
 | I4 | fixed by Task 8 (PR #95) for the menu and by Task 12 for the organisation |
 | D1 | fixed by Task 3 (PR #87) |
 | D2 | fixed by Task 4 (PR #88) |

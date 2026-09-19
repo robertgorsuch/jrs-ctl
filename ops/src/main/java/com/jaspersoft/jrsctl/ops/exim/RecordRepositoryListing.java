@@ -1,0 +1,133 @@
+package com.jaspersoft.jrsctl.ops.exim;
+
+import com.jaspersoft.jrsctl.core.engine.CheckResult;
+import com.jaspersoft.jrsctl.core.engine.Context;
+import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.core.engine.StepFailure;
+import com.jaspersoft.jrsctl.core.engine.StepResult;
+import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
+import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+
+/**
+ * Records, just before an import, every resource URI under the folders the import targets, so the
+ * rollback can delete what the failed import created (issue #100, ADR-0031). Invariants: read-only
+ * against the server; the listing is one URI per line, sorted, under the run directory ({@link
+ * #listingFile}), so {@code runs recover} finds it and retention prunes it with the run; a listing
+ * that cannot be taken fails the step before anything is imported, because an import whose rollback
+ * would silently leave additions behind is what the field test complained of; nothing to
+ * compensate.
+ */
+final class RecordRepositoryListing implements Step {
+
+  static final String ID = "backup.pre-import-listing";
+  static final String FILE = "pre-import-listing.txt";
+
+  private final List<String> roots;
+
+  RecordRepositoryListing(List<String> roots) {
+    this.roots = List.copyOf(Objects.requireNonNull(roots, "roots"));
+  }
+
+  /** The folders an import targets: the snapshot's uris, or the root for a full-server import. */
+  static List<String> rootsOf(ExportRequest snapshot) {
+    if (snapshot.fullServer()
+        || snapshot.scope() == ExportRequest.Scope.EVERYTHING
+        || snapshot.uris().isEmpty()) {
+      return List.of("/");
+    }
+    return List.copyOf(new TreeSet<>(snapshot.uris()));
+  }
+
+  static Path listingFile(Context ctx) {
+    return ctx.home().runDir(ctx.runId()).resolve(FILE);
+  }
+
+  /** Every URI under the roots, sorted; the roots themselves excluded. */
+  static Set<String> list(JrsAdapter adapter, List<String> roots) {
+    TreeSet<String> uris = new TreeSet<>();
+    for (String root : roots) {
+      uris.addAll(adapter.listTree(root));
+    }
+    uris.removeAll(roots);
+    return uris;
+  }
+
+  List<String> roots() {
+    return roots;
+  }
+
+  @Override
+  public String id() {
+    return ID;
+  }
+
+  @Override
+  public String title() {
+    return "Record the repository listing";
+  }
+
+  @Override
+  public String phase() {
+    return DefaultExportImportOperations.BACKUP_PHASE;
+  }
+
+  @Override
+  public String detail() {
+    return "every URI under " + String.join(", ", roots) + " -> runs/<runId>/" + FILE;
+  }
+
+  @Override
+  public boolean mutating() {
+    return false;
+  }
+
+  @Override
+  public CheckResult precheck(Context ctx) {
+    return CheckResult.pass();
+  }
+
+  @Override
+  public StepResult execute(Context ctx, EventSink out) {
+    Set<String> uris;
+    try {
+      uris = list(ctx.service(JrsAdapter.class), roots);
+    } catch (RuntimeException e) {
+      return StepResult.failed(
+          StepFailure.recoverable(
+              "cannot list the repository under "
+                  + String.join(", ", roots)
+                  + ": "
+                  + e.getMessage()
+                  + "; without the listing a rollback could not delete what the import creates",
+              "check that the server answers GET /rest_v2/resources, then run again"));
+    }
+    Path file = listingFile(ctx);
+    try {
+      Files.createDirectories(file.getParent());
+      Files.write(file, uris, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      return StepResult.failed(
+          StepFailure.recoverable(
+              "cannot write " + file + ": " + e.getMessage(),
+              "free the run directory, then run again"));
+    }
+    EximLogs.info(
+        out, ctx, this, uris.size() + " URIs under " + String.join(", ", roots) + " recorded");
+    return StepResult.ok();
+  }
+
+  @Override
+  public StepResult compensate(Context ctx, EventSink out) {
+    // the listing is run bookkeeping; retention removes it with the run directory
+    return StepResult.ok();
+  }
+}
