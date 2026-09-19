@@ -118,7 +118,11 @@ public interface ExportImportOperations {
     }
   }
 
-  /** Options for {@code jrsctl import}. */
+  /**
+   * Options for {@code jrsctl import}. {@code forceVersion} imports an archive whose sidecar
+   * records a source version the vendor says cannot be imported here (10.1 and later into a server
+   * below 10.1; issue #107) instead of refusing it; the override is audited.
+   */
   record ImportOptions(
       Path archive,
       boolean update,
@@ -134,7 +138,8 @@ public interface ExportImportOperations {
       BrokenDependencies brokenDependencies,
       Optional<String> keyAlias,
       Optional<String> organization,
-      boolean mergeOrganization) {
+      boolean mergeOrganization,
+      boolean forceVersion) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -144,6 +149,62 @@ public interface ExportImportOperations {
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(organization, "organization");
+    }
+
+    /** The options that refuse an archive from a version the vendor says cannot come here. */
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies,
+        Optional<String> keyAlias,
+        Optional<String> organization,
+        boolean mergeOrganization) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          false);
+    }
+
+    public ImportOptions withForceVersion(boolean force) {
+      return new ImportOptions(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          force);
     }
 
     public ImportOptions(

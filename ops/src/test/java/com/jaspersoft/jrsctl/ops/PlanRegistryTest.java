@@ -181,6 +181,32 @@ class PlanRegistryTest {
         .isFalse();
   }
 
+  /** Issue #107: the version override survives the stored arguments; older arguments mean no. */
+  @Test
+  void should_round_trip_force_version_of_an_import() throws IOException {
+    ExportImportOperations.ImportOptions options =
+        new ExportImportOperations.ImportOptions(
+                Path.of("a.zip"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty())
+            .withForceVersion(true);
+
+    JsonNode args = tree(PlanRegistry.importArgs(options));
+
+    assertThat(args.get("forceVersion").asBoolean()).isTrue();
+    assertThat(PlanRegistry.importOptions(args).forceVersion()).isTrue();
+    assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).forceVersion())
+        .isFalse();
+  }
+
   /** Field test 2, E4 and I1: the key alias survives the stored arguments of both plans. */
   @Test
   void should_round_trip_the_key_alias_on_export_and_import_arguments() throws IOException {

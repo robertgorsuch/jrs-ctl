@@ -99,6 +99,16 @@ class ImportCommandTest {
         .contains("deprecatedImportExportEncSecret");
   }
 
+  /** Issue #107: the override for an archive from a newer version than this server. */
+  @Test
+  void should_pass_force_version_to_the_operation_when_given() {
+    assertThat(importOf("--force-version", "--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().forceVersion()).isTrue();
+
+    assertThat(importOf("--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().forceVersion()).isFalse();
+  }
+
   /** Field test 2, I4: the target organisation, merged when the ids differ. */
   @Test
   void should_pass_the_organisation_and_merge_switch_and_refuse_merge_alone() {

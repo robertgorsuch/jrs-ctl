@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import org.semver4j.Semver;
 
 /**
  * Plans exports and imports (spec §9). An export plan is exactly the chosen strategy's export steps
@@ -185,6 +186,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               + " server's own");
     }
     Optional<Sidecar> sidecar = readSidecar(archive, warnings);
+    sidecar.ifPresent(s -> refuseNewerCatalog(s, identity, options.forceVersion(), warnings));
     Optional<ExportRequest> snapshot =
         snapshotRequest(
             sidecar,
@@ -405,6 +407,46 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       return Sidecar.read(Sidecar.pathFor(archive)).flatMap(s -> s.flags().keyAlias());
     } catch (IOException | IllegalArgumentException e) {
       return Optional.empty();
+    }
+  }
+
+  /** The first version whose exports the vendor says cannot go into an older server. */
+  static final String FIRST_ONE_WAY_VERSION = "10.1.0";
+
+  /**
+   * Release notes 10.1 p.6: "Resources exported from version 10.1.0 cannot be imported into older
+   * versions" (issue #107). Refused at plan time, before the snapshot and the import, unless the
+   * operator forces it; a forced import is a warning and an audit row. A version that does not
+   * parse on either side is not judged.
+   */
+  private void refuseNewerCatalog(
+      Sidecar sidecar, ServerIdentity identity, boolean force, List<String> warnings) {
+    Semver source = Semver.coerce(sidecar.serverVersion());
+    Semver target = Semver.coerce(identity.version());
+    if (source == null
+        || target == null
+        || source.isLowerThan(FIRST_ONE_WAY_VERSION)
+        || target.isGreaterThanOrEqualTo(FIRST_ONE_WAY_VERSION)) {
+      return;
+    }
+    String what =
+        "the archive was exported from JasperReports Server "
+            + sidecar.serverVersion()
+            + " and this server is "
+            + identity.version()
+            + ": resources exported from 10.1.0 or later cannot be imported into older versions"
+            + " (release notes 10.1)";
+    if (!force) {
+      throw new IllegalArgumentException(
+          what
+              + "; import it into a 10.1 or later server, export the data from a server of this"
+              + " version, or pass --force-version to try anyway (audited)");
+    }
+    warnings.add(what + "; --force-version was given, so the import is attempted anyway");
+    try {
+      services.stateStore().get().audit("operator", "--force-version", what);
+    } catch (RuntimeException e) {
+      warnings.add("cannot write the audit row for --force-version: " + e.getMessage());
     }
   }
 

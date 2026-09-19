@@ -160,6 +160,7 @@ public final class PlanRegistry {
     putText(node, "keyAlias", o.keyAlias());
     putText(node, "organization", o.organization());
     node.put("mergeOrganization", o.mergeOrganization());
+    node.put("forceVersion", o.forceVersion());
     return Json.write(node);
   }
 
@@ -213,7 +214,9 @@ public final class PlanRegistry {
             .orElse(BrokenDependencies.FAIL),
         text(args, "keyAlias"),
         text(args, "organization"),
-        args.path("mergeOrganization").asBoolean(false));
+        args.path("mergeOrganization").asBoolean(false),
+        // arguments stored before the option existed describe an import that was not forced
+        args.path("forceVersion").asBoolean(false));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {
