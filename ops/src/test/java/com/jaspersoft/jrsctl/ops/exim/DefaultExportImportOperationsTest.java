@@ -71,12 +71,17 @@ class DefaultExportImportOperationsTest {
   }
 
   private void sidecar(List<String> uris, boolean fullServer) throws IOException {
+    sidecar(uris, fullServer, "8.2.0");
+  }
+
+  private void sidecar(List<String> uris, boolean fullServer, String sourceVersion)
+      throws IOException {
     Sidecar.write(
         Sidecar.pathFor(archive),
         new Sidecar(
             Instant.parse("2026-09-01T00:00:00Z"),
             "srv",
-            "8.2.0",
+            sourceVersion,
             Optional.of(EximFakeAdapter.FINGERPRINT),
             new Sidecar.Flags(
                 fullServer ? ExportRequest.Scope.EVERYTHING : ExportRequest.Scope.REPOSITORY,
@@ -365,6 +370,46 @@ class DefaultExportImportOperationsTest {
     assertThat(before.summary().backupLocations())
         .as("snapshot name follows the archive hash")
         .isNotEqualTo(after.summary().backupLocations());
+  }
+
+  /**
+   * Issue #107, release notes 10.1 p.6: "Resources exported from version 10.1.0 cannot be imported
+   * into older versions". The fake server is 8.2.0.
+   */
+  @Test
+  void should_refuse_planning_when_the_archive_comes_from_10_1_and_this_server_is_older()
+      throws IOException {
+    sidecar(List.of("/public"), false, "10.1.0");
+
+    assertThatThrownBy(() -> fx.ops().planImport(importOf(archive, false)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("10.1.0")
+        .hasMessageContaining("8.2.0")
+        .hasMessageContaining("cannot be imported into older versions")
+        .hasMessageContaining("--force-version");
+    assertThat(adapter.imports).isEmpty();
+  }
+
+  @Test
+  void should_plan_with_a_warning_and_an_audit_row_when_force_version_is_given()
+      throws IOException {
+    sidecar(List.of("/public"), false, "10.1.0");
+    ImportOptions options = importOf(archive, false).withForceVersion(true);
+
+    Plan plan = fx.ops().planImport(options);
+
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("--force-version") && w.contains("10.1.0"));
+    assertThat(fx.services.stateStore().get().auditRows(10))
+        .anyMatch(
+            a -> a.action().equals("--force-version") && a.detail().orElse("").contains("10.1.0"));
+  }
+
+  @Test
+  void should_not_refuse_an_archive_from_a_version_at_most_this_servers() throws IOException {
+    sidecar(List.of("/public"), false, "8.2.0");
+
+    assertThat(ids(fx.ops().planImport(importOf(archive, false)))).isNotEmpty();
   }
 
   @Test

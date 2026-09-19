@@ -270,6 +270,7 @@ The unaddressed items of the vendor review were filed as issues #105 to #118 in 
 
 - **#105 (PR #119):** the keystore is found through the running server's own `WEB-INF/classes/keystore.init.properties` first, then buildomatic's copy, then the run-as user's home; `doctor keystore` WARNs when `.jrsks` or `.jrsksp` is readable beyond its owner. Verified with the fakes; not against the real server.
 - **#106:** `upgrade --include-events` imports the access, audit and monitoring events after the newdb vendor run with the target's `js-import`; without it the plan says they are left behind. Verified with the fake vendor scripts (the three flags, once per run, no `--update`); not against a real buildomatic.
+- **#107:** `import` refuses at plan time (exit 2) an archive whose sidecar says it was exported from 10.1.0 or later when this server is older, the vendor's one-way rule from the 10.1 release notes; `--force-version` attempts it anyway with a warning and an audit row. Verified with the fake adapter (8.2.0 server, sidecars of 10.1.0 and 8.2.0); not against a real 10.1 archive.
 
 ## Known gaps
 

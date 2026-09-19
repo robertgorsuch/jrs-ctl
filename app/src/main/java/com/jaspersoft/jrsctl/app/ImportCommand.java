@@ -23,11 +23,13 @@ import picocli.CommandLine.Spec;
 /**
  * {@code jrsctl import <archive> [--update] [--skip-user-update] [--access-events] [--audit-events]
  * [--monitoring] [--settings] [--skip-themes] [--source-keystore <path>]
- * [--source-keystore-password-ref <ref>] [--strategy rest|vendor] [--plan] [--yes] [--json]} (spec
- * §9.5). Invariants: the import only ever runs through {@link PlanExecutor}; the plan always takes
- * a pre-import snapshot first and its summary states that rollback is best effort (spec §9.4); an
- * unparseable secret reference is a usage error (exit 1) raised before any bootstrap; a planning
- * failure exits 2 because nothing has been touched yet.
+ * [--source-keystore-password-ref <ref>] [--strategy rest|vendor] [--force-version] [--plan]
+ * [--yes] [--json]} (spec §9.5). Invariants: the import only ever runs through {@link
+ * PlanExecutor}; the plan always takes a pre-import snapshot first and its summary states that
+ * rollback is best effort (spec §9.4); an unparseable secret reference is a usage error (exit 1)
+ * raised before any bootstrap; a planning failure exits 2 because nothing has been touched yet,
+ * which includes an archive from 10.1 or later refused for an older server without {@code
+ * --force-version} (issue #107).
  */
 @Command(
     name = "import",
@@ -118,6 +120,14 @@ final class ImportCommand implements Callable<Integer> {
               + " ids differ (the archive's users, roles and resources override same-named ones).")
   boolean mergeOrganization;
 
+  @Option(
+      names = "--force-version",
+      description =
+          "Import an archive exported from JasperReports Server 10.1 or later into an older"
+              + " server anyway; the vendor says such resources cannot be imported there, so the"
+              + " plan refuses it without this flag (audited).")
+  boolean forceVersion;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -165,7 +175,8 @@ final class ImportCommand implements Callable<Integer> {
             broken,
             Optional.ofNullable(keyAlias),
             Optional.ofNullable(organization),
-            mergeOrganization);
+            mergeOrganization,
+            forceVersion);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

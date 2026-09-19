@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (vendor review §2.6, no 10.1 catalog into an older server)
+
+- §9.4, §9.5: an import whose sidecar records a source version of 10.1.0 or later is refused at plan time (exit 2, nothing snapshotted or imported) when this server is below 10.1.0, naming both versions and the remedies ("Resources exported from version 10.1.0 cannot be imported into older versions", release notes 10.1 p.6). `import --force-version` attempts it anyway with a plan warning and an audit row; the option survives the stored plan arguments. Without a sidecar, or with a version that does not parse, nothing is judged (issue #107).
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §2.3, events after a newdb upgrade)
 
 - §10.2 step 10-events, §10.4: `upgrade --include-events` adds `import-events` after `run-vendor-upgrade` in newdb mode: the new version's `js-import --input-zip <point-B export> --include-access-events --include-audit-events --include-monitoring-events`, while the server is still down, once per run, irreversible (the newdb rollback rebuilds the database from the same export). Without the flag a newdb plan's summary says the events are left behind and names the flag and the vendor command; samedb is unaffected. The guided menu asks the question for a newdb upgrade, off by default (upgrade guide 10.1 p.80, installation guide p.256; issue #106).
