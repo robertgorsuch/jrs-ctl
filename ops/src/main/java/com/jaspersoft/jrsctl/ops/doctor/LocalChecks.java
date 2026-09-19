@@ -50,7 +50,6 @@ final class LocalChecks {
   static final long GIB = 1L << 30;
   static final long DISK_WARN_BYTES = 5 * GIB;
   static final long DISK_FAIL_BYTES = 1 * GIB;
-  static final String ELEVATED_SID = "S-1-16-12288";
   private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(20);
 
   private LocalChecks() {}
@@ -511,17 +510,25 @@ final class LocalChecks {
     return ReportItem.pass("elevated", "not running elevated");
   }
 
-  private static boolean windowsElevated(ProcessRunner runner) {
-    List<String> lines = new ArrayList<>();
+  /**
+   * Whether this Windows process holds an elevated (administrator) token, judged by {@code fltmc}:
+   * the Filter Manager console answers with exit code 0 to an elevated caller and "access denied"
+   * otherwise, in about 80 ms. It replaces {@code whoami /groups}, which resolves every group of
+   * the user against the domain and took 2.7 to 4.2 seconds on a domain-joined machine, most of
+   * what {@code doctor} took (measured 2026-09-19). A probe that cannot run, times out or answers
+   * anything but success counts as not elevated, as before.
+   */
+  static boolean windowsElevated(ProcessRunner runner) {
     try {
-      runner.run(
-          new ProcessRunner.Request(
-              List.of("whoami", "/groups"), Optional.empty(), Map.of(), PROBE_TIMEOUT),
-          line -> lines.add(line.text()));
+      return runner
+          .run(
+              new ProcessRunner.Request(
+                  List.of("fltmc"), Optional.empty(), Map.of(), PROBE_TIMEOUT),
+              line -> {})
+          .ok();
     } catch (RuntimeException e) {
       return false;
     }
-    return lines.stream().anyMatch(l -> l.toUpperCase(Locale.ROOT).contains(ELEVATED_SID));
   }
 
   private static SnapshotStore snapshotStore(Services s) {

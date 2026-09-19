@@ -2,14 +2,18 @@ package com.jaspersoft.jrsctl.ops.doctor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.ops.FakeLayout;
+import com.jaspersoft.jrsctl.ops.FakePlatform;
 import com.jaspersoft.jrsctl.ops.FakeServices;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -35,6 +39,44 @@ class LocalChecksTest {
       assertThat(missing.status()).isEqualTo(ReportItem.Status.WARN);
       assertThat(missing.remediation()).contains("jrsctl init");
     }
+  }
+
+  /**
+   * The Windows elevation probe is {@code fltmc} (80 ms), not {@code whoami /groups}, which asks
+   * the domain controller for every group of the user and took seconds on a domain-joined machine.
+   */
+  @Test
+  void should_judge_windows_elevation_by_fltmc_alone() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("elevated"), Platform.OsFamily.WINDOWS)) {
+      fake.platform.on(List.of("fltmc"), new FakePlatform.Response(0, List.of("Filter Name")));
+
+      ReportItem item = LocalChecks.elevated(fake.build());
+
+      assertThat(item.status()).isEqualTo(ReportItem.Status.WARN);
+      assertThat(fake.platform.invocations).containsExactly(List.of("fltmc"));
+    }
+    try (FakeServices fake = FakeServices.in(tmp.resolve("plain"), Platform.OsFamily.WINDOWS)) {
+      fake.platform.on(
+          List.of("fltmc"), new FakePlatform.Response(5, List.of("Access is denied.")));
+
+      ReportItem item = LocalChecks.elevated(fake.build());
+
+      assertThat(item.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(fake.platform.invocations).containsExactly(List.of("fltmc"));
+    }
+  }
+
+  @Test
+  void should_count_a_windows_probe_that_cannot_run_as_not_elevated() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("missing"), Platform.OsFamily.WINDOWS)) {
+      // nothing scripted: the fake answers exit code 1, as a probe that failed would
+      assertThat(LocalChecks.elevated(fake.build()).status()).isEqualTo(ReportItem.Status.PASS);
+    }
+    ProcessRunner throwing =
+        (request, onLine) -> {
+          throw new IllegalStateException("no such program");
+        };
+    assertThat(LocalChecks.windowsElevated(throwing)).isFalse();
   }
 
   @Test
