@@ -116,6 +116,50 @@ class EximStepIdempotencyTest {
     }
   }
 
+  /**
+   * Issue #139: the step records what is new, on the server nothing changes; twice is one record.
+   */
+  @Test
+  void should_record_the_same_new_folders_when_remove_new_content_executes_twice()
+      throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.existing = Optional.of(Set.of("/public"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Step step = new RemoveNewContent("import", List.of("/public/new/inner"));
+      Context ctx = fx.context(EximFixture.RUN);
+
+      Idempotency.executeOk(step, ctx);
+      Path record = RemoveNewContent.recordFile(ctx);
+      String once = Files.readString(record);
+      Idempotency.executeOk(step, ctx);
+
+      assertThat(Files.readString(record)).isEqualTo(once);
+      assertThat(Files.readAllLines(record)).containsExactly("/public/new");
+      assertThat(adapter.deleted).isEmpty();
+      assertThat(adapter.imports).isEmpty();
+    }
+  }
+
+  @Test
+  void should_delete_the_new_folders_once_when_remove_new_content_compensates_twice()
+      throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.existing = Optional.of(Set.of("/public"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Step step = new RemoveNewContent("import", List.of("/public/new"));
+      Context ctx = fx.context(EximFixture.RUN);
+      Idempotency.executeOk(step, ctx);
+      adapter.existing = Optional.of(Set.of("/public", "/public/new"));
+
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+
+      assertThat(adapter.deleted)
+          .as("the second compensation finds it gone")
+          .containsExactly("/public/new");
+    }
+  }
+
   @Test
   void should_reimport_the_snapshot_once_when_restore_from_pre_import_snapshot_compensates_twice()
       throws IOException {

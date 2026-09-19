@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (issue #139, rollback of a failed import of new content)
+
+- §9.4: a failed import of a folder that does not exist yet used to leave everything it created while the run reported a rollback (exit 3): no snapshot and no listing covered it. Every import plan whose sidecar names folders now has the rollback anchor `import.new-content-rollback` (ADR-0036); at run time it records the topmost missing ancestor of each folder that does not exist yet, and its compensation deletes them with their content; an organisation's own folder is not recorded (log names `DELETE /rest_v2/organizations/<id>`); a failed deletion is exit 4. The plan's rollback sentence and the two snapshot warnings say what is deleted instead of "nothing to put back". Found by a live check against a real 10.0.0 server.
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §4.3, import size and theme guards)
 
 - §9.3: `import` measures the archive. Above 2 GB it does not use REST when the strategy was left to the rules: the vendor tools when the machine has an installation, else a refusal at planning (exit 2). `--strategy rest` is respected and warns (ADR-0033). When the sidecar's source major differs from the target's, themes are skipped by default and the plan says so; new `--themes` turns that off; `--themes` with `--skip-themes` is a usage error (exit 1). `ImportOptions` gains `keepThemes` and the stored plan arguments `keepThemes`.

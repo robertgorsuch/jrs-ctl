@@ -52,10 +52,13 @@ every succeeded step back to the start of the failing phase (or the whole plan w
 fix what it names (a locked jar, a refused credential, a database that rejected a statement), and
 run the command again. Nothing needs to be restored by hand.
 
-An import that rolled back is the one exception: the pre-import snapshot restores overwritten
-resources but cannot delete resources the failed archive created. Check the repository for
-resources the failed import added; the snapshot stays under `snapshots/pre-import/` and can be
-re-imported by hand with `jrsctl import <snapshot> --update`.
+An import that rolled back needs nothing by hand for the archive's folders: the rollback deletes
+what the failed import created there (additions under folders that existed, and folders that did
+not exist before, #100 and #139) and re-imports the pre-import snapshot for what it overwrote. It
+does not track users, roles, settings or events the archive also carried, and it cannot delete an
+organisation the import created (`DELETE /rest_v2/organizations/<id>`); check those. The snapshot
+stays under `snapshots/pre-import/` and can be re-imported by hand with `jrsctl import <snapshot>
+--update`.
 
 ## Exit 4: "rollback incomplete"
 

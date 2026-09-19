@@ -24,15 +24,17 @@ import java.util.Set;
  * idempotent through the run-scoped {@code import-handle.txt}: a recorded task id is reused instead
  * of uploading again, and an {@code import-started.txt} without a handle means an earlier attempt
  * may have started an import, which is fatal rather than retried (ADR-0017). Compensation is
- * intentionally a no-op that only logs: the repository is restored by the ops layer's {@code
- * PreImportSnapshot} step, which re-imports the snapshot taken before this phase (best effort, spec
- * §9.4); this step cannot undo a server-side import itself.
+ * intentionally a no-op that only logs: the repository is restored by the ops layer's rollback
+ * steps of this phase, which delete what the import created (folders that did not exist before it,
+ * issue #139, and additions under folders that did, issue #100) and re-import the snapshot taken
+ * before this phase (spec §9.4); this step cannot undo a server-side import itself.
  */
 final class StartImport implements Step {
 
   static final String ID = "import.start";
   static final String ROLLBACK_NOTE =
-      "repository rollback is handled by the pre-import snapshot step";
+      "repository rollback is handled by the import phase's rollback steps: deleting what the"
+          + " import created and re-importing the pre-import snapshot";
 
   /** Statuses that mean the server did not accept the request, so no import can have started. */
   private static final Set<Integer> NOT_ACCEPTED = Set.of(408, 429, 503);

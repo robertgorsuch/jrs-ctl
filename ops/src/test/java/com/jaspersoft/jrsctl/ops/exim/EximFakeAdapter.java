@@ -109,9 +109,20 @@ final class EximFakeAdapter implements JrsAdapter {
     return target;
   }
 
+  /**
+   * URIs that come to exist when an import starts: the fake's stand-in for what an import creates.
+   * Only meaningful together with {@link #existing}.
+   */
+  Set<String> createdOnImport = Set.of();
+
   @Override
   public Handles.ImportHandle startImport(ImportRequest request, Path archive) {
     imports.add(new ImportCall(request, archive));
+    if (existing.isPresent() && !createdOnImport.isEmpty()) {
+      Set<String> now = new java.util.HashSet<>(existing.get());
+      now.addAll(createdOnImport);
+      existing = Optional.of(now);
+    }
     return new Handles.ImportHandle("imp-" + imports.size());
   }
 
@@ -152,9 +163,15 @@ final class EximFakeAdapter implements JrsAdapter {
 
   final List<String> existenceChecks = new ArrayList<>();
 
+  /** When set, every existence check fails with this message. */
+  Optional<String> existsFailure = Optional.empty();
+
   @Override
   public boolean resourceExists(String uri) {
     existenceChecks.add(uri);
+    if (existsFailure.isPresent()) {
+      throw new IllegalStateException(existsFailure.get());
+    }
     return existing.map(s -> s.contains(uri)).orElse(true);
   }
 
@@ -203,8 +220,21 @@ final class EximFakeAdapter implements JrsAdapter {
     return lastTree.stream().filter(u -> !deleted.contains(u)).toList();
   }
 
+  /** URIs whose deletion the fake refuses. */
+  final Set<String> undeletable = new java.util.HashSet<>();
+
   @Override
   public void deleteResource(String uri) {
+    if (undeletable.contains(uri)) {
+      throw new IllegalStateException("deletion of " + uri + " refused by the fake");
+    }
     deleted.add(uri);
+    // a deleted folder takes its content with it, so a second rollback finds nothing there
+    existing =
+        existing.map(
+            all ->
+                all.stream()
+                    .filter(u -> !u.equals(uri) && !u.startsWith(uri + "/"))
+                    .collect(java.util.stream.Collectors.toSet()));
   }
 }

@@ -338,6 +338,7 @@ class DefaultExportImportOperationsTest {
             "backup.export.download",
             "backup.export.sidecar",
             "import.snapshot-rollback",
+            "import.new-content-rollback",
             "import.start",
             "import.poll",
             "import.verify");
@@ -589,6 +590,114 @@ class DefaultExportImportOperationsTest {
     Plan plan = fx.ops().planImport(importOf(archive, false));
 
     assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("themes are not imported"));
+  }
+
+  // ---- issue #139: a failed import of new content ---------------------------------------------
+
+  /**
+   * No folder of the archive exists on the server: there is no snapshot to re-import, and the
+   * rollback deletes what the import creates, so the plan says that instead of "nothing to put
+   * back".
+   */
+  @Test
+  void should_plan_to_delete_what_the_import_creates_when_no_folder_exists_yet()
+      throws IOException {
+    sidecar(List.of("/public/batch"), false);
+    adapter.existing = Optional.of(Set.of("/public"));
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(ids(plan))
+        .contains("import.new-content-rollback")
+        .noneMatch(id -> id.startsWith("backup."))
+        .doesNotContain("import.snapshot-rollback");
+    assertThat(plan.summary().rollbackPointsByPhase().get("import"))
+        .contains("delete /public/batch")
+        .contains("does not exist yet")
+        .doesNotContain("nothing to put back");
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("/public/batch does not exist") && w.contains("is deleted"))
+        .anyMatch(
+            w -> w.contains("no pre-import snapshot") && w.contains("deleting what it created"))
+        .noneMatch(w -> w.contains("nothing to put back"));
+  }
+
+  /** The topmost missing folder is the one to delete, not the archive's own folder. */
+  @Test
+  void should_name_the_topmost_missing_ancestor_in_the_rollback() throws IOException {
+    sidecar(List.of("/e2e/batch"), false);
+    adapter.existing = Optional.of(Set.of());
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.summary().rollbackPointsByPhase().get("import")).contains("delete /e2e with");
+  }
+
+  /**
+   * The step is in the plan whenever the sidecar names folders, existing or not, so a plan rebuilt
+   * by {@code runs recover} after the import created them has the same steps.
+   */
+  @Test
+  void should_keep_the_same_steps_whether_or_not_the_folders_exist_at_plan_time()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+    adapter.existing = Optional.of(Set.of());
+    List<String> absent = ids(fx.ops().planImport(importOf(archive, false)));
+
+    adapter.existing = Optional.of(Set.of("/public"));
+    Plan present = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(absent).contains("import.new-content-rollback");
+    assertThat(ids(present)).contains("import.new-content-rollback", "import.snapshot-rollback");
+    assertThat(present.summary().rollbackPointsByPhase().get("import"))
+        .doesNotContain("also delete");
+  }
+
+  @Test
+  void should_add_no_new_content_step_when_the_archive_holds_the_whole_repository()
+      throws IOException {
+    sidecar(List.of(), true);
+
+    Plan plan = fx.ops().planImport(importOf(archive, true));
+
+    assertThat(ids(plan)).doesNotContain("import.new-content-rollback");
+  }
+
+  @Test
+  void should_scope_the_new_content_folders_to_the_sidecar_and_the_organisation() {
+    Sidecar.Flags repository =
+        new Sidecar.Flags(
+            ExportRequest.Scope.REPOSITORY,
+            List.of("/b", "/a"),
+            true,
+            false,
+            false,
+            false,
+            false,
+            false);
+    Sidecar.Flags whole =
+        new Sidecar.Flags(
+            ExportRequest.Scope.EVERYTHING, List.of(), true, false, false, false, false, true);
+    java.util.function.Function<Sidecar.Flags, Optional<Sidecar>> of =
+        f ->
+            Optional.of(
+                new Sidecar(
+                    Instant.parse("2026-09-01T00:00:00Z"),
+                    "srv",
+                    "8.2.0",
+                    Optional.empty(),
+                    f,
+                    "0000",
+                    ExportImportStrategy.Kind.REST));
+
+    assertThat(DefaultExportImportOperations.newContentUris(of.apply(repository), Optional.empty()))
+        .containsExactly("/a", "/b");
+    assertThat(DefaultExportImportOperations.newContentUris(of.apply(whole), Optional.empty()))
+        .isEmpty();
+    assertThat(DefaultExportImportOperations.newContentUris(Optional.empty(), Optional.empty()))
+        .isEmpty();
+    assertThat(DefaultExportImportOperations.newContentUris(Optional.empty(), Optional.of("acme")))
+        .containsExactly("/organizations/acme");
   }
 
   @Test
