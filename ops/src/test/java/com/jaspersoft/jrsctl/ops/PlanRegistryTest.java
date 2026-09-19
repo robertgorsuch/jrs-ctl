@@ -230,6 +230,36 @@ class PlanRegistryTest {
         .isFalse();
   }
 
+  /**
+   * Issue #115: {@code --themes} survives the stored arguments, and an old row means the default.
+   */
+  @Test
+  void should_round_trip_the_keep_themes_switch_on_import_arguments() throws IOException {
+    ExportImportOperations.ImportOptions options =
+        new ExportImportOperations.ImportOptions(
+                Path.of("in", "import.zip"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty())
+            .withKeepThemes(true)
+            .withForceVersion(true);
+
+    JsonNode args = tree(PlanRegistry.importArgs(options));
+
+    assertThat(args.get("keepThemes").asBoolean()).isTrue();
+    ExportImportOperations.ImportOptions back = PlanRegistry.importOptions(args);
+    assertThat(back.keepThemes()).isTrue();
+    assertThat(back.forceVersion()).as("withForceVersion after withKeepThemes keeps both").isTrue();
+    assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).keepThemes()).isFalse();
+  }
+
   /** Field test 2, E4 and I1: the key alias survives the stored arguments of both plans. */
   @Test
   void should_round_trip_the_key_alias_on_export_and_import_arguments() throws IOException {

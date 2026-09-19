@@ -535,6 +535,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - An import that names a key alias, on the command line or through the sidecar (planning adopts the sidecar's alias when the operator gives none, and says so), skips the fingerprint comparison: the named key decrypts the archive, this server's own keystore is not what it was encrypted with. A portable export therefore moves between servers without `--source-keystore`.
 - Import compares fingerprints; on mismatch, fail before mutation with instructions, or accept `--source-keystore` and `--source-keystore-password-ref` to perform the vendor-documented keystore import step first.
 - Import compares versions: "Resources exported from version 10.1.0 cannot be imported into older versions" (release notes 10.1 p.6), so an archive whose sidecar records a source version of 10.1.0 or later is refused at plan time (exit 2, nothing snapshotted or imported) when this server is below 10.1.0, naming both versions and the remedies. `--force-version` attempts it anyway, with a warning in the plan and an audit row. Without a sidecar, or with a version that does not parse on either side, nothing is judged (issue #107).
+- Import guards for size and themes (vendor review §4.3, issue #115, ADR-0033). An archive above 2 GB (REST reference p.118) is not sent over REST when the strategy was left to the rules: the vendor tools take it when this machine has an installation, and planning is refused (exit 2) naming `--strategy rest` when it has none; `--strategy rest` is the operator's decision and only warns. When the sidecar records a source version whose major differs from this server's, themes are not imported and the plan says so; `--themes` imports them, `--skip-themes` states the default and the two together are a usage error. Without a sidecar or with a version that does not parse the themes are left as the flags say.
 
 ### 9.4 Import safety
 
@@ -549,7 +550,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 9.5 Commands
 
 - `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] [--organization <id>] --out <file>`
-- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--organization <id> [--merge-organization]] [--strategy rest|vendor] [--plan] [--yes]`
+- `jrsctl import <archive> [--update] [--skip-user-update] [--skip-themes | --themes] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--organization <id> [--merge-organization]] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---
 

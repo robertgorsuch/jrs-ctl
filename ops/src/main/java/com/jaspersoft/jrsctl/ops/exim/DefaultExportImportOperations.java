@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -65,16 +66,28 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           + " there in between is deleted with them) and re-imports the pre-import snapshot, which"
           + " puts back what the import overwrote.";
 
+  /**
+   * REST reference 10.1 p.118: "Jaspersoft does not recommend uploading files greater than 2 GB".
+   */
+  static final long REST_UPLOAD_LIMIT = 2L * 1024 * 1024 * 1024;
+
   private final Services services;
   private final Strategies strategies;
+  private final long restUploadLimit;
 
   public DefaultExportImportOperations(Services services) {
     this(services, Strategies.standard(services.platform(), services.redactor()));
   }
 
   public DefaultExportImportOperations(Services services, Strategies strategies) {
+    this(services, strategies, REST_UPLOAD_LIMIT);
+  }
+
+  /** A test can lower the size above which an import leaves REST (issue #115). */
+  DefaultExportImportOperations(Services services, Strategies strategies, long restUploadLimit) {
     this.services = Objects.requireNonNull(services, "services");
     this.strategies = Objects.requireNonNull(strategies, "strategies");
+    this.restUploadLimit = restUploadLimit;
   }
 
   // ---------------------------------------------------------------- export
@@ -153,6 +166,13 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     } catch (IOException e) {
       throw new UncheckedIOException("cannot hash " + archive + ": " + e.getMessage(), e);
     }
+    JrsAdapter adapter = services.adapter().get();
+    ServerIdentity identity = adapter.identity();
+    List<String> sidecarWarnings = new ArrayList<>();
+    Optional<Sidecar> sidecar = readSidecar(archive, sidecarWarnings);
+    // issue #115: themes are repository resources and an old one may not fit a new major version
+    boolean acrossMajor = sidecar.map(sc -> crossesMajor(sc, identity)).orElse(false);
+    boolean themesDefaulted = acrossMajor && !options.skipThemes() && !options.keepThemes();
     ImportRequest request =
         new ImportRequest(
             archive,
@@ -162,7 +182,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.auditEvents(),
             options.monitoring(),
             options.settings(),
-            options.skipThemes(),
+            options.skipThemes() || themesDefaulted,
             options.sourceKeystore().map(p -> p.toAbsolutePath().normalize()),
             options.sourceKeystorePassword(),
             options.brokenDependencies(),
@@ -171,15 +191,14 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.keyAlias().or(() -> sidecarKeyAlias(archive)),
             options.organization(),
             options.mergeOrganization());
-    JrsAdapter adapter = services.adapter().get();
-    ServerIdentity identity = adapter.identity();
-    Strategies.Selection selection =
+    Strategies.Selection chosen =
         strategies.select(services.config(), adapter, request, options.strategy());
-    requireLocalInstallation(selection, options.strategy(), false, "import");
-    ExportImportStrategy strategy = selection.strategy();
-
+    requireLocalInstallation(chosen, options.strategy(), false, "import");
     List<String> warnings = new ArrayList<>();
     warnings.add(ROLLBACK_WARNING);
+    Strategies.Selection selection =
+        leaveRestAboveTheLimit(chosen, adapter, request, options, archive, warnings);
+    ExportImportStrategy strategy = selection.strategy();
     if (options.keyAlias().isEmpty() && request.keyAlias().isPresent()) {
       warnings.add(
           "the archive was exported with key alias "
@@ -187,8 +206,17 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               + " (recorded in its sidecar); the import decrypts it with that key, not with this"
               + " server's own");
     }
-    Optional<Sidecar> sidecar = readSidecar(archive, warnings);
+    warnings.addAll(sidecarWarnings);
     sidecar.ifPresent(s -> refuseNewerCatalog(s, identity, options.forceVersion(), warnings));
+    if (themesDefaulted) {
+      warnings.add(
+          "themes are not imported: the archive was exported from JasperReports Server "
+              + sidecar.get().serverVersion()
+              + " and this server is "
+              + identity.version()
+              + ", and a theme from another major version may not fit; pass --themes to import"
+              + " them anyway");
+    }
     Optional<ExportRequest> snapshot =
         snapshotRequest(
             sidecar,
@@ -417,6 +445,67 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     } catch (IOException | IllegalArgumentException e) {
       return Optional.empty();
     }
+  }
+
+  /** True when both versions parse and their major numbers differ (issue #115). */
+  private static boolean crossesMajor(Sidecar sidecar, ServerIdentity identity) {
+    Semver source = Semver.coerce(sidecar.serverVersion());
+    Semver target = Semver.coerce(identity.version());
+    return source != null && target != null && source.getMajor() != target.getMajor();
+  }
+
+  /**
+   * Issue #115 (REST reference 10.1 p.118): a large archive uploaded over REST fails inside the
+   * server after a long transfer. Above {@link #REST_UPLOAD_LIMIT} an automatic choice of REST
+   * becomes the vendor tools when this machine has them and a refusal (exit 2) when it has not; an
+   * explicit {@code --strategy rest} is the operator's decision and only earns a warning.
+   */
+  private Strategies.Selection leaveRestAboveTheLimit(
+      Strategies.Selection chosen,
+      JrsAdapter adapter,
+      ImportRequest request,
+      ImportOptions options,
+      Path archive,
+      List<String> warnings) {
+    if (chosen.kind() != ExportImportStrategy.Kind.REST) {
+      return chosen;
+    }
+    long size;
+    try {
+      size = Files.size(archive);
+    } catch (IOException e) {
+      throw new UncheckedIOException(
+          "cannot read the size of " + archive + ": " + e.getMessage(), e);
+    }
+    if (size <= restUploadLimit) {
+      return chosen;
+    }
+    String big =
+        archive.getFileName()
+            + " is "
+            + String.format(Locale.ROOT, "%.1f", size / (1024.0 * 1024 * 1024))
+            + " GiB and the vendor does not recommend uploading more than 2 GB over REST (REST"
+            + " reference p.118); the server fails such an upload after the long transfer";
+    if (options.strategy().isPresent()) {
+      warnings.add(big + "; --strategy rest was given, so the upload is attempted anyway");
+      return chosen;
+    }
+    Strategies.Selection vendor =
+        strategies.select(
+            services.config(), adapter, request, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
+    try {
+      requireLocalInstallation(
+          vendor, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI), false, "import");
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          big
+              + ", and the vendor import tools are not available here: "
+              + e.getMessage()
+              + "; pass --strategy rest to upload it anyway");
+    }
+    warnings.add(big + "; the vendor import tools are used instead");
+    return new Strategies.Selection(
+        vendor.strategy(), "vendor CLI: the archive is above 2 GB (REST reference p.118)");
   }
 
   /** The first version whose exports the vendor says cannot go into an older server. */

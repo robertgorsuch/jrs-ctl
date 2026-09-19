@@ -121,7 +121,9 @@ public interface ExportImportOperations {
   /**
    * Options for {@code jrsctl import}. {@code forceVersion} imports an archive whose sidecar
    * records a source version the vendor says cannot be imported here (10.1 and later into a server
-   * below 10.1; issue #107) instead of refusing it; the override is audited.
+   * below 10.1; issue #107) instead of refusing it; the override is audited. {@code keepThemes}
+   * (issue #115) turns off the default of skipping themes when the archive comes from another major
+   * version than this server.
    */
   record ImportOptions(
       Path archive,
@@ -139,7 +141,8 @@ public interface ExportImportOperations {
       Optional<String> keyAlias,
       Optional<String> organization,
       boolean mergeOrganization,
-      boolean forceVersion) {
+      boolean forceVersion,
+      boolean keepThemes) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -149,6 +152,44 @@ public interface ExportImportOperations {
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(organization, "organization");
+    }
+
+    /** The options that keep the themes default: skipped only across a major version. */
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies,
+        Optional<String> keyAlias,
+        Optional<String> organization,
+        boolean mergeOrganization,
+        boolean forceVersion) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          false);
     }
 
     /** The options that refuse an archive from a version the vendor says cannot come here. */
@@ -204,7 +245,29 @@ public interface ExportImportOperations {
           keyAlias,
           organization,
           mergeOrganization,
-          force);
+          force,
+          keepThemes);
+    }
+
+    public ImportOptions withKeepThemes(boolean keep) {
+      return new ImportOptions(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keep);
     }
 
     public ImportOptions(

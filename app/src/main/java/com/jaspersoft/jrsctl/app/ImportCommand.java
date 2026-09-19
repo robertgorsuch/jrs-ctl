@@ -66,8 +66,19 @@ final class ImportCommand implements Callable<Integer> {
   @Option(names = "--settings", description = "Include server settings.")
   boolean settings;
 
-  @Option(names = "--skip-themes", description = "Do not import themes.")
+  @Option(
+      names = "--skip-themes",
+      description =
+          "Do not import themes. This is already the default when the archive comes from another"
+              + " major version than this server (old themes may not fit the new one).")
   boolean skipThemes;
+
+  @Option(
+      names = "--themes",
+      description =
+          "Import the themes even when the archive comes from another major version than this"
+              + " server.")
+  boolean themes;
 
   @Option(
       names = "--broken-dependencies",
@@ -159,6 +170,10 @@ final class ImportCommand implements Callable<Integer> {
           ExitCodes.USAGE,
           "--merge-organization needs --organization <id>");
     }
+    if (themes && skipThemes) {
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.USAGE, "--themes and --skip-themes contradict");
+    }
     ExportImportOperations.ImportOptions options =
         new ExportImportOperations.ImportOptions(
             archive,
@@ -176,7 +191,8 @@ final class ImportCommand implements Callable<Integer> {
             Optional.ofNullable(keyAlias),
             Optional.ofNullable(organization),
             mergeOrganization,
-            forceVersion);
+            forceVersion,
+            themes);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;
