@@ -298,13 +298,56 @@ public final class UpgradeFixture implements AutoCloseable {
         "appServerType=tomcat\ndbType=postgresql\ndbHost=localhost\ndbPort=5432\ndbUsername=jasperdb\n"
             + "dbPassword=TopSecret\njs.dbName=jasperserver\n");
     exportScripts(buildomatic);
-    write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
-    write(buildomatic.resolve("js-ant.bat"), "@echo off\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-ant.sh"), "#!/bin/sh\nexit 0\n");
+    installedVendorScripts(buildomatic);
     write(installDir.resolve("ctlscript.sh"), "#!/bin/sh\n");
     write(installDir.resolve("ctlscript.bat"), "@echo off\r\n");
     executable(buildomatic);
+  }
+
+  /**
+   * The installed buildomatic's js-ant and js-import, which a database rollback runs (ADR-0029):
+   * they log their arguments to the vendor log and say what the real ones say on success.
+   */
+  private void installedVendorScripts(Path buildomatic) throws IOException {
+    String log = vendorLog.toString();
+    write(
+        buildomatic.resolve("js-ant.bat"),
+        "@echo off\r\n"
+            + "echo js-ant fake target=%1\r\n"
+            + "echo %* >> \""
+            + log
+            + "\"\r\n"
+            + "echo BUILD SUCCESSFUL\r\n"
+            + "exit /b 0\r\n");
+    write(
+        buildomatic.resolve("js-ant.sh"),
+        "#!/bin/sh\n"
+            + "echo \"js-ant fake target=$1\"\n"
+            + "echo \"$@\" >> \""
+            + log
+            + "\"\n"
+            + "echo BUILD SUCCESSFUL\n"
+            + "exit 0\n");
+    write(
+        buildomatic.resolve("js-import.bat"),
+        "@echo off\r\n"
+            + "echo js-import %* >> \""
+            + log
+            + "\"\r\n"
+            + "echo Processing started\r\n"
+            + "echo VALIDATION COMPLETED\r\n"
+            + "echo Done\r\n"
+            + "exit /b 0\r\n");
+    write(
+        buildomatic.resolve("js-import.sh"),
+        "#!/bin/sh\n"
+            + "echo \"js-import $@\" >> \""
+            + log
+            + "\"\n"
+            + "echo Processing started\n"
+            + "echo VALIDATION COMPLETED\n"
+            + "echo Done\n"
+            + "exit 0\n");
   }
 
   private void exportScripts(Path buildomatic) throws IOException {

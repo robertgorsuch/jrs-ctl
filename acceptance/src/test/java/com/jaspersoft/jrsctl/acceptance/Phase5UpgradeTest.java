@@ -75,6 +75,7 @@ class Phase5UpgradeTest {
   private static Cli cli;
   @TempDir static Path tmp;
   private static Path home;
+  private static Path installedBuildomatic;
   private static Path install;
   private static Path tomcat;
   private static Path webapp;
@@ -228,6 +229,7 @@ class Phase5UpgradeTest {
             .resolve("jasperserver-pro.xml"),
         "<Context docBase=\"jasperserver-pro\"/>");
     Path buildomatic = install.resolve("buildomatic");
+    installedBuildomatic = buildomatic;
     vendorScripts(buildomatic, Optional.empty());
     write(
         buildomatic.resolve("default_master.properties"),
@@ -315,13 +317,28 @@ class Phase5UpgradeTest {
     write(
         buildomatic.resolve("js-export.sh"),
         "#!/bin/sh\necho Processing started\necho fake export > \"$2\"\necho Done\nexit 0\n");
-    write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
     if (webappNew.isEmpty()) {
-      write(buildomatic.resolve("js-ant.bat"), "@echo off\r\nexit /b 0\r\n");
-      write(buildomatic.resolve("js-ant.sh"), "#!/bin/sh\nexit 0\n");
+      // the installed buildomatic: what upgrade rollback --restore-database runs (ADR-0029); the
+      // fakes log their arguments to vendor.log and say what the real ones say on success
+      write(
+          buildomatic.resolve("js-ant.bat"),
+          "@echo off\r\necho %* >> \"%~dp0vendor.log\"\r\necho BUILD SUCCESSFUL\r\nexit /b 0\r\n");
+      write(
+          buildomatic.resolve("js-ant.sh"),
+          "#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/vendor.log\"\necho BUILD SUCCESSFUL\n"
+              + "exit 0\n");
+      write(
+          buildomatic.resolve("js-import.bat"),
+          "@echo off\r\necho js-import %* >> \"%~dp0vendor.log\"\r\necho Processing started\r\n"
+              + "echo VALIDATION COMPLETED\r\necho Done\r\nexit /b 0\r\n");
+      write(
+          buildomatic.resolve("js-import.sh"),
+          "#!/bin/sh\necho \"js-import $@\" >> \"$(dirname \"$0\")/vendor.log\"\n"
+              + "echo Processing started\necho VALIDATION COMPLETED\necho Done\nexit 0\n");
       return;
     }
+    write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
+    write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
     String target = webapp.toString();
     write(
         buildomatic.resolve("js-ant.bat"),
@@ -486,36 +503,23 @@ class Phase5UpgradeTest {
   @Test
   @Order(1)
   void upgrade_plan_prints_the_five_phases_and_the_newdb_database_warning() throws Exception {
-    // newdb drops and recreates the repository database (ADR-0012), so it is gated like samedb.
-    Cli.Result refused =
-        jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--plan")
-            .assertExit(2);
-    assertThat(refused.stderr())
-        .contains("--db-backup-confirmed")
-        .contains("drops and recreates")
-        .contains("cannot undo");
-
+    // newdb takes its own full export and its rollback rebuilds the database from it (ADR-0029),
+    // so it asks for no backup confirmation; samedb still does (order 2).
     Cli.Result plan =
-        jrsctl(
-                "upgrade",
-                "--to",
-                targetVersion,
-                "--package",
-                pkg.toString(),
-                "--db-backup-confirmed",
-                "--plan")
+        jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--plan")
             .assertExit(0);
 
     assertThat(plan.stdout())
         .contains("Plan  upgrade")
         .contains("preflight")
-        .contains("confirm the operator backed up")
+        .doesNotContain("confirm the operator backed up")
         .contains("backup")
         .contains("vendor-upgrade")
         .contains("reconcile")
         .contains("verify")
         .contains("js-upgrade-newdb drops and recreates the repository database")
-        .contains("Rollback restores files only")
+        .contains("upgrade rollback --restore-database rebuilds it")
+        .doesNotContain("Rollback restores files only")
         .contains("nothing has changed");
     assertThat(plan.stdout()).doesNotContain("complete file and connection restore");
     assertThat(webapp.resolve(MARKER)).doesNotExist();
@@ -686,16 +690,49 @@ class Phase5UpgradeTest {
     assertThat(plan.stdout())
         .contains("Plan  upgrade.rollback")
         .contains("restore the webapp")
-        .contains("Rollback restores files only");
+        .contains("Rollback restores files only")
+        .contains("re-run with --restore-database");
     assertThat(webapp.resolve(MARKER)).exists();
 
+    // ADR-0029: the newdb database is rebuilt from the point-B export with the restored buildomatic
+    Cli.Result withDatabase =
+        jrsctl(
+                "upgrade",
+                "rollback",
+                upgradeRunId,
+                "--to-point",
+                "B",
+                "--restore-database",
+                "--plan")
+            .assertExit(0);
+    assertThat(withDatabase.stdout())
+        .contains("rebuild the old repository database")
+        .contains("re-import the point-B export")
+        .contains("rebuilds the repository database from")
+        .doesNotContain("Rollback restores files only");
+
     Cli.Result rolled =
-        jrsctl("upgrade", "rollback", upgradeRunId, "--to-point", "B", "--yes").assertExit(0);
+        jrsctl(
+                "upgrade",
+                "rollback",
+                upgradeRunId,
+                "--to-point",
+                "B",
+                "--restore-database",
+                "--yes")
+            .assertExit(0);
 
     assertThat(rolled.stdout()).contains("succeeded");
     assertThat(webapp.resolve(MARKER)).doesNotExist();
     assertThat(webapp.resolve("version.txt")).hasContent("8.2.0");
     assertThat(webapp.resolve("WEB-INF").resolve("lib").resolve("x.jar")).exists();
+    String vendorLog =
+        Files.readString(installedBuildomatic.resolve("vendor.log"), StandardCharsets.UTF_8);
+    assertThat(vendorLog)
+        .contains("init-js-db-pro")
+        .contains("js-import --input-zip")
+        .contains("full-export.zip");
+    assertThat(vendorLog.indexOf("init-js-db-pro")).isLessThan(vendorLog.indexOf("js-import"));
   }
 
   @Test

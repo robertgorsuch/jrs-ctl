@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -71,8 +72,22 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
 
   public static final String NEWDB_WARNING =
       "js-upgrade-newdb drops and recreates the repository database named in"
-          + " default_master.properties, then imports the point-B full export into it; jrsctl"
-          + " cannot undo that (ADR-0012).";
+          + " default_master.properties, then imports the point-B full export into it; upgrade"
+          + " rollback --restore-database rebuilds the old database from the same export"
+          + " (ADR-0012, ADR-0029).";
+
+  /** ADR-0029: why newdb asks for no database backup, in the plan's own words. */
+  public static final String NEWDB_ROLLBACK_WARNING =
+      "jrsctl backs up the files, the keystore and a full export of the repository;"
+          + " js-upgrade-newdb drops and recreates the database from that export, and upgrade"
+          + " rollback --restore-database rebuilds it from the same export.";
+
+  /** ADR-0029: what {@code --restore-database} does; {@code %s} is the export. */
+  public static final String DATABASE_RESTORE_WARNING =
+      "This rollback rebuilds the repository database from %s with the restored buildomatic:"
+          + " js-ant init-js-db drops the database the upgrade created and initialises the old"
+          + " schema, then js-import reloads the export. Nothing changed in the repository after"
+          + " that export survives.";
 
   /**
    * Review §1.6, ADR-0025: nothing may change in the repository after the export newdb rebuilds it
@@ -331,14 +346,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     if (options.mode() == Mode.NEWDB) {
       warnings.add(NEWDB_STAYS_STOPPED_WARNING);
     }
-    warnings.add(FILES_ONLY_WARNING);
+    warnings.add(options.mode() == Mode.SAMEDB ? FILES_ONLY_WARNING : NEWDB_ROLLBACK_WARNING);
     warnings.add(PASSWORD_WARNING);
 
     List<Step> steps = new ArrayList<>();
     steps.add(new PreflightSteps.Doctor(rt, in));
     steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
-    steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
     if (options.mode() == Mode.SAMEDB) {
+      // newdb's own full export is the backup its rollback rebuilds the database from (ADR-0029);
+      // samedb migrates the schema in place, which no export undoes, so it still asks
+      steps.add(new PreflightSteps.ConfirmDbBackup(rt, in));
       // samedb migrates the database in place and the export is only a rollback aid, so the
       // server may serve again between the export and the vendor run
       steps.add(ServiceSteps.stop(rt, Phases.BACKUP, BackupSteps.FULL_EXPORT + "-stop-service"));
@@ -507,9 +524,10 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
   }
 
   @Override
-  public Plan planRollback(String runId, RollbackPoint point) {
+  public Plan planRollback(String runId, RollbackOptions options) {
     Objects.requireNonNull(runId, "runId");
-    Objects.requireNonNull(point, "point");
+    Objects.requireNonNull(options, "options");
+    RollbackPoint point = options.toPoint();
     RunRecord run =
         rt.store()
             .run(runId)
@@ -540,6 +558,14 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               + " from a backup, or roll this installation back by hand;"
               + " a partial restore would leave the old webapp against the new database");
     }
+    Optional<String> started =
+        vendorScriptStarted(set)
+            .or(
+                () ->
+                    readMode(set).map(m -> VendorSteps.SCRIPT_PREFIX + m.toLowerCase(Locale.ROOT)));
+    if (options.restoreDatabase()) {
+      refuseDatabaseRestore(runId, started);
+    }
     Config config = rt.config();
     HotfixPaths paths = paths(config);
     Path installedBuildomatic =
@@ -555,28 +581,41 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     steps.add(new RestoreSteps.RestoreConfig(rt, in));
     steps.add(new RestoreSteps.RestoreKeystore(rt, in));
     steps.add(new JrsctlConfigSteps.RestoreJrsctlConfig(in));
+    if (options.restoreDatabase()) {
+      steps.add(new DatabaseRestoreSteps.RebuildDatabase(rt, in));
+      steps.add(new DatabaseRestoreSteps.ReimportFullExport(rt, in));
+    }
     steps.add(ServiceSteps.start(rt, Phases.ROLLBACK, RestoreSteps.START_SERVICE));
     steps.add(ServiceSteps.waitForServer(rt, Phases.ROLLBACK, RestoreSteps.WAIT_FOR_SERVER));
     steps.add(new RestoreSteps.RecordRollback(rt, in));
     List<String> warnings = new ArrayList<>();
-    warnings.add(FILES_ONLY_WARNING);
+    if (options.restoreDatabase()) {
+      warnings.add(DATABASE_RESTORE_WARNING.formatted(set.resolveFullExport()));
+    } else {
+      warnings.add(FILES_ONLY_WARNING);
+    }
     warnings.add(
         "point C restores the same point-B artefacts (spec §10.2: rollback point C = restore B)");
-    Optional<String> mode = readMode(set);
+    Optional<String> mode =
+        readMode(set).or(() -> started.map(DefaultUpgradeOperations::modeOfScript));
     mode.ifPresent(
         m ->
             warnings.add(
                 "the upgrade ran in "
                     + m
                     + " mode; "
-                    + (m.equals(Mode.NEWDB.name())
-                        ? "the vendor script dropped and recreated the repository database, which"
-                            + " this rollback does not restore: restore it from your own backup, or"
-                            + " re-import "
-                            + set.resolveFullExport()
-                            + " with the restored buildomatic's js-import"
-                        : "the vendor script migrated the repository database in place, which"
-                            + " this rollback does not restore")));
+                    + (!m.equals(Mode.NEWDB.name())
+                        ? "the vendor script migrated the repository database in place, which"
+                            + " this rollback does not restore"
+                        : options.restoreDatabase()
+                            ? "the vendor script dropped and recreated the repository database;"
+                                + " this rollback rebuilds the old one from "
+                                + set.resolveFullExport()
+                            : "the vendor script dropped and recreated the repository database,"
+                                + " which this rollback does not restore: re-run with"
+                                + " --restore-database to rebuild it from "
+                                + set.resolveFullExport()
+                                + ", or restore it from your own backup")));
     Map<String, String> rollbackPoints = new LinkedHashMap<>();
     rollbackPoints.put(
         Phases.ROLLBACK,
@@ -587,7 +626,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     PlanSummary summary =
         new PlanSummary(
             ROLLBACK_OPERATION,
-            "run " + runId + " to point " + point,
+            "run "
+                + runId
+                + " to point "
+                + point
+                + (options.restoreDatabase() ? " with the database" : ""),
             List.of(in.webappDir(), in.installedBuildomatic()),
             List.of(),
             true,
@@ -600,6 +643,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     inputs.put("config", configHash(config));
     inputs.put("run", runId);
     inputs.put("point", point.name());
+    inputs.put("restoreDatabase", String.valueOf(options.restoreDatabase()));
     try {
       inputs.put("webappArchive", PointB.readSha(set.webappArchive()).orElse("unrecorded"));
     } catch (IOException e) {
@@ -607,6 +651,45 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     return new Plan(
         "upgrade-rollback-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  private static Optional<String> vendorScriptStarted(SnapshotSet set) {
+    try {
+      return set.vendorScriptStarted();
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+  }
+
+  private static String modeOfScript(String script) {
+    return script.endsWith(Mode.NEWDB.vendorSuffix()) ? Mode.NEWDB.name() : Mode.SAMEDB.name();
+  }
+
+  /**
+   * ADR-0029: the database is rebuilt only for a newdb run whose script actually started. An
+   * untouched database must never be dropped, and a samedb migration is not undone by an export.
+   */
+  private static void refuseDatabaseRestore(String runId, Optional<String> started) {
+    if (started.isEmpty()) {
+      throw new UpgradeException(
+          UpgradeException.PRECHECK,
+          "the vendor script never started in run "
+              + runId
+              + ", so the repository database is still the old one and there is nothing to"
+              + " rebuild",
+          "run the rollback without --restore-database");
+    }
+    if (!started.get().endsWith(Mode.NEWDB.vendorSuffix())) {
+      throw new UpgradeException(
+          UpgradeException.UNSUPPORTED,
+          "run "
+              + runId
+              + " was a samedb upgrade: "
+              + started.get()
+              + " migrated the schema in place, and an export cannot undo that",
+          "restore the database from your own backup, then run the rollback without"
+              + " --restore-database");
+    }
   }
 
   private static Optional<String> readMode(SnapshotSet set) {

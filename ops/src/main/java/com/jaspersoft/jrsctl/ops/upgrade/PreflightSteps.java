@@ -48,9 +48,11 @@ final class PreflightSteps {
    * missing.
    */
   static final String DB_BACKUP_GATE =
-      "the vendor upgrade changes the repository database (samedb migrates it in place, newdb"
-          + " drops and recreates it) and jrsctl cannot undo that; back up the database yourself"
-          + " and pass --db-backup-confirmed";
+      "samedb migrates the repository database's schema in place; an export cannot undo that, so"
+          + " back up the database yourself and pass --db-backup-confirmed";
+
+  /** The same sentence under the name the field-test-2 plan gives it (ADR-0029). */
+  static final String DB_BACKUP_GATE_SAMEDB = DB_BACKUP_GATE;
 
   /**
    * Doctor items whose FAIL is judged against the current server, not the target: the compat and
@@ -435,8 +437,8 @@ final class PreflightSteps {
 
     @Override
     public String detail() {
-      return "both modes change the repository database: requires --db-backup-confirmed (audited;"
-          + " ADR-0012)";
+      return "samedb only: requires --db-backup-confirmed (audited; ADR-0012, ADR-0029); newdb's"
+          + " own full export is what its rollback rebuilds the database from";
     }
 
     @Override

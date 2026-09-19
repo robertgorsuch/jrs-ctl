@@ -194,15 +194,12 @@ final class GuidedMode {
     if (pkg.isEmpty()) {
       return;
     }
-    if (!Prompter.yes(
-        out,
-        "Have you backed up the repository database with your database tools? [y/N] ",
-        false)) {
-      out.println(
-          "Back up the repository database first: jrsctl cannot undo what the upgrade does to it.");
-      return;
-    }
-    execute("upgrade", "--to", version.get(), "--package", pkg.get(), "--db-backup-confirmed");
+    // newdb (the default): jrsctl takes the full export first and can rebuild the database from
+    // it (ADR-0029), so no backup question; samedb on the CLI still asks for one.
+    out.println(
+        "jrsctl takes a full export of the repository first; upgrade rollback --restore-database"
+            + " can rebuild the database from it.");
+    execute("upgrade", "--to", version.get(), "--package", pkg.get());
   }
 
   private void runs() {

@@ -59,7 +59,9 @@ public final class PlanRegistry {
                 .get()
                 .planRollback(
                     required(args, "runId"),
-                    UpgradeOperations.RollbackPoint.valueOf(required(args, "point"))));
+                    new UpgradeOperations.RollbackOptions(
+                        UpgradeOperations.RollbackPoint.valueOf(required(args, "point")),
+                        args.path("restoreDatabase").asBoolean(false))));
     builders.put(
         HOTFIX_APPLY,
         args ->
@@ -252,9 +254,15 @@ public final class PlanRegistry {
   }
 
   public static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {
+    return upgradeRollbackArgs(runId, new UpgradeOperations.RollbackOptions(point, false));
+  }
+
+  public static String upgradeRollbackArgs(
+      String runId, UpgradeOperations.RollbackOptions options) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("runId", runId);
-    node.put("point", point.name());
+    node.put("point", options.toPoint().name());
+    node.put("restoreDatabase", options.restoreDatabase());
     return Json.write(node);
   }
 

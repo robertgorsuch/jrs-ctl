@@ -117,14 +117,16 @@ class GuidedModeTest {
     assertThat(ran).containsExactly(List.of("import", archive.toString()));
   }
 
+  /** ADR-0029: newdb's own export is the backup its rollback rebuilds the database from. */
   @Test
-  void should_not_start_an_upgrade_until_the_database_backup_is_confirmed() throws Exception {
+  void should_start_a_newdb_upgrade_without_a_backup_question() throws Exception {
     Path pkg = Files.createDirectories(tmp.resolve("pkg"));
 
-    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "n", "q");
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "q");
 
-    assertThat(ran).isEmpty();
-    assertThat(text.toString()).contains("Back up the repository database first");
+    assertThat(ran)
+        .containsExactly(List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
+    assertThat(text.toString()).contains("--restore-database");
   }
 
   @Test

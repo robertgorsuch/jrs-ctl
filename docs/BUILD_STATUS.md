@@ -254,6 +254,7 @@ Progress on the plan, with the live checks against the real 10.0.0 PRO server (`
 - **Task 5 (PR #89):** `export --uri` refuses a folder the server does not have (exit 2) and surfaces the server's error descriptor; the pre-import snapshot covers only folders that exist.
 - **Task 6 (PR #90):** the backup space is budgeted before anything changes; `init` and `doctor` show the home's volume; the plan names where backups go.
 - **Task 7:** `upgrade --export <file>` adopts an export taken earlier or elsewhere as the newdb script's input, with `--key-alias`/`--key-password-ref` reaching the vendor import through the staged properties (ADR-0028). Verified with the fakes (the wrapper receives the adopted path; the staged file carries the alias and the resolved password; rollback names the file). Not verified live; `--source-keystore` for the upgrade is deferred pending a live newdb run against a disposable copy of an installation, which this machine cannot host safely.
+- **Task 7b:** `upgrade rollback --restore-database` rebuilds a newdb run's database from the point-B export with the restored buildomatic (`js-ant init-js-db-<ce|pro>`, then `js-import`), refused unless the vendor script was launched and for samedb; the backup question is samedb's only (ADR-0029). Verified with the fakes (order, arguments, refusals, once-per-run markers). Not verified live, for the same reason as Task 7.
 
 ## Known gaps
 

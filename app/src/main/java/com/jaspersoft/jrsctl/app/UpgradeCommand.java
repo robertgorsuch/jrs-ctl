@@ -23,11 +23,13 @@ import picocli.CommandLine.Spec;
 
 /**
  * {@code jrsctl upgrade} (spec §10.4): plans and runs a vendor upgrade, and {@code upgrade rollback
- * <runId> --to-point B|C} restores the backups of an earlier upgrade run. Invariants: {@code --mode
- * newdb} is the default; either mode without {@code --db-backup-confirmed} exits 2 before anything
- * is planned and prints the spec §10.1 gate (ADR-0012: both modes change the repository database in
- * a way jrsctl cannot undo); the plan is always shown and confirmed through {@link PlanExecutor}
- * like every mutating command; an unsupported upgrade path exits 6.
+ * <runId> --to-point B|C [--restore-database]} restores the backups of an earlier upgrade run.
+ * Invariants: {@code --mode newdb} is the default; samedb without {@code --db-backup-confirmed}
+ * exits 2 before anything is planned and prints the spec §10.1 gate (ADR-0012, ADR-0029: samedb
+ * migrates the schema in place, which no export undoes, while newdb's own full export is what
+ * {@code upgrade rollback --restore-database} rebuilds the database from); the plan is always shown
+ * and confirmed through {@link PlanExecutor} like every mutating command; an unsupported upgrade
+ * path exits 6.
  */
 @Command(
     name = "upgrade",
@@ -64,15 +66,16 @@ final class UpgradeCommand implements Callable<Integer> {
       paramLabel = "newdb|samedb",
       defaultValue = "newdb",
       description =
-          "newdb (default) drops and recreates the repository database from the full export;"
-              + " samedb migrates its schema in place. jrsctl can undo neither.")
+          "newdb (default) drops and recreates the repository database from the full export"
+              + " jrsctl takes first, and upgrade rollback --restore-database rebuilds it from"
+              + " the same export; samedb migrates its schema in place, which jrsctl cannot undo.")
   String mode;
 
   @Option(
       names = "--db-backup-confirmed",
       description =
-          "Required in both modes: confirm that the repository database has been backed up"
-              + " (audited).")
+          "samedb only: confirm that the repository database has been backed up (audited)."
+              + " newdb needs no confirmation; its own full export is the backup.")
   boolean dbBackupConfirmed;
 
   @Option(
@@ -145,7 +148,7 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.USAGE, "--mode must be newdb or samedb");
     }
-    if (!dbBackupConfirmed) {
+    if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed) {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
     }
@@ -192,7 +195,7 @@ final class UpgradeCommand implements Callable<Integer> {
               "--mode newdb drops and recreates the repository database from the full export";
         };
     return change
-        + " and jrsctl cannot undo that; back up the database yourself and pass"
+        + " and an export cannot undo that; back up the database yourself and pass"
         + " --db-backup-confirmed";
   }
 
@@ -214,7 +217,8 @@ final class UpgradeCommand implements Callable<Integer> {
       exitCodeOnInvalidInput = ExitCodes.USAGE,
       description =
           "Restore the point-B backups of an upgrade run: webapp, buildomatic, configuration,"
-              + " keystore. Files only; the database is the operator's responsibility.")
+              + " keystore. Files only, unless --restore-database rebuilds a newdb run's"
+              + " repository database from the point-B export.")
   static final class Rollback implements Callable<Integer> {
     @Spec CommandSpec spec;
     @Mixin GlobalOptions global;
@@ -232,6 +236,14 @@ final class UpgradeCommand implements Callable<Integer> {
     @Option(names = "--plan", description = "Show the plan and exit without running it.")
     boolean plan;
 
+    @Option(
+        names = "--restore-database",
+        description =
+            "For a newdb run: rebuild the old repository database from the point-B export with"
+                + " the restored buildomatic (drops the database the upgrade created). Refused"
+                + " for a samedb run.")
+    boolean restoreDatabase;
+
     @Override
     public Integer call() {
       PrintWriter out = spec.commandLine().getOut();
@@ -243,11 +255,13 @@ final class UpgradeCommand implements Callable<Integer> {
         return ExitCodes.fail(
             out, err, global.json(), ExitCodes.USAGE, "--to-point must be B or C");
       }
+      UpgradeOperations.RollbackOptions options =
+          new UpgradeOperations.RollbackOptions(parsed, restoreDatabase);
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Services services = boot.services();
         Plan planned;
         try {
-          planned = new DefaultUpgradeOperations(services).planRollback(runId, parsed);
+          planned = new DefaultUpgradeOperations(services).planRollback(runId, options);
         } catch (UpgradeException e) {
           return report(out, err, global.json(), e);
         } catch (RuntimeException e) {
@@ -258,7 +272,7 @@ final class UpgradeCommand implements Callable<Integer> {
             new PlanExecutor.Request(
                 planned,
                 PlanRegistry.UPGRADE_ROLLBACK,
-                PlanRegistry.upgradeRollbackArgs(runId, parsed),
+                PlanRegistry.upgradeRollbackArgs(runId, options),
                 plan,
                 false));
       }

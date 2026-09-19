@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.nio.file.Files;
@@ -62,6 +63,36 @@ class UpgradeRunTest {
 
       assertThat(back).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
       assertThat(UpgradeFixture.read(f.fake.home.configFile())).isEqualTo(before);
+    }
+  }
+
+  /**
+   * ADR-0029: after a newdb run failed inside the vendor script, the database it left behind is
+   * dropped and the old one rebuilt from the point-B export with the restored buildomatic.
+   */
+  @Test
+  void should_rebuild_the_database_and_reimport_the_export_when_rolling_back_a_newdb_run()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.failVendorScriptAfterCopy();
+      RunOutcome failed = f.run(f.ops().planUpgrade(newdb(f)), "r-up", RunOptions.DEFAULT);
+      assertThat(failed).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      Plan rollback = f.ops().planRollback("r-up", new RollbackOptions(RollbackPoint.B, true));
+      assertThat(UpgradeFixture.ids(rollback))
+          .containsSubsequence(
+              "restore-buildomatic", "rebuild-database", "reimport-full-export", "start-service");
+
+      RunOutcome outcome = f.run(rollback, "r-rb", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-up", f.os);
+      assertThat(f.vendorLogText())
+          .contains("init-js-db-pro")
+          .contains("js-import --input-zip " + set.fullExport() + " --update")
+          .contains("--include-server-settings");
+      assertThat(f.vendorLogText().indexOf("init-js-db-pro"))
+          .isLessThan(f.vendorLogText().indexOf("js-import"));
+      assertThat(f.store().auditRows(20)).anyMatch(a -> a.action().equals("upgrade.rolled-back"));
     }
   }
 

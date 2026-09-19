@@ -20,6 +20,7 @@ import com.jaspersoft.jrsctl.ops.Idempotency;
 import com.jaspersoft.jrsctl.ops.customizations.DefaultCustomizationOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
@@ -235,6 +236,65 @@ class UpgradeStepIdempotencyTest {
 
       assertThat(SnapshotSet.of(f.fake.home, "r-ac", f.os).externalExport()).isEmpty();
       assertThat(export).exists();
+    }
+  }
+
+  private static int count(String text, String token) {
+    int n = 0;
+    for (int i = text.indexOf(token); i >= 0; i = text.indexOf(token, i + token.length())) {
+      n++;
+    }
+    return n;
+  }
+
+  private static Plan databaseRollback(UpgradeFixture f, String upgradeRunId) throws Exception {
+    assertThat(f.run(f.ops().planUpgrade(newdb(f)), upgradeRunId, RunOptions.DEFAULT))
+        .isInstanceOf(RunOutcome.Succeeded.class);
+    return f.ops().planRollback(upgradeRunId, new RollbackOptions(RollbackPoint.B, true));
+  }
+
+  /** ADR-0029: a resume never drops a database it already rebuilt. */
+  @Test
+  void should_run_init_once_when_rebuild_database_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan rollback = databaseRollback(f, "r-up-rd");
+
+      assertReexecutionConverges(f, rollback, "r-rb-rd", "rebuild-database");
+
+      assertThat(count(f.vendorLogText(), "init-js-db-pro")).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void should_converge_when_rebuild_database_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan rollback = databaseRollback(f, "r-up-rdc");
+
+      assertCompensationConverges(f, rollback, "r-rb-rdc", "rebuild-database");
+
+      assertThat(count(f.vendorLogText(), "init-js-db-pro")).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void should_import_once_when_reimport_full_export_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan rollback = databaseRollback(f, "r-up-ri");
+
+      assertReexecutionConverges(f, rollback, "r-rb-ri", "reimport-full-export");
+
+      assertThat(count(f.vendorLogText(), "js-import --input-zip")).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void should_converge_when_reimport_full_export_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan rollback = databaseRollback(f, "r-up-ric");
+
+      assertCompensationConverges(f, rollback, "r-rb-ric", "reimport-full-export");
+
+      assertThat(count(f.vendorLogText(), "js-import --input-zip")).isEqualTo(1);
     }
   }
 

@@ -183,14 +183,14 @@ The original files come back exactly as they were before the hotfix.
 
 Upgrades are the biggest change jrsctl makes. Please read this first:
 
-- **Back up the database yourself before you start.** jrsctl backs up the server's files, settings, keys and report content, but it can't undo database changes. That's why the command asks you to confirm with `--db-backup-confirmed`.
+- **What happens to the database.** In the default `newdb` mode jrsctl exports the whole repository first, the new version rebuilds the database from that export, and `jrsctl upgrade rollback <runId> --to-point B --restore-database` rebuilds the old database from the same export if you need to go back. In `samedb` mode the schema is changed in place and no export undoes that, so back up the database yourself first; the command asks you to confirm with `--db-backup-confirmed`.
 - Download and unpack the new JasperReports Server version on the server first.
 - Upgrades go one supported step at a time. For example, from 7.x you go to 8.x first, then to 10.x. jrsctl tells you if a step isn't supported, and stops before changing anything.
 
 Look at the plan first:
 
 ```bash
-jrsctl upgrade --to 10.0.0 --package C:\Downloads\jasperreports-server-pro-10.0.0-bin --db-backup-confirmed --plan
+jrsctl upgrade --to 10.0.0 --package C:\Downloads\jasperreports-server-pro-10.0.0-bin --plan
 ```
 
 When you're happy with it, run the same command without `--plan`. At the end jrsctl tests the upgraded server. If that test fails, it offers to put the old version back:

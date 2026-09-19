@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, newdb rollback and the backup question)
+
+- §10.1, §10.4: `upgrade rollback <runId> --to-point B|C --restore-database` rebuilds a newdb run's repository database from the point-B export with the restored buildomatic (`rebuild-database` = `js-ant init-js-db-<ce|pro>`, then `reimport-full-export` = `js-import` of the export; both irreversible, each run once per rollback run); refused unless `snapshots/<runId>/vendor-upgrade.started` records that the vendor script was launched, and refused for samedb. The `--db-backup-confirmed` gate is samedb's only, with the reason in its message; a newdb plan says that its own full export is the backup its rollback rebuilds the database from. The guided menu and the console form follow (ADR-0029; field test 2, second round).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, upgrade from an existing export)
 
 - §7.4, §10.2 step 9a, §10.4: `upgrade --export <file>` adopts an export taken earlier, from this server or another one, as the newdb script's input (`adopt-full-export` replaces `full-export`; the file is hashed and recorded under the snapshot set, not copied; a sidecar naming another server or version is a warning; every later repository change is declared lost); `--key-alias` and `--key-password-ref` reach the vendor import through the staged `default_master.properties`, the one password key jrsctl writes itself; `--export` with samedb, or a key without an export, is a usage error. `--source-keystore` for the upgrade is deferred pending a live check (ADR-0028; field test 2, U5b).

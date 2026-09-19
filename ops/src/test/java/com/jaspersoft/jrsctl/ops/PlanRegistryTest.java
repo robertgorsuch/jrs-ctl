@@ -171,6 +171,14 @@ class PlanRegistryTest {
 
     assertThat(rollback.get("runId").asText()).isEqualTo("r-2026");
     assertThat(rollback.get("point").asText()).isNotBlank();
+    assertThat(rollback.get("restoreDatabase").asBoolean()).isFalse();
+
+    JsonNode withDatabase =
+        tree(
+            PlanRegistry.upgradeRollbackArgs(
+                "r-2026",
+                new UpgradeOperations.RollbackOptions(UpgradeOperations.RollbackPoint.B, true)));
+    assertThat(withDatabase.get("restoreDatabase").asBoolean()).isTrue();
   }
 
   @Test
@@ -246,7 +254,9 @@ class PlanRegistryTest {
 
     assertThat(upgrade.calls).containsExactly("planRollback");
     assertThat(upgrade.args.get(0))
-        .containsExactly("r-20260914", UpgradeOperations.RollbackPoint.C);
+        .containsExactly(
+            "r-20260914",
+            new UpgradeOperations.RollbackOptions(UpgradeOperations.RollbackPoint.C, false));
   }
 
   @Test

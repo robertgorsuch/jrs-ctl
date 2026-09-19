@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.RunOptions;
+import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOptions;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorReport;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.Mode;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +41,6 @@ class UpgradePlanTest {
           .containsExactly(
               "doctor",
               "verify-target-package",
-              "confirm-db-backup",
               "backup-keystore",
               "backup-webapp",
               "backup-config",
@@ -62,7 +65,8 @@ class UpgradePlanTest {
       assertThat(plan.summary().warnings())
           .contains(DefaultUpgradeOperations.NEWDB_WARNING)
           .contains(DefaultUpgradeOperations.NEWDB_STAYS_STOPPED_WARNING)
-          .contains(DefaultUpgradeOperations.FILES_ONLY_WARNING)
+          .contains(DefaultUpgradeOperations.NEWDB_ROLLBACK_WARNING)
+          .doesNotContain(DefaultUpgradeOperations.FILES_ONLY_WARNING)
           .doesNotContain(DefaultUpgradeOperations.SAMEDB_WARNING);
       assertThat(UpgradeFixture.step(plan, "run-vendor-upgrade").detail())
           .contains("js-upgrade-newdb <point-B full export>")
@@ -143,8 +147,10 @@ class UpgradePlanTest {
     }
   }
 
+  /** ADR-0029 (field test 2): newdb's own export is the backup, so the question goes. */
   @Test
-  void should_fail_confirm_db_backup_precheck_when_newdb_not_confirmed() throws Exception {
+  void should_not_ask_for_a_database_backup_in_newdb_mode_and_say_what_is_backed_up()
+      throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       Plan plan =
           f.ops()
@@ -152,12 +158,78 @@ class UpgradePlanTest {
                   new UpgradeOptions(
                       UpgradeFixture.NEW_VERSION, f.packageDir, Mode.NEWDB, false, false));
 
-      CheckResult result = UpgradeFixture.step(plan, "confirm-db-backup").precheck(f.ctx("r-1"));
+      assertThat(UpgradeFixture.ids(plan)).doesNotContain("confirm-db-backup");
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("upgrade rollback --restore-database rebuilds it"));
+    }
+  }
 
-      assertThat(result).isInstanceOf(CheckResult.Fail.class);
-      assertThat(((CheckResult.Fail) result).message())
-          .contains("--db-backup-confirmed")
-          .contains("drops and recreates");
+  @Test
+  void should_still_ask_for_a_database_backup_in_samedb_mode_and_say_why() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  new UpgradeOptions(
+                      UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, false, false));
+
+      CheckResult r = UpgradeFixture.step(plan, "confirm-db-backup").precheck(f.ctx("r-1"));
+
+      assertThat(r).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) r).message())
+          .contains("schema in place")
+          .contains("an export cannot undo that")
+          .contains("--db-backup-confirmed");
+    }
+  }
+
+  @Test
+  void should_refuse_restore_database_for_a_samedb_run() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      UpgradeOptions samedb =
+          new UpgradeOptions(UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false);
+      assertThat(f.run(f.ops().planUpgrade(samedb), "r-sd", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+
+      assertThatThrownBy(
+              () -> f.ops().planRollback("r-sd", new RollbackOptions(RollbackPoint.B, true)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("samedb")
+          .hasMessageContaining("an export cannot undo that")
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(6));
+      assertThat(UpgradeFixture.ids(f.ops().planRollback("r-sd", RollbackPoint.B)))
+          .doesNotContain("rebuild-database", "reimport-full-export");
+    }
+  }
+
+  @Test
+  void should_plan_the_database_rebuild_after_the_files_and_before_the_start_for_a_newdb_run()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planUpgrade(newdb(f)), "r-nd", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+
+      Plan plan = f.ops().planRollback("r-nd", new RollbackOptions(RollbackPoint.B, true));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence(
+              "restore-buildomatic",
+              "restore-keystore",
+              "rebuild-database",
+              "reimport-full-export",
+              "start-service");
+      assertThat(plan.summary().target()).endsWith("with the database");
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("rebuilds the repository database from"))
+          .noneMatch(w -> w.equals(DefaultUpgradeOperations.FILES_ONLY_WARNING));
+      assertThat(UpgradeFixture.step(plan, "rebuild-database").irreversible()).isTrue();
+      assertThat(UpgradeFixture.step(plan, "reimport-full-export").irreversible()).isTrue();
+      assertThat(UpgradeFixture.step(plan, "rebuild-database").title()).contains("init-js-db-pro");
+      assertThat(UpgradeFixture.step(plan, "rebuild-database").precheck(f.ctx("r-rb")))
+          .isInstanceOf(CheckResult.Pass.class);
+      // without the flag the plan says how to get the database back
+      assertThat(f.ops().planRollback("r-nd", RollbackPoint.B).summary().warnings())
+          .anyMatch(w -> w.contains("re-run with --restore-database"));
     }
   }
 
