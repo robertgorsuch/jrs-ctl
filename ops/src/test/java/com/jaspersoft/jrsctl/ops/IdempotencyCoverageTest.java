@@ -410,6 +410,9 @@ class IdempotencyCoverageTest {
                   + U
                   + "should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice"),
           Map.entry(
+              OPS + "upgrade.EventSteps$ImportEvents",
+              U + "should_import_once_when_import_events_executes_twice"),
+          Map.entry(
               OPS + "upgrade.PostUpgradeSteps$ClearTomcatCaches",
               U + "should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice"),
           Map.entry(

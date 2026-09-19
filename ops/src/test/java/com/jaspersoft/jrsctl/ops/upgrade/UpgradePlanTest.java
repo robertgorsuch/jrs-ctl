@@ -30,6 +30,60 @@ class UpgradePlanTest {
     return UpgradeOptions.newdb(UpgradeFixture.NEW_VERSION, f.packageDir);
   }
 
+  /**
+   * Issue #106, upgrade guide 10.1 p.80: the newdb script leaves access, audit and monitoring
+   * events behind. With {@code --include-events} they are imported after the vendor run, while the
+   * server is still down; without it the plan says they are left behind.
+   */
+  @Test
+  void should_import_events_after_the_vendor_run_when_include_events_is_given() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f).withIncludeEvents(true));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsSubsequence("run-vendor-upgrade", "import-events", "clear-tomcat-caches");
+      Step step = UpgradeFixture.step(plan, "import-events");
+      assertThat(step.phase()).isEqualTo("vendor-upgrade");
+      assertThat(step.irreversible()).isTrue();
+      assertThat(step.detail())
+          .contains("js-import")
+          .contains("--include-access-events")
+          .contains("--include-audit-events")
+          .contains("--include-monitoring-events");
+      assertThat(plan.summary().warnings())
+          .doesNotContain(DefaultUpgradeOperations.EVENTS_LEFT_BEHIND_WARNING);
+    }
+  }
+
+  @Test
+  void should_say_events_are_left_behind_when_newdb_and_include_events_is_not_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(UpgradeFixture.ids(plan)).doesNotContain("import-events");
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.EVENTS_LEFT_BEHIND_WARNING);
+      assertThat(DefaultUpgradeOperations.EVENTS_LEFT_BEHIND_WARNING).contains("--include-events");
+    }
+  }
+
+  @Test
+  void should_neither_import_nor_warn_about_events_when_mode_samedb() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  new UpgradeOptions(
+                          UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false)
+                      .withIncludeEvents(true));
+
+      assertThat(UpgradeFixture.ids(plan)).doesNotContain("import-events");
+      assertThat(plan.summary().warnings())
+          .doesNotContain(DefaultUpgradeOperations.EVENTS_LEFT_BEHIND_WARNING);
+    }
+  }
+
   @Test
   void should_list_five_phases_and_step_ids_when_mode_newdb() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

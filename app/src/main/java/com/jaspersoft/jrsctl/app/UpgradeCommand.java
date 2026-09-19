@@ -86,6 +86,14 @@ final class UpgradeCommand implements Callable<Integer> {
   boolean reapplyHotfixes;
 
   @Option(
+      names = "--include-events",
+      description =
+          "newdb only: after the vendor run, import the access, audit and monitoring events from"
+              + " the full export with the new version's js-import; js-upgrade-newdb leaves them"
+              + " behind since 7.9. Without it the plan says they are left behind.")
+  boolean includeEvents;
+
+  @Option(
       names = "--tomcat-dir",
       paramLabel = "<dir>",
       description =
@@ -180,7 +188,8 @@ final class UpgradeCommand implements Callable<Integer> {
               Optional.ofNullable(tomcatDir),
               Optional.ofNullable(export),
               Optional.ofNullable(keyAlias),
-              keyPassword);
+              keyPassword,
+              includeEvents);
       Plan planned;
       try {
         DefaultUpgradeOperations ops = new DefaultUpgradeOperations(services);

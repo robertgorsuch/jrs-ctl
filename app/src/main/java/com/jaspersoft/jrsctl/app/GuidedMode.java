@@ -360,6 +360,14 @@ final class GuidedMode {
           args.addAll(List.of("--key-alias", alias.get()));
         }
       }
+      // upgrade guide 10.1 p.80: the newdb script leaves the events behind (issue #106)
+      if (Prompter.yes(
+          out,
+          "Import the access, audit and monitoring events after the vendor run"
+              + " (js-upgrade-newdb leaves them behind)? [y/N] ",
+          false)) {
+        args.add("--include-events");
+      }
     }
     if (Prompter.yes(
         out, "Rehearse with the vendor's validation first (changes nothing)? [Y/n] ", true)) {
