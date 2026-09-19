@@ -67,3 +67,22 @@ reading the target's PEB through the native API (needs JNA or JNI; JNA is not ap
   #31 throwaway used one. This is recorded here, not solved.
 - The rule "no shell" (spec §0) is kept in the sense it was written for: PowerShell receives a
   constant script, never a string built from input, and is invoked as a program with arguments.
+
+## Amendment 2026-09-19: the listening ports come from `netstat -ano`
+
+Decision 1 listed the listening ports with `Get-NetTCPConnection -State Listen` inside the
+PowerShell script. Measured on the development host, that one cmdlet took 0.9 s of a scan that
+took 1.05 s (`Get-CimInstance` for the three process names takes 0.5 s, and the two overlap in
+PowerShell's start-up), while `netstat -ano` lists the same sockets in 0.03 s: 36 listeners from
+each, no difference. A stop step queries the state three times on an already stopped service and
+about five on a running one (precheck, execute, the stop itself, the wait, postcheck), so a stop
+cost 3.8 s and a start 4.4 s against a fake service that does nothing; Windows operators of the
+`catalina`, `ctlscript` and `manual` kinds pay the same.
+
+The ports are now read from `netstat -ano`, run by absolute path
+(`%SystemRoot%\System32\netstat.exe`) through `ProcessRunner` before the PowerShell scan, and
+merged into the scan's rows by process id. A listener is a TCP row whose foreign address is
+`0.0.0.0:0`, `[::]:0` or `*:0`, so the localised state column (`ABHÖREN`, `ÉCOUTE`) is never
+read. `netstat` exiting non-zero or timing out is a failed scan (`TomcatScanException`, hence
+`UNKNOWN`), exactly as a failed port listing was. The PowerShell script keeps the sixth output
+column as a placeholder so `parse` is unchanged. Nothing else in decisions 1 to 4 changes.

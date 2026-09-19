@@ -18,53 +18,57 @@ import java.util.regex.Pattern;
 /**
  * {@link TomcatProcessFinder} for Windows, reading {@code Win32_Process} through Windows
  * PowerShell, because the JDK's {@link ProcessHandle.Info} returns no command line for any process
- * there (issue #38, ADR-0014). Invariants: PowerShell runs by absolute path with a fixed script
- * passed as {@code -EncodedCommand}, as an argument list through the {@link ProcessRunner}, so no
- * operator input is ever interpreted; paths and command lines travel Base64-encoded UTF-8, so the
- * console code page cannot mangle them; a scan that exits non-zero, times out or does not print its
- * end marker throws {@link TomcatScanException}, and so does a failure to list listening ports; a
- * {@code java.exe} or {@code javaw.exe} whose command line this account cannot read (another
- * account's process, without elevation) is returned as {@link TomcatProcess#opaque()} with the
- * ports it listens on, which are readable without elevation, so {@link TomcatState} can tell an
- * unrelated Java service from a Tomcat on the watched ports; an unreadable {@code tomcatN.exe} is
- * left out, because service wrappers belong to the service kinds, which do not use this scan;
- * Tomcat recognition is {@link TomcatProcesses#describe}; this JVM is never listed.
+ * there (issue #38, ADR-0014), and the listening ports from {@code netstat -ano}, which takes 0.03
+ * s where {@code Get-NetTCPConnection} took 0.9 s and was most of a scan (ADR-0014, amended). A
+ * scan runs at every service-state query and a stop or start step makes several. Invariants:
+ * PowerShell runs by absolute path with a fixed script passed as {@code -EncodedCommand}, as an
+ * argument list through the {@link ProcessRunner}, so no operator input is ever interpreted; paths
+ * and command lines travel Base64-encoded UTF-8, so the console code page cannot mangle them; a
+ * scan that exits non-zero, times out or does not print its end marker throws {@link
+ * TomcatScanException}, and so does a failure to list listening ports (netstat exiting non-zero or
+ * timing out); a listener is a TCP row whose foreign address is {@code 0.0.0.0:0} or {@code
+ * [::]:0}, so the localised state text is never read; a {@code java.exe} or {@code javaw.exe} whose
+ * command line this account cannot read (another account's process, without elevation) is returned
+ * as {@link TomcatProcess#opaque()} with the ports it listens on, which are readable without
+ * elevation, so {@link TomcatState} can tell an unrelated Java service from a Tomcat on the watched
+ * ports; an unreadable {@code tomcatN.exe} is left out, because service wrappers belong to the
+ * service kinds, which do not use this scan; Tomcat recognition is {@link
+ * TomcatProcesses#describe}; this JVM is never listed.
  */
 final class WindowsTomcatProcesses implements TomcatProcessFinder {
 
   static final Duration TIMEOUT = Duration.ofSeconds(30);
   static final String END = "END";
 
+  /**
+   * The row format keeps a sixth column, the listening ports, so {@link #parse} and its callers are
+   * unchanged; the script no longer lists ports (that is {@code netstat}'s job now) and prints a
+   * placeholder that {@link #find} replaces.
+   */
   private static final String SCRIPT =
       "$ErrorActionPreference = 'Stop'\n"
           + "$enc = [Text.Encoding]::UTF8\n"
-          + "$listen = @{}\n"
-          + "Get-NetTCPConnection -State Listen | ForEach-Object {\n"
-          + "  $k = [string]$_.OwningProcess\n"
-          + "  if (-not $listen.ContainsKey($k)) {"
-          + " $listen[$k] = New-Object 'System.Collections.Generic.SortedSet[int]' }\n"
-          + "  [void]$listen[$k].Add([int]$_.LocalPort)\n"
-          + "}\n"
           + "Get-CimInstance -ClassName Win32_Process -Filter \"Name = 'java.exe' OR Name ="
           + " 'javaw.exe' OR Name LIKE 'tomcat%.exe'\" | ForEach-Object {\n"
           + "  $exe = if ($_.ExecutablePath) {"
           + " [Convert]::ToBase64String($enc.GetBytes($_.ExecutablePath)) } else { '-' }\n"
           + "  $cmd = if ($_.CommandLine) {"
           + " [Convert]::ToBase64String($enc.GetBytes($_.CommandLine)) } else { '-' }\n"
-          + "  $k = [string]$_.ProcessId\n"
-          + "  $ports = if ($listen.ContainsKey($k)) { $listen[$k] -join ',' } else { '-' }\n"
-          + "  'P {0} {1} {2} {3} {4}' -f $_.ProcessId, $_.Name, $exe, $cmd, $ports\n"
+          + "  'P {0} {1} {2} {3} -' -f $_.ProcessId, $_.Name, $exe, $cmd\n"
           + "}\n"
           + "'"
           + END
           + "'\n";
 
   private static final Pattern SPACE = Pattern.compile(" ");
+  private static final Pattern SPACES = Pattern.compile("\\s+");
+  private static final Set<String> FOREIGN_ANY = Set.of("0.0.0.0:0", "[::]:0", "*:0");
   private static final Pattern COMMA = Pattern.compile(",");
   private static final Pattern JVM = Pattern.compile("(?i)javaw?\\.exe");
 
   private final ProcessRunner runner;
   private final List<String> command;
+  private final List<String> netstat;
 
   WindowsTomcatProcesses(ProcessRunner runner) {
     this(runner, System.getenv("SystemRoot"));
@@ -73,6 +77,17 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
   WindowsTomcatProcesses(ProcessRunner runner, String systemRoot) {
     this.runner = requireNonNull(runner, "runner");
     this.command = command(systemRoot);
+    this.netstat = netstatCommand(systemRoot);
+  }
+
+  /** {@code netstat -ano} by absolute path: numeric, with the owning process id of every socket. */
+  static List<String> netstatCommand(String systemRoot) {
+    String root = systemRoot == null || systemRoot.isBlank() ? "C:\\Windows" : systemRoot.strip();
+    return List.of(root + "\\System32\\netstat.exe", "-ano");
+  }
+
+  List<String> netstatCommand() {
+    return netstat;
   }
 
   /** {@code powershell.exe} by absolute path, so a minimal {@code PATH} cannot hide it. */
@@ -94,6 +109,7 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
 
   @Override
   public List<TomcatProcess> find() {
+    Map<Long, Set<Integer>> listeners = listeners();
     List<String> stdout = new ArrayList<>();
     List<String> stderr = new ArrayList<>();
     ProcessRunner.Result result;
@@ -122,7 +138,63 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
               + ")"
               + (stderr.isEmpty() ? "" : ": " + String.join(" ", stderr).strip()));
     }
-    return parse(stdout, ProcessHandle.current().pid());
+    return parse(stdout, ProcessHandle.current().pid()).stream()
+        .map(t -> t.withListeningPorts(listeners.getOrDefault(t.pid(), Set.of())))
+        .toList();
+  }
+
+  /** Every listening TCP port by owning process id; a failure to list them is a failed scan. */
+  private Map<Long, Set<Integer>> listeners() {
+    List<String> lines = new ArrayList<>();
+    ProcessRunner.Result result;
+    try {
+      result =
+          runner.run(
+              new ProcessRunner.Request(netstat, Optional.empty(), Map.of(), TIMEOUT),
+              line -> {
+                if (line.stream() == ProcessRunner.OutputLine.Stream.STDOUT) {
+                  lines.add(line.text());
+                }
+              });
+    } catch (RuntimeException e) {
+      throw new TomcatScanException("cannot list the listening ports: " + e.getMessage());
+    }
+    if (result.timedOut() || result.exitCode() != 0) {
+      throw new TomcatScanException(
+          "listing the listening ports failed (exit "
+              + result.exitCode()
+              + (result.timedOut() ? ", timed out" : "")
+              + ")");
+    }
+    return parseListeners(lines);
+  }
+
+  /**
+   * The listening ports of each process in {@code netstat -ano} output. A listener is a TCP row
+   * whose foreign address is {@code 0.0.0.0:0}, {@code [::]:0} or {@code *:0}: the state column is
+   * localised ({@code LISTENING} is {@code ABHÖREN} on a German Windows), the addresses are not.
+   */
+  static Map<Long, Set<Integer>> parseListeners(List<String> lines) {
+    Map<Long, Set<Integer>> byPid = new java.util.HashMap<>();
+    for (String raw : lines) {
+      String[] f = SPACES.split(raw.strip(), -1);
+      if (f.length < 4 || !f[0].equalsIgnoreCase("TCP") || !FOREIGN_ANY.contains(f[2])) {
+        continue;
+      }
+      try {
+        long pid = Long.parseLong(f[f.length - 1]);
+        int colon = f[1].lastIndexOf(':');
+        int port = Integer.parseInt(f[1].substring(colon + 1));
+        if (colon > 0 && port > 0 && port <= 65535) {
+          byPid.computeIfAbsent(pid, k -> new TreeSet<>()).add(port);
+        }
+      } catch (NumberFormatException e) {
+        // a row that does not parse is skipped; the rest still counts
+      }
+    }
+    Map<Long, Set<Integer>> frozen = new java.util.HashMap<>();
+    byPid.forEach((pid, ports) -> frozen.put(pid, Set.copyOf(ports)));
+    return Map.copyOf(frozen);
   }
 
   /** The processes in the scan's output, excluding {@code self}. */
