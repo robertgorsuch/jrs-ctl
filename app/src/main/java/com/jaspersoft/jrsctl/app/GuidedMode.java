@@ -387,6 +387,14 @@ final class GuidedMode {
         return;
       }
       args.add("--db-backup-confirmed");
+      // installation guide 10.1 pp.194-199 (issue #108): the vendor's password migration
+      if (Prompter.yes(
+          out,
+          "Migrate stored passwords to the modern format after the upgrade (js-ant"
+              + " migrate-passwords, 10.1 or later; only a database restore undoes it)? [y/N] ",
+          false)) {
+        args.add("--migrate-passwords");
+      }
     } else {
       out.println(
           "jrsctl takes a full export of the repository first; upgrade rollback --restore-database"

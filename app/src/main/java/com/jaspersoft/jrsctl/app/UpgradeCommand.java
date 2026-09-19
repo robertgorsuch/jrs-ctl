@@ -94,6 +94,15 @@ final class UpgradeCommand implements Callable<Integer> {
   boolean includeEvents;
 
   @Option(
+      names = "--migrate-passwords",
+      description =
+          "samedb to 10.1 or later only: after the vendor run, migrate the stored passwords to the"
+              + " modern format with the new version's js-ant migrate-passwords (dry run first);"
+              + " a database restore is the only way back. Refused for an older target, ignored"
+              + " with a warning for newdb.")
+  boolean migratePasswords;
+
+  @Option(
       names = "--tomcat-dir",
       paramLabel = "<dir>",
       description =
@@ -189,7 +198,8 @@ final class UpgradeCommand implements Callable<Integer> {
               Optional.ofNullable(export),
               Optional.ofNullable(keyAlias),
               keyPassword,
-              includeEvents);
+              includeEvents,
+              migratePasswords);
       Plan planned;
       try {
         DefaultUpgradeOperations ops = new DefaultUpgradeOperations(services);

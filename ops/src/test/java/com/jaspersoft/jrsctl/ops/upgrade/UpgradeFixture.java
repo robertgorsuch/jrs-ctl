@@ -63,6 +63,10 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Path tomcatDir;
   public final Path webappDir;
   public final Path packageDir;
+
+  /** The home the vendor scripts would look for the licence in (issue #108). */
+  public final Path userHome;
+
   public final Path javaHome;
   public final Path keystoreDir;
   public final Path vendorLog;
@@ -87,6 +91,7 @@ public final class UpgradeFixture implements AutoCloseable {
     this.tomcatDir = installDir.resolve("apache-tomcat");
     this.webappDir = tomcatDir.resolve("webapps").resolve("jasperserver-pro");
     this.packageDir = Files.createDirectories(root.resolve("pkg-9.0.0"));
+    this.userHome = Files.createDirectories(root.resolve("user-home"));
     this.javaHome = Files.createDirectories(root.resolve("jdk17"));
     this.keystoreDir = Files.createDirectories(root.resolve("jrs-home"));
     this.vendorLog = packageDir.resolve("js-ant.log");
@@ -522,7 +527,7 @@ public final class UpgradeFixture implements AutoCloseable {
   }
 
   public DefaultUpgradeOperations ops() {
-    return new DefaultUpgradeOperations(runtime());
+    return new DefaultUpgradeOperations(runtime(), userHome);
   }
 
   public UpgradeRuntime runtime() {

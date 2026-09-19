@@ -87,7 +87,8 @@ import org.junit.jupiter.api.Test;
  *     <td colspan="2">SmokePlanIdempotencyTest#should_not_mutate_when_run_report_executes_twice</td></tr>
  * <tr><td>smoke SmokePlan.DeleteFolder (irreversible)</td>
  *     <td colspan="2">SmokePlanIdempotencyTest#should_delete_the_folder_once_when_delete_folder_executes_twice</td></tr>
- * <tr><td>upgrade PreflightSteps.Doctor, VerifyTargetPackage, ConfirmDbBackup; VerifySteps.Smoke;
+ * <tr><td>upgrade PreflightSteps.Doctor, VerifyTargetPackage, ConfirmDbBackup;
+ *     VendorPreconditionSteps.Verify; AnalyticsJndiSteps.Check; VerifySteps.Smoke;
  *     ServiceSteps.WaitForServer (upgrade suite)</td>
  *     <td colspan="2">UpgradeStepIdempotencyTest#should_not_mutate_when_read_only_upgrade_steps_execute_twice</td></tr>
  * <tr><td>upgrade BackupSteps.FullExport</td>
@@ -123,6 +124,8 @@ import org.junit.jupiter.api.Test;
  * <tr><td>upgrade TomcatSteps.CopyWebappToTomcat</td>
  *     <td>UpgradeStepIdempotencyTest#should_replace_the_copy_when_copy_webapp_to_tomcat_executes_twice</td>
  *     <td>UpgradeStepIdempotencyTest#should_remove_the_copy_when_copy_webapp_to_tomcat_compensates_twice</td></tr>
+ * <tr><td>upgrade PasswordSteps.MigratePasswords (irreversible)</td>
+ *     <td colspan="2">UpgradeStepIdempotencyTest#should_migrate_once_when_migrate_passwords_executes_twice</td></tr>
  * <tr><td>upgrade PostUpgradeSteps.ClearTomcatCaches</td>
  *     <td>UpgradeStepIdempotencyTest#should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice</td>
  *     <td>irreversible: caches regenerate, compensation is a no-op</td></tr>
@@ -342,6 +345,8 @@ class IdempotencyCoverageTest {
           Map.entry(OPS + "upgrade.PreflightSteps$Doctor", U_READ_ONLY),
           Map.entry(OPS + "upgrade.PreflightSteps$VerifyTargetPackage", U_READ_ONLY),
           Map.entry(OPS + "upgrade.PreflightSteps$ConfirmDbBackup", U_READ_ONLY),
+          Map.entry(OPS + "upgrade.VendorPreconditionSteps$Verify", U_READ_ONLY),
+          Map.entry(OPS + "upgrade.AnalyticsJndiSteps$Check", U_READ_ONLY),
           Map.entry(
               OPS + "upgrade.BackupSteps$FullExport",
               U + "should_reuse_the_export_when_full_export_executes_twice"),
@@ -412,6 +417,9 @@ class IdempotencyCoverageTest {
           Map.entry(
               OPS + "upgrade.EventSteps$ImportEvents",
               U + "should_import_once_when_import_events_executes_twice"),
+          Map.entry(
+              OPS + "upgrade.PasswordSteps$MigratePasswords",
+              U + "should_migrate_once_when_migrate_passwords_executes_twice"),
           Map.entry(
               OPS + "upgrade.PostUpgradeSteps$ClearTomcatCaches",
               U + "should_empty_work_and_temp_when_clear_tomcat_caches_executes_twice"),

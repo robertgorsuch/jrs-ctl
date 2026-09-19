@@ -414,6 +414,7 @@ class GuidedModeTest {
         tomcat.toString(),
         "n",
         "y",
+        "n",
         "q");
 
     assertThat(ran)
@@ -430,6 +431,29 @@ class GuidedModeTest {
                 tomcat.toString(),
                 "--db-backup-confirmed"));
     assertThat(text.toString()).doesNotContain("Export taken earlier");
+  }
+
+  /** Issue #108: the vendor's password migration is a samedb question, off by default. */
+  @Test
+  void should_ask_for_the_password_migration_after_the_backup_for_a_samedb_upgrade()
+      throws Exception {
+    Path pkg = Files.createDirectories(tmp.resolve("pkg"));
+
+    guided(List.of(), List.of(), "6", "10.1.0", pkg.toString(), "samedb", "", "n", "y", "y", "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of(
+                "upgrade",
+                "--to",
+                "10.1.0",
+                "--package",
+                pkg.toString(),
+                "--mode",
+                "samedb",
+                "--db-backup-confirmed",
+                "--migrate-passwords"));
+    assertThat(text.toString()).contains("js-ant migrate-passwords");
   }
 
   @Test

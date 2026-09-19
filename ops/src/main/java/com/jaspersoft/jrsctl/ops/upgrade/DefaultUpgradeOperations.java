@@ -15,6 +15,7 @@ import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
@@ -110,6 +111,17 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " import them after the vendor run with the new version's js-import, or run js-import"
           + " --include-access-events --include-audit-events --include-monitoring-events by hand.";
 
+  /** Issue #108: the password migration is the samedb step; newdb rebuilds the database instead. */
+  static final String MIGRATE_PASSWORDS_NEWDB_WARNING =
+      "--migrate-passwords is ignored in newdb mode: js-upgrade-newdb rebuilds the database from"
+          + " the full export; run js-ant migrate-passwords by hand afterwards if the new version's"
+          + " js.password-storage-config.properties asks for the modern format.";
+
+  /** The home of the user running jrsctl (HOME, USERPROFILE, else user.home), for the licence. */
+  static Path defaultUserHome() {
+    return Path.of(UserPaths.expand("~", System.getenv())).toAbsolutePath().normalize();
+  }
+
   /** Review §2.1, ADR-0026: what the operator still owns when the webapp moves to a new Tomcat. */
   static final String TOMCAT_DIR_WARNING =
       "The webapp is copied into %s before the vendor run and the upgraded server starts there;"
@@ -152,6 +164,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " add them there before running if the vendor scripts need them";
 
   private final UpgradeRuntime rt;
+  private final Path userHome;
 
   public DefaultUpgradeOperations(Services services) {
     this(
@@ -171,7 +184,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
   }
 
   DefaultUpgradeOperations(UpgradeRuntime rt) {
+    this(rt, defaultUserHome());
+  }
+
+  /** {@code userHome} is where the vendor scripts look for the licence file (issue #108). */
+  DefaultUpgradeOperations(UpgradeRuntime rt, Path userHome) {
     this.rt = Objects.requireNonNull(rt, "rt");
+    this.userHome = Objects.requireNonNull(userHome, "userHome").toAbsolutePath().normalize();
   }
 
   /** {@code %s} is the adopted export (ADR-0028). */
@@ -412,12 +431,29 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         warnings.add(EVENTS_LEFT_BEHIND_WARNING);
       }
     }
+    if (options.migratePasswords()) {
+      // installation guide 10.1 pp.194-199 (issue #108): the migration utility ships with 10.1
+      if (!VendorPreconditions.atLeast(
+          options.toVersion(), VendorPreconditions.PASSWORD_MIGRATION_FROM)) {
+        throw new UpgradeException(
+            UpgradeException.PRECHECK,
+            "--migrate-passwords needs a target of 10.1.0 or later; "
+                + options.toVersion()
+                + " has no js-ant migrate-passwords",
+            "drop --migrate-passwords, or upgrade to 10.1.0 or later");
+      }
+      if (options.mode() == Mode.NEWDB) {
+        warnings.add(MIGRATE_PASSWORDS_NEWDB_WARNING);
+      }
+    }
     warnings.add(options.mode() == Mode.SAMEDB ? FILES_ONLY_WARNING : NEWDB_ROLLBACK_WARNING);
     warnings.add(PASSWORD_WARNING);
 
     List<Step> steps = new ArrayList<>();
     steps.add(new PreflightSteps.Doctor(rt, in));
     steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
+    // review §2.5 (issue #108): the vendor's own preconditions, before anything is stopped
+    steps.add(new VendorPreconditionSteps.Verify(rt, in, userHome));
     if (options.mode() == Mode.SAMEDB) {
       // newdb's own full export is the backup its rollback rebuilds the database from (ADR-0029);
       // samedb migrates the schema in place, which no export undoes, so it still asks
@@ -457,6 +493,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       // (upgrade guide 10.1 p.80, installation guide p.256; issue #106)
       steps.add(new EventSteps.ImportEvents(rt, in));
     }
+    if (options.mode() == Mode.SAMEDB && options.migratePasswords()) {
+      // the vendor's password migration, while the server is still down (installation guide
+      // 10.1 pp.194-199; issue #108); refused for a target below 10.1 in prepare()
+      steps.add(new PasswordSteps.MigratePasswords(rt, in));
+    }
     // the vendor's "Additional tasks", done while the server is still down (review §2.2)
     steps.add(new PostUpgradeSteps.ClearTomcatCaches(rt, in));
     steps.add(new PostUpgradeSteps.ClearRepositoryCache(rt));
@@ -485,6 +526,12 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     if (stopForCustomizations) {
       steps.add(ServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
       steps.add(ServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
+    }
+    if (VendorPreconditions.atLeast(options.toVersion(), VendorPreconditions.ANALYTICS_JNDI_FROM)
+        && VendorPreconditions.below(
+            options.toVersion(), VendorPreconditions.ANALYTICS_JNDI_BELOW)) {
+      // release notes 9.0 p.15 (issue #108): the two analytics JNDI resources, a WARN when missing
+      steps.add(new AnalyticsJndiSteps.Check(rt, in));
     }
     steps.add(new VerifySteps.Smoke(rt, in));
     steps.add(new VerifySteps.RecordUpgrade(rt, in));
@@ -566,6 +613,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     List<Step> steps = new ArrayList<>();
     steps.add(new PreflightSteps.Doctor(rt, in));
     steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
+    // review §2.5 (issue #108): the vendor's own preconditions, before anything is stopped
+    steps.add(new VendorPreconditionSteps.Verify(rt, in, userHome));
     steps.add(master);
     steps.add(keystore);
     steps.add(new RehearsalSteps.RunVendorTest(rt, in));

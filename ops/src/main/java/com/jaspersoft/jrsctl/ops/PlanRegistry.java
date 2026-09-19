@@ -245,7 +245,9 @@ public final class PlanRegistry {
         text(args, "keyAlias"),
         text(args, "keyPasswordRef").map(SecretRef::parse),
         // and one that leaves the events where the vendor script leaves them (issue #106)
-        args.path("includeEvents").asBoolean(false));
+        args.path("includeEvents").asBoolean(false),
+        // and one that leaves the stored passwords as they are (issue #108)
+        args.path("migratePasswords").asBoolean(false));
   }
 
   public static String upgradeArgs(UpgradeOperations.UpgradeOptions options) {
@@ -256,6 +258,7 @@ public final class PlanRegistry {
     node.put("dbBackupConfirmed", options.dbBackupConfirmed());
     node.put("reapplyHotfixes", options.reapplyHotfixes());
     node.put("includeEvents", options.includeEvents());
+    node.put("migratePasswords", options.migratePasswords());
     if (options.tomcatDir().isPresent()) {
       node.put("tomcatDir", options.tomcatDir().get().toAbsolutePath().normalize().toString());
     } else {
