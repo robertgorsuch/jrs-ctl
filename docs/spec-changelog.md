@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, documentation corrections)
+
+- §5.1: the home falls back to `~/.jrsctl` when the system home does not exist and cannot be created; one that exists but is not writable is refused with the reason (what the resolver has done since #50). `docs/compatibility.md` regenerated for matrix version 2 (Java sets, Tomcat ranges, modes per upgrade path). The operator guide states the by-design answers from the second field test: the plan is fixed and every variation is a flag, the sidecar's purpose, what a failed import leaves and how to find it, and what the newdb rollback rebuilds.
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, organisation-scoped export and import)
 
 - §9.1, §9.4, §9.5: `export --organization <id>` exports one organisation, `import --organization <id>` imports into one and `--merge-organization` merges when the ids differ, through the REST body and query and the vendor tools' `--organization`/`--merge-organization`; the sidecar records the organisation; the pre-import snapshot of an organisation import is scoped to `/organizations/<id>`. The guided menu and the console carry the same choices; the `import.organizations.not.match` remedy is now `--merge-organization` (field test 2, E5, I4).

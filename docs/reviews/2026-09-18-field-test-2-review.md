@@ -95,3 +95,37 @@ The tester read the verdicts above and pushed back on four "by design" items. Ea
 - **Asked for a backup, then took one.** For newdb the two are the same thing once the rollback above exists, so the question goes for newdb and stays for samedb with the reason (D19, Task 7b). The vendor's `test` option becomes `upgrade --test` (D17, Task 7c).
 - **`--skip-themes`** exists on the CLI, but the tester was in the menu, where nothing but `--update` is reachable (I4 above, Task 8).
 
+## Status of each finding (2026-09-18, after the plan's code tasks)
+
+| Finding | Status |
+|---|---|
+| G1 | fixed by Task 8 (PR #95): footer names `--help`, `console` and `--json` |
+| G2, G4 | handed off (Task 14 issue: ADR-0023 JLine spike) |
+| G3 | fixed by Task 9 (PR #96) |
+| G5 | fixed by Task 8 (PR #95): entry 8 lists the documentation |
+| G6, G7 | fixed by Task 8 (PR #95): one settings entry, changed in a loop |
+| G8 | fixed by Task 10 (PR #97): output wraps at the terminal width |
+| G9 | fixed by Task 9 (PR #96): a missing directory is refused when written |
+| G10 | by design, documented (D16, Task 13): the sidecar's purpose is stated on `export` |
+| H1 | fixed in 1.7.0 (ADR-0024) and by Task 1 (PR #85, ADR-0027) |
+| H2, H3 | fixed by Task 2 (PR #86): the customer path first, authoring last |
+| H4 | by design (D2); the customer-facing path no longer names manifests or signatures |
+| H5 | fixed by Task 2 (PR #86): the rollback entry says what it does and offers `--cascade` |
+| H6 | fixed by Task 2 (PR #86) for the wording; the adopt command is handed off (Task 14 issue) |
+| U1 | by design (spec §0, §6.2), stated on `upgrade` (Task 13); the concrete needs are Tasks 7, 7c |
+| U2 | fixed in 1.7.0 (ADR-0025) |
+| U3 | fixed by Task 6 (PR #90): the space is budgeted and the home is shown; a `backups.dir` key is handed off (Task 14 issue) |
+| U4 | consequence of U3 |
+| U5a | fixed in 1.7.0 (matrix v2 modes) |
+| U5b | fixed by Task 7 (PR #91, ADR-0028) |
+| Second round: rollback, backup question, rehearsal | fixed by Tasks 7b and 7c (PRs #92, #94; ADR-0029) |
+| E1, E2 | fixed by Task 8 (PR #95): entries labelled by mechanism, stop question for the vendor export |
+| E3 | fixed by Task 5 (PR #89) |
+| E4 | fixed by Task 11 (PR #98) |
+| E5 | fixed by Task 12 |
+| I1 | fixed by Task 11 (PR #98) |
+| I2 | fixed by Task 8 (PR #95): the restore entry says what the snapshot is; the scope comes from the sidecar (Task 5) |
+| I3 | by design, documented in four places; a true rollback is handed off (Task 14 issue) |
+| I4 | fixed by Task 8 (PR #95) for the menu and by Task 12 for the organisation |
+| D1 | fixed by Task 3 (PR #87) |
+| D2 | fixed by Task 4 (PR #88) |

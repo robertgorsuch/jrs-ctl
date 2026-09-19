@@ -5,7 +5,9 @@ import java.nio.file.Path;
 /**
  * Layout of {@code $JRSCTL_HOME} (spec §5.1). Invariant: every path is derived from {@link #root()}
  * so relocating the home moves everything; nothing in the tool writes outside this tree except the
- * server installation it is asked to change and run-scoped temp files under {@link #runs()}.
+ * server installation it is asked to change, run-scoped temp files under {@link #runs()}, and the
+ * files the operator asks for by path: export archives with their {@code .jrsctl.json} sidecar,
+ * built bundles and generated keys.
  */
 public record JrsctlHome(Path root) {
 
