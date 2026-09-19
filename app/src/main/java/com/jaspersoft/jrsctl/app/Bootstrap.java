@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  * reference in the configuration is resolved once here and registered with the global redactor
  * before any command output is written ({@code enc:} references too when a non-interactive
  * passphrase is available, so no command prompts merely to redact); the state store and adapter are
- * opened lazily and the store is closed with this object; a {@link
+ * opened lazily and both are closed with this object (the adapter logs its session out); a {@link
  * com.jaspersoft.jrsctl.core.config.ConfigException} propagates so the command exits 2 without
  * touching anything.
  */
@@ -49,16 +49,19 @@ final class Bootstrap implements AutoCloseable {
 
   private final Services services;
   private final Lazy<StateStore> store;
+  private final Lazy<JrsAdapter> adapter;
   private final EncryptedSecretStore secretStore;
   private final Map<String, java.nio.file.Path> fromBuildomatic;
 
   private Bootstrap(
       Services services,
       Lazy<StateStore> store,
+      Lazy<JrsAdapter> adapter,
       EncryptedSecretStore secretStore,
       Map<String, java.nio.file.Path> fromBuildomatic) {
     this.services = services;
     this.store = store;
+    this.adapter = adapter;
     this.secretStore = secretStore;
     this.fromBuildomatic = Map.copyOf(fromBuildomatic);
   }
@@ -124,7 +127,7 @@ final class Bootstrap implements AutoCloseable {
             adapter,
             clock,
             interactive);
-    return new Bootstrap(services, store, secretStore, defaults.filled());
+    return new Bootstrap(services, store, adapter, secretStore, defaults.filled());
   }
 
   /**
@@ -184,6 +187,8 @@ final class Bootstrap implements AutoCloseable {
 
   @Override
   public void close() {
+    // #114: end the server session a form login opened; an adapter never built is not built now
+    adapter.peek().ifPresent(JrsAdapter::close);
     store.peek().ifPresent(StateStore::close);
   }
 
