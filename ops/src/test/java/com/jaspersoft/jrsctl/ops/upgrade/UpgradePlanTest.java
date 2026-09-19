@@ -183,6 +183,48 @@ class UpgradePlanTest {
     }
   }
 
+  /** Spec §10.2 "Rehearsal" (field test 2, U1): the vendor's validation, nothing else. */
+  @Test
+  void should_plan_a_rehearsal_that_stops_nothing_and_backs_up_nothing_when_test_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planTest(newdb(f));
+
+      assertThat(UpgradeFixture.ids(plan))
+          .containsExactly(
+              "doctor",
+              "verify-target-package",
+              "write-master-properties",
+              "stage-keystore-init",
+              "run-vendor-test",
+              "unstage-target-package");
+      assertThat(plan.summary().operation()).isEqualTo("upgrade.test");
+      assertThat(plan.summary().target()).isEqualTo("rehearsal of 8.2.0 -> 9.0.0 (newdb)");
+      assertThat(plan.summary().serviceRestart()).isFalse();
+      assertThat(plan.summary().backupLocations()).isEmpty();
+      assertThat(plan.summary().warnings())
+          .contains(DefaultUpgradeOperations.REHEARSAL_WARNING)
+          .doesNotContain(DefaultUpgradeOperations.NEWDB_WARNING)
+          .doesNotContain(DefaultUpgradeOperations.NEWDB_ROLLBACK_WARNING);
+      assertThat(UpgradeFixture.step(plan, "run-vendor-test").mutating()).isFalse();
+      assertThat(UpgradeFixture.step(plan, "run-vendor-test").detail())
+          .contains("js-upgrade-newdb test")
+          .contains("pre-upgrade-test-pro");
+      assertThat(UpgradeFixture.step(plan, "unstage-target-package").irreversible()).isTrue();
+      assertThat(plan.fingerprint().inputs()).containsEntry("test", "true");
+    }
+  }
+
+  @Test
+  void should_refuse_a_rehearsal_with_exit_6_when_the_upgrade_path_is_unsupported()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThatThrownBy(() -> f.ops().planTest(UpgradeOptions.newdb("7.5.0", f.packageDir)))
+          .isInstanceOf(UpgradeException.class)
+          .satisfies(e -> assertThat(((UpgradeException) e).exitCode()).isEqualTo(6));
+    }
+  }
+
   @Test
   void should_refuse_restore_database_for_a_samedb_run() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

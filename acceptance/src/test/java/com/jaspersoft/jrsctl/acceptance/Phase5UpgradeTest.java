@@ -344,6 +344,7 @@ class Phase5UpgradeTest {
         buildomatic.resolve("js-ant.bat"),
         "@echo off\r\n"
             + "echo js-ant fake target=%1 JAVA_HOME=%JAVA_HOME%\r\n"
+            + "if \"%1\"==\"pre-upgrade-test-pro\" (echo BUILD SUCCESSFUL & exit /b 0)\r\n"
             + "xcopy /E /Y /I /Q \""
             + webappNew.get()
             + "\" \""
@@ -355,6 +356,7 @@ class Phase5UpgradeTest {
         buildomatic.resolve("js-ant.sh"),
         "#!/bin/sh\n"
             + "echo \"js-ant fake target=$1 JAVA_HOME=$JAVA_HOME\"\n"
+            + "if [ \"$1\" = \"pre-upgrade-test-pro\" ]; then echo BUILD SUCCESSFUL; exit 0; fi\n"
             + "cp -R \""
             + webappNew.get()
             + "/.\" \""
@@ -366,6 +368,8 @@ class Phase5UpgradeTest {
     write(
         buildomatic.resolve("js-upgrade-newdb.bat"),
         "@echo off\r\n"
+            + "if \"%~1\"==\"test\" (call \"%~dp0js-ant.bat\" pre-upgrade-test-pro"
+            + " -Dstrategy=standard & exit /b %errorlevel%)\r\n"
             + "if \"%~1\"==\"\" (echo JasperReports Server import file[path-to-file-and-filename]"
             + " expected as input & exit /b 1)\r\n"
             + "if not exist \"%~1\" (echo import file %~1 does not exist & exit /b 1)\r\n"
@@ -375,6 +379,8 @@ class Phase5UpgradeTest {
     write(
         buildomatic.resolve("js-upgrade-newdb.sh"),
         "#!/bin/sh\n"
+            + "if [ \"$1\" = \"test\" ]; then exec \"$(dirname \"$0\")/js-ant.sh\""
+            + " pre-upgrade-test-pro -Dstrategy=standard; fi\n"
             + "if [ -z \"$1\" ]; then echo \"JasperReports Server import file expected as"
             + " input\"; exit 1; fi\n"
             + "if [ ! -f \"$1\" ]; then echo \"import file $1 does not exist\"; exit 1; fi\n"
@@ -561,6 +567,31 @@ class Phase5UpgradeTest {
         .contains(
             "Rollback restores files only. Restore the database from your own backup before"
                 + " running rollback.");
+  }
+
+  @Test
+  @Order(2)
+  void upgrade_test_rehearses_with_the_vendor_validation_and_changes_nothing() throws Exception {
+    // spec §10.2 "Rehearsal": js-upgrade-newdb test, no stop, no backup, package left as found
+    Cli.Result plan =
+        jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--test", "--plan")
+            .assertExit(0);
+    assertThat(plan.stdout())
+        .contains("Plan  upgrade.test")
+        .contains("rehearse with the vendor's validation (js-upgrade-newdb test)")
+        .contains("leave the target package as it was found")
+        .contains("nothing is backed up and nothing is changed")
+        .doesNotContain("stop the JasperReports Server service")
+        .doesNotContain("full repository export");
+
+    Cli.Result run =
+        jrsctl("upgrade", "--to", targetVersion, "--package", pkg.toString(), "--test", "--yes")
+            .assertExit(0);
+    assertThat(run.stdout()).contains("succeeded").contains("rehearsal ok; nothing changed");
+    assertThat(webapp.resolve(MARKER)).doesNotExist();
+    assertThat(webapp.resolve("version.txt")).hasContent("8.2.0");
+    assertThat(pkg.resolve("buildomatic").resolve("default_master.properties")).doesNotExist();
+    assertThat(pkg.resolve("buildomatic").resolve("keystore.init.properties")).doesNotExist();
   }
 
   @Test

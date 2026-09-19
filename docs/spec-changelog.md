@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, upgrade rehearsal)
+
+- §10.2 "Rehearsal", §10.4: `upgrade --test` runs the vendor's own validation (`js-upgrade-<mode> test`, the wrapper's `pre-upgrade-test-<ce|pro>`, which takes no export) after the same preflight and staging as the upgrade, then puts the package back as it was; nothing is stopped, backed up or changed; operation `upgrade.test`; a failure exits 2 with the vendor's lines. The guided menu offers it before the real run (field test 2, U1: the tester wanted to try the upgrade before committing to it).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, newdb rollback and the backup question)
 
 - §10.1, §10.4: `upgrade rollback <runId> --to-point B|C --restore-database` rebuilds a newdb run's repository database from the point-B export with the restored buildomatic (`rebuild-database` = `js-ant init-js-db-<ce|pro>`, then `reimport-full-export` = `js-import` of the export; both irreversible, each run once per rollback run); refused unless `snapshots/<runId>/vendor-upgrade.started` records that the vendor script was launched, and refused for samedb. The `--db-backup-confirmed` gate is samedb's only, with the reason in its message; a newdb plan says that its own full export is the backup its rollback rebuilds the database from. The guided menu and the console form follow (ADR-0029; field test 2, second round).

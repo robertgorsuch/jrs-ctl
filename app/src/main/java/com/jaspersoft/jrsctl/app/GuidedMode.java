@@ -196,6 +196,14 @@ final class GuidedMode {
     }
     // newdb (the default): jrsctl takes the full export first and can rebuild the database from
     // it (ADR-0029), so no backup question; samedb on the CLI still asks for one.
+    if (Prompter.yes(
+        out, "Rehearse with the vendor's validation first (changes nothing)? [Y/n] ", true)) {
+      int rehearsal = execute("upgrade", "--to", version.get(), "--package", pkg.get(), "--test");
+      if (rehearsal != ExitCodes.SUCCESS) {
+        out.println("The rehearsal found problems; fix what it reports, then come back.");
+        return;
+      }
+    }
     out.println(
         "jrsctl takes a full export of the repository first; upgrade rollback --restore-database"
             + " can rebuild the database from it.");

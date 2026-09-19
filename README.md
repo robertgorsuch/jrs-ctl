@@ -187,10 +187,11 @@ Upgrades are the biggest change jrsctl makes. Please read this first:
 - Download and unpack the new JasperReports Server version on the server first.
 - Upgrades go one supported step at a time. For example, from 7.x you go to 8.x first, then to 10.x. jrsctl tells you if a step isn't supported, and stops before changing anything.
 
-Look at the plan first:
+Look at the plan first, then rehearse: `--test` runs the vendor's own checks of the settings, the database connection and the package, and changes nothing.
 
 ```bash
 jrsctl upgrade --to 10.0.0 --package C:\Downloads\jasperreports-server-pro-10.0.0-bin --plan
+jrsctl upgrade --to 10.0.0 --package C:\Downloads\jasperreports-server-pro-10.0.0-bin --test
 ```
 
 When you're happy with it, run the same command without `--plan`. At the end jrsctl tests the upgraded server. If that test fails, it offers to put the old version back:

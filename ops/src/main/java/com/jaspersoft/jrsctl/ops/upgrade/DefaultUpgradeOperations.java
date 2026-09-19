@@ -231,8 +231,19 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         + " free); to put them on another volume run with --home <dir> or JRSCTL_HOME";
   }
 
-  @Override
-  public Plan planUpgrade(UpgradeOptions options) {
+  /** What both the upgrade and its rehearsal are planned from. */
+  private record Prepared(
+      UpgradeInput in,
+      TargetPackage target,
+      Optional<ServerIdentity> identity,
+      List<String> warnings) {}
+
+  /**
+   * The preflight every upgrade plan shares: the option consistency, the upgrade path in the
+   * matrix, the installed buildomatic, the staged properties' invariants, the Tomcat and the
+   * package; it throws for what cannot be planned and collects the warnings for what can.
+   */
+  private Prepared prepare(UpgradeOptions options) {
     Objects.requireNonNull(options, "options");
     Config config = rt.config();
     HotfixPaths paths = paths(config);
@@ -338,6 +349,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               + PreflightSteps.VERIFY_TARGET_PACKAGE
               + " will refuse)");
     }
+    return new Prepared(in, target, identity, warnings);
+  }
+
+  @Override
+  public Plan planUpgrade(UpgradeOptions options) {
+    Prepared prepared = prepare(options);
+    UpgradeInput in = prepared.in();
+    TargetPackage target = prepared.target();
+    Optional<ServerIdentity> identity = prepared.identity();
+    List<String> warnings = prepared.warnings();
     warnings.add(
         switch (options.mode()) {
           case SAMEDB -> SAMEDB_WARNING;
@@ -458,12 +479,80 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     Map<String, String> inputs = new LinkedHashMap<>();
     inputs.put("server", identity.map(ServerIdentity::fingerprintInput).orElse("unreachable"));
     inputs.put("package", target.contentHash());
-    inputs.put("config", configHash(config));
+    inputs.put("config", configHash(rt.config()));
     inputs.put("to", options.toVersion());
     inputs.put("mode", options.mode().name());
     inputs.put("reapplyHotfixes", Boolean.toString(options.reapplyHotfixes()));
     return new Plan(
         "upgrade-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  /** Spec §10.2 "Rehearsal": what the plan says about itself, in one line. */
+  public static final String REHEARSAL_WARNING =
+      "Rehearsal: the vendor's own validation of the staged properties, the database connection"
+          + " and the package. The service is not stopped, nothing is backed up and nothing is"
+          + " changed; the staged files are removed at the end.";
+
+  @Override
+  public Plan planTest(UpgradeOptions options) {
+    Prepared prepared = prepare(options);
+    UpgradeInput in = prepared.in();
+    TargetPackage target = prepared.target();
+    Optional<ServerIdentity> identity = prepared.identity();
+    List<String> warnings = new ArrayList<>();
+    warnings.add(REHEARSAL_WARNING);
+    for (String w : prepared.warnings()) {
+      // the upgrade's own warnings about what it will do to the server do not apply; the ones
+      // about what was found (server unreachable, package problems, Tomcat) do
+      if (w.startsWith("server unreachable")
+          || w.startsWith("target package:")
+          || w.startsWith("the Tomcat version")) {
+        warnings.add(w);
+      }
+    }
+    VendorSteps.WriteMasterProperties master = new VendorSteps.WriteMasterProperties(rt, in);
+    VendorSteps.StageKeystoreInit keystore = new VendorSteps.StageKeystoreInit(rt, in);
+    List<Step> steps = new ArrayList<>();
+    steps.add(new PreflightSteps.Doctor(rt, in));
+    steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
+    steps.add(master);
+    steps.add(keystore);
+    steps.add(new RehearsalSteps.RunVendorTest(rt, in));
+    steps.add(new RehearsalSteps.UnstageTargetPackage(rt, master, keystore));
+    Map<String, String> rollbackPoints = new LinkedHashMap<>();
+    rollbackPoints.put(Phases.PREFLIGHT, "nothing mutated");
+    rollbackPoints.put(
+        Phases.VENDOR_UPGRADE,
+        "only the target package's buildomatic is touched (staged files), and it is put back as"
+            + " it was at the end or on failure");
+    List<Path> touched = new ArrayList<>();
+    in.targetBuildomatic().ifPresent(b -> touched.add(b.resolve(Buildomatic.MASTER_PROPERTIES)));
+    PlanSummary summary =
+        new PlanSummary(
+            TEST_OPERATION,
+            "rehearsal of "
+                + identity.map(ServerIdentity::version).orElse("?")
+                + " -> "
+                + options.toVersion()
+                + " ("
+                + options.mode().name().toLowerCase(Locale.ROOT)
+                + ")",
+            touched,
+            List.of(),
+            false,
+            List.of(),
+            rollbackPoints,
+            STRATEGY,
+            warnings);
+    Map<String, String> inputs = new LinkedHashMap<>();
+    inputs.put("server", identity.map(ServerIdentity::fingerprintInput).orElse("unreachable"));
+    inputs.put("package", target.contentHash());
+    inputs.put("config", configHash(rt.config()));
+    inputs.put("to", options.toVersion());
+    inputs.put("mode", options.mode().name());
+    inputs.put("test", "true");
+    return new Plan(
+        "upgrade-test-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
   }
 
   private void embed(

@@ -122,11 +122,25 @@ class GuidedModeTest {
   void should_start_a_newdb_upgrade_without_a_backup_question() throws Exception {
     Path pkg = Files.createDirectories(tmp.resolve("pkg"));
 
-    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "q");
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "n", "q");
 
     assertThat(ran)
         .containsExactly(List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
     assertThat(text.toString()).contains("--restore-database");
+  }
+
+  /** Spec §10.2 "Rehearsal": the menu offers the vendor's validation before the real run. */
+  @Test
+  void should_rehearse_first_when_the_operator_accepts_the_default() throws Exception {
+    Path pkg = Files.createDirectories(tmp.resolve("pkg"));
+
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString(), "--test"),
+            List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
+    assertThat(text.toString()).contains("Rehearse with the vendor's validation first");
   }
 
   @Test

@@ -24,12 +24,13 @@ import picocli.CommandLine.Spec;
 /**
  * {@code jrsctl upgrade} (spec §10.4): plans and runs a vendor upgrade, and {@code upgrade rollback
  * <runId> --to-point B|C [--restore-database]} restores the backups of an earlier upgrade run.
- * Invariants: {@code --mode newdb} is the default; samedb without {@code --db-backup-confirmed}
- * exits 2 before anything is planned and prints the spec §10.1 gate (ADR-0012, ADR-0029: samedb
- * migrates the schema in place, which no export undoes, while newdb's own full export is what
- * {@code upgrade rollback --restore-database} rebuilds the database from); the plan is always shown
- * and confirmed through {@link PlanExecutor} like every mutating command; an unsupported upgrade
- * path exits 6.
+ * Invariants: {@code --mode newdb} is the default; {@code --test} rehearses with the vendor's own
+ * validation and changes nothing, exiting 2 when it fails; samedb without {@code
+ * --db-backup-confirmed} exits 2 before anything is planned and prints the spec §10.1 gate
+ * (ADR-0012, ADR-0029: samedb migrates the schema in place, which no export undoes, while newdb's
+ * own full export is what {@code upgrade rollback --restore-database} rebuilds the database from);
+ * the plan is always shown and confirmed through {@link PlanExecutor} like every mutating command;
+ * an unsupported upgrade path exits 6.
  */
 @Command(
     name = "upgrade",
@@ -123,6 +124,14 @@ final class UpgradeCommand implements Callable<Integer> {
   boolean plan;
 
   @Option(
+      names = "--test",
+      description =
+          "Rehearse: run the vendor's validation of the properties, database connection and"
+              + " package (js-upgrade-<mode> test) and change nothing. The service is not"
+              + " stopped and nothing is backed up; a failure exits 2.")
+  boolean test;
+
+  @Option(
       names = "--rollback-all",
       description =
           "On failure compensate every step of the plan (back to point B), not just the failing"
@@ -148,7 +157,7 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.USAGE, "--mode must be newdb or samedb");
     }
-    if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed) {
+    if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed && !test) {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
     }
@@ -174,16 +183,32 @@ final class UpgradeCommand implements Callable<Integer> {
               keyPassword);
       Plan planned;
       try {
-        planned = new DefaultUpgradeOperations(services).planUpgrade(options);
+        DefaultUpgradeOperations ops = new DefaultUpgradeOperations(services);
+        planned = test ? ops.planTest(options) : ops.planUpgrade(options);
       } catch (UpgradeException e) {
         return report(out, err, global.json(), e);
       } catch (RuntimeException e) {
         return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
       }
       PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
-      return executor.execute(
-          new PlanExecutor.Request(
-              planned, PlanRegistry.UPGRADE, PlanRegistry.upgradeArgs(options), plan, rollbackAll));
+      int code =
+          executor.execute(
+              new PlanExecutor.Request(
+                  planned,
+                  test ? PlanRegistry.UPGRADE_TEST : PlanRegistry.UPGRADE,
+                  PlanRegistry.upgradeArgs(options),
+                  plan,
+                  rollbackAll));
+      if (test && !plan) {
+        if (code == ExitCodes.SUCCESS) {
+          out.println("rehearsal ok; nothing changed");
+        } else if (code == ExitCodes.FAILED_ROLLED_BACK) {
+          // a failed rehearsal changed nothing (the staged files were removed), which is what
+          // exit 2 means; 3 would claim a rollback of the server that never happened
+          return ExitCodes.PRECHECK_FAILED;
+        }
+      }
+      return code;
     }
   }
 
