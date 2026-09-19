@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A {@link ServiceRuntime} read from the run's {@link Context}, for callers that build their steps
@@ -42,6 +43,12 @@ public final class ContextServiceRuntime implements ServiceRuntime {
   @Override
   public ServiceController controller() {
     return ctx.platform().services(ctx.service(Config.class).toServiceConfig());
+  }
+
+  @Override
+  public Optional<ServiceController> databaseController() {
+    return CompanionDatabase.controller(
+        ctx.platform(), ctx.service(Config.class).toServiceConfig());
   }
 
   @Override

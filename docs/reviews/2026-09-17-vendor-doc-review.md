@@ -212,6 +212,8 @@ before the load balancer sends them traffic.
 - AWS images control Tomcat through `tomcat.socket` (AWS guide p.30); `LinuxInit` should accept a socket
   unit name.
 
+*Fixed 2026-09-19 (#113, ADR-0032): `doctor` items `telemetry`, `audit`, `database-service` and `pid-file`, the `auth` item's non-ASCII warning, the start-service step starting the bundled database first, the script kinds removing a stale `catalina.pid`, `SystemdServiceController` driving `X.socket` with `X.service`, and `init` listing socket units and preferring them. The Tomcat and JDK version items of the first bullet were done under #109 and the existing `vendor-java` item.*
+
 ### 3.4 Support bundle and vendor logs
 *Fixed 2026-09-19 (issue #111): the bundle carries the newest buildomatic script log, `jasperserver.log`, the Tomcat catalina log, `installation.log` and a password-blanked `default_master.properties`, tail-capped and redacted, and every vendor run logs the buildomatic log it wrote.*
 The vendor's first troubleshooting instruction is the script log

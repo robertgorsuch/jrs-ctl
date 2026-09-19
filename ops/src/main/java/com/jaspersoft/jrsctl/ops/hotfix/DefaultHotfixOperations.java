@@ -266,6 +266,8 @@ public final class DefaultHotfixOperations implements HotfixOperations {
         () -> warnings.add("server unreachable at plan time; validate-manifest will refuse"));
     // review §3.2 (issue #112): a hotfix applied here reaches this node only
     ClusterNotice.warning(rt.services()).ifPresent(warnings::add);
+    // review §3.3 (issue #113): a cumulative hotfix can bring or reset the telemetry switch
+    TelemetryNotice.warning(manifest, paths, webappName(config)).ifPresent(warnings::add);
     if (!manifest.sql().isEmpty() && dbType.isEmpty()) {
       warnings.add("the manifest carries SQL but the database section is not configured");
     }
@@ -597,5 +599,14 @@ public final class DefaultHotfixOperations implements HotfixOperations {
     } catch (IOException e) {
       return Json.mapper().createObjectNode();
     }
+  }
+
+  /** The deployed webapp's directory name, {@code jasperserver-pro} unless configured otherwise. */
+  static String webappName(Config config) {
+    return config
+        .server()
+        .webappName()
+        .map(Config.WebappName::yamlValue)
+        .orElse(Config.WebappName.JASPERSERVER_PRO.yamlValue());
   }
 }

@@ -44,7 +44,12 @@ final class ServerChecks {
           "server.auth.username or server.auth.passwordRef is not configured",
           "set both in config.yaml (run jrsctl init)");
     }
+    // REST API reference p.24 (issue #113): basic authentication with non-ASCII credentials
+    // "will always return an error"; the login form carries them
+    boolean basic = auth.mode() == Config.AuthMode.BASIC;
+    boolean nonAsciiBasic = false;
     try (Secret password = s.secrets().resolve(ref.get())) {
+      nonAsciiBasic = basic && (hasNonAscii(username.get()) || hasNonAscii(password.chars()));
       Session session =
           c.adapter().login(new Credentials(username.get(), password, Optional.empty()));
       // issue #112: the REST reference documents pp as a URL parameter only; the header is
@@ -55,16 +60,61 @@ final class ServerChecks {
               ? "; the token travels in the pp header, jrsctl's choice (ADR-0018), where the"
                   + " REST reference documents pp as a URL parameter only"
               : "";
+      if (nonAsciiBasic) {
+        return ReportItem.warn(
+            "auth",
+            "logged in as "
+                + username.get()
+                + " ("
+                + session.mode()
+                + ") with non-ASCII credentials, which the REST reference says basic"
+                + " authentication always rejects (REST API reference p.24); this login happened"
+                + " to work",
+            FORM_REMEDIATION);
+      }
       return ReportItem.pass(
           "auth", "logged in as " + username.get() + " (" + session.mode() + ")" + tokenNote);
     } catch (SecretException e) {
       return ReportItem.fail("auth", e.getMessage(), "fix " + ref.get().render());
     } catch (RuntimeException e) {
+      if (nonAsciiBasic) {
+        return ReportItem.fail(
+            "auth",
+            "login as "
+                + username.get()
+                + " failed: "
+                + e.getMessage()
+                + "; the credentials contain non-ASCII characters, which basic authentication"
+                + " always rejects (REST API reference p.24)",
+            FORM_REMEDIATION + ", then check the credentials behind " + ref.get().render());
+      }
       return ReportItem.fail(
           "auth",
           "login as " + username.get() + " failed: " + e.getMessage(),
           "check the credentials behind " + ref.get().render() + " and server.auth.mode");
     }
+  }
+
+  static final String FORM_REMEDIATION =
+      "set server.auth.mode to form (jrsctl config set server.auth.mode form) so the login form"
+          + " carries the credentials";
+
+  static boolean hasNonAscii(CharSequence text) {
+    for (int i = 0; i < text.length(); i++) {
+      if (text.charAt(i) > 0x7F) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static boolean hasNonAscii(char[] chars) {
+    for (char c : chars) {
+      if (c > 0x7F) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static ReportItem identity(ServerProbe.Connected c) {

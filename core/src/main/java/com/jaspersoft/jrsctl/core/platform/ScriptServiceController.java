@@ -2,11 +2,13 @@ package com.jaspersoft.jrsctl.core.platform;
 
 import static java.util.Objects.requireNonNull;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +50,7 @@ public final class ScriptServiceController extends PollingServiceController {
   private final TomcatProcessFinder processes;
   private final Optional<Duration> forceStopAfter;
   private final ProcessTerminator terminator;
+  private final LongPredicate alive;
 
   public ScriptServiceController(ProcessRunner runner, ServiceConfig.Kind kind, Path script) {
     this(runner, kind, script, TomcatProcesses.INSTANCE, DEFAULT_POLL_INTERVAL);
@@ -77,7 +80,28 @@ public final class ScriptServiceController extends PollingServiceController {
       Duration pollInterval,
       Optional<Duration> forceStopAfter,
       ProcessTerminator terminator) {
+    this(
+        runner,
+        kind,
+        script,
+        processes,
+        pollInterval,
+        forceStopAfter,
+        terminator,
+        StalePidFile.LIVE_PROCESSES);
+  }
+
+  ScriptServiceController(
+      ProcessRunner runner,
+      ServiceConfig.Kind kind,
+      Path script,
+      TomcatProcessFinder processes,
+      Duration pollInterval,
+      Optional<Duration> forceStopAfter,
+      ProcessTerminator terminator,
+      LongPredicate alive) {
     super(runner, pollInterval);
+    this.alive = requireNonNull(alive, "alive");
     this.kind = requireNonNull(kind, "kind");
     if (kind != ServiceConfig.Kind.CTLSCRIPT && kind != ServiceConfig.Kind.CATALINA) {
       throw new IllegalArgumentException("not a script kind: " + kind);
@@ -183,8 +207,43 @@ public final class ScriptServiceController extends PollingServiceController {
     if (state() == State.RUNNING) {
       return State.RUNNING;
     }
+    removeStalePidFile();
     control(command("start"), timeout, State.RUNNING, SCRIPT_REMEDIATION);
     return await(State.RUNNING, remaining(start, timeout), cancelled);
+  }
+
+  /**
+   * Where a bundled Tomcat's pid file can sit: the watched Tomcat, or the one inside an install.
+   */
+  List<Path> tomcatDirs() {
+    return switch (kind) {
+      case CATALINA -> List.of(watchedDir);
+      case CTLSCRIPT -> List.of(watchedDir.resolve("apache-tomcat"), watchedDir.resolve("tomcat"));
+      case WINDOWS_SERVICE, SYSTEMD, MANUAL -> throw new IllegalStateException(kind.name());
+    };
+  }
+
+  /**
+   * A {@code catalina.pid} left by a JVM that died without its stop script makes {@code catalina.sh
+   * start} refuse (installation guide p.237, issue #113); one naming no live process is removed
+   * before the start script runs. One naming a live process is left alone: that JVM is the reason
+   * the start would fail, and ending it is the stop path's business.
+   */
+  private void removeStalePidFile() {
+    try {
+      StalePidFile.removeIfStale(tomcatDirs(), alive)
+          .ifPresent(
+              n ->
+                  LOG.warn(
+                      "removed stale {} naming {}; catalina.sh would have refused to start over it"
+                          + " (installation guide p.237)",
+                      n.file(),
+                      n.pid()
+                          .map(p -> "process " + p + ", which is not running")
+                          .orElse("no process")));
+    } catch (IOException e) {
+      LOG.warn("cannot remove a stale pid file under {}: {}", watchedDir, e.getMessage());
+    }
   }
 
   List<String> command(String operation) {
