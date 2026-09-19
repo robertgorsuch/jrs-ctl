@@ -131,6 +131,7 @@ public final class PlanRegistry {
     putStrategy(node, o.strategy());
     node.put("out", o.out().toAbsolutePath().normalize().toString());
     putText(node, "keyAlias", o.keyAlias());
+    putText(node, "organization", o.organization());
     return Json.write(node);
   }
 
@@ -157,6 +158,8 @@ public final class PlanRegistry {
     }
     putStrategy(node, o.strategy());
     putText(node, "keyAlias", o.keyAlias());
+    putText(node, "organization", o.organization());
+    node.put("mergeOrganization", o.mergeOrganization());
     return Json.write(node);
   }
 
@@ -187,7 +190,8 @@ public final class PlanRegistry {
         strategy(args),
         // #67: arguments stored before the flag existed describe a plan that stopped the service
         args.path("stopService").asBoolean(true),
-        text(args, "keyAlias"));
+        text(args, "keyAlias"),
+        text(args, "organization"));
   }
 
   public static ExportImportOperations.ImportOptions importOptions(JsonNode args) {
@@ -207,7 +211,9 @@ public final class PlanRegistry {
         text(args, "brokenDependencies")
             .map(BrokenDependencies::parse)
             .orElse(BrokenDependencies.FAIL),
-        text(args, "keyAlias"));
+        text(args, "keyAlias"),
+        text(args, "organization"),
+        args.path("mergeOrganization").asBoolean(false));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

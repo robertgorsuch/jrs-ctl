@@ -165,6 +165,44 @@ class VendorToolsTest {
         .containsSequence("--keyalias", "deprecatedImportExportEncSecret");
   }
 
+  /** Field test 2, E5 and I4: one organisation on export, the target one on import, merged. */
+  @Test
+  void should_pass_the_organisation_to_js_export_and_js_import_when_given() {
+    ExportRequest export =
+        new ExportRequest(
+                ExportRequest.Scope.REPOSITORY,
+                Set.of("/reports"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Path.of("out.zip"))
+            .withOrganization("org1");
+    ImportRequest plain =
+        new ImportRequest(
+                Path.of("in.zip"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty())
+            .withOrganization("org1", false);
+
+    assertThat(VendorTools.exportArgs(export, Path.of("out.zip")))
+        .containsSequence("--organization", "org1");
+    assertThat(VendorTools.importArgs(plain))
+        .containsSequence("--organization", "org1")
+        .doesNotContain("--merge-organization");
+    assertThat(VendorTools.importArgs(plain.withOrganization("org1", true)))
+        .containsSequence("--organization", "org1", "--merge-organization");
+  }
+
   @Test
   void should_build_all_import_args_when_every_flag_set() {
     ImportRequest r =

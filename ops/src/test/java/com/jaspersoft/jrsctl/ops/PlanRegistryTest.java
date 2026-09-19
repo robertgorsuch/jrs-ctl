@@ -219,6 +219,53 @@ class PlanRegistryTest {
         .isTrue();
   }
 
+  /**
+   * Field test 2, E5 and I4: the organisation and the merge switch survive the stored arguments.
+   */
+  @Test
+  void should_round_trip_the_organisation_on_export_and_import_arguments() throws IOException {
+    ExportImportOperations.ExportOptions export =
+        new ExportImportOperations.ExportOptions(
+            Set.of(),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Path.of("out.zip"),
+            Optional.empty(),
+            true,
+            Optional.empty(),
+            Optional.of("org1"));
+    ExportImportOperations.ImportOptions imported =
+        new ExportImportOperations.ImportOptions(
+            Path.of("in.zip"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            BrokenDependencies.FAIL,
+            Optional.empty(),
+            Optional.of("org1"),
+            true);
+
+    ExportImportOperations.ExportOptions exportBack =
+        PlanRegistry.exportOptions(tree(PlanRegistry.exportArgs(export)));
+    ExportImportOperations.ImportOptions importBack =
+        PlanRegistry.importOptions(tree(PlanRegistry.importArgs(imported)));
+
+    assertThat(exportBack.organization()).contains("org1");
+    assertThat(importBack.organization()).contains("org1");
+    assertThat(importBack.mergeOrganization()).isTrue();
+  }
+
   @Test
   void should_round_trip_upgrade_arguments() throws IOException {
     JsonNode rollback =

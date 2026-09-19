@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, organisation-scoped export and import)
+
+- §9.1, §9.4, §9.5: `export --organization <id>` exports one organisation, `import --organization <id>` imports into one and `--merge-organization` merges when the ids differ, through the REST body and query and the vendor tools' `--organization`/`--merge-organization`; the sidecar records the organisation; the pre-import snapshot of an organisation import is scoped to `/organizations/<id>`. The guided menu and the console carry the same choices; the `import.organizations.not.match` remedy is now `--merge-organization` (field test 2, E5, I4).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, named key on export and import)
 
 - §9.1, §9.3, §9.5: `ExportRequest` and `ImportRequest` carry `keyAlias`; `export --key-alias <alias>` (or `--portable`, the shared alias `deprecatedImportExportEncSecret`) encrypts with a named key of the keystore and `import --key-alias <alias>` decrypts with it, through the REST body and query and the vendor tools' `--keyalias`; the sidecar records the alias and an import adopts it when the operator gives none; an import with an alias skips the keystore fingerprint comparison. The guided menu asks *Portable?* on export and the alias on import; the console has the same fields (field test 2, E4, I1).

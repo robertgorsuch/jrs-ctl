@@ -158,7 +158,8 @@ class GuidedModeTest {
 
   @Test
   void should_run_a_whole_repository_export_over_rest_with_the_file_the_operator_names() {
-    int code = guided(List.of(), List.of(), "3", "1", "/backups/repo.zip", "n", "n", "n", "n", "q");
+    int code =
+        guided(List.of(), List.of(), "3", "1", "/backups/repo.zip", "n", "n", "n", "n", "", "q");
 
     assertThat(code).isZero();
     assertThat(ran)
@@ -174,7 +175,7 @@ class GuidedModeTest {
 
   @Test
   void should_ask_the_export_options_for_a_whole_repository_export() {
-    guided(List.of(), List.of(), "3", "1", "/tmp/repo.zip", "y", "y", "y", "y", "q");
+    guided(List.of(), List.of(), "3", "1", "/tmp/repo.zip", "y", "y", "y", "y", "org1", "q");
 
     assertThat(ran)
         .containsExactly(
@@ -188,6 +189,8 @@ class GuidedModeTest {
                 "--monitoring",
                 "--settings",
                 "--portable",
+                "--organization",
+                "org1",
                 "--out",
                 "/tmp/repo.zip"));
     assertThat(text.toString()).contains("Portable (decryptable on another server)?");
@@ -195,7 +198,7 @@ class GuidedModeTest {
 
   @Test
   void should_ask_about_stopping_for_the_vendor_export_and_skip_the_scope_questions() {
-    guided(List.of(), List.of(), "3", "3", "y", "/tmp/all.zip", "n", "q");
+    guided(List.of(), List.of(), "3", "3", "y", "/tmp/all.zip", "n", "", "q");
 
     assertThat(text.toString())
         .contains("Stop the server while js-export runs (consistent copy, short outage)?");
@@ -217,6 +220,7 @@ class GuidedModeTest {
         "n",
         "n",
         "n",
+        "",
         "q");
 
     assertThat(ran)
@@ -232,7 +236,7 @@ class GuidedModeTest {
       throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "q");
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "", "q");
 
     assertThat(text.toString())
         .contains(
@@ -256,6 +260,8 @@ class GuidedModeTest {
         "skip",
         "vendor",
         "deprecatedImportExportEncSecret",
+        "org1",
+        "y",
         "q");
 
     assertThat(ran)
@@ -270,7 +276,13 @@ class GuidedModeTest {
                 "--strategy",
                 "vendor",
                 "--key-alias",
-                "deprecatedImportExportEncSecret"));
+                "deprecatedImportExportEncSecret",
+                "--organization",
+                "org1",
+                "--merge-organization"));
+    assertThat(text.toString())
+        .contains("Import into organisation")
+        .contains("Merge when the archive's organisation id differs");
     assertThat(text.toString()).contains("Key alias the archive was encrypted with");
   }
 
@@ -278,7 +290,8 @@ class GuidedModeTest {
   void should_reask_an_answer_that_is_not_one_of_the_choices() throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "maybe", "include", "", "", "q");
+    guided(
+        List.of(), List.of(), "4", archive.toString(), "", "", "maybe", "include", "", "", "", "q");
 
     assertThat(text.toString()).contains("please answer fail, include, skip");
     assertThat(ran)
@@ -297,6 +310,7 @@ class GuidedModeTest {
         archive.toString(),
         "n",
         "n",
+        "",
         "",
         "",
         "",

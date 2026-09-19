@@ -132,6 +132,13 @@ class ExportCommandTest {
     assertThat(both.err()).contains("--portable is --key-alias");
   }
 
+  /** Field test 2, E5: one organisation. */
+  @Test
+  void should_pass_the_organisation_to_the_operation_when_given() {
+    assertThat(export("--organization", "org1", "--plan").code()).isZero();
+    assertThat(fake.lastExport.orElseThrow().organization()).contains("org1");
+  }
+
   @Test
   void should_run_every_step_and_exit_0_when_yes_given() {
     InitCommandTest.Run run = export("--uri", "/public", "--yes");

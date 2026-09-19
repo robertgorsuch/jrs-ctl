@@ -193,6 +193,26 @@ class RestStrategyExportTest {
     assertThat(sidecar.get().flags().keyAlias()).contains(ExportRequest.PORTABLE_KEY_ALIAS);
   }
 
+  /** Field test 2, E5: the organisation goes in the export body and into the sidecar. */
+  @Test
+  void should_send_the_organisation_and_record_it_in_the_sidecar_when_given() throws IOException {
+    stubStart();
+    stubStates("{\"phase\":\"ready\",\"message\":\"Export succeeded\"}");
+    stubDownload();
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request().withOrganization("org1"));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    wm.verify(
+        postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/export")))
+            .withRequestBody(containing("\"organization\":\"org1\"")));
+    Optional<Sidecar> sidecar = Sidecar.read(Sidecar.pathFor(output));
+    assertThat(sidecar).isPresent();
+    assertThat(sidecar.get().flags().organization()).contains("org1");
+  }
+
   @Test
   void should_export_download_and_write_sidecar_when_server_finishes() throws IOException {
     stubStart();

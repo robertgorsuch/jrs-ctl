@@ -236,6 +236,39 @@ class DefaultExportImportOperationsTest {
         .anyMatch(w -> w.contains("exported with key alias " + ExportRequest.PORTABLE_KEY_ALIAS));
   }
 
+  /**
+   * Field test 2, I4: an organisation import snapshots that organisation's folder, never the root.
+   */
+  @Test
+  void should_scope_the_pre_import_snapshot_to_the_organisation_folder() {
+    adapter.existing = Optional.of(Set.of("/organizations/org1"));
+    ImportOptions base = importOf(archive, true);
+    ImportOptions options =
+        new ImportOptions(
+            base.archive(),
+            base.update(),
+            base.skipUserUpdate(),
+            base.accessEvents(),
+            base.auditEvents(),
+            base.monitoring(),
+            base.settings(),
+            base.skipThemes(),
+            base.sourceKeystore(),
+            base.sourceKeystorePassword(),
+            base.strategy(),
+            base.brokenDependencies(),
+            Optional.empty(),
+            Optional.of("org1"),
+            true);
+
+    Plan plan = fx.ops().planImport(options);
+
+    assertThat(plan.summary().resourcesTouched()).containsExactly("/organizations/org1");
+    assertThat(plan.steps().get(1).detail()).startsWith("/organizations/org1 -> ");
+    assertThat(plan.fingerprint().inputs().get("request")).contains(";organization=org1;merge");
+    assertThat(adapter.imports).as("planning must not import").isEmpty();
+  }
+
   @Test
   void should_order_precheck_backup_then_import_when_planning_a_rest_import() throws IOException {
     sidecar(List.of("/public"), false);

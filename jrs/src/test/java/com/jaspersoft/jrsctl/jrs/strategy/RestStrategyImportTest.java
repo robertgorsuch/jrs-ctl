@@ -136,6 +136,37 @@ class RestStrategyImportTest {
             .withQueryParam("keyAlias", equalTo("k1")));
   }
 
+  /** Field test 2, I4: the target organisation and the merge switch go on the import query. */
+  @Test
+  void should_send_the_organisation_and_merge_switch_on_the_import_request_when_given()
+      throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .withQueryParam("organization", equalTo("org1"))
+            .withQueryParam("mergeOrganization", equalTo("true"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-1\",\"phase\":\"inprogress\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-1/state")))
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"ready\"}")));
+    List<Step> steps =
+        new RestStrategy(fx.polling)
+            .importSteps(request(Optional.empty()).withOrganization("org1", true));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .withQueryParam("organization", equalTo("org1"))
+            .withQueryParam("mergeOrganization", equalTo("true")));
+  }
+
   @Test
   void should_fail_precheck_with_remediation_when_keystore_fingerprints_differ()
       throws IOException {

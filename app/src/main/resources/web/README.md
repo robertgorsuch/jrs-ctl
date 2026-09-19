@@ -100,8 +100,8 @@ no version probe runs.
 | `hotfix.apply` | `{bundle, allowUnsigned}` |
 | `hotfix.rollback` | `{id, cascade}` |
 | `hotfix.verify` | `{bundle}` |
-| `export` | `{uris: [], usersRoles, accessEvents, fullServer, strategy: "rest"\|"vendor"\|null, out, keyAlias}` |
-| `import` | `{archive, update, skipUserUpdate, sourceKeystore, sourceKeystorePassword, strategy, keyAlias}` |
+| `export` | `{uris: [], usersRoles, accessEvents, fullServer, strategy: "rest"\|"vendor"\|null, out, keyAlias, organization}` |
+| `import` | `{archive, update, skipUserUpdate, sourceKeystore, sourceKeystorePassword, strategy, keyAlias, organization, mergeOrganization}` |
 | `upgrade` | `{to, package, mode: "newdb"\|"samedb", dbBackupConfirmed (samedb only), reapplyHotfixes}` |
 
 Response:

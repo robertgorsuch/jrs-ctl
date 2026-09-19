@@ -508,12 +508,16 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 ```java
 record ExportRequest(Scope scope, Set<String> uris, boolean includeUsersRoles, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
-                     boolean fullServer, Path output, boolean stopService, Optional<String> keyAlias)
+                     boolean fullServer, Path output, boolean stopService, Optional<String> keyAlias,
+                     Optional<String> organization)
 record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
                      boolean skipThemes, Optional<Path> sourceKeystore, Optional<SecretRef> sourceKeystorePassword,
-                     BrokenDependencies brokenDependencies, Optional<String> keyAlias)
+                     BrokenDependencies brokenDependencies, Optional<String> keyAlias,
+                     Optional<String> organization, boolean mergeOrganization)
 ```
+
+- `organization` limits an export to one organisation (its resources, users and roles, sub-organisations included; every URI relative to it) and names the organisation an import goes into; `mergeOrganization` merges the archive's organisation into the target when their ids differ, the archive's users, roles and resources overriding same-named ones (REST reference 10.1 pp.110, 115, 121; administrator guide 10.0 pp.263, 267). REST: export body `organization`, import query `organization` and `mergeOrganization`; vendor: `--organization` on both scripts and `--merge-organization` on `js-import`. The sidecar records the organisation an export was scoped to (field test 2, E5, I4).
 
 - `keyAlias` names a key of the server's keystore to encrypt the export with, or to decrypt the import with, instead of the server's own import/export key (REST reference 10.1 pp.110, 117: the alias must exist in the importing server's keystore). It reaches the server as the REST export body field `keyAlias` and the import query parameter `keyAlias`, and the vendor tools as `--keyalias` on both scripts. `export --portable` is `--key-alias deprecatedImportExportEncSecret`, the alias every keystore since 7.5 holds, which makes the archive importable on any server that names the same alias (field test 2, E4, I1).
 
@@ -532,7 +536,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 9.4 Import safety
 
-- `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root).
+- `PreImportSnapshot` exports the affected subtree using the same strategy as the import (full server via vendor when `update=true` at root). An import into an organisation whose archive names no narrower folders snapshots `/organizations/<id>`, never the root.
 - Rollback re-imports that snapshot. **This is best-effort**: re-import restores overwritten resources but does not delete resources the failed import created. The Plan summary and the operator guide state this explicitly.
 - Export planning asks the server whether each `--uri` exists (`GET /rest_v2/resources<uri>`) and refuses a plan naming one that does not, with exit 2, instead of producing an archive that holds only `resources/` and exiting 0 (field test 2, E3). Both export steps' postchecks refuse an archive with entries and no `index.xml`. A failed export task's cause is read from `errorDescriptor` when `message` is empty.
 - The pre-import snapshot covers only the sidecar's folders that exist on this server; a folder the archive holds but the server does not have yet is named in the plan's warnings and not snapshotted, because importing new content is the ordinary case. When none of them exists, the plan has no snapshot and no restore step, says so, and a failed import leaves only what it created (the best-effort limit above). A snapshot archive with entries but no `index.xml` therefore fails the snapshot step before anything is imported; the restore step still treats such an archive as nothing to put back (#41), which is now a defensive path.
@@ -541,8 +545,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 9.5 Commands
 
-- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] --out <file>`
-- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--strategy rest|vendor] [--plan] [--yes]`
+- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] [--organization <id>] --out <file>`
+- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--organization <id> [--merge-organization]] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---
 

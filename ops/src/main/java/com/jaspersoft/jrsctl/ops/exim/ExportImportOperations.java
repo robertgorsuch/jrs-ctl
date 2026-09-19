@@ -30,13 +30,42 @@ public interface ExportImportOperations {
       Path out,
       Optional<ExportImportStrategy.Kind> strategy,
       boolean stopService,
-      Optional<String> keyAlias) {
+      Optional<String> keyAlias,
+      Optional<String> organization) {
 
     public ExportOptions {
       uris = Set.copyOf(uris);
       Objects.requireNonNull(out, "out");
       Objects.requireNonNull(strategy, "strategy");
       Objects.requireNonNull(keyAlias, "keyAlias");
+      Objects.requireNonNull(organization, "organization");
+    }
+
+    public ExportOptions(
+        Set<String> uris,
+        boolean usersRoles,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean fullServer,
+        Path out,
+        Optional<ExportImportStrategy.Kind> strategy,
+        boolean stopService,
+        Optional<String> keyAlias) {
+      this(
+          uris,
+          usersRoles,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          fullServer,
+          out,
+          strategy,
+          stopService,
+          keyAlias,
+          Optional.empty());
     }
 
     public ExportOptions(
@@ -103,7 +132,9 @@ public interface ExportImportOperations {
       Optional<SecretRef> sourceKeystorePassword,
       Optional<ExportImportStrategy.Kind> strategy,
       BrokenDependencies brokenDependencies,
-      Optional<String> keyAlias) {
+      Optional<String> keyAlias,
+      Optional<String> organization,
+      boolean mergeOrganization) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -112,6 +143,39 @@ public interface ExportImportOperations {
       Objects.requireNonNull(strategy, "strategy");
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
       Objects.requireNonNull(keyAlias, "keyAlias");
+      Objects.requireNonNull(organization, "organization");
+    }
+
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies,
+        Optional<String> keyAlias) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          Optional.empty(),
+          false);
     }
 
     public ImportOptions(

@@ -213,6 +213,13 @@ final class GuidedMode {
     if (Prompter.yes(out, "Portable (decryptable on another server)? [y/N] ", false)) {
       args.add("--portable");
     }
+    Optional<String> organization = Prompter.line(out, "Organisation (Enter for all): ");
+    if (organization.isEmpty()) {
+      return;
+    }
+    if (!organization.get().isEmpty()) {
+      args.addAll(List.of("--organization", organization.get()));
+    }
     args.addAll(List.of("--out", file.get()));
     execute(args.toArray(String[]::new));
   }
@@ -261,6 +268,18 @@ final class GuidedMode {
     }
     if (!alias.get().isEmpty()) {
       args.addAll(List.of("--key-alias", alias.get()));
+    }
+    Optional<String> organization =
+        Prompter.line(out, "Import into organisation (Enter for the archive's own): ");
+    if (organization.isEmpty()) {
+      return;
+    }
+    if (!organization.get().isEmpty()) {
+      args.addAll(List.of("--organization", organization.get()));
+      if (Prompter.yes(
+          out, "Merge when the archive's organisation id differs from it? [y/N] ", false)) {
+        args.add("--merge-organization");
+      }
     }
     execute(args.toArray(String[]::new));
   }

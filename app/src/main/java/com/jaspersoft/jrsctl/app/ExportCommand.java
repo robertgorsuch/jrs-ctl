@@ -100,6 +100,14 @@ final class ExportCommand implements Callable<Integer> {
   boolean portable;
 
   @Option(
+      names = "--organization",
+      paramLabel = "<id>",
+      description =
+          "Export one organisation only (its resources, users and roles, sub-organisations"
+              + " included); every --uri is then relative to it.")
+  String organization;
+
+  @Option(
       names = "--out",
       required = true,
       paramLabel = "<file>",
@@ -141,7 +149,8 @@ final class ExportCommand implements Callable<Integer> {
             stopService,
             portable
                 ? Optional.of(ExportRequest.PORTABLE_KEY_ALIAS)
-                : Optional.ofNullable(keyAlias));
+                : Optional.ofNullable(keyAlias),
+            Optional.ofNullable(organization));
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

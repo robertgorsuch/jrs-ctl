@@ -99,6 +99,20 @@ class ImportCommandTest {
         .contains("deprecatedImportExportEncSecret");
   }
 
+  /** Field test 2, I4: the target organisation, merged when the ids differ. */
+  @Test
+  void should_pass_the_organisation_and_merge_switch_and_refuse_merge_alone() {
+    assertThat(importOf("--organization", "org1", "--merge-organization", "--plan").code())
+        .isZero();
+    ExportImportOperations.ImportOptions options = fake.lastImport.orElseThrow();
+    assertThat(options.organization()).contains("org1");
+    assertThat(options.mergeOrganization()).isTrue();
+
+    InitCommandTest.Run alone = importOf("--merge-organization", "--plan");
+    assertThat(alone.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(alone.err()).contains("--merge-organization needs --organization");
+  }
+
   @Test
   void should_pass_every_flag_to_the_operation_when_all_given() {
     Path keystore = tmp.resolve("source.jrsks");

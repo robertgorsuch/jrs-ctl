@@ -48,6 +48,11 @@ public final class VendorFlags {
   public static final String KEYPASS = "--keypass";
   public static final String SECRET_KEY = "--secret-key";
 
+  // one organisation on export (its URIs relative to it) and the target organisation on import,
+  // merged when the ids differ (administrator guide 10.0 pp.263, 267)
+  public static final String ORGANIZATION = "--organization";
+  public static final String MERGE_ORGANIZATION = "--merge-organization";
+
   /** Separator js-export expects between repository URIs. */
   public static final String URI_SEPARATOR = ",";
 
