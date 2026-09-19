@@ -91,7 +91,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.settings(),
             options.fullServer(),
             out,
-            options.stopService());
+            options.stopService(),
+            options.keyAlias());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     refuseMissingUris(adapter, request);
@@ -160,7 +161,10 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.skipThemes(),
             options.sourceKeystore().map(p -> p.toAbsolutePath().normalize()),
             options.sourceKeystorePassword(),
-            options.brokenDependencies());
+            options.brokenDependencies(),
+            // an archive exported with a named key is decrypted with it (field test 2, E4, I1):
+            // the sidecar remembers the alias, so the operator need not repeat it
+            options.keyAlias().or(() -> sidecarKeyAlias(archive)));
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =
@@ -170,6 +174,13 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
 
     List<String> warnings = new ArrayList<>();
     warnings.add(BEST_EFFORT_WARNING);
+    if (options.keyAlias().isEmpty() && request.keyAlias().isPresent()) {
+      warnings.add(
+          "the archive was exported with key alias "
+              + request.keyAlias().get()
+              + " (recorded in its sidecar); the import decrypts it with that key, not with this"
+              + " server's own");
+    }
     Optional<Sidecar> sidecar = readSidecar(archive, warnings);
     Optional<ExportRequest> snapshot =
         snapshotRequest(
@@ -362,6 +373,15 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             output));
   }
 
+  /** The key alias the sidecar beside {@code archive} records, when there is one to read. */
+  private static Optional<String> sidecarKeyAlias(Path archive) {
+    try {
+      return Sidecar.read(Sidecar.pathFor(archive)).flatMap(s -> s.flags().keyAlias());
+    } catch (IOException | IllegalArgumentException e) {
+      return Optional.empty();
+    }
+  }
+
   private static Optional<Sidecar> readSidecar(Path archive, List<String> warnings) {
     Path file = Sidecar.pathFor(archive);
     try {
@@ -462,7 +482,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         + ";fullServer="
         + r.fullServer()
         // only a live export says so, so a stopping plan keeps the fingerprint it had before #67
-        + (r.stopService() ? "" : ";stopService=false");
+        + (r.stopService() ? "" : ";stopService=false")
+        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("");
   }
 
   private static String describe(ImportRequest r) {
@@ -483,7 +504,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         + ";sourceKeystore="
         + r.sourceKeystore().map(Path::toString).orElse("")
         + ";sourceKeystorePassword="
-        + r.sourceKeystorePassword().map(ref -> ref.render()).orElse("");
+        + r.sourceKeystorePassword().map(ref -> ref.render()).orElse("")
+        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("");
   }
 
   private String configHash() {

@@ -51,11 +51,35 @@ public record Sidecar(
       boolean includeAuditEvents,
       boolean includeMonitoring,
       boolean includeSettings,
-      boolean fullServer) {
+      boolean fullServer,
+      Optional<String> keyAlias) {
 
     public Flags {
       Objects.requireNonNull(scope, "scope");
       uris = List.copyOf(uris);
+      // a sidecar written before the field existed has no keyAlias entry at all
+      keyAlias = keyAlias == null ? Optional.empty() : keyAlias;
+    }
+
+    public Flags(
+        ExportRequest.Scope scope,
+        List<String> uris,
+        boolean includeUsersRoles,
+        boolean includeAccessEvents,
+        boolean includeAuditEvents,
+        boolean includeMonitoring,
+        boolean includeSettings,
+        boolean fullServer) {
+      this(
+          scope,
+          uris,
+          includeUsersRoles,
+          includeAccessEvents,
+          includeAuditEvents,
+          includeMonitoring,
+          includeSettings,
+          fullServer,
+          Optional.empty());
     }
 
     public static Flags of(ExportRequest r) {
@@ -67,7 +91,8 @@ public record Sidecar(
           r.includeAuditEvents(),
           r.includeMonitoring(),
           r.includeSettings(),
-          r.fullServer());
+          r.fullServer(),
+          r.keyAlias());
     }
   }
 

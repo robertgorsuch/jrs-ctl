@@ -204,6 +204,38 @@ class DefaultExportImportOperationsTest {
 
   // ---- import ---------------------------------------------------------------------------------
 
+  /** Field test 2, I1: the sidecar remembers the alias, so the import needs no flag. */
+  @Test
+  void should_adopt_the_key_alias_recorded_in_the_sidecar_when_the_import_names_none()
+      throws IOException {
+    Sidecar.write(
+        Sidecar.pathFor(archive),
+        new Sidecar(
+            Instant.parse("2026-09-01T00:00:00Z"),
+            "srv",
+            "8.2.0",
+            Optional.of(EximFakeAdapter.FINGERPRINT),
+            new Sidecar.Flags(
+                ExportRequest.Scope.REPOSITORY,
+                List.of("/public"),
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.of(ExportRequest.PORTABLE_KEY_ALIAS)),
+            "0000",
+            ExportImportStrategy.Kind.REST));
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.fingerprint().inputs().get("request"))
+        .contains(";keyAlias=" + ExportRequest.PORTABLE_KEY_ALIAS);
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("exported with key alias " + ExportRequest.PORTABLE_KEY_ALIAS));
+  }
+
   @Test
   void should_order_precheck_backup_then_import_when_planning_a_rest_import() throws IOException {
     sidecar(List.of("/public"), false);

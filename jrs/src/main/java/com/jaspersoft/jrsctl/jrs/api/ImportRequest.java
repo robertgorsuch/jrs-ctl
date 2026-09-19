@@ -17,10 +17,56 @@ public record ImportRequest(
     boolean skipThemes,
     Optional<Path> sourceKeystore,
     Optional<SecretRef> sourceKeystorePassword,
-    BrokenDependencies brokenDependencies) {
+    BrokenDependencies brokenDependencies,
+    Optional<String> keyAlias) {
 
   public ImportRequest {
     Objects.requireNonNull(brokenDependencies, "brokenDependencies");
+    Objects.requireNonNull(keyAlias, "keyAlias");
+  }
+
+  public ImportRequest(
+      Path archive,
+      boolean update,
+      boolean skipUserUpdate,
+      boolean includeAccessEvents,
+      boolean includeAuditEvents,
+      boolean includeMonitoring,
+      boolean includeSettings,
+      boolean skipThemes,
+      Optional<Path> sourceKeystore,
+      Optional<SecretRef> sourceKeystorePassword,
+      BrokenDependencies brokenDependencies) {
+    this(
+        archive,
+        update,
+        skipUserUpdate,
+        includeAccessEvents,
+        includeAuditEvents,
+        includeMonitoring,
+        includeSettings,
+        skipThemes,
+        sourceKeystore,
+        sourceKeystorePassword,
+        brokenDependencies,
+        Optional.empty());
+  }
+
+  /** The same request decrypted with {@code alias} instead of the server's own key. */
+  public ImportRequest withKeyAlias(String alias) {
+    return new ImportRequest(
+        archive,
+        update,
+        skipUserUpdate,
+        includeAccessEvents,
+        includeAuditEvents,
+        includeMonitoring,
+        includeSettings,
+        skipThemes,
+        sourceKeystore,
+        sourceKeystorePassword,
+        brokenDependencies,
+        Optional.of(alias));
   }
 
   /** The request with the server's own default for broken dependencies ({@code fail}). */

@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
+import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.StrategyFlag;
@@ -80,6 +81,25 @@ final class ExportCommand implements Callable<Integer> {
   String strategy;
 
   @Option(
+      names = "--key-alias",
+      paramLabel = "<alias>",
+      description =
+          "Encrypt the archive with this key of the server's keystore instead of its own"
+              + " import/export key; an import must name the same alias. The alias must exist"
+              + " in the importing server's keystore too.")
+  String keyAlias;
+
+  @Option(
+      names = "--portable",
+      description =
+          "Encrypt with the alias every keystore since 7.5 holds ("
+              + ExportRequest.PORTABLE_KEY_ALIAS
+              + "), so another server can import the archive with --key-alias "
+              + ExportRequest.PORTABLE_KEY_ALIAS
+              + " (the sidecar records it, so jrsctl's import needs no flag).")
+  boolean portable;
+
+  @Option(
       names = "--out",
       required = true,
       paramLabel = "<file>",
@@ -99,6 +119,14 @@ final class ExportCommand implements Callable<Integer> {
     } catch (IllegalArgumentException e) {
       return ExitCodes.fail(outWriter, err, global.json(), ExitCodes.USAGE, e.getMessage());
     }
+    if (portable && keyAlias != null) {
+      return ExitCodes.fail(
+          outWriter,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--portable is --key-alias " + ExportRequest.PORTABLE_KEY_ALIAS + "; give one of them");
+    }
     ExportImportOperations.ExportOptions options =
         new ExportImportOperations.ExportOptions(
             new LinkedHashSet<>(uris),
@@ -110,7 +138,10 @@ final class ExportCommand implements Callable<Integer> {
             fullServer,
             out,
             kind,
-            stopService);
+            stopService,
+            portable
+                ? Optional.of(ExportRequest.PORTABLE_KEY_ALIAS)
+                : Optional.ofNullable(keyAlias));
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

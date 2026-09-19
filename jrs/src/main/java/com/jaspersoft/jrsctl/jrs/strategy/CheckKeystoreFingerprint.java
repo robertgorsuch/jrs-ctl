@@ -66,6 +66,11 @@ final class CheckKeystoreFingerprint implements Step {
 
   @Override
   public CheckResult precheck(Context ctx) {
+    if (request.keyAlias().isPresent()) {
+      // the named key decrypts the archive on any server that holds it (REST reference 10.1
+      // p.117); this server's own keystore is not what the archive was encrypted with
+      return CheckResult.pass();
+    }
     Path sidecarFile = Sidecar.pathFor(request.archive());
     Optional<Sidecar> sidecar;
     try {

@@ -210,6 +210,9 @@ final class GuidedMode {
         args.add("--settings");
       }
     }
+    if (Prompter.yes(out, "Portable (decryptable on another server)? [y/N] ", false)) {
+      args.add("--portable");
+    }
     args.addAll(List.of("--out", file.get()));
     execute(args.toArray(String[]::new));
   }
@@ -249,6 +252,15 @@ final class GuidedMode {
     }
     if (!strategy.get().equals("auto")) {
       args.addAll(List.of("--strategy", strategy.get()));
+    }
+    Optional<String> alias =
+        Prompter.line(
+            out, "Key alias the archive was encrypted with (Enter for this server's key): ");
+    if (alias.isEmpty()) {
+      return;
+    }
+    if (!alias.get().isEmpty()) {
+      args.addAll(List.of("--key-alias", alias.get()));
     }
     execute(args.toArray(String[]::new));
   }

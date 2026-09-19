@@ -851,11 +851,12 @@ const OPS = {
         checkField('fullServer', 'Full server', 'Forces the vendor strategy; the server keeps running.'),
         checkField('stopService', 'Stop the service during a vendor export', 'For an export taken with nothing running; the service is started again afterwards.'),
         field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-export)']], 'auto')),
+        checkField('portable', 'Portable (decryptable on another server)', 'Encrypts with the key alias deprecatedImportExportEncSecret, which every keystore since 7.5 holds; the sidecar records it so jrsctl imports it without a flag.'),
         field('Output file', textInput('out', { mono: true, required: true, placeholder: 'C:\\exports\\acme.zip' })),
       ];
     },
     args: (v) => ({ uris: v.uris.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), usersRoles: !!v.usersRoles, accessEvents: !!v.accessEvents,
-      fullServer: !!v.fullServer, stopService: !!v.stopService, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out }),
+      fullServer: !!v.fullServer, stopService: !!v.stopService, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out, keyAlias: v.portable ? 'deprecatedImportExportEncSecret' : null }),
     validate: (v) => (!v.out ? 'Enter the output file.' : !v.fullServer && !v.uris.trim() ? 'Enter at least one URI or choose Full server.' : null),
   },
   import: {
@@ -866,12 +867,13 @@ const OPS = {
       checkField('skipUserUpdate', 'Skip user update', 'Keep current user accounts; archive users are not applied.'),
       field('Source keystore', textInput('sourceKeystore', { mono: true, placeholder: 'C:\\imports\\keystore' }), 'Required when the archive was exported from another server.'),
       field('Source keystore password', textInput('sourceKeystorePassword', { type: 'password' }), 'Sent once with this request and never stored by the console.'),
+      field('Key alias', textInput('keyAlias', { mono: true, placeholder: 'deprecatedImportExportEncSecret' }), 'The key the archive was exported with, when it was not this server\'s own; read from the sidecar when it records one.'),
       field('Broken dependencies', selectInput('brokenDependencies', [['fail', 'Fail before importing anything (server default)'], ['skip', 'Skip the resources whose dependency is missing'], ['include', 'Import them with the dependency missing']], 'fail')),
       field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-import, stops the service)']], 'auto')),
     ],
     args: (v) => ({ archive: v.archive, update: !!v.update, skipUserUpdate: !!v.skipUserUpdate, sourceKeystore: v.sourceKeystore || null,
       sourceKeystorePassword: v.sourceKeystorePassword || null, strategy: v.strategy === 'auto' ? null : v.strategy,
-      brokenDependencies: v.brokenDependencies || 'fail' }),
+      brokenDependencies: v.brokenDependencies || 'fail', keyAlias: v.keyAlias || null }),
     validate: (v) => (v.archive ? null : 'Enter the archive path.'),
   },
   upgrade: {

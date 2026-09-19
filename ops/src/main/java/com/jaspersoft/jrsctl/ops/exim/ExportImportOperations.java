@@ -29,12 +29,39 @@ public interface ExportImportOperations {
       boolean fullServer,
       Path out,
       Optional<ExportImportStrategy.Kind> strategy,
-      boolean stopService) {
+      boolean stopService,
+      Optional<String> keyAlias) {
 
     public ExportOptions {
       uris = Set.copyOf(uris);
       Objects.requireNonNull(out, "out");
       Objects.requireNonNull(strategy, "strategy");
+      Objects.requireNonNull(keyAlias, "keyAlias");
+    }
+
+    public ExportOptions(
+        Set<String> uris,
+        boolean usersRoles,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean fullServer,
+        Path out,
+        Optional<ExportImportStrategy.Kind> strategy,
+        boolean stopService) {
+      this(
+          uris,
+          usersRoles,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          fullServer,
+          out,
+          strategy,
+          stopService,
+          Optional.empty());
     }
 
     /** With {@code stopService} true, what an export did before #67. */
@@ -75,7 +102,8 @@ public interface ExportImportOperations {
       Optional<Path> sourceKeystore,
       Optional<SecretRef> sourceKeystorePassword,
       Optional<ExportImportStrategy.Kind> strategy,
-      BrokenDependencies brokenDependencies) {
+      BrokenDependencies brokenDependencies,
+      Optional<String> keyAlias) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -83,6 +111,36 @@ public interface ExportImportOperations {
       Objects.requireNonNull(sourceKeystorePassword, "sourceKeystorePassword");
       Objects.requireNonNull(strategy, "strategy");
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
+      Objects.requireNonNull(keyAlias, "keyAlias");
+    }
+
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          Optional.empty());
     }
 
     /** The options with the server's own default for broken dependencies ({@code fail}). */

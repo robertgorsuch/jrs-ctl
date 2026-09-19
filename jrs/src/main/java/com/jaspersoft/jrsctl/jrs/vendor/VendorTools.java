@@ -184,6 +184,13 @@ public final class VendorTools {
     if (request.includeSettings()) {
       args.add(VendorFlags.INCLUDE_SERVER_SETTINGS);
     }
+    request
+        .keyAlias()
+        .ifPresent(
+            alias -> {
+              args.add(VendorFlags.KEYALIAS);
+              args.add(alias);
+            });
     return List.copyOf(args);
   }
 
@@ -228,6 +235,13 @@ public final class VendorTools {
       args.add(request.brokenDependencies().vendor());
     }
     request.sourceKeystore().ifPresent(ks -> args.addAll(keystoreArgs(ks, storepass)));
+    request
+        .keyAlias()
+        .ifPresent(
+            alias -> {
+              args.add(VendorFlags.KEYALIAS);
+              args.add(alias);
+            });
     return List.copyOf(args);
   }
 
