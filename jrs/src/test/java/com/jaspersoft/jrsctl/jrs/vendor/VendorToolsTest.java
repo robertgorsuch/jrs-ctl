@@ -381,6 +381,57 @@ class VendorToolsTest {
   }
 
   /**
+   * Review §3.4 (issue #111): the run names the buildomatic log it wrote, the vendor's first clue.
+   */
+  @Test
+  void should_name_the_buildomatic_log_the_run_wrote_when_one_appears() throws IOException {
+    runner.exit(0, "Export finished");
+    Path logs = Files.createDirectories(buildomatic.dir().resolve("logs"));
+    Path stale = Files.writeString(logs.resolve("js-export-pro_2026-09-01.log"), "old");
+    Files.setLastModifiedTime(
+        stale, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000L));
+    Path fresh = Files.writeString(logs.resolve("js-export-pro_2026-09-19.log"), "new");
+    Path out = tmp.resolve("x.zip");
+    ExportRequest r =
+        export(
+            ExportRequest.Scope.REPOSITORY,
+            Set.of("/a"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            out);
+
+    tools().export(buildomatic, r, out, Optional.of(javaHome), sink, scope);
+
+    assertThat(sink.logMessages()).contains(VendorTools.BUILDOMATIC_LOG_PREFIX + fresh);
+    assertThat(sink.logMessages()).noneMatch(m -> m.contains(stale.toString()));
+  }
+
+  @Test
+  void should_name_no_log_when_the_run_wrote_none() {
+    runner.exit(0, "Export finished");
+    Path out = tmp.resolve("x.zip");
+    ExportRequest r =
+        export(
+            ExportRequest.Scope.REPOSITORY,
+            Set.of("/a"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            out);
+
+    tools().export(buildomatic, r, out, Optional.of(javaHome), sink, scope);
+
+    assertThat(sink.logMessages()).noneMatch(m -> m.startsWith(VendorTools.BUILDOMATIC_LOG_PREFIX));
+  }
+
+  /**
    * Review finding 2.8: {@code js-export.bat} re-reads its arguments as {@code %1} tokens, where a
    * comma, a semicolon or an equals sign splits, so {@code --uris /a,/b} arrived as three
    * arguments. On a batch wrapper such a value is wrapped in double quotes, which cmd keeps as one

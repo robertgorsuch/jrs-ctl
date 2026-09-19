@@ -1,21 +1,27 @@
 package com.jaspersoft.jrsctl.app.console;
 
 import com.jaspersoft.jrsctl.app.LogFile;
+import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
@@ -111,7 +117,48 @@ final class SupportBundle {
         }
         zip.closeEntry();
       }
+      // review §3.4 (issue #111): the vendor's own troubleshooting files, tail-capped and redacted
+      for (VendorLogs.Source source : vendorSources()) {
+        zip.putNextEntry(new ZipEntry(source.entry()));
+        try {
+          VendorLogs.tail(
+              source.file(),
+              VendorLogs.TAIL_BYTES,
+              l -> {
+                try {
+                  line(zip, source.masterProperties() ? VendorLogs.blankPassword(l) : l);
+                } catch (IOException e) {
+                  throw new UncheckedIOException(e);
+                }
+              });
+        } catch (IOException | UncheckedIOException e) {
+          // a vendor file that vanishes or cannot be read mid-way is a note, not a broken zip
+          line(zip, "... " + source.file() + " could not be read: " + e.getMessage());
+        }
+        zip.closeEntry();
+      }
     }
+  }
+
+  /** The vendor files this installation has, from the configuration and the buildomatic lookup. */
+  List<VendorLogs.Source> vendorSources() {
+    Config.Server server = services.config().server();
+    Optional<TomcatLayout> layout =
+        server.installDir().flatMap(d -> services.platform().detectTomcat(d));
+    Optional<Path> tomcatDir = server.tomcatDir().or(() -> layout.map(TomcatLayout::tomcatDir));
+    Optional<Path> webappDir =
+        tomcatDir.flatMap(
+            t ->
+                server
+                    .webappName()
+                    .map(n -> t.resolve("webapps").resolve(n.yamlValue()))
+                    .or(() -> layout.map(TomcatLayout::webappDir)));
+    Optional<Path> buildomatic =
+        switch (new BuildomaticLocator(services.platform()).resolve(services.config())) {
+          case BuildomaticResolution.Found found -> Optional.of(found.buildomatic().dir());
+          case BuildomaticResolution.NotFound missing -> Optional.empty();
+        };
+    return VendorLogs.locate(server.installDir(), tomcatDir, webappDir, buildomatic);
   }
 
   /**

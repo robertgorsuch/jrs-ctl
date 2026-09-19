@@ -211,6 +211,7 @@ before the load balancer sends them traffic.
   unit name.
 
 ### 3.4 Support bundle and vendor logs
+*Fixed 2026-09-19 (issue #111): the bundle carries the newest buildomatic script log, `jasperserver.log`, the Tomcat catalina log, `installation.log` and a password-blanked `default_master.properties`, tail-capped and redacted, and every vendor run logs the buildomatic log it wrote.*
 The vendor's first troubleshooting instruction is the script log
 `buildomatic/logs/js-upgrade-<date>-<n>.log` / `js-install-…log`, then `WEB-INF/logs/jasperserver.log`
 and `<tomcat>/logs/catalina.out`. The support bundle (`app`) collects none of these today. Add them

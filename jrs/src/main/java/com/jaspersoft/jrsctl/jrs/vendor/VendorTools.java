@@ -10,6 +10,9 @@ import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -429,6 +432,7 @@ public final class VendorTools {
             pathWithJavaFirst(javaHome, inherited, batch),
             VendorFlags.JAVA_OPTS,
             javaOptsWith(inherited, invocation.buildomatic().cacheProvider()));
+    long startedAt = System.currentTimeMillis() - 1000L;
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
     EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);
@@ -491,6 +495,9 @@ public final class VendorTools {
             + " after "
             + result.elapsed().toSeconds()
             + "s");
+    // review §3.4 (issue #111): the vendor's first troubleshooting instruction is this file
+    newestLogSince(invocation.buildomatic().dir().resolve("logs"), startedAt)
+        .ifPresent(p -> log(sink, scope, Event.Log.Level.INFO, BUILDOMATIC_LOG_PREFIX + p));
     VendorRun.Completed completed =
         new VendorRun.Completed(result.exitCode(), result.elapsed(), lines, reported, processing);
     if (result.exitCode() == 0 && !completed.ok()) {
@@ -501,6 +508,37 @@ public final class VendorTools {
           invocation.script() + " " + completed.summary() + "; treating it as a failure");
     }
     return completed;
+  }
+
+  /** Prefix of the log line naming the buildomatic log a vendor run wrote (issue #111). */
+  public static final String BUILDOMATIC_LOG_PREFIX = "buildomatic log: ";
+
+  /**
+   * The newest {@code *.log} under buildomatic's {@code logs} directory modified since the run
+   * started, which is the file the vendor's troubleshooting instructions point at first ({@code
+   * js-upgrade-<date>.log}, {@code js-export-…log}); empty when the tool wrote none.
+   */
+  static Optional<Path> newestLogSince(Path logsDir, long sinceMillis) {
+    if (!Files.isDirectory(logsDir)) {
+      return Optional.empty();
+    }
+    Path best = null;
+    long bestTime = sinceMillis;
+    try (DirectoryStream<Path> files = Files.newDirectoryStream(logsDir, "*.log")) {
+      for (Path f : files) {
+        if (!Files.isRegularFile(f)) {
+          continue;
+        }
+        long t = Files.getLastModifiedTime(f).toMillis();
+        if (t >= bestTime) {
+          best = f;
+          bestTime = t;
+        }
+      }
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(best);
   }
 
   /**
