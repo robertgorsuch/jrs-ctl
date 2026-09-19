@@ -9,14 +9,18 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
+import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -29,12 +33,14 @@ import java.util.zip.ZipInputStream;
  * run-scoped files (task handles, service markers) never collide with those of the failed import.
  * Invariants: the step declares itself mutating although it writes nothing, because the Runner
  * compensates mutating steps only and this compensation must run whenever any later step of the
- * phase fails; the restore is best effort, as the plan summary says: it restores resources the
- * failed import overwrote but cannot delete resources the failed import created; a restore that
- * fails reports the snapshot path as the backup to re-import by hand; a snapshot that is a readable
- * archive with entries but no {@value #INDEX} holds none of the resources the import targets, so
- * its compensation is a logged no-op (issue #41): there is nothing to put back, and the vendor
- * importer throws on such an archive.
+ * phase fails; the compensation first deletes the resources the failed import created, judged
+ * against the listing {@link RecordRepositoryListing} took just before the import (issue #100,
+ * ADR-0031), then re-imports the snapshot, which puts back what the import overwrote; a listing
+ * that is missing or cannot be compared leaves the additions behind with a warning saying so; a
+ * restore that fails reports the snapshot path as the backup to re-import by hand; a snapshot that
+ * is a readable archive with entries but no {@value #INDEX} holds none of the resources the import
+ * targets, so its compensation is a logged no-op (issue #41): there is nothing to put back, and the
+ * vendor importer throws on such an archive.
  */
 final class RestoreFromPreImportSnapshot implements Step {
 
@@ -46,13 +52,93 @@ final class RestoreFromPreImportSnapshot implements Step {
   private final Path snapshot;
   private final ImportRequest restore;
   private final String phase;
+  private final List<String> roots;
 
   RestoreFromPreImportSnapshot(
-      String phase, ExportImportStrategy strategy, Path snapshot, ImportRequest restore) {
+      String phase,
+      ExportImportStrategy strategy,
+      Path snapshot,
+      ImportRequest restore,
+      List<String> roots) {
     this.phase = Objects.requireNonNull(phase, "phase");
     this.strategy = Objects.requireNonNull(strategy, "strategy");
     this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
     this.restore = Objects.requireNonNull(restore, "restore");
+    this.roots = List.copyOf(Objects.requireNonNull(roots, "roots"));
+  }
+
+  /**
+   * Issue #100, ADR-0031: deletes what the failed import created, the URIs under the roots that the
+   * listing taken just before the import did not hold, deepest first so a created folder goes after
+   * its children. A missing listing or a server that cannot be listed leaves the additions behind
+   * with a warning naming them as such; one resource that cannot be deleted is logged and the rest
+   * still go. Deleting again after a first rollback finds nothing new, so a repeated compensation
+   * deletes nothing twice.
+   */
+  private void deleteAdditions(Context ctx, EventSink out) {
+    Path listing = RecordRepositoryListing.listingFile(ctx);
+    if (!Files.isRegularFile(listing)) {
+      EximLogs.warn(
+          out,
+          ctx,
+          this,
+          "no pre-import listing at "
+              + listing
+              + "; resources the failed import created under "
+              + String.join(", ", roots)
+              + " are left behind");
+      return;
+    }
+    Set<String> before;
+    Set<String> now;
+    try {
+      before = new HashSet<>(Files.readAllLines(listing, StandardCharsets.UTF_8));
+      now = RecordRepositoryListing.list(ctx.service(JrsAdapter.class), roots);
+    } catch (IOException | RuntimeException e) {
+      EximLogs.warn(
+          out,
+          ctx,
+          this,
+          "cannot compare the repository with the pre-import listing ("
+              + e.getMessage()
+              + "); resources the failed import created under "
+              + String.join(", ", roots)
+              + " are left behind");
+      return;
+    }
+    List<String> additions =
+        now.stream()
+            .filter(uri -> !before.contains(uri))
+            .sorted(
+                Comparator.comparingInt(
+                        (String uri) -> uri.length() - uri.replace("/", "").length())
+                    .reversed()
+                    .thenComparing(Comparator.naturalOrder()))
+            .toList();
+    if (additions.isEmpty()) {
+      EximLogs.info(out, ctx, this, "the failed import created nothing that is still there");
+      return;
+    }
+    int failed = 0;
+    JrsAdapter adapter = ctx.service(JrsAdapter.class);
+    for (String uri : additions) {
+      try {
+        adapter.deleteResource(uri);
+        EximLogs.info(out, ctx, this, "deleted " + uri + " (created by the failed import)");
+      } catch (RuntimeException e) {
+        failed++;
+        EximLogs.warn(out, ctx, this, "cannot delete " + uri + ": " + e.getMessage());
+      }
+    }
+    EximLogs.info(
+        out,
+        ctx,
+        this,
+        (additions.size() - failed)
+            + " of "
+            + additions.size()
+            + " resources the failed import created deleted"
+            + (failed > 0 ? "; " + failed + " left behind, see the warnings above" : ""));
   }
 
   @Override
@@ -107,6 +193,7 @@ final class RestoreFromPreImportSnapshot implements Step {
 
   @Override
   public StepResult compensate(Context ctx, EventSink out) {
+    deleteAdditions(ctx, out);
     if (holdsNoResources(snapshot)) {
       EximLogs.info(
           out,

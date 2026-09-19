@@ -83,6 +83,50 @@ class RestJrsAdapterRepositoryTest {
             .withHeader("Accept", equalTo("application/json")));
   }
 
+  /** Issue #100: the recursive listing follows Total-Count through the pages the server sends. */
+  @Test
+  void should_list_the_whole_subtree_across_pages_when_listing_recursively() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .withQueryParam("recursive", equalTo("true"))
+            .withQueryParam("offset", equalTo("0"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Total-Count", "3")
+                    .withBody(
+                        "{\"resourceLookup\":[{\"uri\":\"/public/a\",\"resourceType\":\"folder\"},"
+                            + "{\"uri\":\"/public/a/r\",\"resourceType\":\"reportUnit\"}]}")));
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .withQueryParam("recursive", equalTo("true"))
+            .withQueryParam("offset", equalTo("2"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Total-Count", "3")
+                    .withBody(
+                        "{\"resourceLookup\":[{\"uri\":\"/public/b\",\"resourceType\":\"folder\"}]}")));
+
+    assertThat(f.adapter.listTree("/public"))
+        .containsExactly("/public/a", "/public/a/r", "/public/b");
+    wm.verify(
+        2,
+        getRequestedFor(urlPathEqualTo(f.path("/rest_v2/resources")))
+            .withQueryParam("folderUri", equalTo("/public"))
+            .withQueryParam("recursive", equalTo("true")));
+  }
+
+  @Test
+  void should_return_empty_tree_when_the_subtree_answers_204() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/resources"))).willReturn(aResponse().withStatus(204)));
+
+    assertThat(f.adapter.listTree("/empty")).isEmpty();
+  }
+
   @Test
   void should_return_empty_list_when_folder_answers_204() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);

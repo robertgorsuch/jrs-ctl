@@ -94,6 +94,28 @@ class EximStepIdempotencyTest {
     }
   }
 
+  /** Issue #100: the listing step reads the server and writes one file; twice is the same file. */
+  @Test
+  void should_not_mutate_when_pre_import_listing_executes_twice() throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.trees.add(List.of("/public/b", "/public/a"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Step step = new RecordRepositoryListing(List.of("/public"));
+      Context ctx = fx.context(EximFixture.RUN);
+
+      Idempotency.executeOk(step, ctx);
+      Path listing = RecordRepositoryListing.listingFile(ctx);
+      String once = Files.readString(listing);
+      Idempotency.executeOk(step, ctx);
+
+      assertThat(step.mutating()).isFalse();
+      assertThat(Files.readString(listing)).isEqualTo(once);
+      assertThat(Files.readAllLines(listing)).containsExactly("/public/a", "/public/b");
+      assertThat(adapter.deleted).isEmpty();
+      assertThat(adapter.imports).isEmpty();
+    }
+  }
+
   @Test
   void should_reimport_the_snapshot_once_when_restore_from_pre_import_snapshot_compensates_twice()
       throws IOException {

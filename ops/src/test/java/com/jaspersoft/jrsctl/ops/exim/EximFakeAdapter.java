@@ -174,6 +174,37 @@ final class EximFakeAdapter implements JrsAdapter {
   @Override
   public void uploadJrxmlReport(String folderUri, String label, Path jrxml) {}
 
+  /**
+   * Issue #100: the recursive listings the fake answers, in order; the last one is repeated, minus
+   * whatever was deleted since, so a second rollback finds nothing new.
+   */
+  final Deque<List<String>> trees = new ArrayDeque<>();
+
+  /** URIs deleted through {@link #deleteResource}, in order. */
+  final List<String> deleted = new ArrayList<>();
+
+  /** When set, every recursive listing fails with this message. */
+  Optional<String> listFailure = Optional.empty();
+
+  /** The listing whose ordinal exceeds this fails; the default never does. */
+  int failListingAfter = Integer.MAX_VALUE;
+
+  private int listings;
+  private List<String> lastTree = List.of();
+
   @Override
-  public void deleteResource(String uri) {}
+  public List<String> listTree(String folderUri) {
+    if (listFailure.isPresent() || ++listings > failListingAfter) {
+      throw new IllegalStateException(listFailure.orElse("listing refused by the fake"));
+    }
+    if (!trees.isEmpty()) {
+      lastTree = trees.poll();
+    }
+    return lastTree.stream().filter(u -> !deleted.contains(u)).toList();
+  }
+
+  @Override
+  public void deleteResource(String uri) {
+    deleted.add(uri);
+  }
 }

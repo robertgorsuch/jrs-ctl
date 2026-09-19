@@ -34,10 +34,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Spec §14 Phase 4, exercised through the packaged jar against a WireMock JasperReports Server
  * 8.2.0 PRO whose async export/import endpoints answer immediately: a REST export writes the
- * archive and its sidecar; {@code import --plan} shows the pre-import snapshot and the best-effort
- * rollback warning; {@code import --yes} takes the snapshot (one export) and runs one import; a
- * sidecar whose keystore fingerprint differs from the server's is refused with exit 2 and the
- * keystore remediation. The steps share one home and archive, so they run in order.
+ * archive and its sidecar; {@code import --plan} shows the pre-import snapshot and the rollback
+ * warning; {@code import --yes} takes the snapshot (one export) and runs one import; a sidecar
+ * whose keystore fingerprint differs from the server's is refused with exit 2 and the keystore
+ * remediation. The steps share one home and archive, so they run in order.
  */
 @Tag("phase4")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -45,9 +45,8 @@ class Phase4ExportImportTest {
 
   private static final String WEBAPP = "/jasperserver-pro";
   private static final int ONE_MB = 1024 * 1024;
-  private static final String BEST_EFFORT =
-      "Rollback re-imports the pre-import snapshot; it restores overwritten resources but cannot"
-          + " delete resources the failed import created.";
+  private static final String ROLLBACK_WARNING =
+      "Rollback deletes the resources the failed import created under the snapshotted folders";
   private static final String SERVER_INFO =
       """
       {
@@ -214,7 +213,7 @@ class Phase4ExportImportTest {
         .contains("backup")
         .contains("Pre-import snapshot")
         .contains("Enable snapshot rollback")
-        .contains("! " + BEST_EFFORT)
+        .contains("! " + ROLLBACK_WARNING)
         .contains("nothing has changed");
     server.verify(1, postRequestedFor(urlPathEqualTo(WEBAPP + "/rest_v2/export")));
     server.verify(0, postRequestedFor(urlPathEqualTo(WEBAPP + "/rest_v2/import")));

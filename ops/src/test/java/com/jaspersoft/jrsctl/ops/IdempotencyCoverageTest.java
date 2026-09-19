@@ -72,6 +72,8 @@ import org.junit.jupiter.api.Test;
  *     <td>HotfixStepIdempotencyTest#should_converge_when_record_rolled_back_compensates_twice</td></tr>
  * <tr><td>exim PreImportSnapshot</td>
  *     <td colspan="2">EximStepIdempotencyTest#should_not_mutate_when_pre_import_snapshot_executes_twice</td></tr>
+ * <tr><td>exim RecordRepositoryListing</td>
+ *     <td colspan="2">EximStepIdempotencyTest#should_not_mutate_when_pre_import_listing_executes_twice</td></tr>
  * <tr><td>exim Rephased</td>
  *     <td colspan="2">EximStepIdempotencyTest#should_delegate_unchanged_when_rephased_step_executes_twice</td></tr>
  * <tr><td>exim RestoreFromPreImportSnapshot</td>
@@ -315,6 +317,9 @@ class IdempotencyCoverageTest {
           Map.entry(
               OPS + "exim.PreImportSnapshot",
               E + "should_not_mutate_when_pre_import_snapshot_executes_twice"),
+          Map.entry(
+              OPS + "exim.RecordRepositoryListing",
+              E + "should_not_mutate_when_pre_import_listing_executes_twice"),
           Map.entry(
               OPS + "exim.Rephased",
               E + "should_delegate_unchanged_when_rephased_step_executes_twice"),

@@ -103,6 +103,11 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public List<String> listTree(String folderUri) {
+    return adapter().listTree(folderUri);
+  }
+
+  @Override
   public boolean resourceExists(String uri) {
     return adapter().resourceExists(uri);
   }

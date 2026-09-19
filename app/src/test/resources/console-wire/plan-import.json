@@ -13,7 +13,7 @@
       "rollbackPoints" : "import: re-import the pre-import snapshot with update (best effort)",
       "strategy" : "rest (REST: IMPORT_ASYNC probe passed, service stays up)",
       "downtime" : "No downtime expected.",
-      "warnings" : [ "Rollback re-imports the pre-import snapshot; it restores overwritten resources but cannot delete resources the failed import created." ]
+      "warnings" : [ "Rollback deletes the resources the failed import created under the snapshotted folders (judged against a listing taken just before the import; anything anyone else creates there in between is deleted with them) and re-imports the pre-import snapshot, which puts back what the import overwrote." ]
     },
     "steps" : [ {
       "id" : "precheck.import.check-keystore",

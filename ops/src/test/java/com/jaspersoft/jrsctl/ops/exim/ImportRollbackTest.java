@@ -108,6 +108,69 @@ class ImportRollbackTest {
             "import.verify:SUCCEEDED");
   }
 
+  /**
+   * Issue #100 (ADR-0031): the listing taken before the import names what was there; the rollback
+   * deletes what the failed import added, deepest first, before re-importing the snapshot.
+   */
+  @Test
+  void should_delete_what_the_failed_import_created_before_reimporting_the_snapshot() {
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    adapter.trees.add(List.of("/public/kept", "/public/kept/report"));
+    adapter.trees.add(
+        List.of(
+            "/public/kept",
+            "/public/kept/report",
+            "/public/new",
+            "/public/new/sub",
+            "/public/new/sub/r"));
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(adapter.deleted)
+        .containsExactly("/public/new/sub/r", "/public/new/sub", "/public/new");
+    assertThat(fx.services.home().runDir(EximFixture.RUN).resolve("pre-import-listing.txt"))
+        .hasContent("/public/kept\n/public/kept/report");
+    assertThat(fx.journal(EximFixture.RUN))
+        .containsSubsequence(
+            "backup.pre-import-listing:SUCCEEDED", "import.snapshot-rollback:ROLLED_BACK");
+    assertThat(adapter.imports.get(1).archive()).as("then the snapshot").isNotEqualTo(archive);
+    assertThat(plan.summary().warnings()).contains(DefaultExportImportOperations.ROLLBACK_WARNING);
+    assertThat(DefaultExportImportOperations.ROLLBACK_WARNING).doesNotContain("cannot delete");
+  }
+
+  @Test
+  void should_leave_additions_behind_with_a_warning_when_the_rollback_cannot_list() {
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    adapter.trees.add(List.of("/public/kept"));
+    // the listing before the import succeeds; the one during the rollback does not
+    adapter.failListingAfter = 1;
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(adapter.deleted).isEmpty();
+    assertThat(adapter.imports).as("the snapshot still goes back").hasSize(2);
+    assertThat(fx.events)
+        .filteredOn(e -> e instanceof Event.Log)
+        .map(e -> ((Event.Log) e).message())
+        .anyMatch(m -> m.contains("are left behind"));
+  }
+
+  @Test
+  void should_stop_before_the_import_when_the_repository_cannot_be_listed() {
+    adapter.listFailure = Optional.of("503 from the server");
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(((RunOutcome.RolledBack) outcome).rolledBackToPhase()).isEqualTo("backup");
+    assertThat(adapter.imports).as("nothing was imported").isEmpty();
+  }
+
   @Test
   void should_reimport_snapshot_with_update_and_exit_3_when_import_fails() {
     adapter.importPhases.add(Handles.Phase.FAILED);
