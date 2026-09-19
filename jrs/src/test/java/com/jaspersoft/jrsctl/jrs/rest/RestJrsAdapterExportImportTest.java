@@ -204,6 +204,8 @@ class RestJrsAdapterExportImportTest {
             .withQueryParam("includeAccessEvents", equalTo("false"))
             .withQueryParam("includeAuditEvents", equalTo("true"))
             .withQueryParam("includeMonitoringEvents", equalTo("false"))
+            // plural, the spelling the server's ImportJaxrsService declares; the 10.1 REST
+            // reference's singular "includeServerSetting" is a documentation error (issue #110)
             .withQueryParam("includeServerSettings", equalTo("true"))
             .withQueryParam("skipThemes", equalTo("true"))
             .withRequestBody(

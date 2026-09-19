@@ -619,6 +619,11 @@ public final class RestJrsAdapter implements JrsAdapter {
             + request.includeAuditEvents()
             + "&includeMonitoringEvents="
             + request.includeMonitoring()
+            // The REST reference 10.1 p.117 spells this "includeServerSetting"; the server's own
+            // ImportJaxrsService (10.0.0, jasperserver-jax-rs-rest) declares only the plural
+            // @QueryParam("includeServerSettings") and @FormDataParam("include-server-settings"),
+            // so the plural is what the server honours and the reference is the one in error
+            // (issue #110, checked 2026-09-19).
             + "&includeServerSettings="
             + request.includeSettings()
             + "&skipThemes="

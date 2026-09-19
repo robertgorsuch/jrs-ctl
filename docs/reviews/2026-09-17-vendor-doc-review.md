@@ -227,6 +227,8 @@ matters for exports made with the server key. The REST import today has no key p
 (`RestJrsAdapter.startImport`), so any cross-server REST import currently fails inside the server.
 
 ### 4.2 Parameter names to verify against a live server
+*Settled 2026-09-19 (issue #110): the 10.0.0 server's `ImportJaxrsService` (`jasperserver-jax-rs-rest-10.0.0.jar`, read from the installed webapp) declares only `includeServerSettings` as the query parameter and `include-server-settings` as the multipart field; no singular form exists. jrsctl's spelling stands and the reference's is a documentation error. `mergeOrganization`/`organization` were added for Task 12; `skipDependentResources` and `skip-favorite-resources` on export remain unexposed.*
+
 The reference spells the import setting switch `includeServerSetting` (singular, p.117) while jrsctl sends
 `includeServerSettings`; the multipart form uses `include-server-settings`. The recorded-server harness
 (ADR-0011) should settle which the server honours. Likewise `skipDependentResources` and
