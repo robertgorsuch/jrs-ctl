@@ -124,6 +124,49 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
   }
 
   @Override
+  public List<TomcatEntry> scanTomcat() {
+    HotfixPaths paths;
+    try {
+      paths = HotfixPaths.from(services.config(), services.platform());
+    } catch (HotfixException e) {
+      throw new CustomizationException(e.getMessage(), e.remediation(), e);
+    }
+    java.util.Set<Path> registered = new java.util.HashSet<>();
+    for (Customization c : list()) {
+      registered.add(normalise(c.path()));
+    }
+    try {
+      return TomcatScanner.scan(paths.tomcatDir().toAbsolutePath().normalize(), registered);
+    } catch (IOException e) {
+      throw new CustomizationException(
+          "cannot list " + paths.tomcatDir() + ": " + e.getMessage(),
+          "check that server.tomcatDir is readable",
+          e);
+    }
+  }
+
+  @Override
+  public Optional<String> registrationAdvice(Path path) {
+    Objects.requireNonNull(path, "path");
+    HotfixPaths paths;
+    try {
+      paths = HotfixPaths.from(services.config(), services.platform());
+    } catch (HotfixException e) {
+      return Optional.empty();
+    }
+    String webappName =
+        services
+            .config()
+            .server()
+            .webappName()
+            .map(com.jaspersoft.jrsctl.core.config.Config.WebappName::yamlValue)
+            .orElse("jasperserver-pro");
+    Path scripts =
+        normalise(paths.tomcatDir().resolve("webapps").resolve(webappName).resolve("scripts"));
+    return normalise(path).startsWith(scripts) ? Optional.of(SCRIPTS_ADVICE) : Optional.empty();
+  }
+
+  @Override
   public List<Customization> registerScan(Scan scan) {
     Objects.requireNonNull(scan, "scan");
     List<Customization> out = new java.util.ArrayList<>();

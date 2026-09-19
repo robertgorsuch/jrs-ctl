@@ -1076,6 +1076,30 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "customizations scan with tomcat files",
+            "customizations scan",
+            0,
+            dir -> {
+              serverHome(dir);
+              Path tomcat = dir.resolve("jrs").resolve("apache-tomcat");
+              Files.writeString(
+                  Files.createDirectories(tomcat.resolve("bin")).resolve("setenv.sh"),
+                  "JAVA_OPTS=-Xmx2g\n",
+                  StandardCharsets.UTF_8);
+              Path vendor =
+                  Files.createDirectories(
+                      dir.resolve("dist").resolve("jasperserver-pro").resolve("WEB-INF"));
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "customizations",
+                      "scan",
+                      "--vendor",
+                      vendor.getParent().toString(),
+                      "--tomcat"));
+            }));
+    s.add(
+        of(
             "customizations scan of a path without a webapp",
             "customizations scan",
             2,

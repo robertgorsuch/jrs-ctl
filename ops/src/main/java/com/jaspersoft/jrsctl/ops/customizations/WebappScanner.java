@@ -54,6 +54,8 @@ final class WebappScanner {
       Set.of(
           "META-INF/context.xml",
           "WEB-INF/classes/keystore.init.properties",
+          // the path moved in 8.2 (issue #117); a server has one of the two
+          "WEB-INF/classes/hibernate.properties",
           "WEB-INF/hibernate.properties",
           "WEB-INF/js.jdbc.properties",
           "WEB-INF/js.quartz.properties");

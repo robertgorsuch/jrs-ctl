@@ -107,7 +107,13 @@ final class CustomizationsCommand implements Runnable {
                   .redact(
                       "registered " + c.path() + " (original sha256 " + c.originalSha256() + ")"));
         }
+        // issue #117: a file that cannot be reconciled per file is registered, with a word of
+        // warning
+        open(boot.services())
+            .registrationAdvice(path)
+            .ifPresent(a -> err.println(Redactor.global().redact("warning: " + a)));
         out.flush();
+        err.flush();
         return ExitCodes.SUCCESS;
       }
     }
@@ -284,6 +290,14 @@ final class CustomizationsCommand implements Runnable {
     Path vendor;
 
     @picocli.CommandLine.Option(
+        names = "--tomcat",
+        description =
+            "Also list the Tomcat-side files an upgrade does not carry over by itself:"
+                + " bin/setenv.*, conf/server.xml, conf/Catalina/localhost/*.xml and the lib jars"
+                + " Tomcat does not ship. A list of what to carry over, not of what changed.")
+    boolean tomcat;
+
+    @picocli.CommandLine.Option(
         names = "--register",
         description = "Register every changed and added file that is not registered yet.")
     boolean register;
@@ -296,8 +310,12 @@ final class CustomizationsCommand implements Runnable {
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         CustomizationOperations ops = open(boot.services());
         CustomizationOperations.Scan scan;
+        List<CustomizationOperations.TomcatEntry> tomcatFiles = List.of();
         try {
           scan = ops.scan(vendor);
+          if (tomcat) {
+            tomcatFiles = ops.scanTomcat();
+          }
         } catch (CustomizationException e) {
           return refused(out, err, global.json(), e);
         } catch (RuntimeException e) {
@@ -313,6 +331,9 @@ final class CustomizationsCommand implements Runnable {
                 .count();
         if (!global.json()) {
           print(out, redactor, scan);
+          if (tomcat) {
+            printTomcat(out, redactor, tomcatFiles);
+          }
         }
         boolean doRegister = register || global.yes();
         if (!doRegister && !global.json() && !global.nonInteractive() && candidates > 0) {
@@ -358,6 +379,17 @@ final class CustomizationsCommand implements Runnable {
           }
           tree.put("entries", entries);
           tree.put("registered", registered.stream().map(CustomizationsCommand::row).toList());
+          if (tomcat) {
+            List<Map<String, Object>> files = new ArrayList<>();
+            for (CustomizationOperations.TomcatEntry t : tomcatFiles) {
+              Map<String, Object> row = new LinkedHashMap<>();
+              row.put("path", t.relativePath());
+              row.put("kind", t.kind().name());
+              row.put("registered", t.registered());
+              files.add(row);
+            }
+            tree.put("tomcat", files);
+          }
           out.println(redactor.redact(JsonOut.write(tree)));
         } else if (!registered.isEmpty()) {
           out.println(
@@ -375,6 +407,24 @@ final class CustomizationsCommand implements Runnable {
       }
     }
 
+    private static void printTomcat(
+        PrintWriter out, Redactor redactor, List<CustomizationOperations.TomcatEntry> files) {
+      out.println();
+      out.println("Tomcat-side files to carry over to a new Tomcat (not compared with anything):");
+      if (files.isEmpty()) {
+        out.println("none found");
+        return;
+      }
+      TextTable table = new TextTable().row("KIND", "REGISTERED", "PATH");
+      for (CustomizationOperations.TomcatEntry t : files) {
+        table.row(t.kind().name(), t.registered() ? "yes" : "", t.relativePath());
+      }
+      table.lines().forEach(l -> out.println(redactor.redact(l)));
+      out.println(
+          "register one with: jrsctl customizations register <tomcatDir>/<path>; an upgrade then"
+              + " checks it, but does not copy it to a different Tomcat (--tomcat-dir)");
+    }
+
     private static void print(
         PrintWriter out, Redactor redactor, CustomizationOperations.Scan scan) {
       out.println("installed " + scan.installedWebapp());
@@ -388,6 +438,10 @@ final class CustomizationsCommand implements Runnable {
         table.row(e.change().name(), e.registered() ? "yes" : "", e.relativePath());
       }
       table.lines().forEach(l -> out.println(redactor.redact(l)));
+      if (scan.entries().stream()
+          .anyMatch(e -> e.relativePath().startsWith(CustomizationOperations.SCRIPTS_PREFIX))) {
+        out.println("note: " + CustomizationOperations.SCRIPTS_ADVICE);
+      }
       long installer =
           scan.entries().stream()
               .filter(e -> e.change() == CustomizationOperations.Change.INSTALLER)

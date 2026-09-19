@@ -16,6 +16,20 @@ import java.util.Optional;
  */
 public interface CustomizationOperations {
 
+  /** The webapp directory whose files are an overlay rather than files (issue #117). */
+  String SCRIPTS_PREFIX = "scripts/";
+
+  /**
+   * Issue #117 (vendor review §5.2, the JavaScript customisation deck): why a per-file comparison
+   * of {@code scripts/} cannot work and what to do instead.
+   */
+  String SCRIPTS_ADVICE =
+      "scripts/ is an overlay, not a set of files an upgrade can compare: since 8.0 the front end"
+          + " is the jasperserver-ui webpack project, a customised scripts tree is rebuilt and"
+          + " copied whole under hashed bundle names, so a per-file comparison always reports a"
+          + " conflict. Carry the change in your jasperserver-ui project, rebuild it, and copy the"
+          + " result over the new webapp (operator guide, JavaScript customisations)";
+
   /** Result of {@link #diff(Path)}: the registered copy against the file on disk. */
   record Diff(
       Path path,
@@ -71,6 +85,43 @@ public interface CustomizationOperations {
       Objects.requireNonNull(vendorSha256, "vendorSha256");
     }
   }
+
+  /** What kind of Tomcat-side file a {@link TomcatEntry} is (issue #117). */
+  enum TomcatKind {
+    /** {@code bin/setenv.sh} or {@code bin/setenv.bat}: JAVA_OPTS, heap, {@code --add-opens}. */
+    SETENV,
+    /** {@code conf/server.xml}: connectors, ports, TLS. */
+    SERVER_XML,
+    /** {@code conf/Catalina/localhost/*.xml}: a context fragment, such as a data source. */
+    CONTEXT_FRAGMENT,
+    /** A {@code lib/*.jar} Tomcat does not ship: a JDBC driver or another site addition. */
+    LIBRARY
+  }
+
+  /**
+   * One Tomcat-side file the upgrade guides say to carry over; {@code relativePath} is under the
+   * Tomcat.
+   */
+  record TomcatEntry(String relativePath, TomcatKind kind, boolean registered) {
+    public TomcatEntry {
+      Objects.requireNonNull(relativePath, "relativePath");
+      Objects.requireNonNull(kind, "kind");
+    }
+  }
+
+  /**
+   * The Tomcat-side files an upgrade does not carry over by itself (issue #117): {@code
+   * bin/setenv.*}, {@code conf/server.xml}, {@code conf/Catalina/localhost/*.xml} and the {@code
+   * lib} jars Tomcat does not ship. There is no pristine Tomcat to compare with, so this lists what
+   * to carry over, not what changed; read-only.
+   */
+  List<TomcatEntry> scanTomcat();
+
+  /**
+   * A warning to show when {@code path} is registered, for a file that cannot be reconciled per
+   * file: one under the webapp's {@code scripts/} overlay (issue #117); empty otherwise.
+   */
+  Optional<String> registrationAdvice(Path path);
 
   /** The installed webapp against the vendor's copy. */
   record Scan(Path installedWebapp, Path vendorWebapp, List<ScanEntry> entries) {

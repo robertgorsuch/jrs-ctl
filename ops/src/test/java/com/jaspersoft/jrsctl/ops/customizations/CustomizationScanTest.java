@@ -145,6 +145,127 @@ class CustomizationScanTest {
     assertThat(tmp.resolve("pkg")).isDirectoryNotContaining("glob:**/WEB-INF");
   }
 
+  /** Issue #117: since 8.2 the installer-written Hibernate file is under WEB-INF/classes. */
+  @Test
+  void should_report_the_8_2_hibernate_path_as_installer_written() throws Exception {
+    installed("WEB-INF/classes/hibernate.properties", "dialect=site\n");
+
+    Map<String, ScanEntry> entries = byPath(ops.scan(vendorDir().getParent()));
+
+    assertThat(entries.get("WEB-INF/classes/hibernate.properties").change())
+        .isEqualTo(Change.INSTALLER);
+  }
+
+  private void tomcatFile(String rel) throws Exception {
+    Path file = webapp.getParent().getParent().resolve(rel);
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, "x", StandardCharsets.UTF_8);
+  }
+
+  /** Issue #117: what the upgrade guides say to carry over to a new Tomcat. */
+  @Test
+  void should_list_the_tomcat_side_files_to_carry_over_and_not_the_ones_tomcat_ships()
+      throws Exception {
+    tomcatFile("bin/setenv.sh");
+    tomcatFile("conf/Catalina/localhost/jasperserver-pro.xml");
+    tomcatFile("conf/Catalina/localhost/notes.txt");
+    tomcatFile("lib/postgresql-42.5.5.jar");
+    tomcatFile("lib/catalina.jar");
+    tomcatFile("lib/tomcat-coyote.jar");
+    tomcatFile("lib/servlet-api.jar");
+    tomcatFile("lib/readme.txt");
+
+    var entries = ops.scanTomcat();
+
+    assertThat(entries)
+        .extracting(e -> e.kind() + " " + e.relativePath())
+        .containsExactly(
+            "SETENV bin/setenv.sh",
+            "SERVER_XML conf/server.xml",
+            "CONTEXT_FRAGMENT conf/Catalina/localhost/jasperserver-pro.xml",
+            "LIBRARY lib/postgresql-42.5.5.jar");
+    assertThat(entries).allMatch(e -> !e.registered());
+  }
+
+  @Test
+  void should_mark_a_registered_tomcat_file_as_registered() throws Exception {
+    tomcatFile("bin/setenv.sh");
+    ops.register(webapp.getParent().getParent().resolve("bin/setenv.sh"));
+
+    assertThat(ops.scanTomcat())
+        .filteredOn(e -> e.relativePath().equals("bin/setenv.sh"))
+        .allMatch(e -> e.registered());
+  }
+
+  @Test
+  void should_list_only_the_files_that_exist_when_the_tomcat_has_no_site_files() throws Exception {
+    assertThat(ops.scanTomcat())
+        .extracting(e -> e.relativePath())
+        .containsExactly("conf/server.xml");
+  }
+
+  @Test
+  void should_know_which_library_names_tomcat_ships() {
+    assertThat(TomcatScanner.shippedByTomcat("catalina.jar")).isTrue();
+    assertThat(TomcatScanner.shippedByTomcat("tomcat-jdbc.jar")).isTrue();
+    assertThat(TomcatScanner.shippedByTomcat("ecj-3.33.0.jar")).isTrue();
+    assertThat(TomcatScanner.shippedByTomcat("jakarta.servlet-api.jar")).isTrue();
+    assertThat(TomcatScanner.shippedByTomcat("postgresql-42.5.5.jar")).isFalse();
+    assertThat(TomcatScanner.shippedByTomcat("jasperreports-fonts.jar")).isFalse();
+    assertThat(TomcatScanner.shippedByTomcat("ojdbc11.jar")).isFalse();
+  }
+
+  /** The lib directory of the bundled Tomcat 10.1.41 of a real 10.0.0 installation (issue #117). */
+  @Test
+  void should_report_only_the_three_site_jars_of_a_real_10_0_0_bundle() {
+    var jars =
+        java.util.List.of(
+            "annotations-api.jar",
+            "catalina-ant.jar",
+            "catalina-ha.jar",
+            "catalina-ssi.jar",
+            "catalina-storeconfig.jar",
+            "catalina-tribes.jar",
+            "catalina.jar",
+            "ecj-4.27.jar",
+            "el-api.jar",
+            "iijdbc.jar",
+            "jakartaee-migration-1.0.9-shaded.jar",
+            "jasper-el.jar",
+            "jasper.jar",
+            "jaspic-api.jar",
+            "jsp-api.jar",
+            "mariadb-java-client-2.5.4.jar",
+            "postgresql-42.5.5.jar",
+            "servlet-api.jar",
+            "tomcat-api.jar",
+            "tomcat-coyote-ffm.jar",
+            "tomcat-coyote.jar",
+            "tomcat-dbcp.jar",
+            "tomcat-i18n-cs.jar",
+            "tomcat-i18n-pt-BR.jar",
+            "tomcat-i18n-zh-CN.jar",
+            "tomcat-jdbc.jar",
+            "tomcat-jni.jar",
+            "tomcat-util-scan.jar",
+            "tomcat-util.jar",
+            "tomcat-websocket.jar",
+            "websocket-api.jar",
+            "websocket-client-api.jar");
+
+    assertThat(jars.stream().filter(j -> !TomcatScanner.shippedByTomcat(j)))
+        .containsExactly("iijdbc.jar", "mariadb-java-client-2.5.4.jar", "postgresql-42.5.5.jar");
+  }
+
+  /** Issue #117: scripts/ is an overlay, so registering a file there earns a warning. */
+  @Test
+  void should_advise_against_per_file_registration_under_scripts_only() {
+    assertThat(ops.registrationAdvice(webapp.resolve("scripts/extra.js")))
+        .hasValueSatisfying(a -> assertThat(a).contains("jasperserver-ui").contains("overlay"));
+    assertThat(ops.registrationAdvice(webapp.resolve("WEB-INF/classes/jasperserver.properties")))
+        .isEmpty();
+  }
+
   @Test
   void should_register_changed_files_with_the_vendor_hash_as_original_and_added_ones_as_they_are()
       throws Exception {

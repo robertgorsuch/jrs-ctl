@@ -264,6 +264,7 @@ plus UI-modified settings, minus events. The CLI help text and plan summary shou
 ## P5 — customisations
 
 ### 5.1 Scanner list
+*Partly fixed 2026-09-19 (issue #117, ADR-0034): the hibernate path of 8.2+ is recognised as installer-written and `customizations scan --tomcat` lists the Tomcat-side files. The webapp files named here were already found by the SHA-256 comparison (#72), not by a name list.*
 The upgrade guides name what customers edit and must migrate by hand (10.1 pp.35, 47, 60, 76 and the
 version-specific chapters). `ops/customizations/WebappScanner` knows five paths. Add:
 `WEB-INF/applicationContext-externalAuth-*.xml`, `applicationContext-jdbc-metadata.xml`,
@@ -276,6 +277,7 @@ version-specific chapters). `ops/customizations/WebappScanner` knows five paths.
 Tiles), and Tomcat-side `bin/setenv.*`, `conf/server.xml`, `conf/Catalina/localhost/*.xml`, `lib/*.jar`.
 
 ### 5.2 JavaScript is an overlay, not files
+*Fixed 2026-09-19 (issue #117): the scan notes a file under `scripts/`, `customizations register` warns for one, and the operator guide gives the rebuild-and-copy procedure.*
 Since 8.0 the front end is the `jasperserver-ui` webpack project; a customised `scripts/` tree is rebuilt
 and copied whole, file names are hashed bundles, and "your JavaScript changes made in earlier versions need
 to be added to your new jasperserver-ui project" (JS deck). A per-file 3-way compare under `scripts/` will

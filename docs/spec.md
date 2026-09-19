@@ -603,7 +603,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.3 Customizations
 
-- `jrsctl customizations register <path>` snapshots the file and records its current hash as "original" in the `customizations` table. `unregister`, `list`, and `diff` are provided.
+- `jrsctl customizations register <path>` snapshots the file and records its current hash as "original" in the `customizations` table. `unregister`, `list`, and `diff` are provided. `scan --vendor <path>` compares the installed webapp with the vendor's copy (#72); `--tomcat` adds the Tomcat-side files an upgrade does not carry over (`bin/setenv.*`, `conf/server.xml`, `conf/Catalina/localhost/*.xml`, non-Tomcat `lib/*.jar`), listed without any comparison (ADR-0034). Files under the webapp's `scripts/` are an overlay of the `jasperserver-ui` project, not files: the scan notes it and `register` warns.
 
 ### 10.4 Commands
 
