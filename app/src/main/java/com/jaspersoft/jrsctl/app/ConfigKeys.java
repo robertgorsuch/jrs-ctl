@@ -82,6 +82,37 @@ final class ConfigKeys {
   private ConfigKeys() {}
 
   /** The description of {@code key}, or a note that it has none. */
+  /** What a path-valued key must point at when it is written (field test 2, G9). */
+  enum PathKind {
+    NONE,
+    DIRECTORY,
+    FILE
+  }
+
+  private static final java.util.Set<String> DIRECTORY_KEYS =
+      java.util.Set.of(
+          "server.installDir",
+          "server.tomcatDir",
+          "server.buildomaticDir",
+          "vendor.javaHome",
+          "database.driverDir");
+  private static final java.util.Set<String> FILE_KEYS =
+      java.util.Set.of(
+          "service.scriptPath",
+          "network.trustStore.path",
+          "console.tls.certPath",
+          "console.tls.keyPath");
+
+  static PathKind pathKind(String key) {
+    if (DIRECTORY_KEYS.contains(key)) {
+      return PathKind.DIRECTORY;
+    }
+    if (FILE_KEYS.contains(key)) {
+      return PathKind.FILE;
+    }
+    return PathKind.NONE;
+  }
+
   static String description(String key) {
     return DESCRIPTIONS.getOrDefault(key, "(no description)");
   }

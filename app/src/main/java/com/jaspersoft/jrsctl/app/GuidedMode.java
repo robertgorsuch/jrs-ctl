@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,7 +132,7 @@ final class GuidedMode {
         }
         return;
       }
-      if (Files.isDirectory(Path.of(dir.get()))) {
+      if (Files.isDirectory(local(dir.get()))) {
         execute("init", "--install-dir", dir.get());
         return;
       }
@@ -442,10 +443,15 @@ final class GuidedMode {
     }
   }
 
+  /** The path as the command will read it: a leading {@code ~} is the operator's home. */
+  private static Path local(String typed) {
+    return Path.of(UserPaths.expand(typed, Env.vars()));
+  }
+
   private Optional<String> existingFile(String prompt) {
     while (true) {
       Optional<String> answer = text(prompt);
-      if (answer.isEmpty() || Files.isRegularFile(Path.of(answer.get()))) {
+      if (answer.isEmpty() || Files.isRegularFile(local(answer.get()))) {
         return answer;
       }
       out.println("  no such file: " + answer.get() + " (press Enter to go back)");
@@ -455,7 +461,7 @@ final class GuidedMode {
   private Optional<String> existingDirectory(String prompt) {
     while (true) {
       Optional<String> answer = text(prompt);
-      if (answer.isEmpty() || Files.isDirectory(Path.of(answer.get()))) {
+      if (answer.isEmpty() || Files.isDirectory(local(answer.get()))) {
         return answer;
       }
       out.println("  no such directory: " + answer.get() + " (press Enter to go back)");
@@ -475,7 +481,7 @@ final class GuidedMode {
       if (answer.get().isEmpty()) {
         return Optional.of(Optional.empty());
       }
-      if (Files.isRegularFile(Path.of(answer.get()))) {
+      if (Files.isRegularFile(local(answer.get()))) {
         return Optional.of(answer);
       }
       out.println("  no such file: " + answer.get() + " (Enter to skip)");
@@ -491,7 +497,7 @@ final class GuidedMode {
       if (answer.get().isEmpty()) {
         return Optional.of(Optional.empty());
       }
-      if (Files.isDirectory(Path.of(answer.get()))) {
+      if (Files.isDirectory(local(answer.get()))) {
         return Optional.of(answer);
       }
       out.println("  no such directory: " + answer.get() + " (Enter to skip)");

@@ -62,6 +62,46 @@ class ConfigLoaderTest {
     assertThat(sources.keySet()).containsExactlyElementsOf(loader.knownKeys());
   }
 
+  /** Field test 2, G3: a leading {@code ~} in a path value means the operator's home. */
+  @Test
+  void should_expand_a_leading_tilde_in_path_values_from_the_file_the_environment_and_flags()
+      throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        "server:\n  baseUrl: http://x:8080/jasperserver-pro\n  webappName: jasperserver-pro\n"
+            + "  installDir: ~/jrs\n",
+        StandardCharsets.UTF_8);
+    Path home = tmp.resolve("operator-home");
+
+    Config config =
+        loader.load(
+            file,
+            Map.of("HOME", home.toString(), "JRSCTL_SERVER_TOMCAT_DIR", "~/tomcat"),
+            Map.of("vendor.javaHome", "~/jdk"));
+
+    assertThat(config.server().installDir()).contains(home.resolve("jrs"));
+    assertThat(config.server().tomcatDir()).contains(home.resolve("tomcat"));
+    assertThat(config.vendor().javaHome()).contains(home.resolve("jdk"));
+  }
+
+  /** A saved path whose directory vanished still loads; doctor is what reports it. */
+  @Test
+  void should_still_load_a_saved_config_whose_directory_vanished() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        "server:\n  baseUrl: http://x:8080/jasperserver-pro\n  webappName: jasperserver-pro\n"
+            + "  buildomaticDir: "
+            + tmp.resolve("gone").toString().replace("\\", "/")
+            + "\n",
+        StandardCharsets.UTF_8);
+
+    Config config = loader.load(file, Map.of(), Map.of());
+
+    assertThat(config.server().buildomaticDir()).contains(tmp.resolve("gone"));
+  }
+
   /** Issue #70: config set changes one key of the file and validates the result. */
   @Test
   void should_change_one_key_of_the_file_and_keep_the_others_when_setting() throws IOException {

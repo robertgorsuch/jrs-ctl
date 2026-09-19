@@ -26,6 +26,19 @@ class JrsctlHomeResolverTest {
     assertThat(home.configFile()).isEqualTo(custom.normalize().resolve("config.yaml"));
   }
 
+  /** Field test 2, G3: {@code ~} in JRSCTL_HOME means the operator's home. */
+  @Test
+  void should_expand_a_leading_tilde_in_jrsctl_home() {
+    Path expected = Path.of("home", "r", "h").toAbsolutePath().normalize();
+
+    JrsctlHome home =
+        JrsctlHomeResolver.resolve(
+            Map.of("JRSCTL_HOME", "~/h", "HOME", Path.of("home", "r").toAbsolutePath().toString()),
+            platform);
+
+    assertThat(home.root()).isEqualTo(expected);
+  }
+
   @Test
   void should_fall_back_to_platform_default_when_env_var_is_absent_or_blank() {
     Path dflt = Path.of("platform-default").toAbsolutePath();

@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
+import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -56,15 +57,17 @@ public final class LogFile {
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       if (arg.equals("--home") && i + 1 < args.length) {
-        return Path.of(args[i + 1]).toAbsolutePath().normalize();
+        return Path.of(UserPaths.expand(args[i + 1], env)).toAbsolutePath().normalize();
       }
       if (arg.startsWith("--home=")) {
-        return Path.of(arg.substring("--home=".length())).toAbsolutePath().normalize();
+        return Path.of(UserPaths.expand(arg.substring("--home=".length()), env))
+            .toAbsolutePath()
+            .normalize();
       }
     }
     String fromEnv = env.get("JRSCTL_HOME");
     if (fromEnv != null && !fromEnv.isBlank()) {
-      return Path.of(fromEnv.strip()).toAbsolutePath().normalize();
+      return Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize();
     }
     return platformDefault(env);
   }
