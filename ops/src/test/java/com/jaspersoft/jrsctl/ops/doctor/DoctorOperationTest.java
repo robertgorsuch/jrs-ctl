@@ -470,6 +470,30 @@ class DoctorOperationTest {
     }
   }
 
+  /** Issue #105: a keystore anyone on the host can read is reported, not passed. */
+  @Test
+  void should_warn_keystore_when_its_files_are_readable_beyond_the_owner() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(healthyYaml(install))) {
+      KeystoreInfo found = fake.adapter.keystore;
+      fake.adapter.keystore =
+          new KeystoreInfo(
+              true,
+              found.keystoreFile(),
+              found.propertiesFile(),
+              found.fingerprint(),
+              found.reason(),
+              java.util.Optional.of("/home/jasperserver/.jrsks is readable by other accounts"));
+
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem keystore = byName(report).get("keystore");
+      assertThat(keystore.status()).isEqualTo(Status.WARN);
+      assertThat(keystore.detail()).contains("readable by other accounts");
+      assertThat(keystore.remediation()).contains("600");
+    }
+  }
+
   @Test
   void should_warn_capabilities_and_fail_keystore_when_server_lacks_expected_ones()
       throws Exception {
@@ -484,7 +508,9 @@ class DoctorOperationTest {
       assertThat(items.get("capabilities").status()).isEqualTo(Status.WARN);
       assertThat(items.get("capabilities").detail()).contains("missing").contains("REST_LOGIN");
       assertThat(items.get("keystore").status()).isEqualTo(Status.FAIL);
-      assertThat(items.get("keystore").remediation()).contains("runAsUser");
+      assertThat(items.get("keystore").remediation())
+          .contains("runAsUser")
+          .contains("keystore.init.properties");
     }
   }
 

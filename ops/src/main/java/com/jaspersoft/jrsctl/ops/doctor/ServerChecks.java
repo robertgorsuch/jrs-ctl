@@ -149,18 +149,28 @@ final class ServerChecks {
                 .contains(Capability.KEYSTORE_ENCRYPTION.name());
     KeystoreInfo info = c.adapter().keystore();
     if (info.present()) {
-      return ReportItem.pass(
-          "keystore",
+      String where =
           info.keystoreFile().map(Path::toString).orElse("keystore")
-              + info.fingerprint().map(f -> " sha256 " + shortHash(f)).orElse(""));
+              + info.fingerprint().map(f -> " sha256 " + shortHash(f)).orElse("");
+      if (info.exposure().isPresent()) {
+        // keystore deck p.6: the keystore and its properties should be 600 (or 640 for a group
+        // the server shares); anyone who can read both can decrypt every stored secret
+        return ReportItem.warn(
+            "keystore",
+            where + "; " + info.exposure().get(),
+            "restrict .jrsks and .jrsksp to the account that runs the server (chmod 600, or 640"
+                + " for its group; on Windows remove the inherited ACL entries)");
+      }
+      return ReportItem.pass("keystore", where);
     }
     String reason = info.reason().orElse("keystore not found");
     if (expected) {
       return ReportItem.fail(
           "keystore",
           reason,
-          "set server.runAsUser to the account that runs Tomcat and make its ~/.jrsks and"
-              + " ~/.jrsksp readable to jrsctl");
+          "the server names its keystore in WEB-INF/classes/keystore.init.properties (ks, ksp);"
+              + " make that location readable to jrsctl, or set server.runAsUser to the account"
+              + " that runs Tomcat so its ~/.jrsks and ~/.jrsksp are inspected");
     }
     return ReportItem.pass("keystore", "not applicable: " + reason);
   }
