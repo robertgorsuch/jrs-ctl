@@ -41,6 +41,7 @@ public final class PlanRegistry {
 
   public static final String UPGRADE = UpgradeOperations.UPGRADE_OPERATION;
   public static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
+  public static final String UPGRADE_TEST = UpgradeOperations.TEST_OPERATION;
 
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
@@ -52,6 +53,7 @@ public final class PlanRegistry {
     Objects.requireNonNull(exim, "exim");
     Objects.requireNonNull(upgrade, "upgrade");
     builders.put(UPGRADE, args -> upgrade.get().planUpgrade(upgradeOptions(args)));
+    builders.put(UPGRADE_TEST, args -> upgrade.get().planTest(upgradeOptions(args)));
     builders.put(
         UPGRADE_ROLLBACK,
         args ->

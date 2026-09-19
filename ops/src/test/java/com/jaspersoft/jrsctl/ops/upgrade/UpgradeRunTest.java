@@ -66,6 +66,46 @@ class UpgradeRunTest {
     }
   }
 
+  /** Spec §10.2 "Rehearsal": the wrapper gets {@code test}, the package is left as found. */
+  @Test
+  void should_pass_test_to_the_vendor_wrapper_and_leave_the_package_as_it_was() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path master = f.packageDir.resolve("buildomatic").resolve("default_master.properties");
+      Path keystoreInit = f.packageDir.resolve("buildomatic").resolve("keystore.init.properties");
+
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-test", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.logs())
+          .anyMatch(m -> m.contains("js-ant fake target=pre-upgrade-test-pro"))
+          .anyMatch(m -> m.contains("vendor validation passed"));
+      assertThat(master).doesNotExist();
+      assertThat(keystoreInit).doesNotExist();
+      assertThat(f.vendorLogText()).doesNotContain("upgrade-minimal-pro");
+      assertThat(UpgradeFixture.read(f.webappDir.resolve("version.txt"))).isEqualTo("8.2.0");
+      assertThat(f.fake.platform.controller.events).doesNotContain("stop");
+      assertThat(f.fake.home.snapshots().resolve("r-test")).doesNotExist();
+    }
+  }
+
+  @Test
+  void should_fail_the_rehearsal_with_the_vendor_lines_and_leave_the_package_as_it_was()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.failVendorTest();
+
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-test-fail", RunOptions.DEFAULT);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause())
+          .contains("BUILD FAILED: cannot connect");
+      assertThat(f.packageDir.resolve("buildomatic").resolve("default_master.properties"))
+          .doesNotExist();
+      assertThat(UpgradeFixture.read(f.webappDir.resolve("version.txt"))).isEqualTo("8.2.0");
+      assertThat(f.fake.platform.controller.events).doesNotContain("stop");
+    }
+  }
+
   /**
    * ADR-0029: after a newdb run failed inside the vendor script, the database it left behind is
    * dropped and the old one rebuilt from the point-B export with the restored buildomatic.

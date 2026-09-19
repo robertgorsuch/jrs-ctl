@@ -253,6 +253,43 @@ class UpgradeStepIdempotencyTest {
     return f.ops().planRollback(upgradeRunId, new RollbackOptions(RollbackPoint.B, true));
   }
 
+  /** The rehearsal's validation is read-only: running it twice leaves everything as it was. */
+  @Test
+  void should_not_mutate_when_run_vendor_test_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planTest(newdb(f));
+      Context ctx = start(f, plan, "r-vt");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-test", f.events::add);
+      Step step = Idempotency.step(plan, "run-vendor-test");
+      assertThat(step.mutating()).isFalse();
+      Map<String, String> before = state(f, "r-vt");
+
+      Idempotency.executeOk(step, ctx, f.events::add);
+      Idempotency.compensateOk(step, ctx, f.events::add);
+
+      assertThat(state(f, "r-vt")).isEqualTo(before);
+    }
+  }
+
+  @Test
+  void should_converge_when_unstage_target_package_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planTest(newdb(f));
+
+      assertReexecutionConverges(f, plan, "r-ut", "unstage-target-package");
+
+      assertThat(f.packageDir.resolve("buildomatic").resolve("default_master.properties"))
+          .doesNotExist();
+    }
+  }
+
+  @Test
+  void should_converge_when_unstage_target_package_compensates_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertCompensationConverges(f, f.ops().planTest(newdb(f)), "r-utc", "unstage-target-package");
+    }
+  }
+
   /** ADR-0029: a resume never drops a database it already rebuilt. */
   @Test
   void should_run_init_once_when_rebuild_database_executes_twice() throws Exception {

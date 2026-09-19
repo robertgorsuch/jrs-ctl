@@ -582,13 +582,15 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 14. `Smoke` (§12.2). Failure offers rollback to point B.
 15. `RecordUpgrade` — marks hotfixes `SUPERSEDED`/re-installed, records the upgrade snapshot set as retention-protected. `PointConfigAtTarget` then points `server.buildomaticDir` at the target's buildomatic and, with `--tomcat-dir`, `server.tomcatDir` at the new Tomcat.
 
+**Rehearsal** (`jrsctl upgrade … --test`; field test 2, U1). The vendor's own validation, run before anything is touched: phase A as above (`Doctor`, `VerifyTargetPackage`), then `WriteMasterProperties` and `StageKeystoreInit` exactly as the upgrade stages them, then `RunVendorTest` — `js-upgrade-<mode> test` when the package ships the wrapper (the vendor's `test` option runs `pre-upgrade-test-<ce|pro>`: it validates the properties, the database connection and the package and, by the vendor's own word, modifies no instance and no resource; with `test` the newdb wrapper takes no export file, buildomatic `bin/do-js-upgrade`), else `js-ant pre-upgrade-test-<ce|pro> -Dstrategy=<standard|inDatabase>` — then `UnstageTargetPackage`, which runs the two staging steps' compensations so the package is left as it was found. `RunVendorTest` is read-only; Ant's `BUILD FAILED` or the keystore banner fail it with the vendor's lines in the message. No stop, no backup, no export; the plan's operation is `upgrade.test`, its summary says so, and the samedb backup gate does not apply. A failed rehearsal exits **2**: nothing was mutated (the staged files are removed by the ordinary compensation), so 3 would claim a rollback of the server that never happened. The guided menu offers the rehearsal before the real run.
+
 ### 10.3 Customizations
 
 - `jrsctl customizations register <path>` snapshots the file and records its current hash as "original" in the `customizations` table. `unregister`, `list`, and `diff` are provided.
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--test] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 

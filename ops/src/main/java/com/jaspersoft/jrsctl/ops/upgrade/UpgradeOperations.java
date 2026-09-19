@@ -22,6 +22,9 @@ public interface UpgradeOperations {
   /** Operation id recorded in the run journal for a rollback to point B or C. */
   String ROLLBACK_OPERATION = "upgrade.rollback";
 
+  /** The rehearsal ({@code --test}): the vendor's validation, nothing changed (spec §10.2). */
+  String TEST_OPERATION = "upgrade.test";
+
   /**
    * How the vendor script treats the repository database (spec §10.1, ADR-0012): {@code samedb}
    * migrates its schema in place, {@code newdb} drops it and recreates it from the point-B full
@@ -168,6 +171,15 @@ public interface UpgradeOperations {
   }
 
   Plan planUpgrade(UpgradeOptions options);
+
+  /**
+   * The rehearsal of {@code options}: the same preflight and staging as the upgrade, then {@code
+   * js-upgrade-<mode> test} (the vendor's validation of the properties, the database connection and
+   * the package), then the package put back as it was. No stop, no backup, no export, nothing
+   * changed; the same refusals as {@link #planUpgrade} (unsupported path, exit 6; inconsistent
+   * options, exit 1).
+   */
+  Plan planTest(UpgradeOptions options);
 
   Plan planRollback(String runId, RollbackOptions options);
 
