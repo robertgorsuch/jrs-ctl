@@ -94,6 +94,7 @@ each other and with `ksPath` inside the base64-decoded `.jrsksp`; `run-vendor-up
 text about creating a keystore as fatal.
 
 ### 1.5 Keystore lookup order in `KeystoreInspector`
+*Fixed 2026-09-19 (issue #105, PR #119): the running webapp's own `keystore.init.properties` first, then buildomatic's copy, then the run-as user's home; `doctor keystore` WARNs on a keystore readable beyond its owner.*
 The same sources put the files in the **installing** user's home, not the Tomcat user's, unless
 `keystore.init.properties` or `ks`/`ksp` point elsewhere. The documented failure when they differ is
 `KeystoreManager was never initialized` at startup. `KeystoreInspector` starts from `server.runAsUser`'s
@@ -103,6 +104,7 @@ buildomatic copy, then homes; `doctor` FAILs when the running server's file name
 cannot read, and WARNs when permissions are wider than 600/640 (keystore deck p.6).
 
 ### 1.6 Newdb upgrades restart the server between the export and the rebuild
+*Fixed 2026-09-17 (ADR-0025): the full export is taken after `stop-service` and the service stays down until the vendor run; a vendor-phase rollback restarts it through the stop step's compensation.*
 Phase B stops the service, takes `FullExport`, then **starts the service again** (`full-export-start-service`,
 `full-export-wait-for-server`) before the file backups; Phase C stops it a second time and `js-upgrade-newdb`
 drops the repository and re-imports that export (ADR-0012). Every repository change made while the server
@@ -138,6 +140,7 @@ with `update JIRepositoryCache set item_reference = null; delete from JIReposito
 steps before `StartService`.
 
 ### 2.3 Events are not carried by `js-upgrade-newdb`
+*Fixed 2026-09-19 (issue #106, PR #120): `upgrade --include-events` adds `import-events` after the vendor run; without it the plan summary says the events are left behind.*
 "Starting version 7.9.0, the js-upgrade-newdb script does not import the access, audit, monitoring data"
 (10.1 p.80; IG p.256 gives the fix: `js-import --input-zip … --include-access-events --include-audit-events
 --include-monitoring-events` with the server stopped). Recommend: the point-B export includes the three
@@ -145,12 +148,14 @@ event kinds when `feature.audit_monitoring.enabled` is on, and `upgrade --includ
 js-import after the vendor run; otherwise the plan summary states that events are left behind.
 
 ### 2.4 Vendor test mode as preflight
+*Fixed 2026-09-18 (field test 2, U1): `upgrade --test` runs the vendor's own validation as a rehearsal that changes nothing, and the guided menu offers it first.*
 `js-upgrade-newdb.bat test <export>` / `js-upgrade-samedb.bat test` "check your default_master.properties
 settings and validate your application server location and its ability to connect to your database …
 without altering your system" (10.1 pp.45, 58). Recommend running it in `verify-target-package` after
 `write-master-properties`; it is the vendor's own check of the file jrsctl wrote.
 
 ### 2.5 License file, JDBC drivers, password migration
+*Fixed 2026-09-19 (issue #108, PR #124): `verify-vendor-preconditions` judges the licence file, the driver jar and the password storage settings before anything is stopped; `upgrade --migrate-passwords` for samedb to 10.1+; `check-analytics-jndi` for 9.0.x targets.*
 - 10.0+: "Place the jaspersoft.jrs.license file in the C:\Users\<user> directory" of the user running the
   script (10.1 pp.43-44), else `-Djs.license.directory`. Preflight check.
 - Oracle/SQL Server/DB2: the driver jar must sit in the target's `buildomatic/conf_source/db/<db>/jdbc/`
@@ -164,6 +169,7 @@ without altering your system" (10.1 pp.45, 58). Recommend running it in `verify-
   in `META-INF/context.xml` "even if the feature is disabled" (RN 9.0 p.15); a post-upgrade check.
 
 ### 2.6 Rollback caveat for 10.1
+*Fixed 2026-09-19 (issue #107, PR #121): an import whose sidecar says 10.1.0 or later into an older server is refused at plan time; `import --force-version` overrides with a warning and an audit row.*
 "Resources exported from version 10.1.0 cannot be imported into older versions" (RN 10.1 p.6). The point-B
 export is pre-upgrade so rollback is unaffected, but `import` should refuse a catalog whose sidecar records a
 source version ≥10.1 into a server <10.1 (exit 2) instead of letting js-import fail half way.
@@ -218,6 +224,7 @@ Report output is held in the HTTP session and the reference recommends an explic
 ## P4 — export/import model
 
 ### 4.1 A portable export needs no keystore copying
+*Fixed 2026-09-18 (field test 2, Task 11, ADR-0028): `export --portable` (the shared alias) or `--key-alias`, and `import --key-alias`, on both strategies; the sidecar records the alias and an import with one skips the fingerprint comparison.*
 Security guide pp.28-30 and the encryption deck: an export made with `--keyalias
 deprecatedImportExportEncSecret` (CLI) or `"keyAlias": "deprecatedImportExportEncSecret"` (REST) decrypts on
 any 7.5+ server with the same alias on import. That is the vendor's documented cross-server path; copying
