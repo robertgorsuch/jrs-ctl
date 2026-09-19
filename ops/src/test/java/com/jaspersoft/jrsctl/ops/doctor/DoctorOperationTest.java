@@ -151,6 +151,34 @@ class DoctorOperationTest {
     }
   }
 
+  /**
+   * Review §3.2 (issue #112): the licence's clustering flag is its own WARN item and never counts
+   * against the matrix comparison in {@code capabilities}.
+   */
+  @Test
+  void should_warn_on_cluster_and_keep_capabilities_passing_when_the_licence_is_clustered()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home-cl")).yaml(healthyYaml(install))) {
+      fake.adapter.capabilities.add(Capability.CLUSTERING);
+      Map<String, ReportItem> items =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT));
+
+      assertThat(items.get("cluster").status()).isEqualTo(Status.WARN);
+      assertThat(items.get("cluster").detail()).contains("licence includes clustering");
+      assertThat(items.get("cluster").remediation())
+          .contains("every hotfix and upgrade on each node");
+      assertThat(items.get("capabilities").status()).isEqualTo(Status.PASS);
+    }
+    try (FakeServices fake =
+        FakeServices.in(tmp.resolve("home-single")).yaml(healthyYaml(install))) {
+      Map<String, ReportItem> items =
+          byName(new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT));
+
+      assertThat(items.get("cluster").status()).isEqualTo(Status.PASS);
+    }
+  }
+
   @Test
   void should_skip_the_local_installation_checks_when_the_configuration_names_no_installation()
       throws Exception {

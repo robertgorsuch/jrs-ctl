@@ -24,6 +24,7 @@ import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
+import com.jaspersoft.jrsctl.ops.ClusterNotice;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.TomcatJavaOpts;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
@@ -364,6 +365,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               + " default_master.properties match the installed ones, or remove them there");
     }
     warnings.add(backupsLine());
+    // review §3.2 (issue #112): an upgrade run here upgrades this node's webapp only
+    ClusterNotice.warning(rt.services()).ifPresent(warnings::add);
     options
         .existingExport()
         .ifPresent(export -> warnings.addAll(existingExportWarnings(export, identity)));

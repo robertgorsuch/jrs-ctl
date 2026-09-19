@@ -47,8 +47,16 @@ final class ServerChecks {
     try (Secret password = s.secrets().resolve(ref.get())) {
       Session session =
           c.adapter().login(new Credentials(username.get(), password, Optional.empty()));
+      // issue #112: the REST reference documents pp as a URL parameter only; the header is
+      // jrsctl's own choice (ADR-0018), which a reader of the vendor docs should not go looking for
+      String tokenNote =
+          auth.mode() == Config.AuthMode.TOKEN
+                  && auth.tokenLocation() == Config.TokenLocation.HEADER
+              ? "; the token travels in the pp header, jrsctl's choice (ADR-0018), where the"
+                  + " REST reference documents pp as a URL parameter only"
+              : "";
       return ReportItem.pass(
-          "auth", "logged in as " + username.get() + " (" + session.mode() + ")");
+          "auth", "logged in as " + username.get() + " (" + session.mode() + ")" + tokenNote);
     } catch (SecretException e) {
       return ReportItem.fail("auth", e.getMessage(), "fix " + ref.get().render());
     } catch (RuntimeException e) {
@@ -117,6 +125,8 @@ final class ServerChecks {
     ServerIdentity id = c.identity();
     Set<String> probed =
         c.adapter().capabilities().stream()
+            // CLUSTERING is the licence's, not the release line's (issue #112): its own item
+            .filter(cap -> cap != Capability.CLUSTERING)
             .map(Enum::name)
             .collect(Collectors.toCollection(TreeSet::new));
     if (s.matrix().find(id.version()).isEmpty()) {
@@ -139,6 +149,27 @@ final class ServerChecks {
         "probed " + probed + "; missing " + missing + "; unexpected " + extra,
         "the server may be partially configured (REST login, keystore, organizations); check its"
             + " configuration or the matrix entry");
+  }
+
+  /**
+   * Review §3.2 (issue #112): the licence's clustering flag. A WARN, not a FAIL, and on purpose
+   * also on a single-node commercial server whose licence merely permits clustering (the vendor's
+   * own bundled installer ships {@code cl: true} and {@code org.quartz.jobStore.isClustered=true}
+   * on one node), because jrsctl cannot tell one node from many and the cost of the warning is one
+   * line.
+   */
+  static ReportItem cluster(ServerProbe.Connected c) {
+    boolean clustered = c.adapter().capabilities().contains(Capability.CLUSTERING);
+    if (!clustered) {
+      return ReportItem.pass(
+          "cluster", "licence without clustering (licenseFeatures cl is false or absent)");
+    }
+    return ReportItem.warn(
+        "cluster",
+        "the licence includes clustering (licenseFeatures cl=true); jrsctl changes this node only",
+        "if this server is one node of a cluster, apply every hotfix and upgrade on each node"
+            + " before the load balancer sends it traffic, and keep .jrsks and .jrsksp identical"
+            + " across nodes; a single-node server can ignore this");
   }
 
   static ReportItem keystore(Services s, ServerProbe.Connected c) {

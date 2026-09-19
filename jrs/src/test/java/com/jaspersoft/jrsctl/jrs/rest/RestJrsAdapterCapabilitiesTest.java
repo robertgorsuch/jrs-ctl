@@ -152,10 +152,56 @@ class RestJrsAdapterCapabilitiesTest {
     assertThat(f.adapter.expectedCapabilities()).isEmpty();
     assertThat(f.adapter.capabilities())
         .contains(Capability.EXPORT_ASYNC, Capability.IMPORT_ASYNC, Capability.KEYSTORE_ENCRYPTION);
+    // issue #112: an unlisted version is probed through GET /rest_v2/keys/, not assumed
     assertThat(f.adapter.probeResults().get(Capability.KEYSTORE_ENCRYPTION))
         .contains("not in the compat matrix")
-        .contains("assumed");
+        .contains("/rest_v2/keys/")
+        .contains("HTTP 204");
+    assertThat(f.adapter.probeResults().get(Capability.TOKEN_AUTH)).contains("assumed absent");
     assertThat(f.adapter.keystore().reason().orElse("")).doesNotContain("pre 7.5");
+  }
+
+  /** Issue #112: without the keys service an unlisted version has no keystore encryption. */
+  @Test
+  void should_report_keystore_absent_when_an_unlisted_server_has_no_keys_service() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("11.0.0-PRO");
+    f.allProbesPresent();
+    f.probe("/rest_v2/keys/", 404);
+
+    assertThat(f.adapter.capabilities()).doesNotContain(Capability.KEYSTORE_ENCRYPTION);
+    assertThat(f.adapter.probeResults().get(Capability.KEYSTORE_ENCRYPTION)).contains("HTTP 404");
+  }
+
+  /** Review §3.2 (issue #112): the licence's clustering flag, a capability of the deployment. */
+  @Test
+  void should_find_clustering_when_the_licence_says_cl_true() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    f.allProbesPresent();
+    f.licenseFeatures(true);
+
+    assertThat(f.adapter.capabilities()).contains(Capability.CLUSTERING);
+    assertThat(f.adapter.probeResults().get(Capability.CLUSTERING))
+        .contains("licenseFeatures")
+        .contains("cl=true")
+        .contains("mt=true")
+        .contains("present");
+    // the matrix never expects it: a licence flag, not a release-line capability
+    assertThat(f.adapter.expectedCapabilities()).doesNotContain(Capability.CLUSTERING);
+  }
+
+  @Test
+  void should_report_clustering_absent_when_there_is_no_licence_service() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    f.serverInfo("8.2.0-PRO");
+    f.allProbesPresent();
+    f.probe("/rest_v2/licenseFeatures", 404);
+
+    assertThat(f.adapter.capabilities()).doesNotContain(Capability.CLUSTERING);
+    assertThat(f.adapter.probeResults().get(Capability.CLUSTERING))
+        .contains("HTTP 404")
+        .contains("absent");
   }
 
   @Test

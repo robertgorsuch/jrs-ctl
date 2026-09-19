@@ -177,6 +177,7 @@ source version ≥10.1 into a server <10.1 (exit 2) instead of letting js-import
 ## P3 — detection and diagnostics
 
 ### 3.1 Capability probes the API actually offers
+*Fixed 2026-09-19 (issue #112): `GET /rest_v2/keys/` probes keystore encryption for a version the matrix does not list; `GET /rest_v2/licenseFeatures` gives the `CLUSTERING` capability; the `auth` item names the `pp` header as jrsctl's choice (ADR-0018). `application.wadl` is not used.*
 - `GET /rest_v2/licenseFeatures` (REST pp.20-22) returns `{"mt":…, "cl":…, "aud":…}`; `mt` is the
   tenancy answer and `cl` says the licence is clustered. jrsctl derives tenancy from the `MT` token in
   `serverInfo.features` and has no cluster signal.
@@ -189,6 +190,7 @@ source version ≥10.1 into a server <10.1 (exit 2) instead of letting js-import
   (ADR-0018) but say in `doctor` that it is jrsctl's choice, not the vendor's.
 
 ### 3.2 Cluster awareness
+*Fixed 2026-09-19 (issue #112): `doctor cluster` WARNs on a clustered licence, and the hotfix apply and upgrade plan summaries say the change reaches this node only. The quartz `isClustered`/`clusterCheckinInterval` keys are not used as a signal: the bundled single-node installer sets both.*
 The clustering deck and every release note: nodes share one repository database, must have identical
 `.jrsks`/`.jrsksp` (login fails otherwise, JS-57772), replicate the repository cache over JMS, and run the
 same webapp. jrsctl runs on one host. Recommend: when `licenseFeatures.cl` is true or

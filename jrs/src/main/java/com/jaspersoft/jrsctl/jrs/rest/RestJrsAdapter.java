@@ -61,6 +61,13 @@ public final class RestJrsAdapter implements JrsAdapter {
   static final String JOBS = "/rest_v2/jobs";
   static final String ORGANIZATIONS = "/rest_v2/organizations";
   static final String REST_LOGIN = "/rest_v2/login";
+
+  /** REST reference 10.1 pp.20-22: licence feature flags, commercial editions only. */
+  static final String LICENSE_FEATURES = "/rest_v2/licenseFeatures";
+
+  /** REST reference 10.1 p.128: the custom keys of the keystore, 7.5 and later. */
+  static final String KEYS = "/rest_v2/keys/";
+
   static final String FORM_LOGIN = "/j_spring_security_check";
   static final String PROBE_ID = "jrsctl-probe";
   static final String DEFAULT_EXPORT_FILE = "export.zip";
@@ -270,6 +277,8 @@ public final class RestJrsAdapter implements JrsAdapter {
           Capability.REST_LOGIN, restLogin, "POST " + REST_LOGIN, restLoginStatus, found, details);
     }
 
+    // review §3.2 (issue #112): the licence says whether other nodes may exist
+    probeLicenseFeatures(found, details);
     boolean known = matrix.find(id.version()).isPresent();
     for (Capability c :
         List.of(Capability.KEYSTORE_ENCRYPTION, Capability.TOKEN_AUTH, Capability.PREAUTH)) {
@@ -278,17 +287,30 @@ public final class RestJrsAdapter implements JrsAdapter {
       if (known) {
         present = expected.contains(c);
         how = "per compat matrix for JRS " + id.version() + " " + id.edition();
-      } else {
-        // Review finding 2.7: a version the matrix does not list is unknown, not incapable.
-        // Keystore encryption arrived in 7.5 and never left; the two auth modes need server
-        // configuration to tell and are assumed absent until probed by hand.
-        present = c == Capability.KEYSTORE_ENCRYPTION && atLeast(id.version(), 7, 5);
+      } else if (c == Capability.KEYSTORE_ENCRYPTION) {
+        // review §3.1 (issue #112): GET /rest_v2/keys/ answers on any 7.5+ server (REST
+        // reference p.128), so a version the matrix does not list is probed rather than assumed
+        RestClient.Response keys = client.get(KEYS);
+        int keysStatus = refuseIfUnauthenticated(keys.status(), KEYS);
+        present = keysStatus == 200 || keysStatus == 204;
         how =
             "JRS "
                 + id.version()
-                + " is not in the compat matrix; "
-                + (present ? "assumed present (7.5 and later)" : "assumed absent, unknown")
+                + " is not in the compat matrix; GET "
+                + KEYS
+                + " answered HTTP "
+                + keysStatus
                 + " for "
+                + id.edition();
+      } else {
+        // Review finding 2.7: a version the matrix does not list is unknown, not incapable.
+        // The two auth modes need server configuration to tell and are assumed absent until
+        // probed by hand.
+        present = false;
+        how =
+            "JRS "
+                + id.version()
+                + " is not in the compat matrix; assumed absent, unknown for "
                 + id.edition();
       }
       if (present) {
@@ -303,6 +325,45 @@ public final class RestJrsAdapter implements JrsAdapter {
     }
     capabilities = Collections.unmodifiableSet(found);
     probeResults = Collections.unmodifiableMap(details);
+  }
+
+  /**
+   * Review §3.2 (issue #112): {@code GET /rest_v2/licenseFeatures} answers 200 with the licence's
+   * feature flags on a commercial server ({@code cl} is clustering, {@code mt} multi-tenancy) and
+   * 404 on the community edition, which has no licence service. Anything but a parseable 200 is
+   * "absent" with the status, never an error: the flag only adds a warning.
+   */
+  private void probeLicenseFeatures(Set<Capability> found, Map<Capability, String> details) {
+    RestClient.Response r = client.get(LICENSE_FEATURES);
+    int s = refuseIfUnauthenticated(r.status(), LICENSE_FEATURES);
+    if (s != 200) {
+      decide(Capability.CLUSTERING, false, "GET " + LICENSE_FEATURES, s, found, details);
+      return;
+    }
+    Wire.LicenseFeatures features;
+    try {
+      features = Wire.parse(r.body(), Wire.LicenseFeatures.class, "GET", LICENSE_FEATURES);
+    } catch (RestException notJson) {
+      details.put(
+          Capability.CLUSTERING,
+          "GET " + LICENSE_FEATURES + " answered HTTP 200 without licence flags (absent)");
+      return;
+    }
+    boolean clustered = Boolean.TRUE.equals(features.cl());
+    if (clustered) {
+      found.add(Capability.CLUSTERING);
+    }
+    details.put(
+        Capability.CLUSTERING,
+        "GET "
+            + LICENSE_FEATURES
+            + " answered HTTP 200: cl="
+            + features.cl()
+            + ", mt="
+            + features.mt()
+            + " ("
+            + (clustered ? "present" : "absent")
+            + ")");
   }
 
   /**

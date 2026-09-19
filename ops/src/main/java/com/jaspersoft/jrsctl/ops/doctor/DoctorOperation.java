@@ -31,6 +31,7 @@ public final class DoctorOperation {
           "identity",
           "compat",
           "capabilities",
+          "cluster",
           "layout",
           "service",
           LocalChecks.SERVICE_MANAGER,
@@ -83,6 +84,8 @@ public final class DoctorOperation {
         guard(
             "capabilities",
             s -> probe.authenticated("capabilities", c -> ServerChecks.capabilities(s, c))));
+    // review §3.2 (issue #112): the licence's clustering flag, read by the same probe
+    items.add(guard("cluster", s -> probe.authenticated("cluster", ServerChecks::cluster)));
 
     // #68: a jrsctl that reaches the server over REST only has no installation to check
     boolean local = services.config().server().namesLocalInstallation();

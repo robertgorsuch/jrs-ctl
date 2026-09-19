@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (vendor review §3.1–3.2, licence probes and cluster awareness)
+
+- §7.1, §12.1: `KEYSTORE_ENCRYPTION` is probed through `GET /rest_v2/keys/` (200 or 204 is present) for a version the compat matrix does not list, instead of being assumed from the version; listed versions keep the matrix's answer. A new `CLUSTERING` capability comes from `GET /rest_v2/licenseFeatures` answering `cl: true` (404, the community edition, means absent); the matrix never expects it and `doctor capabilities` compares nothing against it. `doctor` gains a `cluster` item, WARN on a clustered licence (on purpose also on a single-node commercial server, whose bundled licence carries the flag), and its `auth` line says that the `pp` header is jrsctl's choice (ADR-0018) where the REST reference documents `pp` as a URL parameter only. The hotfix apply and upgrade plan summaries carry, on a clustered licence, the sentence that the change reaches this node only and every other node needs the same package before the load balancer sends it traffic. The quartz `isClustered` keys are not a signal: the bundled single-node installer sets them (issue #112).
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §3.4, the vendor's logs in the support bundle)
 
 - §13.1: the support bundle carries the vendor's own troubleshooting files under `vendor/`: the newest `buildomatic/logs/js-*.log`, `WEB-INF/logs/jasperserver.log`, `catalina.out` or the newest `catalina.<date>.log`, `installation.log`, and `default_master.properties` with every password key blanked before redaction; each is the last 5 MB of the file, streamed line by line through the redactor, and a missing file yields no entry. Every vendor run (`js-export`, `js-import`, `js-ant`) logs `buildomatic log: <path>`, the newest log the tool wrote under `buildomatic/logs`, so the run record names the file the vendor's troubleshooting starts from (issue #111).
