@@ -22,6 +22,9 @@ import java.util.Optional;
  */
 public final class FakePlatform implements Platform {
 
+  /** What {@code files().isOwnerOnly} answers for every file. */
+  public boolean ownerOnly = true;
+
   private final OsFamily os;
   private final ProcessRunner runner;
   private final Optional<ServiceController> services;
@@ -131,7 +134,7 @@ public final class FakePlatform implements Platform {
 
       @Override
       public boolean isOwnerOnly(Path file) {
-        return true;
+        return ownerOnly;
       }
     };
   }

@@ -178,6 +178,96 @@ class KeystoreInspectorTest {
     assertThat(info.keystoreFile()).contains(ksDir.resolve(".jrsks"));
   }
 
+  /**
+   * Vendor review 1.5 (issue #105): the running server reads {@code
+   * WEB-INF/classes/keystore.init.properties}, so that copy settles the location before
+   * buildomatic's, which may be stale after a move or an upgrade.
+   */
+  @Test
+  void should_prefer_the_webapps_keystore_init_properties_over_buildomatics() throws IOException {
+    Path install = root.resolve("install");
+    Path tomcat = install.resolve("tomcat");
+    Path classes =
+        Files.createDirectories(
+            tomcat
+                .resolve("webapps")
+                .resolve("jasperserver-pro")
+                .resolve("WEB-INF")
+                .resolve("classes"));
+    Path live = Files.createDirectories(root.resolve("live-home"));
+    Path stale = Files.createDirectories(root.resolve("stale-home"));
+    Files.write(live.resolve(".jrsks"), "live".getBytes(StandardCharsets.US_ASCII));
+    Files.write(stale.resolve(".jrsks"), "stale".getBytes(StandardCharsets.US_ASCII));
+    Files.writeString(
+        classes.resolve("keystore.init.properties"),
+        "ks=" + live.toString().replace("\\", "/") + "\n");
+    Files.createDirectories(install.resolve("buildomatic"));
+    Files.writeString(
+        install.resolve("buildomatic").resolve("keystore.init.properties"),
+        "ks=" + stale.toString().replace("\\", "/") + "\n");
+    KeystoreInspector inspector =
+        new KeystoreInspector(
+            new FakePlatform(Platform.OsFamily.LINUX),
+            withTomcatDir(withInstallDir(config(Optional.of("nobody-here")), install), tomcat),
+            homes(root.resolve("me")));
+
+    KeystoreInfo info = inspector.inspect();
+
+    assertThat(info.present()).isTrue();
+    assertThat(info.keystoreFile()).contains(live.resolve(".jrsks"));
+    assertThat(info.reason().orElse("")).contains("WEB-INF").doesNotContain("buildomatic");
+  }
+
+  /** Keystore deck p.6: the files should be 600/640; wider permissions are reported. */
+  @Test
+  void should_report_exposure_when_the_keystore_is_readable_beyond_its_owner() throws IOException {
+    Path home = root.resolve("home").resolve("tomcat");
+    keystoreIn(home, true);
+    FakePlatform platform = new FakePlatform(Platform.OsFamily.LINUX);
+    platform.ownerOnly = false;
+    KeystoreInspector inspector =
+        new KeystoreInspector(platform, config(Optional.of("tomcat")), homes(root.resolve("me")));
+
+    KeystoreInfo info = inspector.inspect();
+
+    assertThat(info.present()).isTrue();
+    assertThat(info.exposure()).isPresent();
+    assertThat(info.exposure().get()).contains(".jrsks");
+  }
+
+  @Test
+  void should_report_no_exposure_when_the_keystore_is_owner_only() throws IOException {
+    Path home = root.resolve("home").resolve("tomcat");
+    keystoreIn(home, true);
+    KeystoreInspector inspector =
+        new KeystoreInspector(
+            new FakePlatform(Platform.OsFamily.LINUX),
+            config(Optional.of("tomcat")),
+            homes(root.resolve("me")));
+
+    assertThat(inspector.inspect().exposure()).isEmpty();
+  }
+
+  private static Config withTomcatDir(Config base, Path tomcatDir) {
+    Config.Server s = base.server();
+    return new Config(
+        new Config.Server(
+            s.baseUrl(),
+            s.webappName(),
+            s.installDir(),
+            Optional.of(tomcatDir),
+            s.buildomaticDir(),
+            s.runAsUser(),
+            s.auth()),
+        base.service(),
+        base.database(),
+        base.vendor(),
+        base.network(),
+        base.console(),
+        base.backups(),
+        base.smoke());
+  }
+
   private static Config withInstallDir(Config base, Path installDir) {
     Config.Server s = base.server();
     return new Config(

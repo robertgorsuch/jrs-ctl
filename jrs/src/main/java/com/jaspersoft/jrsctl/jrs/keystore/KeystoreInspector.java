@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.jrs.keystore;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
@@ -16,13 +17,16 @@ import java.util.Properties;
 import java.util.stream.Stream;
 
 /**
- * Finds the server keystore ({@code .jrsks}) and its properties ({@code .jrsksp}) in the home
- * directory of {@code server.runAsUser} (spec §9.3). Invariants: the home is resolved by the OS
- * convention of the {@link Platform} (Windows: {@code %SystemDrive%\Users\<user>}; Linux: the home
- * field of {@code /etc/passwd}, falling back to {@code /home/<user>}); when {@code runAsUser} is
- * unset the current user's home is inspected and the returned {@code reason} says so; the
- * fingerprint is the streaming SHA-256 of {@code .jrsks}; the keystore is never opened or
- * decrypted, and no keystore password is read.
+ * Finds the server keystore ({@code .jrsks}) and its properties ({@code .jrsksp}) (spec §9.3).
+ * Invariants: the location is settled in this order and the returned {@code reason} names which
+ * source settled it: the running server's own {@code WEB-INF/classes/keystore.init.properties} (the
+ * file the server reads at startup; vendor review 1.5), then buildomatic's copy (what the installer
+ * wrote), then the home directory of {@code server.runAsUser} by the OS convention of the {@link
+ * Platform} (Windows: {@code %SystemDrive%\Users\<user>}; Linux: the home field of {@code
+ * /etc/passwd}, falling back to {@code /home/<user>}); when {@code runAsUser} is unset the current
+ * user's home is inspected and the reason says so; the fingerprint is the streaming SHA-256 of
+ * {@code .jrsks}; a found file that accounts other than its owner can read is named in {@code
+ * exposure}; the keystore is never opened or decrypted, and no keystore password is read.
  */
 public final class KeystoreInspector {
 
@@ -88,7 +92,11 @@ public final class KeystoreInspector {
   }
 
   public KeystoreInfo inspect() {
-    Optional<KeystoreInfo> fromInstall = fromInitProperties();
+    Optional<KeystoreInfo> fromWebapp = webappInitProperties().flatMap(this::fromInitFile);
+    if (fromWebapp.isPresent()) {
+      return fromWebapp.get();
+    }
+    Optional<KeystoreInfo> fromInstall = buildomaticInitProperties().flatMap(this::fromInitFile);
     if (fromInstall.isPresent()) {
       return fromInstall.get();
     }
@@ -122,12 +130,39 @@ public final class KeystoreInspector {
       return KeystoreInfo.absent(
           "cannot read " + keystore + ": " + e.getMessage() + " (" + note + ")");
     }
-    return new KeystoreInfo(
-        true,
-        Optional.of(keystore),
-        Files.isRegularFile(properties) ? Optional.of(properties) : Optional.empty(),
-        Optional.of(fingerprint),
-        Optional.of(note));
+    return found(keystore, properties, fingerprint, note);
+  }
+
+  /**
+   * The file the running server reads at startup: {@code
+   * <tomcat>/webapps/<webappName>/WEB-INF/classes/keystore.init.properties}. The Tomcat directory
+   * is {@code server.tomcatDir} or the one detected under {@code server.installDir}; the webapp
+   * name is {@code server.webappName}, else the layout's. Empty when none of that resolves or the
+   * file is not there (a WAR deployed elsewhere, or a server older than the keystore).
+   */
+  private Optional<Path> webappInitProperties() {
+    Optional<Path> install = config.server().installDir();
+    Optional<TomcatLayout> layout = install.flatMap(platform::detectTomcat);
+    Optional<Path> tomcat =
+        config.server().tomcatDir().or(() -> layout.map(TomcatLayout::tomcatDir));
+    Optional<String> webapp =
+        config
+            .server()
+            .webappName()
+            .map(Config.WebappName::yamlValue)
+            .or(() -> layout.map(TomcatLayout::webappName));
+    if (tomcat.isEmpty() || webapp.isEmpty()) {
+      return Optional.empty();
+    }
+    Path file =
+        tomcat
+            .get()
+            .resolve("webapps")
+            .resolve(webapp.get())
+            .resolve("WEB-INF")
+            .resolve("classes")
+            .resolve(INIT_PROPERTIES);
+    return Files.isRegularFile(file) ? Optional.of(file) : Optional.empty();
   }
 
   /**
@@ -136,18 +171,19 @@ public final class KeystoreInspector {
    * account name; the real 10.0.0 install on the development machine points both at the installing
    * user's profile. The buildomatic directory is the one {@link BuildomaticLocator#resolve} settles
    * on, so a tree on another volume or a share is read too (ADR-0013). Empty when no directory
-   * resolves or the file names no location.
+   * resolves or the file is not there.
    */
-  private Optional<KeystoreInfo> fromInitProperties() {
-    Optional<Path> buildomatic =
-        new BuildomaticLocator(platform).resolve(config).located().map(Buildomatic::dir);
-    if (buildomatic.isEmpty()) {
-      return Optional.empty();
-    }
-    Path file = buildomatic.get().resolve(INIT_PROPERTIES);
-    if (!Files.isRegularFile(file)) {
-      return Optional.empty();
-    }
+  private Optional<Path> buildomaticInitProperties() {
+    return new BuildomaticLocator(platform)
+        .resolve(config)
+        .located()
+        .map(Buildomatic::dir)
+        .map(dir -> dir.resolve(INIT_PROPERTIES))
+        .filter(Files::isRegularFile);
+  }
+
+  /** Reads {@code ks}/{@code ksp} from an init file; empty when it names no location. */
+  private Optional<KeystoreInfo> fromInitFile(Path file) {
     Properties props = new Properties();
     try (var in = Files.newBufferedReader(file, StandardCharsets.ISO_8859_1)) {
       props.load(in);
@@ -167,19 +203,57 @@ public final class KeystoreInspector {
       return Optional.of(KeystoreInfo.absent(keystore + " not found (" + note + ")"));
     }
     try {
-      return Optional.of(
-          new KeystoreInfo(
-              true,
-              Optional.of(keystore),
-              Files.isRegularFile(properties) ? Optional.of(properties) : Optional.empty(),
-              Optional.of(platform.files().sha256(keystore)),
-              Optional.of(note)));
+      return Optional.of(found(keystore, properties, platform.files().sha256(keystore), note));
     } catch (IOException e) {
       return Optional.of(
           KeystoreInfo.absent(
               "cannot read " + keystore + ": " + e.getMessage() + " (" + note + ")"));
     }
   }
+
+  /** A found keystore, with the permission check on it and on its properties when present. */
+  private KeystoreInfo found(Path keystore, Path properties, String fingerprint, String note) {
+    Optional<Path> props =
+        Files.isRegularFile(properties) ? Optional.of(properties) : Optional.empty();
+    return new KeystoreInfo(
+        true,
+        Optional.of(keystore),
+        props,
+        Optional.of(fingerprint),
+        Optional.of(note),
+        exposure(keystore).or(() -> props.flatMap(this::exposure)));
+  }
+
+  /**
+   * Keystore deck p.6: the files should be 600 or 640. Where the platform reports POSIX bits, a
+   * file with any bit for "others" is named, since 640 (a group the server shares) is what the
+   * vendor allows; elsewhere a file the platform does not consider owner-only is named. A
+   * permission read that fails names nothing, since the caller already proved the file readable.
+   */
+  private Optional<String> exposure(Path file) {
+    try {
+      Optional<String> posix =
+          platform.files().capturePermissions(file).entries().stream()
+              .filter(e -> e.startsWith(POSIX_ENTRY))
+              .map(e -> e.substring(POSIX_ENTRY.length()))
+              .findFirst();
+      boolean exposed =
+          posix.isPresent()
+              ? posix.get().length() >= 9 && !posix.get().substring(6, 9).equals("---")
+              : !platform.files().isOwnerOnly(file);
+      return exposed
+          ? Optional.of(
+              file
+                  + " is readable by accounts other than its owner"
+                  + posix.map(p -> " (" + p + ")").orElse(""))
+          : Optional.empty();
+    } catch (IOException e) {
+      return Optional.empty();
+    }
+  }
+
+  /** The permission entry {@code LinuxFileOps} writes: {@code posix:rw-r-----}. */
+  private static final String POSIX_ENTRY = "posix:";
 
   /**
    * Home directory of an OS account by platform convention; a {@code DOMAIN\\user} or {@code

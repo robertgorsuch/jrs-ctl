@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (vendor review §1.5, keystore lookup order)
+
+- §9.3: the keystore is found through the running server's own `WEB-INF/classes/keystore.init.properties` first, then buildomatic's copy, then the run-as user's home, and the reason names which one settled it. `doctor keystore` WARNs when `.jrsks` or `.jrsksp` is readable beyond its owner (any "others" bit on Linux, an ACL beyond owner, SYSTEM and Administrators on Windows), with the vendor's 600/640 in the remediation; its FAIL remediation names the server's own file before `server.runAsUser` (issue #105).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, documentation corrections)
 
 - §5.1: the home falls back to `~/.jrsctl` when the system home does not exist and cannot be created; one that exists but is not writable is refused with the reason (what the resolver has done since #50). `docs/compatibility.md` regenerated for matrix version 2 (Java sets, Tomcat ranges, modes per upgrade path). The operator guide states the by-design answers from the second field test: the plan is fixed and every variation is a flag, the sidecar's purpose, what a failed import leaves and how to find it, and what the newdb rollback rebuilds.
