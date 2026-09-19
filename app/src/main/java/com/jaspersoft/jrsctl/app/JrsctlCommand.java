@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.Version;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +78,8 @@ public final class JrsctlCommand implements Callable<Integer> {
     }
     if (!global.nonInteractive() && Terminal.present()) {
       // #71: an operator at a terminal gets the guided menu instead of a usage error
-      return new GuidedMode(cmd.getOut(), passOn(global), this::runCommand, this::pendingRuns)
+      return new GuidedMode(
+              cmd.getOut(), passOn(global), this::runCommand, this::pendingRuns, this::snapshotsDir)
           .run();
     }
     cmd.usage(cmd.getErr());
@@ -100,6 +102,15 @@ public final class JrsctlCommand implements Callable<Integer> {
           .toList();
     } catch (RuntimeException e) {
       return List.of();
+    }
+  }
+
+  /** Where the pre-import snapshot lands, for the menu's restore entry; empty when unknown. */
+  private Optional<Path> snapshotsDir() {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+      return Optional.of(boot.services().home().snapshots());
+    } catch (RuntimeException e) {
+      return Optional.empty();
     }
   }
 
