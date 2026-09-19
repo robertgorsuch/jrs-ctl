@@ -63,6 +63,8 @@ The footer names the other entry points: `jrsctl --help` lists every command, `j
 
 ## Getting help offline
 
+Output is wrapped at 80 columns unless `COLUMNS` is exported (`export COLUMNS` in bash after resizing; PowerShell and cmd set it yourself). Tables wrap their last column under its heading, the documentation and `--explain` wrap their prose, and `--help` follows the same width. Long paths are never split.
+
 - `jrsctl --help`, `jrsctl <command> --help`, `jrsctl help <command>` — the usage synopsis: flags, parameters, one line each.
 - `jrsctl <command> --explain` — the long form, printed as plain text in a terminal and as Markdown when piped: what the command does, what it mutates (or that it is read-only), how it rolls back, its exit codes and every flag. It prints the command's section of this guide and exits 0 **without running anything**, so it is safe to add to any command line you are about to run, even one with required flags missing: `jrsctl hotfix apply --explain`. On a group (`jrsctl hotfix --explain`) it prints every subcommand's section; `jrsctl --explain` prints the whole command reference.
 - `jrsctl docs` lists the embedded documents; `jrsctl docs operator-guide` prints this guide, `jrsctl docs hotfix-authoring` the bundle authoring guide, `jrsctl docs security` the security notes.
@@ -573,7 +575,7 @@ Runs started from the console go through the same plan, confirmation, fingerprin
 
 ### `jrsctl docs [<name>] [--format auto|text|markdown] [--json]`
 
-Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document to standard output: as plain text in a terminal (headings underlined, tables aligned or listed row by row, no Markdown markup, wrapped to `COLUMNS` or 100 columns), and as its Markdown source when redirected to a file or a pipe (#60). The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, console token, hardening) and `readme`.
+Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document to standard output: as plain text in a terminal (headings underlined, tables aligned or listed row by row, no Markdown markup, wrapped to `COLUMNS` or 80 columns), and as its Markdown source when redirected to a file or a pipe (#60). The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, console token, hardening) and `readme`.
 
 - **Mutates:** nothing; read-only and independent of the jrsctl home, configuration and server.
 - **Rollback:** not applicable.

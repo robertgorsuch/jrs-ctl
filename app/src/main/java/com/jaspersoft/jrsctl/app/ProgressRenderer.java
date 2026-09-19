@@ -167,7 +167,7 @@ final class ProgressRenderer implements EventSink {
     ordered.addAll(rows);
     println("");
     println(headline);
-    TextTable table = new TextTable();
+    TextTable table = new TextTable(Terminal.width(Env.vars()));
     for (String[] row : ordered) {
       table.row("  " + row[0], row[1]);
     }

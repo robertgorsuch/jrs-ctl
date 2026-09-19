@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, terminal width)
+
+- §17: every table wraps its last column at the terminal width, the documentation and `--explain` wrap at the same width, and `--help` follows it; the width is `COLUMNS` when exported (40 to 400), else 80. A path or word longer than the room left goes on its own line unsplit (field test 2, G8).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, tilde and path existence)
 
 - §5.1: a leading `~` means the operator's home directory everywhere jrsctl takes a path (`--home`, `JRSCTL_HOME`, `Path` options, path keys from the file, the environment or `--set`, the guided menu); `config set` and `init`'s review refuse a directory or file setting that does not exist (exit 1) and store the expanded path; `database.driverDir` joins the reviewed fields (field test 2, G3, G9).

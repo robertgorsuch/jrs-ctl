@@ -373,7 +373,8 @@ final class ConfigCommand implements Runnable {
           JsonOut.print(out, rows);
           return ExitCodes.SUCCESS;
         }
-        TextTable table = new TextTable().row("KEY", "VALUE", "SOURCE", "DESCRIPTION");
+        int width = Terminal.width(Env.vars());
+        TextTable table = new TextTable(width).row("KEY", "VALUE", "SOURCE", "DESCRIPTION");
         for (Map.Entry<String, ConfigLoader.Source> s : sources.entrySet()) {
           table.row(
               s.getKey(),
@@ -381,12 +382,40 @@ final class ConfigCommand implements Runnable {
               label(s.getKey(), s.getValue(), boot),
               ConfigKeys.description(s.getKey()));
         }
-        table.lines().forEach(line -> out.println(redactor.redact(line)));
+        List<String> rendered = table.lines();
+        if (rendered.stream().anyMatch(l -> TextTable.visibleLength(l) > width)) {
+          // the first three columns alone are wider than the terminal (a long URL, say): the
+          // description goes under its key instead of off the right edge (field test 2, G8)
+          rendered = keysWithDescriptionsBelow(config, sources, boot, width);
+        }
+        rendered.forEach(line -> out.println(redactor.redact(line)));
         out.println();
         out.println("Change one with: jrsctl config set <key> <value>");
         out.flush();
         return ExitCodes.SUCCESS;
       }
+    }
+
+    /**
+     * One block per key when the aligned columns cannot fit: the key and its value on one line (no
+     * column padding, so only a value longer than the terminal overflows), then the source and the
+     * description wrapped beneath.
+     */
+    private static List<String> keysWithDescriptionsBelow(
+        Config config, Map<String, ConfigLoader.Source> sources, Bootstrap boot, int width) {
+      List<String> out = new ArrayList<>();
+      out.add("KEY  VALUE");
+      out.add("    source; description");
+      for (Map.Entry<String, ConfigLoader.Source> s : sources.entrySet()) {
+        String value = ConfigKeys.value(config, s.getKey());
+        out.add(value.isEmpty() ? s.getKey() : s.getKey() + "  " + value);
+        String below =
+            label(s.getKey(), s.getValue(), boot) + "; " + ConfigKeys.description(s.getKey());
+        for (String piece : TextTable.wrap(below, Math.max(20, width - 4))) {
+          out.add("    " + piece);
+        }
+      }
+      return out;
     }
 
     private static String label(String key, ConfigLoader.Source source, Bootstrap boot) {

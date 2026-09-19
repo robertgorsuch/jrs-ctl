@@ -210,6 +210,19 @@ class ConfigCommandTest {
         .contains(ConfigKeys.description("server.baseUrl"));
   }
 
+  /** Field test 2, G8: the keys table fits a default terminal, wider with COLUMNS. */
+  @Test
+  void should_keep_config_keys_within_the_terminal_width() {
+    InitCommandTest.Run narrow = jrsctl("config", "keys");
+    Env.override(Map.of("COLUMNS", "160"));
+    InitCommandTest.Run wide = jrsctl("config", "keys");
+
+    assertThat(narrow.code()).isZero();
+    assertThat(narrow.out().lines()).allMatch(l -> l.length() <= 80);
+    assertThat(narrow.out().lines().count()).isGreaterThan(wide.out().lines().count());
+    assertThat(wide.out().lines()).allMatch(l -> l.length() <= 160);
+  }
+
   /** Issue #73: a database value read from default_master.properties says so. */
   @Test
   void should_label_database_values_read_from_buildomatic_when_listing_keys() throws Exception {
@@ -228,9 +241,17 @@ class ConfigCommandTest {
     InitCommandTest.Run show = jrsctl("config", "show");
 
     assertThat(keys.code()).as(keys.out() + keys.err()).isZero();
-    assertThat(keys.out().lines().filter(l -> l.startsWith("database.type")).findFirst())
-        .hasValueSatisfying(
-            l -> assertThat(l).contains("postgresql").contains("default_master.properties"));
+    // the source sits on the key's line when the columns fit, else on the line beneath (G8)
+    java.util.List<String> lines = keys.out().lines().toList();
+    int at = -1;
+    for (int i = 0; i < lines.size(); i++) {
+      if (lines.get(i).startsWith("database.type")) {
+        at = i;
+      }
+    }
+    assertThat(at).as(keys.out()).isNotNegative();
+    assertThat(lines.get(at)).contains("postgresql");
+    assertThat(lines.get(at) + " " + lines.get(at + 1)).contains("default_master.properties");
     assertThat(show.out()).contains("# database.type: from").contains("default_master.properties");
   }
 

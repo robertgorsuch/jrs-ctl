@@ -24,18 +24,20 @@ final class ReportPrinter {
   static void print(
       PrintWriter out, List<ReportItem> items, Report.Counts counts, Ansi ansi, Redactor redactor) {
     Report report = new Report(items, counts);
-    TextTable table = new TextTable();
+    TextTable table = new TextTable(Terminal.width(Env.vars()));
     for (ReportItem item : items) {
       table.row(ansi.status(item.status()), item.name(), item.detail());
     }
-    List<String> lines = table.lines();
+    List<List<String>> lines = table.linesByRow();
     int problems = counts.fail() + counts.warn();
     for (int i = 0; i < items.size(); i++) {
       ReportItem item = items.get(i);
       if (i == problems && problems > 0) {
         out.println(RULE);
       }
-      out.println(redactor.redact(lines.get(i)));
+      for (String line : lines.get(i)) {
+        out.println(redactor.redact(line));
+      }
       if (item.status() != ReportItem.Status.PASS && !item.remediation().isEmpty()) {
         String remediation = INDENT + item.remediation();
         out.println(
