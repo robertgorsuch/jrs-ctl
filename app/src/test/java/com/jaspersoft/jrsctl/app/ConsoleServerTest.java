@@ -642,6 +642,15 @@ class ConsoleServerTest {
         home.resolve("logs").resolve("jrsctl.log"),
         "{\"message\":\"login with password=" + SECRET + "\"}\n",
         StandardCharsets.UTF_8);
+    // review §3.4 (issue #111): the vendor's own files, each carrying the secret, come along
+    Path tomcat = tmp.resolve("apache-tomcat");
+    Files.createDirectories(tomcat.resolve("logs"));
+    Files.writeString(
+        tomcat.resolve("logs").resolve("catalina.out"), "start password=" + SECRET + "\n");
+    Path webInf = tomcat.resolve("webapps").resolve("jasperserver-pro").resolve("WEB-INF");
+    Files.createDirectories(webInf.resolve("logs"));
+    Files.writeString(webInf.resolve("logs").resolve("jasperserver.log"), "js " + SECRET + "\n");
+    Files.writeString(tmp.resolve("installation.log"), "installer " + SECRET + "\n");
     String runId = startRun(planId("hotfix.apply", "{\"block\":false}"));
     waitUntil(() -> !server.runs().find(runId).orElseThrow().running());
 
@@ -669,7 +678,10 @@ class ConsoleServerTest {
             "server.json",
             "doctor.json",
             "config-redacted.yaml",
-            "logs/jrsctl.log");
+            "logs/jrsctl.log",
+            "vendor/jasperserver.log",
+            "vendor/catalina.out",
+            "vendor/installation.log");
     String all = everything.toString();
     assertThat(all).contains("[redacted]");
     assertThat(all).doesNotContain(SECRET);
