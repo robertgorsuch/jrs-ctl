@@ -543,6 +543,8 @@ public final class RestJrsAdapter implements JrsAdapter {
     body.put("roles", List.of());
     body.put("users", List.of());
     body.put("parameters", parameters);
+    // REST reference 10.1 p.110: the alias must exist in the importing server's keystore
+    request.keyAlias().ifPresent(alias -> body.put("keyAlias", alias));
     RestClient.Response r = client.require2xx(client.postJson(EXPORT, body), "POST", EXPORT);
     Wire.AsyncState state = Wire.parse(r.body(), Wire.AsyncState.class, "POST", EXPORT);
     if (state.id() == null || state.id().isBlank()) {
@@ -622,7 +624,9 @@ public final class RestJrsAdapter implements JrsAdapter {
             // the server default; omitted so that older servers see the request they always saw
             + (request.brokenDependencies() == BrokenDependencies.FAIL
                 ? ""
-                : "&brokenDependencies=" + request.brokenDependencies().wire());
+                : "&brokenDependencies=" + request.brokenDependencies().wire())
+            // REST reference 10.1 p.117: the key the archive was encrypted with
+            + request.keyAlias().map(a -> "&keyAlias=" + RestClient.encodeQuery(a)).orElse("");
     RestClient.Response r =
         client.require2xx(
             client.postBytesFromFile(path, archive, "application/zip", cancelled), "POST", path);

@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-18 (field test 2, named key on export and import)
+
+- §9.1, §9.3, §9.5: `ExportRequest` and `ImportRequest` carry `keyAlias`; `export --key-alias <alias>` (or `--portable`, the shared alias `deprecatedImportExportEncSecret`) encrypts with a named key of the keystore and `import --key-alias <alias>` decrypts with it, through the REST body and query and the vendor tools' `--keyalias`; the sidecar records the alias and an import adopts it when the operator gives none; an import with an alias skips the keystore fingerprint comparison. The guided menu asks *Portable?* on export and the alias on import; the console has the same fields (field test 2, E4, I1).
+
 ## Draft 1.1 amendment — 2026-09-18 (field test 2, terminal width)
 
 - §17: every table wraps its last column at the terminal width, the documentation and `--explain` wrap at the same width, and `--help` follows it; the width is `COLUMNS` when exported (40 to 400), else 80. A path or word longer than the room left goes on its own line unsplit (field test 2, G8).

@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.jrs.strategy;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -167,6 +168,29 @@ class RestStrategyExportTest {
         .contains("holds no index.xml")
         .contains("no resource matched");
     assertThat(Files.exists(output)).isFalse();
+  }
+
+  /** Field test 2, E4: the alias goes in the export body and into the sidecar for the import. */
+  @Test
+  void should_send_the_key_alias_and_record_it_in_the_sidecar_when_given() throws IOException {
+    stubStart();
+    stubStates("{\"phase\":\"ready\",\"message\":\"Export succeeded\"}");
+    stubDownload();
+    List<Step> steps =
+        new RestStrategy(fx.polling)
+            .exportSteps(request().withKeyAlias(ExportRequest.PORTABLE_KEY_ALIAS));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    wm.verify(
+        postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/export")))
+            .withRequestBody(
+                containing("\"keyAlias\":\"" + ExportRequest.PORTABLE_KEY_ALIAS + "\"")));
+    Optional<Sidecar> sidecar = Sidecar.read(Sidecar.pathFor(output));
+    assertThat(sidecar).isPresent();
+    assertThat(sidecar.get().flags().keyAlias()).contains(ExportRequest.PORTABLE_KEY_ALIAS);
   }
 
   @Test

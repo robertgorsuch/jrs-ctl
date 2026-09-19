@@ -89,6 +89,16 @@ class ImportCommandTest {
     assertThat(options.strategy()).isEmpty();
   }
 
+  /** Field test 2, I1: the key the archive was exported with. */
+  @Test
+  void should_pass_the_key_alias_to_the_operation_when_given() {
+    InitCommandTest.Run run = importOf("--key-alias", "deprecatedImportExportEncSecret", "--plan");
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(fake.lastImport.orElseThrow().keyAlias())
+        .contains("deprecatedImportExportEncSecret");
+  }
+
   @Test
   void should_pass_every_flag_to_the_operation_when_all_given() {
     Path keystore = tmp.resolve("source.jrsks");

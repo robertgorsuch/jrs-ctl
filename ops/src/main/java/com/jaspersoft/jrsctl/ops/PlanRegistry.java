@@ -130,6 +130,7 @@ public final class PlanRegistry {
     node.put("stopService", o.stopService());
     putStrategy(node, o.strategy());
     node.put("out", o.out().toAbsolutePath().normalize().toString());
+    putText(node, "keyAlias", o.keyAlias());
     return Json.write(node);
   }
 
@@ -155,7 +156,16 @@ public final class PlanRegistry {
       node.putNull("sourceKeystorePassword");
     }
     putStrategy(node, o.strategy());
+    putText(node, "keyAlias", o.keyAlias());
     return Json.write(node);
+  }
+
+  private static void putText(ObjectNode node, String field, Optional<String> value) {
+    if (value.isPresent()) {
+      node.put(field, value.get());
+    } else {
+      node.putNull(field);
+    }
   }
 
   public static ExportImportOperations.ExportOptions exportOptions(JsonNode args) {
@@ -176,7 +186,8 @@ public final class PlanRegistry {
         Path.of(required(args, "out")),
         strategy(args),
         // #67: arguments stored before the flag existed describe a plan that stopped the service
-        args.path("stopService").asBoolean(true));
+        args.path("stopService").asBoolean(true),
+        text(args, "keyAlias"));
   }
 
   public static ExportImportOperations.ImportOptions importOptions(JsonNode args) {
@@ -195,7 +206,8 @@ public final class PlanRegistry {
         // arguments stored before the option existed describe a plan that used the server default
         text(args, "brokenDependencies")
             .map(BrokenDependencies::parse)
-            .orElse(BrokenDependencies.FAIL));
+            .orElse(BrokenDependencies.FAIL),
+        text(args, "keyAlias"));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

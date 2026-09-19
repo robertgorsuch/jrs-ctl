@@ -94,6 +94,15 @@ final class ImportCommand implements Callable<Integer> {
       description = "Force the REST or vendor CLI strategy instead of selecting one.")
   String strategy;
 
+  @Option(
+      names = "--key-alias",
+      paramLabel = "<alias>",
+      description =
+          "Decrypt the archive with this key of this server's keystore (the alias it was exported"
+              + " with, e.g. deprecatedImportExportEncSecret for a portable export) instead of the"
+              + " server's own import/export key. Read from the sidecar when it records one.")
+  String keyAlias;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -130,7 +139,8 @@ final class ImportCommand implements Callable<Integer> {
             Optional.ofNullable(sourceKeystore),
             passwordRef,
             kind,
-            broken);
+            broken,
+            Optional.ofNullable(keyAlias));
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

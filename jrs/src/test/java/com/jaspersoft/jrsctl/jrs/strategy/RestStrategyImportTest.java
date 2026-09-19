@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.jrs.strategy;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.delete;
 import static com.github.tomakehurst.wiremock.client.WireMock.deleteRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -94,6 +95,45 @@ class RestStrategyImportTest {
     assertThat(check.id()).isEqualTo(CheckKeystoreFingerprint.ID);
     return check.precheck(
         fx.context(TestConfigs.server(StrategyFixture.BASE, Config.AuthMode.BASIC), adapter));
+  }
+
+  /** Field test 2, I1: a named key decrypts the archive; this server's keystore is not compared. */
+  @Test
+  void should_pass_precheck_without_comparing_when_the_request_names_a_key_alias()
+      throws IOException {
+    sidecarWith(Optional.of("0000000000000000000000000000000000000000000000000000000000000000"));
+    FakeJrsAdapter adapter = new FakeJrsAdapter();
+
+    CheckResult result =
+        precheck(adapter, request(Optional.empty()).withKeyAlias(ExportRequest.PORTABLE_KEY_ALIAS));
+
+    assertThat(result).isInstanceOf(CheckResult.Pass.class);
+  }
+
+  @Test
+  void should_send_the_key_alias_on_the_import_request_when_given() throws IOException {
+    RestFixture rest = new RestFixture(wm, fx.platform, fx.redactor, tmp.resolve("userhome"));
+    wm.stubFor(
+        post(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .withQueryParam("keyAlias", equalTo("k1"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"imp-1\",\"phase\":\"inprogress\"}")));
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/import/imp-1/state")))
+            .willReturn(aResponse().withStatus(200).withBody("{\"phase\":\"ready\"}")));
+    List<Step> steps =
+        new RestStrategy(fx.polling).importSteps(request(Optional.empty()).withKeyAlias("k1"));
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    wm.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(rest.path("/rest_v2/import")))
+            .withQueryParam("keyAlias", equalTo("k1")));
   }
 
   @Test

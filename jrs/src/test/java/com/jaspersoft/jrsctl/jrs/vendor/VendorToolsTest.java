@@ -130,6 +130,41 @@ class VendorToolsTest {
     assertThat(VendorTools.exportArgs(r, out)).containsSequence("--uris", "/");
   }
 
+  /** Field test 2, E4 and I1: a named key reaches both vendor scripts as {@code --keyalias}. */
+  @Test
+  void should_pass_the_key_alias_to_js_export_and_js_import_when_given() {
+    ExportRequest export =
+        new ExportRequest(
+                ExportRequest.Scope.EVERYTHING,
+                Set.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                Path.of("out.zip"))
+            .withKeyAlias("deprecatedImportExportEncSecret");
+    ImportRequest importRequest =
+        new ImportRequest(
+                Path.of("in.zip"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty())
+            .withKeyAlias("deprecatedImportExportEncSecret");
+
+    assertThat(VendorTools.exportArgs(export, Path.of("out.zip")))
+        .containsSequence("--keyalias", "deprecatedImportExportEncSecret");
+    assertThat(VendorTools.importArgs(importRequest))
+        .containsSequence("--keyalias", "deprecatedImportExportEncSecret");
+  }
+
   @Test
   void should_build_all_import_args_when_every_flag_set() {
     ImportRequest r =

@@ -117,6 +117,21 @@ class ExportCommandTest {
     assertThat(options.strategy()).contains(ExportImportStrategy.Kind.VENDOR_CLI);
   }
 
+  /** Field test 2, E4: a named key, or --portable for the alias every keystore holds. */
+  @Test
+  void should_pass_the_key_alias_and_treat_portable_as_the_shared_alias() {
+    assertThat(export("--key-alias", "k1", "--plan").code()).isZero();
+    assertThat(fake.lastExport.orElseThrow().keyAlias()).contains("k1");
+
+    assertThat(export("--portable", "--plan").code()).isZero();
+    assertThat(fake.lastExport.orElseThrow().keyAlias())
+        .contains("deprecatedImportExportEncSecret");
+
+    InitCommandTest.Run both = export("--portable", "--key-alias", "k1", "--plan");
+    assertThat(both.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(both.err()).contains("--portable is --key-alias");
+  }
+
   @Test
   void should_run_every_step_and_exit_0_when_yes_given() {
     InitCommandTest.Run run = export("--uri", "/public", "--yes");

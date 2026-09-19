@@ -508,11 +508,14 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 ```java
 record ExportRequest(Scope scope, Set<String> uris, boolean includeUsersRoles, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
-                     boolean fullServer, Path output)
+                     boolean fullServer, Path output, boolean stopService, Optional<String> keyAlias)
 record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
-                     boolean skipThemes, Path sourceKeystore, SecretRef sourceKeystorePassword)
+                     boolean skipThemes, Optional<Path> sourceKeystore, Optional<SecretRef> sourceKeystorePassword,
+                     BrokenDependencies brokenDependencies, Optional<String> keyAlias)
 ```
+
+- `keyAlias` names a key of the server's keystore to encrypt the export with, or to decrypt the import with, instead of the server's own import/export key (REST reference 10.1 pp.110, 117: the alias must exist in the importing server's keystore). It reaches the server as the REST export body field `keyAlias` and the import query parameter `keyAlias`, and the vendor tools as `--keyalias` on both scripts. `export --portable` is `--key-alias deprecatedImportExportEncSecret`, the alias every keystore since 7.5 holds, which makes the archive importable on any server that names the same alias (field test 2, E4, I1).
 
 ### 9.2 Strategy selection
 
@@ -523,7 +526,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 ### 9.3 Keystore handling
 
 - `KeystoreInfo` resolves `.jrsks`/`.jrsksp` from the home directory of `server.runAsUser`; `doctor` FAILs if `runAsUser` is unset on a server with `KEYSTORE_ENCRYPTION`.
-- Export records the keystore fingerprint in a sidecar `<archive>.jrsctl.json`.
+- Export records the keystore fingerprint in a sidecar `<archive>.jrsctl.json`, and the key alias the export used, when one was given (`flags.keyAlias`).
+- An import that names a key alias, on the command line or through the sidecar (planning adopts the sidecar's alias when the operator gives none, and says so), skips the fingerprint comparison: the named key decrypts the archive, this server's own keystore is not what it was encrypted with. A portable export therefore moves between servers without `--source-keystore`.
 - Import compares fingerprints; on mismatch, fail before mutation with instructions, or accept `--source-keystore` and `--source-keystore-password-ref` to perform the vendor-documented keystore import step first.
 
 ### 9.4 Import safety
@@ -537,8 +541,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 9.5 Commands
 
-- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] --out <file>`
-- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--strategy rest|vendor] [--plan] [--yes]`
+- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] --out <file>`
+- `jrsctl import <archive> [--update] [--skip-user-update] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---
 

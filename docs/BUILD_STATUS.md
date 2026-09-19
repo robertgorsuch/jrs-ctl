@@ -259,6 +259,7 @@ Progress on the plan, with the live checks against the real 10.0.0 PRO server (`
 - **Task 8:** the guided menu lists the embedded documents, names the other entry points, shows the settings once and changes them in a loop, checks the installation directory, labels the export entries by mechanism and asks their scope, explains the pre-import copy and asks the import options, and asks the upgrade's mode, Tomcat, existing export, key alias, rehearsal and (samedb only) backup confirmation. Every entry still runs the ordinary command line and prints it first (spec §17.1).
 - **Task 9:** a leading `~` is the operator's home everywhere a path is read (`UserPaths` in core; the loader, the home resolver, the log file, every picocli `Path` option, the menu); `config set` and `init`'s review refuse a path setting whose target does not exist (exit 1) and store it expanded; `database.driverDir` is reviewed by `init`.
 - **Task 10:** tables wrap their last column at the terminal width (`COLUMNS`, else 80; 40 to 400), the documentation and `--explain` wrap at the same width and `--help` follows it; long tokens are never split.
+- **Task 11:** `export --key-alias`/`--portable` and `import --key-alias` name the key an archive is encrypted and decrypted with, through the REST body and query and the vendor `--keyalias`; the sidecar records the alias, the import adopts it and skips the fingerprint check; the menu and the console carry the same choices. Not verified against a real server; the REST field and query names are the 10.1 reference's.
 
 ## Known gaps
 
