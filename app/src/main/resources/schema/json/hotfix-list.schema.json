@@ -6,7 +6,7 @@
   "items": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["id", "title", "version", "installedAt", "installedRunId", "files", "state", "snapshotRef"],
+    "required": ["id", "title", "version", "installedAt", "installedRunId", "files", "state", "snapshotRef", "origin"],
     "properties": {
       "id": { "type": "string" },
       "title": { "type": "string" },
@@ -15,7 +15,8 @@
       "installedRunId": { "type": "string" },
       "files": { "type": "integer", "minimum": 0 },
       "state": { "type": "string", "enum": ["INSTALLED", "ROLLED_BACK", "SUPERSEDED"] },
-      "snapshotRef": { "type": ["string", "null"] }
+      "snapshotRef": { "type": ["string", "null"] },
+      "origin": { "type": "string", "enum": ["JRSCTL", "RECORDED"] }
     }
   }
 }

@@ -243,7 +243,7 @@ Rules:
 - **The state store is the single source of truth for run state.** There is no separate on-disk journal.
 - Tables:
   - `servers` — detected identity, last seen.
-  - `hotfixes_installed` — `id` (manifest id, the primary key), version, installed run, snapshot ref, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED`).
+  - `hotfixes_installed` — `id` (manifest id, the primary key), version, installed run, snapshot ref, state (`INSTALLED`, `ROLLED_BACK`, `SUPERSEDED`), origin (`JRSCTL`, the row owns its files and a snapshot; `RECORDED`, applied by hand and entered with `hotfix record`, nothing to roll back; ADR-0030, V003).
   - `hotfix_files` — every path a hotfix added/replaced/deleted, with before/after hashes; used for overlap and LIFO rollback checks (§8.4).
   - `customizations` — registered paths with original hash at registration and snapshot ref (§10.3).
   - `plans` — serialized Plan JSON, fingerprint, created at, expires at (TTL 30 minutes), consumed by run id.
@@ -497,6 +497,7 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 - `jrsctl hotfix apply <bundle> [--plan] [--yes] [--allow-unsigned]`
 - `jrsctl hotfix rollback <id> [--cascade] [--plan] [--yes]`
 - `jrsctl hotfix list [--json]`
+- `jrsctl hotfix record <package.zip> [--json]` — enters an official package applied by hand into the ledger from its readme (id, title, release), origin `RECORDED`: listed, refused by `rollback`, `SUPERSEDED` by an upgrade, never re-applied (ADR-0030)
 - `jrsctl hotfix verify <bundle>` — signature, hashes, and applicability only
 
 ---

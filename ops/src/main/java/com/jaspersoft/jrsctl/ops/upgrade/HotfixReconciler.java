@@ -133,9 +133,17 @@ final class HotfixReconciler {
       HotfixInstalled hotfix,
       ServerIdentity target,
       NewWebapp webapp) {
+    List<String> reasons = new ArrayList<>();
+    if (hotfix.recorded()) {
+      // ADR-0030 (issue #99): applied by hand, no bundle to re-apply from
+      reasons.add(
+          "applied outside jrsctl and only recorded; re-apply by hand if the new version"
+              + " needs it");
+      return new Classification(
+          hotfix, Status.SUPERSEDED, reasons, Optional.empty(), Optional.empty());
+    }
     Path bundleDir = rt.home().runDir(hotfix.installedRunId()).resolve(BUNDLE_DIR);
     Optional<Manifest> manifest = readManifest(bundleDir);
-    List<String> reasons = new ArrayList<>();
     if (manifest.isEmpty()) {
       reasons.add("no bundle copy under " + bundleDir);
       return new Classification(

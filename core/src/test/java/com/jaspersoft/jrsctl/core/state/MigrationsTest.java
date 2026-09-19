@@ -71,7 +71,13 @@ class MigrationsTest {
 
       Migrations.apply(c, CLOCK);
 
-      assertThat(Migrations.currentVersion(c)).isEqualTo(2);
+      assertThat(Migrations.currentVersion(c)).isEqualTo(3);
+      // ADR-0030 (issue #99): every row written before V003 was applied by jrsctl itself
+      try (Statement s = c.createStatement();
+          var rs = s.executeQuery("SELECT origin FROM hotfixes_installed WHERE id='HF-1'")) {
+        assertThat(rs.next()).isTrue();
+        assertThat(rs.getString("origin")).isEqualTo("JRSCTL");
+      }
       try (Statement s = c.createStatement();
           ResultSet rs =
               s.executeQuery(

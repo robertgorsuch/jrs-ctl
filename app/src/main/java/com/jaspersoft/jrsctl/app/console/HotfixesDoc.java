@@ -21,5 +21,6 @@ record HotfixesDoc(List<Row> hotfixes) {
       Instant installedAt,
       int files,
       String state,
-      List<String> blockedBy) {}
+      List<String> blockedBy,
+      String origin) {}
 }

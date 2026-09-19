@@ -71,6 +71,7 @@ public final class JsonSchemas {
     m.put("hotfix apply", new Stream(true));
     m.put("hotfix rollback", new Stream(true));
     m.put("hotfix list", new Document("hotfix-list.schema.json"));
+    m.put("hotfix record", new Document("hotfix-record.schema.json"));
     m.put("export", new Stream(true));
     m.put("import", new Stream(true));
     m.put("upgrade", new Stream(true));

@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (field test 2, H6: hotfixes applied by hand)
+
+- §5.4, §8.4: `hotfixes_installed` gains `origin` (`JRSCTL` or `RECORDED`; migration V003, default `JRSCTL`). `jrsctl hotfix record <package.zip> [--json]` enters an official package applied by hand into the ledger from its readme (the same derived id, title and release as the official-package conversion), as an `INSTALLED` row with origin `RECORDED`, run id `recorded`, no files and no snapshot; refused for a non-official file or an id already in the ledger; writes the state store and an audit row only. `hotfix list` prints an `ORIGIN` column and `--json` and the console rows carry `origin`; `hotfix rollback` refuses a recorded row (exit 2, nothing to put back); an upgrade classifies it `SUPERSEDED` and never re-applies it. ADR-0030 (issue #99).
+
 ## Draft 1.1 amendment — 2026-09-19 (field test 2, I3: the import rollback deletes what the import created)
 
 - §9.4: a new read-only backup step `backup.pre-import-listing` records every URI under the snapshotted folders (`GET /rest_v2/resources?recursive=true`, paged) into `runs/<runId>/pre-import-listing.txt` just before the import, and fails the run before anything is imported when the server cannot be listed. The import-phase rollback first deletes the URIs that are there afterwards and were not before, deepest first, then re-imports the pre-import snapshot with `update`. The plan summary's rollback sentence now says so, including that anything anyone else creates there in between is deleted with them; a rollback that cannot list the server leaves the additions behind with a warning naming the folders, and a resource that cannot be deleted is logged while the rest still go. `JrsAdapter.listTree` is the new read-only call, a paged recursive listing on REST and a breadth-first walk of `listFolder` by default. ADR-0031 (issue #100).

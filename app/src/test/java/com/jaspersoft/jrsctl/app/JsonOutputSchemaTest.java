@@ -845,6 +845,38 @@ class JsonOutputSchemaTest {
               fakeHotfix();
               return run("hotfix", "list", "--json", "--home", emptyHome(dir).toString());
             }));
+    s.add(
+        of(
+            "hotfix record enters a hand-applied package",
+            "hotfix record",
+            0,
+            dir -> {
+              fakeHotfix();
+              return run(
+                  "hotfix",
+                  "record",
+                  bundle(dir).toString(),
+                  "--json",
+                  "--home",
+                  emptyHome(dir).toString());
+            }));
+    s.add(
+        of(
+            "hotfix record refuses a package the operations reject",
+            "hotfix record",
+            2,
+            dir -> {
+              fakeHotfix().planFailure =
+                  Optional.of(
+                      new IllegalStateException("not an official Jaspersoft hotfix package"));
+              return run(
+                  "hotfix",
+                  "record",
+                  bundle(dir).toString(),
+                  "--json",
+                  "--home",
+                  emptyHome(dir).toString());
+            }));
 
     s.add(
         of(

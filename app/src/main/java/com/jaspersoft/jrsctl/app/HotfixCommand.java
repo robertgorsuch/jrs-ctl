@@ -50,6 +50,7 @@ import picocli.CommandLine.Spec;
       HotfixCommand.Verify.class,
       HotfixCommand.Apply.class,
       HotfixCommand.Rollback.class,
+      HotfixCommand.RecordPackage.class,
       HotfixCommand.ListInstalled.class
     })
 final class HotfixCommand implements Runnable {
@@ -383,7 +384,68 @@ final class HotfixCommand implements Runnable {
     }
   }
 
-  /** {@code jrsctl hotfix list [--json]}: id, title, installed, files, state. */
+  /**
+   * {@code jrsctl hotfix record <package.zip> [--json]}: enters an official package applied by hand
+   * into the ledger (ADR-0030, issue #99). Nothing on the server is touched.
+   */
+  @Command(
+      name = "record",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "Record an official Jaspersoft hotfix package that was applied by hand, so hotfix list"
+              + " shows it. The row owns no files: rollback refuses it and an upgrade never"
+              + " re-applies it.")
+  static final class RecordPackage implements Callable<Integer> {
+
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Parameters(
+        index = "0",
+        paramLabel = "<package.zip>",
+        description = "The hotfix ZIP as support published it (readme.txt beside the payload).")
+    Path packageZip;
+
+    @Override
+    public Integer call() {
+      PrintWriter out = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      Redactor redactor = Redactor.global();
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        Services services = boot.services();
+        HotfixInstalled row;
+        try {
+          row = HotfixOps.open(services).record(packageZip);
+        } catch (RuntimeException e) {
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
+        }
+        if (global.json()) {
+          Map<String, Object> doc = new LinkedHashMap<>();
+          doc.put("id", row.id());
+          doc.put("title", row.title());
+          doc.put("version", row.version());
+          doc.put("state", row.state());
+          doc.put("origin", row.origin());
+          doc.put("recordedAt", row.installedAt());
+          out.println(redactor.redact(JsonOut.write(doc)));
+        } else {
+          out.println(
+              redactor.redact(
+                  "recorded "
+                      + row.id()
+                      + " ("
+                      + row.title()
+                      + ") as applied by hand: it is listed, cannot be rolled back by jrsctl, and"
+                      + " an upgrade will not re-apply it"));
+        }
+        out.flush();
+        return ExitCodes.SUCCESS;
+      }
+    }
+  }
+
+  /** {@code jrsctl hotfix list [--json]}: id, title, installed, files, state, origin. */
   @Command(
       name = "list",
       mixinStandardHelpOptions = true,
@@ -420,6 +482,7 @@ final class HotfixCommand implements Runnable {
             row.put("files", store.hotfixFiles(h.id()).size());
             row.put("state", h.state());
             row.put("snapshotRef", h.snapshotRef());
+            row.put("origin", h.origin());
             rows.add(row);
           }
           out.println(redactor.redact(JsonOut.write(rows)));
@@ -428,8 +491,9 @@ final class HotfixCommand implements Runnable {
         }
         if (hotfixes.isEmpty()) {
           out.println(
-              "no hotfixes recorded: jrsctl lists the hotfixes it applied itself; one applied by"
-                  + " hand, or before jrsctl was set up, is not shown");
+              "no hotfixes recorded: jrsctl lists the hotfixes it applied itself and those"
+                  + " entered with jrsctl hotfix record <package.zip>; one applied by hand and not"
+                  + " recorded is not shown");
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -440,14 +504,17 @@ final class HotfixCommand implements Runnable {
             ansi.dim("TITLE"),
             ansi.dim("INSTALLED"),
             ansi.dim("FILES"),
-            ansi.dim("STATE"));
+            ansi.dim("STATE"),
+            ansi.dim("ORIGIN"));
         for (HotfixInstalled h : hotfixes) {
           table.row(
               h.id(),
               h.title(),
               h.installedAt().truncatedTo(ChronoUnit.SECONDS).toString(),
               Integer.toString(store.hotfixFiles(h.id()).size()),
-              h.state().name());
+              h.state().name(),
+              // ADR-0030: a recorded row was applied by hand and cannot be rolled back
+              h.recorded() ? "recorded (by hand)" : "jrsctl");
         }
         for (String line : table.lines()) {
           out.println(redactor.redact(line));
