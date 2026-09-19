@@ -313,6 +313,18 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /** Issue #106: the events import runs the target's js-import once per run. */
+  @Test
+  void should_import_once_when_import_events_executes_twice() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f).withIncludeEvents(true));
+
+      assertReexecutionConverges(f, plan, "r-ev", "import-events");
+
+      assertThat(count(f.vendorLogText(), "js-import --input-zip")).isEqualTo(1);
+    }
+  }
+
   @Test
   void should_import_once_when_reimport_full_export_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

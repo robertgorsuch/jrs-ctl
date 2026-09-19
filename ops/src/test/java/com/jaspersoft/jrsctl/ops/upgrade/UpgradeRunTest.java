@@ -137,6 +137,36 @@ class UpgradeRunTest {
   }
 
   /**
+   * Issue #106: with {@code --include-events} the target's js-import brings the three event kinds
+   * over from the point-B export after the vendor run, with the vendor's own flags (installation
+   * guide p.256) and never {@code --update}, and runs once per run.
+   */
+  @Test
+  void should_import_the_events_from_the_point_b_export_with_the_targets_js_import()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f).withIncludeEvents(true));
+
+      RunOutcome outcome = f.run(plan, "r-events", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-events", f.os);
+      String importLine =
+          f.vendorLogText().lines().filter(l -> l.contains("js-import")).findFirst().orElse("");
+      assertThat(importLine)
+          .contains("--input-zip " + set.fullExport())
+          .contains("--include-access-events")
+          .contains("--include-audit-events")
+          .contains("--include-monitoring-events")
+          .doesNotContain("--update")
+          .doesNotContain("--include-server-settings");
+      assertThat(f.vendorLogText().lines().filter(l -> l.contains("js-import")).count())
+          .isEqualTo(1);
+      assertThat(f.fake.home.runDir("r-events").resolve("import-events.done")).exists();
+    }
+  }
+
+  /**
    * ADR-0028: the adopted export is what js-upgrade-newdb receives, the key alias and its password
    * reach the vendor import through the staged properties and never the command line, and the
    * rollback plan names the archive the operator supplied.

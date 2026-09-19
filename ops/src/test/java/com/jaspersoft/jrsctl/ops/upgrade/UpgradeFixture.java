@@ -335,6 +335,12 @@ public final class UpgradeFixture implements AutoCloseable {
             + "\"\n"
             + "echo BUILD SUCCESSFUL\n"
             + "exit 0\n");
+    importScript(buildomatic);
+  }
+
+  /** A js-import that logs its arguments to the vendor log and reports as the real one does. */
+  private void importScript(Path buildomatic) throws IOException {
+    String log = vendorLog.toString();
     write(
         buildomatic.resolve("js-import.bat"),
         "@echo off\r\n"
@@ -430,8 +436,9 @@ public final class UpgradeFixture implements AutoCloseable {
             + "echo \"$@\" >> \"$(dirname \"$0\")/../js-ant.log\"\n"
             + "exit 0\n");
     exportScripts(buildomatic);
-    write(buildomatic.resolve("js-import.bat"), "@echo off\r\nexit /b 0\r\n");
-    write(buildomatic.resolve("js-import.sh"), "#!/bin/sh\nexit 0\n");
+    // the target's js-import, which --include-events runs after the vendor run (issue #106): it
+    // logs its arguments like the installed one and says what the real one says on success
+    importScript(buildomatic);
     vendorWrappers(buildomatic);
     executable(buildomatic);
   }

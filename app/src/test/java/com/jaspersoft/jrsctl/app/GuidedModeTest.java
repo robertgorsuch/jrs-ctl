@@ -365,11 +365,24 @@ class GuidedModeTest {
   void should_start_a_newdb_upgrade_without_a_backup_question() throws Exception {
     Path pkg = Files.createDirectories(tmp.resolve("pkg"));
 
-    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "", "", "n", "q");
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "", "", "", "n", "q");
 
     assertThat(ran)
         .containsExactly(List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
     assertThat(text.toString()).contains("--restore-database").doesNotContain("Database backed up");
+  }
+
+  /** Issue #106: the events the newdb script leaves behind are a question, off by default. */
+  @Test
+  void should_ask_for_the_events_after_the_export_for_a_newdb_upgrade() throws Exception {
+    Path pkg = Files.createDirectories(tmp.resolve("pkg"));
+
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "", "", "y", "n", "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString(), "--include-events"));
+    assertThat(text.toString()).contains("js-upgrade-newdb leaves them behind");
   }
 
   /** Spec §10.2 "Rehearsal": the menu offers the vendor's validation before the real run. */
@@ -377,7 +390,7 @@ class GuidedModeTest {
   void should_rehearse_first_when_the_operator_accepts_the_default() throws Exception {
     Path pkg = Files.createDirectories(tmp.resolve("pkg"));
 
-    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "", "", "", "q");
+    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "", "", "", "", "", "q");
 
     assertThat(ran)
         .containsExactly(
@@ -445,6 +458,7 @@ class GuidedModeTest {
         "",
         export.toString(),
         "deprecatedImportExportEncSecret",
+        "",
         "n",
         "q");
 
@@ -466,7 +480,19 @@ class GuidedModeTest {
   void should_reask_a_mode_that_is_neither_newdb_nor_samedb() throws Exception {
     Path pkg = Files.createDirectories(tmp.resolve("pkg"));
 
-    guided(List.of(), List.of(), "6", "10.0.0", pkg.toString(), "bogus", "newdb", "", "", "n", "q");
+    guided(
+        List.of(),
+        List.of(),
+        "6",
+        "10.0.0",
+        pkg.toString(),
+        "bogus",
+        "newdb",
+        "",
+        "",
+        "",
+        "n",
+        "q");
 
     assertThat(text.toString()).contains("please answer newdb, samedb");
     assertThat(ran)

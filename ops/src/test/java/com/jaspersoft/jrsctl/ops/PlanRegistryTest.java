@@ -164,6 +164,23 @@ class PlanRegistryTest {
         .isEmpty();
   }
 
+  /** Issue #106: the events choice survives the stored arguments; older arguments mean no. */
+  @Test
+  void should_round_trip_include_events_of_an_upgrade() throws IOException {
+    UpgradeOperations.UpgradeOptions options =
+        UpgradeOperations.UpgradeOptions.newdb("10.0.0", Path.of("pkg")).withIncludeEvents(true);
+
+    JsonNode args = tree(PlanRegistry.upgradeArgs(options));
+
+    assertThat(args.get("includeEvents").asBoolean()).isTrue();
+    assertThat(PlanRegistry.upgradeOptions(args).includeEvents()).isTrue();
+    assertThat(
+            PlanRegistry.upgradeOptions(
+                    tree("{\"to\":\"10.0.0\",\"package\":\"p\",\"mode\":\"NEWDB\"}"))
+                .includeEvents())
+        .isFalse();
+  }
+
   /** Field test 2, E4 and I1: the key alias survives the stored arguments of both plans. */
   @Test
   void should_round_trip_the_key_alias_on_export_and_import_arguments() throws IOException {

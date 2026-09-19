@@ -99,6 +99,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " report, an edited user) would be lost when js-upgrade-newdb rebuilds the database"
           + " from it (ADR-0025).";
 
+  /**
+   * Upgrade guide 10.1 p.80 (issue #106): the vendor's newdb script does not carry the events over,
+   * and the plan says so unless the operator asked for them.
+   */
+  public static final String EVENTS_LEFT_BEHIND_WARNING =
+      "js-upgrade-newdb does not import the access, audit and monitoring events (since 7.9): the"
+          + " full export holds them, but the rebuilt database will not. Pass --include-events to"
+          + " import them after the vendor run with the new version's js-import, or run js-import"
+          + " --include-access-events --include-audit-events --include-monitoring-events by hand.";
+
   /** Review §2.1, ADR-0026: what the operator still owns when the webapp moves to a new Tomcat. */
   static final String TOMCAT_DIR_WARNING =
       "The webapp is copied into %s before the vendor run and the upgraded server starts there;"
@@ -366,6 +376,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         });
     if (options.mode() == Mode.NEWDB) {
       warnings.add(NEWDB_STAYS_STOPPED_WARNING);
+      if (!options.includeEvents()) {
+        warnings.add(EVENTS_LEFT_BEHIND_WARNING);
+      }
     }
     warnings.add(options.mode() == Mode.SAMEDB ? FILES_ONLY_WARNING : NEWDB_ROLLBACK_WARNING);
     warnings.add(PASSWORD_WARNING);
@@ -407,6 +420,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       steps.add(new TomcatSteps.CopyWebappToTomcat(rt, in));
     }
     steps.add(new VendorSteps.RunVendorUpgrade(rt, in));
+    if (options.mode() == Mode.NEWDB && options.includeEvents()) {
+      // the events js-upgrade-newdb leaves behind, imported while the server is still down
+      // (upgrade guide 10.1 p.80, installation guide p.256; issue #106)
+      steps.add(new EventSteps.ImportEvents(rt, in));
+    }
     // the vendor's "Additional tasks", done while the server is still down (review §2.2)
     steps.add(new PostUpgradeSteps.ClearTomcatCaches(rt, in));
     steps.add(new PostUpgradeSteps.ClearRepositoryCache(rt));
@@ -483,6 +501,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     inputs.put("to", options.toVersion());
     inputs.put("mode", options.mode().name());
     inputs.put("reapplyHotfixes", Boolean.toString(options.reapplyHotfixes()));
+    inputs.put("includeEvents", Boolean.toString(options.includeEvents()));
     return new Plan(
         "upgrade-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
   }

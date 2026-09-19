@@ -64,12 +64,13 @@ public interface UpgradeOperations {
     }
   }
 
-  /** Everything the operator chooses on the command line. */
   /**
    * What the operator asked for. {@code existingExport} is an export taken earlier, here or on
    * another server, that a newdb upgrade rebuilds the repository from instead of exporting now
    * (ADR-0028); {@code keyAlias} and {@code keyPassword} name the key that export was encrypted
-   * with, written into the target buildomatic's properties for the vendor import.
+   * with, written into the target buildomatic's properties for the vendor import; {@code
+   * includeEvents} asks a newdb upgrade to import the access, audit and monitoring events the
+   * vendor script leaves behind (issue #106), and means nothing for samedb.
    */
   record UpgradeOptions(
       String toVersion,
@@ -80,7 +81,8 @@ public interface UpgradeOperations {
       Optional<Path> tomcatDir,
       Optional<Path> existingExport,
       Optional<String> keyAlias,
-      Optional<SecretRef> keyPassword) {
+      Optional<SecretRef> keyPassword,
+      boolean includeEvents) {
     public UpgradeOptions {
       Objects.requireNonNull(toVersion, "toVersion");
       Objects.requireNonNull(packageDir, "packageDir");
@@ -94,6 +96,30 @@ public interface UpgradeOperations {
       }
       packageDir = packageDir.toAbsolutePath().normalize();
       existingExport = existingExport.map(p -> p.toAbsolutePath().normalize());
+    }
+
+    /** The options with the events left where the vendor script leaves them. */
+    public UpgradeOptions(
+        String toVersion,
+        Path packageDir,
+        Mode mode,
+        boolean dbBackupConfirmed,
+        boolean reapplyHotfixes,
+        Optional<Path> tomcatDir,
+        Optional<Path> existingExport,
+        Optional<String> keyAlias,
+        Optional<SecretRef> keyPassword) {
+      this(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          false);
     }
 
     /** The options with this run's own export and the server's own key. */
@@ -116,6 +142,20 @@ public interface UpgradeOperations {
           Optional.empty());
     }
 
+    public UpgradeOptions withIncludeEvents(boolean include) {
+      return new UpgradeOptions(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          include);
+    }
+
     /** The options with the webapp staying in the Tomcat the server runs in now. */
     public UpgradeOptions(
         String toVersion,
@@ -136,7 +176,8 @@ public interface UpgradeOperations {
           tomcatDir,
           Optional.of(export),
           keyAlias,
-          keyPassword);
+          keyPassword,
+          includeEvents);
     }
 
     public UpgradeOptions withKeyAlias(String alias) {
@@ -149,7 +190,8 @@ public interface UpgradeOperations {
           tomcatDir,
           existingExport,
           Optional.of(alias),
-          keyPassword);
+          keyPassword,
+          includeEvents);
     }
 
     public UpgradeOptions withKeyPassword(SecretRef ref) {
@@ -162,7 +204,8 @@ public interface UpgradeOperations {
           tomcatDir,
           existingExport,
           keyAlias,
-          Optional.of(ref));
+          Optional.of(ref),
+          includeEvents);
     }
 
     public static UpgradeOptions newdb(String toVersion, Path packageDir) {

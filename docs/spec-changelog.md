@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-19 (vendor review §2.3, events after a newdb upgrade)
+
+- §10.2 step 10-events, §10.4: `upgrade --include-events` adds `import-events` after `run-vendor-upgrade` in newdb mode: the new version's `js-import --input-zip <point-B export> --include-access-events --include-audit-events --include-monitoring-events`, while the server is still down, once per run, irreversible (the newdb rollback rebuilds the database from the same export). Without the flag a newdb plan's summary says the events are left behind and names the flag and the vendor command; samedb is unaffected. The guided menu asks the question for a newdb upgrade, off by default (upgrade guide 10.1 p.80, installation guide p.256; issue #106).
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §1.5, keystore lookup order)
 
 - §9.3: the keystore is found through the running server's own `WEB-INF/classes/keystore.init.properties` first, then buildomatic's copy, then the run-as user's home, and the reason names which one settled it. `doctor keystore` WARNs when `.jrsks` or `.jrsksp` is readable beyond its owner (any "others" bit on Linux, an ACL beyond owner, SYSTEM and Administrators on Windows), with the vendor's 600/640 in the remediation; its FAIL remediation names the server's own file before `server.runAsUser` (issue #105).

@@ -264,6 +264,13 @@ Progress on the plan, with the live checks against the real 10.0.0 PRO server (`
 - **Task 13:** `docs/compatibility.md` regenerated for matrix v2; spec §5.1 says what the home resolver does; the operator guide carries the by-design answers (fixed plan, the sidecar's purpose, what a failed import leaves, the newdb rollback); the review lists every finding's status.
 - **Task 14:** the four hand-offs are open as issues #99 (hotfix ledger and hand-applied hotfixes), #100 (true import rollback), #101 (a `backups.dir` key), #102 (line editing in the menu, the ADR-0023 trigger).
 
+### Vendor documentation review, remaining gaps (2026-09-19)
+
+The unaddressed items of the vendor review were filed as issues #105 to #118 in priority order (now: #105 to #107; next: #108 to #112; later: #113 to #118).
+
+- **#105 (PR #119):** the keystore is found through the running server's own `WEB-INF/classes/keystore.init.properties` first, then buildomatic's copy, then the run-as user's home; `doctor keystore` WARNs when `.jrsks` or `.jrsksp` is readable beyond its owner. Verified with the fakes; not against the real server.
+- **#106:** `upgrade --include-events` imports the access, audit and monitoring events after the newdb vendor run with the target's `js-import`; without it the plan says they are left behind. Verified with the fake vendor scripts (the three flags, once per run, no `--update`); not against a real buildomatic.
+
 ## Known gaps
 
 - Work is committed on `main` rather than a branch per phase; the phase boundary is the commit. The repository now has a remote (`github.com/robertgorsuch/jrs-ctl`) and CI has run green on both operating systems since 2026-09-10 (`56d9b88` onward), so the PR checklist in spec §15 applies from here.
