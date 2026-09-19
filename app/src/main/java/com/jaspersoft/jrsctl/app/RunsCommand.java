@@ -138,7 +138,7 @@ final class RunsCommand implements Runnable {
           return ExitCodes.SUCCESS;
         }
         Ansi ansi = Ansi.forStdout(global, Env.vars());
-        TextTable table = new TextTable();
+        TextTable table = new TextTable(Terminal.width(Env.vars()));
         table.row(
             ansi.dim("RUN"),
             ansi.dim("OPERATION"),

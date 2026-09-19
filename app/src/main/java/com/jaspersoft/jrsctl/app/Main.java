@@ -35,6 +35,8 @@ public final class Main {
                 // a leading ~ means the operator's home in every Path option (field test 2, G3)
                 .registerConverter(Path.class, s -> Path.of(UserPaths.expand(s, Env.vars())))
                 .setCaseInsensitiveEnumValuesAllowed(true)
+                // help text follows the terminal width (COLUMNS) instead of 80 always
+                .setUsageHelpAutoWidth(true)
                 .setExecutionExceptionHandler(new ExitCodes.Handler())
                 .setParameterExceptionHandler(new ExitCodes.ParameterHandler())));
   }

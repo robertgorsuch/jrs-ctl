@@ -3,7 +3,6 @@ package com.jaspersoft.jrsctl.app;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,8 +19,8 @@ import java.util.regex.Pattern;
  */
 final class TerminalMarkdown {
 
-  /** Width used when the terminal's is unknown. */
-  static final int DEFAULT_WIDTH = 100;
+  /** Width used when the terminal's is unknown: the same as every table's. */
+  static final int DEFAULT_WIDTH = Terminal.DEFAULT_WIDTH;
 
   private static final int MIN_WIDTH = 40;
   private static final int MAX_WIDTH = 160;
@@ -46,13 +45,9 @@ final class TerminalMarkdown {
 
   private TerminalMarkdown() {}
 
-  /** The width to render at: {@code COLUMNS} when it is a number, else {@link #DEFAULT_WIDTH}. */
+  /** The width to render at: {@link Terminal#width}, kept within what prose can use. */
   static int width(Map<String, String> env) {
-    return Optional.ofNullable(env.get("COLUMNS"))
-        .filter(v -> v.matches("\\d{1,4}"))
-        .map(Integer::parseInt)
-        .map(w -> Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, w)))
-        .orElse(DEFAULT_WIDTH);
+    return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Terminal.width(env)));
   }
 
   /** Renders {@code lines} at {@code width} columns; the result ends with one line separator. */
