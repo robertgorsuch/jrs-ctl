@@ -241,8 +241,10 @@
           </configuration>
           <executions>
             <execution>
+              <!-- validate, not verify: a badly formatted file fails the module in seconds,
+                   not after its tests and the shaded jar (ci-fast, 2026-09-19) -->
               <id>spotless-check</id>
-              <phase>verify</phase>
+              <phase>validate</phase>
               <goals><goal>check</goal></goals>
             </execution>
           </executions>
