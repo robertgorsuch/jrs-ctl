@@ -44,3 +44,30 @@ service inside the run (a new Windows service, an edited unit) is platform work 
   the `manual` restriction goes and this ADR is amended.
 - The JDBC driver jar the vendor deploy target copies into `<tomcat>/lib` and the `setenv` options
   are not carried over; both are the operator's, as in the vendor procedure.
+
+## Amendment 2026-09-19: the service switch stays the operator's, and jrsctl says how (issue #109)
+
+The open point was decided as *refuse, but say how* rather than a `SwitchService` step.
+Re-registering a Windows service (`service.bat remove` and `install`, then the JVM options, log-on
+account and start type of the old one) or rewriting a systemd unit needs elevation jrsctl otherwise
+never asks for, has no compensation that could put the old registration back with its settings, and
+cannot be exercised here without a host to break; the refusal is the safer option of spec §0.
+
+1. The refusal (exit 2) keeps its message and its remediation now carries the platform's own steps
+   for the configured kind, with the real paths and service name filled in (`ServiceSwitch`): a
+   Windows service, a systemd unit (`systemctl cat`, the `CATALINA_HOME`, `ExecStart` and `ExecStop`
+   paths, `daemon-reload`, `restart`), a `catalina` script (`jrsctl config set service.scriptPath`)
+   and a `ctlscript` (which starts only the bundled Tomcat: switch to the `catalina` kind).
+2. With `service.kind: manual` the plan summary carries the same steps for this operating system's
+   registered kind with `<name>` as a placeholder, so an operator who set the kind aside for the
+   upgrade has the recipe in front of them. The operator guide lists all four.
+3. The `--add-opens` list the installation guide 10.1 (pp.84-86) gives for Java 17 and 21 is judged,
+   never required: the plan warns when the host Tomcat's `bin/setenv.sh|bat` carries no
+   `--add-opens` and the Tomcat is of the Jakarta generation (major 10 or later), naming the file;
+   `doctor`'s `tomcat` item is WARN in the same case. It is advice because the vendor's own bundled
+   installer writes a `setenv` without the options and that server starts (10.0.0 on Tomcat 10.1.41
+   and Java 17, checked on the maintainer's installation). A Tomcat 9, or one whose version cannot
+   be read, is not judged.
+
+The `manual` restriction therefore stays. Point 4 of the decision and the second consequence are
+superseded by this amendment.

@@ -24,6 +24,7 @@ import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.TomcatJavaOpts;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import com.jaspersoft.jrsctl.ops.hotfix.DefaultHotfixOperations;
@@ -115,6 +116,29 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " that Tomcat must listen on the same port as server.baseUrl, carry the JAVA_OPTS the"
           + " vendor requires for it (installation guide: --add-opens on Tomcat 11), and be"
           + " registered as the service afterwards. The old Tomcat is left as it was.";
+
+  /** ADR-0026 amendment (issue #109): the service switch stays the operator's, with the steps. */
+  static final String SERVICE_SWITCH_WARNING = "Service switch, after the upgrade: ";
+
+  /**
+   * Installation guide 10.1 pp.84-86 (issue #109): the Java 17/21 options for a Tomcat 10 or 11.
+   */
+  static final String ADD_OPENS_WARNING =
+      "%s carries no --add-opens: the installation guide 10.1 (pp.84-86) lists the --add-opens"
+          + " java.base/... options for JAVA_OPTS on Java 17 and 21; add them to that file before"
+          + " the first start if the server needs them (the vendor's bundled installer starts"
+          + " without them).";
+
+  private String reregistration(ServiceConfig.Kind kind, UpgradeInput in) {
+    Config.Service service = rt.config().service();
+    return ServiceSwitch.reregistration(
+        kind,
+        service.name(),
+        service.scriptPath(),
+        in.tomcatDir(),
+        in.hostTomcatDir(),
+        rt.services().platform().os());
+  }
 
   static String tomcatRanges(CompatMatrix matrix, String version) {
     return matrix
@@ -326,7 +350,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         .ifPresent(export -> warnings.addAll(existingExportWarnings(export, identity)));
     if (options.tomcatDir().isPresent()) {
       // review §2.1, ADR-0026: a service registered for the old Tomcat would start the old
-      // server after the vendor run; only an operator-started Tomcat can be switched in one run
+      // server after the vendor run; only an operator-started Tomcat can be switched in one run.
+      // jrsctl does not re-register services (ADR-0026 amendment, issue #109): the refusal and
+      // the summary carry the platform's own steps instead.
       Optional<ServiceConfig.Kind> kind = config.service().kind();
       if (kind.isEmpty() || kind.get() != ServiceConfig.Kind.MANUAL) {
         throw new UpgradeException(
@@ -336,10 +362,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 + " service starts the Tomcat it was registered for, not "
                 + in.hostTomcatDir(),
             "set service.kind to manual for this upgrade (jrsctl asks you to stop and start"
-                + " Tomcat), then register the new Tomcat as the service afterwards");
+                + " Tomcat), then re-register the service for the new Tomcat afterwards: "
+                + kind.map(k -> reregistration(k, in)).orElse("see the operator guide"));
       }
       warnings.add(TOMCAT_DIR_WARNING.formatted(in.hostTomcatDir()));
+      warnings.add(SERVICE_SWITCH_WARNING + reregistration(ServiceConfig.Kind.MANUAL, in));
     }
+    // installation guide 10.1 pp.84-86 (issue #109): the --add-opens list for Java 17/21 is the
+    // operator's; the vendor's own bundled installer omits it, so this is advice, not a refusal
+    TomcatJavaOpts.missingAddOpens(in.hostTomcatDir(), rt.services().platform().os())
+        .ifPresent(setenv -> warnings.add(ADD_OPENS_WARNING.formatted(setenv)));
     Optional<String> hostTomcat = TomcatVersion.detect(in.hostTomcatDir());
     if (hostTomcat.isEmpty()) {
       warnings.add(

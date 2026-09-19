@@ -13,6 +13,7 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.api.Session;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.TomcatJavaOpts;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -264,14 +265,27 @@ final class ServerChecks {
           "run the server on a certified Tomcat; an upgrade to a new generation takes"
               + " --tomcat-dir");
     }
-    return ReportItem.pass(
-        "tomcat",
+    String certified =
         "Tomcat "
             + version.get()
             + " at "
             + tomcatDir.get()
             + ", certified for JRS "
-            + c.identity().version());
+            + c.identity().version();
+    // installation guide 10.1 pp.84-86 (issue #109): advice, since the vendor's own bundled
+    // installer starts a Tomcat 10.1 on Java 17 without the options
+    Optional<Path> setenv = TomcatJavaOpts.missingAddOpens(tomcatDir.get(), s.platform().os());
+    if (setenv.isPresent()) {
+      return ReportItem.warn(
+          "tomcat",
+          certified + "; " + setenv.get() + " carries no --add-opens",
+          "add the --add-opens java.base/... options the "
+              + TomcatJavaOpts.GUIDE
+              + " lists for Java 17 and 21 to JAVA_OPTS in "
+              + setenv.get()
+              + " if the server needs them (the bundled installer starts without them)");
+    }
+    return ReportItem.pass("tomcat", certified);
   }
 
   private static String shortHash(String hash) {
