@@ -191,6 +191,13 @@ public final class VendorTools {
               args.add(VendorFlags.KEYALIAS);
               args.add(alias);
             });
+    request
+        .organization()
+        .ifPresent(
+            org -> {
+              args.add(VendorFlags.ORGANIZATION);
+              args.add(org);
+            });
     return List.copyOf(args);
   }
 
@@ -241,6 +248,16 @@ public final class VendorTools {
             alias -> {
               args.add(VendorFlags.KEYALIAS);
               args.add(alias);
+            });
+    request
+        .organization()
+        .ifPresent(
+            org -> {
+              args.add(VendorFlags.ORGANIZATION);
+              args.add(org);
+              if (request.mergeOrganization()) {
+                args.add(VendorFlags.MERGE_ORGANIZATION);
+              }
             });
     return List.copyOf(args);
   }

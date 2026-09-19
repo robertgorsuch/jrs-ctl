@@ -103,6 +103,21 @@ final class ImportCommand implements Callable<Integer> {
               + " server's own import/export key. Read from the sidecar when it records one.")
   String keyAlias;
 
+  @Option(
+      names = "--organization",
+      paramLabel = "<id>",
+      description =
+          "Import into this organisation. The id should match the one the archive was exported"
+              + " from; when it does not, add --merge-organization.")
+  String organization;
+
+  @Option(
+      names = "--merge-organization",
+      description =
+          "With --organization: merge the archive's organisation into the target one when their"
+              + " ids differ (the archive's users, roles and resources override same-named ones).")
+  boolean mergeOrganization;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -126,6 +141,14 @@ final class ImportCommand implements Callable<Integer> {
     } catch (IllegalArgumentException e) {
       return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, e.getMessage());
     }
+    if (mergeOrganization && organization == null) {
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--merge-organization needs --organization <id>");
+    }
     ExportImportOperations.ImportOptions options =
         new ExportImportOperations.ImportOptions(
             archive,
@@ -140,7 +163,9 @@ final class ImportCommand implements Callable<Integer> {
             passwordRef,
             kind,
             broken,
-            Optional.ofNullable(keyAlias));
+            Optional.ofNullable(keyAlias),
+            Optional.ofNullable(organization),
+            mergeOrganization);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

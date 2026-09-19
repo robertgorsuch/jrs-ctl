@@ -545,6 +545,8 @@ public final class RestJrsAdapter implements JrsAdapter {
     body.put("parameters", parameters);
     // REST reference 10.1 p.110: the alias must exist in the importing server's keystore
     request.keyAlias().ifPresent(alias -> body.put("keyAlias", alias));
+    // REST reference 10.1 p.110: only that organisation's resources, users and roles
+    request.organization().ifPresent(org -> body.put("organization", org));
     RestClient.Response r = client.require2xx(client.postJson(EXPORT, body), "POST", EXPORT);
     Wire.AsyncState state = Wire.parse(r.body(), Wire.AsyncState.class, "POST", EXPORT);
     if (state.id() == null || state.id().isBlank()) {
@@ -626,7 +628,16 @@ public final class RestJrsAdapter implements JrsAdapter {
                 ? ""
                 : "&brokenDependencies=" + request.brokenDependencies().wire())
             // REST reference 10.1 p.117: the key the archive was encrypted with
-            + request.keyAlias().map(a -> "&keyAlias=" + RestClient.encodeQuery(a)).orElse("");
+            + request.keyAlias().map(a -> "&keyAlias=" + RestClient.encodeQuery(a)).orElse("")
+            // REST reference 10.1 pp.115, 121: the target organisation, merged when the ids differ
+            + request
+                .organization()
+                .map(
+                    o ->
+                        "&organization="
+                            + RestClient.encodeQuery(o)
+                            + (request.mergeOrganization() ? "&mergeOrganization=true" : ""))
+                .orElse("");
     RestClient.Response r =
         client.require2xx(
             client.postBytesFromFile(path, archive, "application/zip", cancelled), "POST", path);

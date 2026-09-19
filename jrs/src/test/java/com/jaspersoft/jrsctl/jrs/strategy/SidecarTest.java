@@ -41,6 +41,38 @@ class SidecarTest {
   }
 
   @Test
+  void should_round_trip_the_organisation() throws Exception {
+    Path file = tmp.resolve("o.zip.jrsctl.json");
+    Sidecar base = sidecar(Optional.empty());
+    Sidecar.Flags f = base.flags();
+    Sidecar.write(
+        file,
+        new Sidecar(
+            base.exportedAt(),
+            base.serverIdentity(),
+            base.serverVersion(),
+            base.keystoreFingerprint(),
+            new Sidecar.Flags(
+                f.scope(),
+                f.uris(),
+                f.includeUsersRoles(),
+                f.includeAccessEvents(),
+                f.includeAuditEvents(),
+                f.includeMonitoring(),
+                f.includeSettings(),
+                f.fullServer(),
+                Optional.empty(),
+                Optional.of("org1")),
+            base.sha256(),
+            base.strategy()));
+
+    Optional<Sidecar> read = Sidecar.read(file);
+
+    assertThat(read).isPresent();
+    assertThat(read.get().flags().organization()).contains("org1");
+  }
+
+  @Test
   void should_round_trip_the_key_alias() throws Exception {
     Path file = tmp.resolve("a.zip.jrsctl.json");
     Sidecar.write(file, sidecar(Optional.of(ExportRequest.PORTABLE_KEY_ALIAS)));

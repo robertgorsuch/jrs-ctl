@@ -92,7 +92,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.fullServer(),
             out,
             options.stopService(),
-            options.keyAlias());
+            options.keyAlias(),
+            options.organization());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     refuseMissingUris(adapter, request);
@@ -164,7 +165,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.brokenDependencies(),
             // an archive exported with a named key is decrypted with it (field test 2, E4, I1):
             // the sidecar remembers the alias, so the operator need not repeat it
-            options.keyAlias().or(() -> sidecarKeyAlias(archive)));
+            options.keyAlias().or(() -> sidecarKeyAlias(archive)),
+            options.organization(),
+            options.mergeOrganization());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     Strategies.Selection selection =
@@ -184,7 +187,12 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     Optional<Sidecar> sidecar = readSidecar(archive, warnings);
     Optional<ExportRequest> snapshot =
         snapshotRequest(
-            sidecar, options.update(), snapshotPath(archive, archiveHash), adapter, warnings);
+            sidecar,
+            options.update(),
+            snapshotPath(archive, archiveHash),
+            adapter,
+            warnings,
+            options.organization());
     Optional<ImportRequest> restore =
         snapshot.map(
             s ->
@@ -320,6 +328,20 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       Path output,
       JrsAdapter adapter,
       List<String> warnings) {
+    return snapshotRequest(sidecar, update, output, adapter, warnings, Optional.empty());
+  }
+
+  /**
+   * As above; an import into {@code organization} that would otherwise snapshot the root is scoped
+   * to that organisation's folder, never to {@code /} (field test 2, E5 and I4).
+   */
+  static Optional<ExportRequest> snapshotRequest(
+      Optional<Sidecar> sidecar,
+      boolean update,
+      Path output,
+      JrsAdapter adapter,
+      List<String> warnings,
+      Optional<String> organization) {
     Set<String> uris = new TreeSet<>();
     boolean usersRoles = true;
     boolean access = false;
@@ -336,6 +358,10 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       audit = flags.includeAuditEvents();
       monitoring = flags.includeMonitoring();
       settings = flags.includeSettings();
+    }
+    if (organization.isPresent() && (uris.isEmpty() || uris.contains("/"))) {
+      uris.clear();
+      uris.add("/organizations/" + organization.get());
     }
     if (uris.isEmpty() || uris.contains("/")) {
       uris.clear();
@@ -483,7 +509,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         + r.fullServer()
         // only a live export says so, so a stopping plan keeps the fingerprint it had before #67
         + (r.stopService() ? "" : ";stopService=false")
-        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("");
+        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("")
+        + r.organization().map(o -> ";organization=" + o).orElse("");
   }
 
   private static String describe(ImportRequest r) {
@@ -505,7 +532,10 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         + r.sourceKeystore().map(Path::toString).orElse("")
         + ";sourceKeystorePassword="
         + r.sourceKeystorePassword().map(ref -> ref.render()).orElse("")
-        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("");
+        + r.keyAlias().map(a -> ";keyAlias=" + a).orElse("")
+        + r.organization()
+            .map(o -> ";organization=" + o + (r.mergeOrganization() ? ";merge" : ""))
+            .orElse("");
   }
 
   private String configHash() {

@@ -21,7 +21,8 @@ public record ExportRequest(
     boolean fullServer,
     Path output,
     boolean stopService,
-    Optional<String> keyAlias) {
+    Optional<String> keyAlias,
+    Optional<String> organization) {
 
   /** The alias {@code export --portable} names: every keystore since 7.5 holds it. */
   public static final String PORTABLE_KEY_ALIAS = "deprecatedImportExportEncSecret";
@@ -34,6 +35,51 @@ public record ExportRequest(
   public ExportRequest {
     uris = Set.copyOf(uris);
     Objects.requireNonNull(keyAlias, "keyAlias");
+    Objects.requireNonNull(organization, "organization");
+  }
+
+  public ExportRequest(
+      Scope scope,
+      Set<String> uris,
+      boolean includeUsersRoles,
+      boolean includeAccessEvents,
+      boolean includeAuditEvents,
+      boolean includeMonitoring,
+      boolean includeSettings,
+      boolean fullServer,
+      Path output,
+      boolean stopService,
+      Optional<String> keyAlias) {
+    this(
+        scope,
+        uris,
+        includeUsersRoles,
+        includeAccessEvents,
+        includeAuditEvents,
+        includeMonitoring,
+        includeSettings,
+        fullServer,
+        output,
+        stopService,
+        keyAlias,
+        Optional.empty());
+  }
+
+  /** The same request limited to one organisation, its URIs relative to it. */
+  public ExportRequest withOrganization(String id) {
+    return new ExportRequest(
+        scope,
+        uris,
+        includeUsersRoles,
+        includeAccessEvents,
+        includeAuditEvents,
+        includeMonitoring,
+        includeSettings,
+        fullServer,
+        output,
+        stopService,
+        keyAlias,
+        Optional.of(id));
   }
 
   public ExportRequest(
@@ -74,7 +120,8 @@ public record ExportRequest(
         fullServer,
         output,
         stopService,
-        Optional.of(alias));
+        Optional.of(alias),
+        organization);
   }
 
   /** As the canonical constructor with {@code stopService} true, the behaviour before #67. */
