@@ -5,9 +5,13 @@ Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-cha
 ## Build
 
 - Always build through `scripts\mvn.cmd` (Windows) or `scripts/mvn.sh`; they select JDK 21. The machine's default `java` is 11.
-- `scripts\mvn.cmd verify` = compile (`-Werror`, Error Prone), unit tests, Spotless check, acceptance for every phase.
-- One phase only: `scripts\mvn.cmd verify -Dphase=N`.
-- Formatting: `scripts\mvn.cmd spotless:apply` before committing (google-java-format).
+- **Three tiers; iterate on the first two, leave the third to CI.** A full `verify` takes 7 to 15 minutes; do not run it between edits.
+  1. `scripts\fast.cmd test <core|jrs|ops|app> <TestClass[,TestClass]>` (`scripts/fast.sh` on Linux and Git Bash): compile with Error Prone and `-Werror`, then only those classes. About 10 seconds warm, a minute on a fresh checkout. It fails when the name matches no test.
+  2. `scripts\fast.cmd guards`: the tests that catch a change that is right in one module and wrong across them: `Phase0SkeletonTest` (the `core.engine` to `core.state` rule), `IdempotencyCoverageTest`, `HelpExamplesTest`, `JsonOutputSchemaTest`, `ConsoleSchemaTest`. About a minute. Run it before every commit; a new leaf command or JSON field needs it. `scripts\fast.cmd phase <N>` runs one acceptance phase against the shaded jar; `scripts\fast.cmd fmt` formats.
+  3. `scripts\mvn.cmd verify` = compile, unit tests, Spotless check, acceptance for every phase, Jacoco floors. Push the branch and read CI (`gh pr checks <n>`, `gh run view <id> --log-failed`) instead of running it locally, unless a failure needs the full log on this machine.
+- Do not run `-Dtest=...` through `mvn` directly: it needs `-pl <module> -am`, `-Dsurefire.failIfNoSpecifiedTests=false` and `-Djacoco.skip=true` (a partial run cannot meet the coverage floor). `fast` sets them.
+- Formatting: `scripts\mvn.cmd spotless:apply` (or `fast fmt`) before committing (google-java-format). The check runs in the `validate` phase and as the first CI step, so a slip fails in seconds.
+- `docs/spec-changelog.md` and `docs/BUILD_STATUS.md` merge with git's `union` driver (`.gitattributes`): a local rebase keeps both sides. GitHub's own merge does not apply it, so rebase locally before merging a PR that touches them.
 - Tests tagged `needs-jrs` / `needs-docker` are excluded by default (no Docker here); they are release gates, not phase gates.
 - The unit under acceptance test is the shaded jar `app/target/jrsctl.jar`; acceptance never imports app classes.
 

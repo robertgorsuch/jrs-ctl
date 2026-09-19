@@ -4,3 +4,9 @@
 *.png binary
 *.jar binary
 *.zip binary
+
+# Append-only logs that every branch edits at the same spot: keep both sides on a local merge
+# or rebase instead of stopping at a conflict. (GitHub's own merge and a merge queue do not
+# apply merge drivers, so rebase locally first.)
+docs/spec-changelog.md merge=union
+docs/BUILD_STATUS.md merge=union
