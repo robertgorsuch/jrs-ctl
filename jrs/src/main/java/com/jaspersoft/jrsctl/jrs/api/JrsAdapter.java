@@ -10,11 +10,21 @@ import java.util.function.BooleanSupplier;
  * #capabilities()} probed after {@link #identity()}; there is no per-version subclass. Invariants:
  * every method is safe to call repeatedly; downloads stream to disk; the only repository-mutating
  * methods are {@link #startImport}, {@link #createFolder}, {@link #uploadJrxmlReport} and {@link
- * #deleteResource}, and every one of them is only ever called from inside a {@code Step}.
+ * #deleteResource}, and every one of them is only ever called from inside a {@code Step}. {@link
+ * #close()} ends the server session the adapter opened, never throws and may be called more than
+ * once (issue #114).
  */
-public interface JrsAdapter {
+public interface JrsAdapter extends AutoCloseable {
 
   ServerIdentity identity();
+
+  /**
+   * Ends the server session this adapter established, if any, so a run leaves nothing behind that a
+   * session cap or a licence could count (vendor review 3.5). A failure is logged and swallowed:
+   * closing never fails an operation that already finished.
+   */
+  @Override
+  default void close() {}
 
   /**
    * Re-reads the server identity from the server, ignoring and replacing any value cached by {@link

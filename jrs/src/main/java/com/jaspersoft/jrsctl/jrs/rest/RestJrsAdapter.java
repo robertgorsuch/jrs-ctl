@@ -40,6 +40,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The one {@link JrsAdapter} (spec §7.2, ADR-0004), driven by probed {@link Capability}s rather
@@ -52,6 +54,8 @@ import java.util.function.Supplier;
  * using the configured credentials; no exception message carries a credential.
  */
 public final class RestJrsAdapter implements JrsAdapter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(RestJrsAdapter.class);
 
   static final String SERVER_INFO = "/rest_v2/serverInfo";
   static final String EXPORT = "/rest_v2/export";
@@ -69,6 +73,12 @@ public final class RestJrsAdapter implements JrsAdapter {
   static final String KEYS = "/rest_v2/keys/";
 
   static final String FORM_LOGIN = "/j_spring_security_check";
+
+  /**
+   * REST reference 10.1: the session is ended by {@code GET /logout.html}; there is no REST v2 one.
+   */
+  static final String LOGOUT = "/logout.html";
+
   static final String PROBE_ID = "jrsctl-probe";
   static final String DEFAULT_EXPORT_FILE = "export.zip";
   static final String FOLDER_TYPE = "application/repository.folder+json";
@@ -168,6 +178,27 @@ public final class RestJrsAdapter implements JrsAdapter {
       return true;
     } catch (RestException | JrsUnreachableException e) {
       return false;
+    }
+  }
+
+  /**
+   * Issue #114: a form login leaves a session on the server until it times out, and report output
+   * is held in it. Sends {@code GET /logout.html} with the session cookie, once; basic and token
+   * modes hold no session. A refused or failed logout is logged at debug and never surfaces.
+   */
+  @Override
+  public void close() {
+    session = Optional.empty();
+    if (config.server().auth().mode() != Config.AuthMode.FORM || client.sessionCookie().isEmpty()) {
+      return;
+    }
+    try {
+      RestClient.Response r = client.get(LOGOUT, "text/html");
+      LOG.debug("logout answered HTTP {}", r.status());
+    } catch (RuntimeException e) {
+      LOG.debug("logout failed: {}", e.getMessage());
+    } finally {
+      client.clearSession();
     }
   }
 

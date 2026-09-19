@@ -222,6 +222,7 @@ and `<tomcat>/logs/catalina.out`. The support bundle (`app`) collects none of th
 (redacted, size-capped), plus `installation.log` and a redacted `default_master.properties`.
 
 ### 3.5 Session hygiene
+*Fixed 2026-09-19 (issue #114): `JrsAdapter.close()` sends `GET /logout.html` with the session cookie after a form login; `Bootstrap` closes the adapter at the end of every command. `smoke` gets no separate item.*
 Report output is held in the HTTP session and the reference recommends an explicit logout
 (`GET /logout.html` with the cookie; there is no `/rest_v2/logout`). `RestJrsAdapter` never logs out;
 `smoke` and `doctor` should.
