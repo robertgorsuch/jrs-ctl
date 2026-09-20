@@ -244,6 +244,17 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             adapter,
             warnings,
             options.organization());
+    List<String> newContentUris = newContentUris(sidecar, options.organization());
+    Set<String> newRoots =
+        newContentUris.isEmpty() ? Set.of() : RemoveNewContent.newRoots(adapter, newContentUris);
+    for (String organisation : RemoveNewContent.organisations(newRoots)) {
+      warnings.add(
+          organisation
+              + " is an organisation that does not exist yet; if the import fails it is not"
+              + " removed (DELETE /rest_v2/organizations/"
+              + organisation.substring(organisation.lastIndexOf('/') + 1)
+              + ")");
+    }
     Optional<ImportRequest> restore =
         snapshot.map(
             s ->
@@ -293,14 +304,29 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           new RestoreFromPreImportSnapshot(
               importPhase, strategy, snapshot.get().output(), restore.get(), roots));
     }
+    if (!newContentUris.isEmpty()) {
+      // issue #139: present whenever the sidecar names folders, so a plan rebuilt after the import
+      // created them has the same steps; the step decides at run time which folders are new
+      steps.add(new RemoveNewContent(importPhase, newContentUris));
+    }
     steps.addAll(importSteps.subList(firstMutating, importSteps.size()));
 
+    List<String> removable = RemoveNewContent.removable(newRoots);
+    String removeNew =
+        "delete "
+            + String.join(", ", removable)
+            + " with everything the import put there ("
+            + (removable.size() == 1 ? "it does" : "they do")
+            + " not exist yet)";
     Map<String, String> rollback = new LinkedHashMap<>();
     if (snapshot.isPresent()) {
       rollback.put(BACKUP_PHASE, "delete the pre-import snapshot");
       rollback.put(
           importPhase,
-          "delete what the import created, then re-import the pre-import snapshot with update");
+          "delete what the import created, then re-import the pre-import snapshot with update"
+              + (removable.isEmpty() ? "" : "; also " + removeNew));
+    } else if (!removable.isEmpty()) {
+      rollback.put(importPhase, removeNew);
     } else {
       rollback.put(
           importPhase,
@@ -431,13 +457,15 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           present.add(uri);
         } else {
           warnings.add(
-              uri + " does not exist on this server yet, so there is nothing to snapshot for it");
+              uri
+                  + " does not exist on this server yet, so there is nothing to snapshot for it;"
+                  + " if the import fails, what it created there is deleted");
         }
       }
       if (present.isEmpty()) {
         warnings.add(
-            "no pre-import snapshot: none of the archive's resources exists on this server yet,"
-                + " so a rollback would have nothing to put back");
+            "no pre-import snapshot: none of the archive's folders exists on this server yet, so"
+                + " a failed import is rolled back by deleting what it created");
         return Optional.empty();
       }
       uris = present;
@@ -455,6 +483,29 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             settings,
             fullServer,
             output));
+  }
+
+  /**
+   * The folders a failed import of this archive may create from nothing (issue #139): the sidecar's
+   * uris, or the organisation's folder for an organisation import; none when the archive holds the
+   * whole repository, where the pre-import listing already covers every addition.
+   */
+  static List<String> newContentUris(Optional<Sidecar> sidecar, Optional<String> organization) {
+    Set<String> uris = new TreeSet<>();
+    if (sidecar.isPresent()) {
+      Sidecar.Flags flags = sidecar.get().flags();
+      if (!flags.fullServer() && flags.scope() == ExportRequest.Scope.REPOSITORY) {
+        uris.addAll(flags.uris());
+      }
+    }
+    if (organization.isPresent() && (uris.isEmpty() || uris.contains("/"))) {
+      uris.clear();
+      uris.add("/organizations/" + organization.get());
+    }
+    if (uris.isEmpty() || uris.contains("/")) {
+      return List.of();
+    }
+    return List.copyOf(uris);
   }
 
   /** The key alias the sidecar beside {@code archive} records, when there is one to read. */

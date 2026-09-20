@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
@@ -169,6 +170,102 @@ class ImportRollbackTest {
     assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
     assertThat(((RunOutcome.RolledBack) outcome).rolledBackToPhase()).isEqualTo("backup");
     assertThat(adapter.imports).as("nothing was imported").isEmpty();
+  }
+
+  // ---- issue #139: new content ---------------------------------------------------------------
+
+  /**
+   * The archive's folder does not exist, so there is no snapshot; the import creates it, then
+   * fails. The live check on a real server left 31 entries behind and still reported a rollback.
+   */
+  @Test
+  void should_delete_the_folder_the_failed_import_created_when_it_did_not_exist_before() {
+    adapter.existing = Optional.of(Set.of());
+    adapter.createdOnImport = Set.of("/public", "/public/sub");
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(outcome.exitCode()).isEqualTo(3);
+    assertThat(adapter.deleted).containsExactly("/public");
+    assertThat(adapter.imports).as("no snapshot, so no restore import").hasSize(1);
+    assertThat(adapter.exports).as("nothing to snapshot").isEmpty();
+    assertThat(fx.services.home().runDir(EximFixture.RUN).resolve("new-content-roots.txt"))
+        .hasContent("/public");
+    assertThat(fx.journal(EximFixture.RUN))
+        .containsSubsequence(
+            "import.new-content-rollback:SUCCEEDED",
+            "import.start:SUCCEEDED",
+            "import.poll:FAILED",
+            "import.new-content-rollback:ROLLED_BACK");
+  }
+
+  @Test
+  void should_delete_nothing_when_an_import_of_new_content_succeeds() {
+    adapter.existing = Optional.of(Set.of());
+    adapter.createdOnImport = Set.of("/public");
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(adapter.deleted).isEmpty();
+  }
+
+  /** A rollback that cannot delete what the import created is not a rollback: exit 4. */
+  @Test
+  void should_exit_4_when_the_new_folder_cannot_be_deleted() {
+    adapter.existing = Optional.of(Set.of());
+    adapter.createdOnImport = Set.of("/public");
+    adapter.undeletable.add("/public");
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.Failed.class);
+    assertThat(outcome.exitCode()).isEqualTo(4);
+    assertThat(((RunOutcome.Failed) outcome).rollbackIncomplete()).isTrue();
+  }
+
+  /**
+   * Some folders exist and some do not: the snapshot covers the first, the new-content step the
+   * rest.
+   */
+  @Test
+  void should_roll_back_both_kinds_when_only_some_of_the_folders_existed() throws IOException {
+    Sidecar.write(
+        Sidecar.pathFor(archive),
+        new Sidecar(
+            Instant.parse("2026-09-01T00:00:00Z"),
+            "srv",
+            "8.2.0",
+            Optional.of(EximFakeAdapter.FINGERPRINT),
+            new Sidecar.Flags(
+                ExportRequest.Scope.REPOSITORY,
+                List.of("/public", "/fresh"),
+                true,
+                false,
+                false,
+                false,
+                false,
+                false),
+            "0000",
+            ExportImportStrategy.Kind.REST));
+    adapter.existing = Optional.of(Set.of("/public"));
+    adapter.createdOnImport = Set.of("/fresh");
+    adapter.trees.add(List.of("/public/kept"));
+    adapter.trees.add(List.of("/public/kept", "/public/added"));
+    adapter.importPhases.add(Handles.Phase.FAILED);
+    Plan plan = fx.ops().planImport(options(false));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.RolledBack.class);
+    assertThat(adapter.deleted).containsExactlyInAnyOrder("/public/added", "/fresh");
+    assertThat(adapter.imports).as("the failed import and the snapshot restore").hasSize(2);
   }
 
   @Test
