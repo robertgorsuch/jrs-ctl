@@ -43,7 +43,6 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -57,8 +56,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -979,9 +977,17 @@ class ConsoleServerTest {
     assertThat(server.tls()).isTrue();
     assertThat(server.baseUrl()).startsWith("https://127.0.0.1:");
 
-    SSLContext trustAll = SSLContext.getInstance("TLS");
-    trustAll.init(null, new TrustManager[] {new TrustEverything()}, new SecureRandom());
-    HttpClient tls = HttpClient.newBuilder().sslContext(trustAll).build();
+    KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+    trustStore.load(null, null);
+    trustStore.setCertificateEntry("console", cert);
+
+    TrustManagerFactory tmf =
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+    tmf.init(trustStore);
+
+    SSLContext tlsContext = SSLContext.getInstance("TLS");
+    tlsContext.init(null, tmf.getTrustManagers(), new SecureRandom());
+    HttpClient tls = HttpClient.newBuilder().sslContext(tlsContext).build();
     HttpResponse<String> response =
         tls.send(
             HttpRequest.newBuilder(URI.create(server.baseUrl() + "/api/health"))
@@ -997,20 +1003,6 @@ class ConsoleServerTest {
     String body =
         Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII)).encodeToString(der);
     return "-----BEGIN " + type + "-----\n" + body + "\n-----END " + type + "-----\n";
-  }
-
-  /** Trusts the test's self-signed certificate; never used outside this test. */
-  private static final class TrustEverything implements X509TrustManager {
-    @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public X509Certificate[] getAcceptedIssuers() {
-      return new X509Certificate[0];
-    }
   }
 
   /**
