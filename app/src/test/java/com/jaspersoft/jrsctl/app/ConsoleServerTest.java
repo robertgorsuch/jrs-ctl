@@ -43,7 +43,6 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -1005,8 +1004,6 @@ class ConsoleServerTest {
         Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII)).encodeToString(der);
     return "-----BEGIN " + type + "-----\n" + body + "\n-----END " + type + "-----\n";
   }
-
-
 
   /**
    * A plan builder whose second step blocks until cancelled (when {@code args.block} is true) and
