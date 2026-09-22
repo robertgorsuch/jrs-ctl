@@ -855,11 +855,14 @@ const OPS = {
         field('Strategy', selectInput('strategy', [['auto', 'Auto (REST when the server supports it)'], ['rest', 'REST'], ['vendor', 'Vendor CLI (js-export)']], 'auto')),
         checkField('portable', 'Portable (decryptable on another server)', 'Encrypts with the key alias deprecatedImportExportEncSecret, which every keystore since 7.5 holds; the sidecar records it so jrsctl imports it without a flag.'),
         field('Organisation', textInput('organization', { mono: true, placeholder: 'organization_1' }), 'Export this organisation only; URIs are then relative to it.'),
+        checkField('skipDependentResources', 'Skip dependent resources', 'With repository URIs, do not include resources a selected resource depends on. The archive will cause broken dependencies on import unless the same dependencies already exist there.'),
+        checkField('skipFavoriteResources', 'Skip favorite resources', 'Do not export resources added to Favorites.'),
         field('Output file', textInput('out', { mono: true, required: true, placeholder: 'C:\\exports\\acme.zip' })),
       ];
     },
     args: (v) => ({ uris: v.uris.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), usersRoles: !!v.usersRoles, accessEvents: !!v.accessEvents,
-      fullServer: !!v.fullServer, stopService: !!v.stopService, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out, keyAlias: v.portable ? 'deprecatedImportExportEncSecret' : null, organization: v.organization || null }),
+      fullServer: !!v.fullServer, stopService: !!v.stopService, strategy: v.strategy === 'auto' ? null : v.strategy, out: v.out, keyAlias: v.portable ? 'deprecatedImportExportEncSecret' : null, organization: v.organization || null,
+      skipDependentResources: !!v.skipDependentResources, skipFavoriteResources: !!v.skipFavoriteResources }),
     validate: (v) => (!v.out ? 'Enter the output file.' : !v.fullServer && !v.uris.trim() ? 'Enter at least one URI or choose Full server.' : null),
   },
   import: {

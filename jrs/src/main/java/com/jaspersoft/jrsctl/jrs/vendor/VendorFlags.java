@@ -19,6 +19,9 @@ public final class VendorFlags {
   public static final String REPOSITORY_PERMISSIONS = "--repository-permissions";
   public static final String USERS = "--users";
   public static final String ROLES = "--roles";
+  // REST API reference 10.1 p.111: parameters of a URI-scoped export, issue #144
+  public static final String SKIP_DEPENDENT_RESOURCES = "--skip-dependent-resources";
+  public static final String SKIP_FAVORITE_RESOURCES = "--skip-favorite-resources";
 
   // ---- js-import ----
   public static final String INPUT_ZIP = "--input-zip";

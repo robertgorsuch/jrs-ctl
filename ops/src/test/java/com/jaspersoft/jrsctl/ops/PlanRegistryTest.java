@@ -362,6 +362,59 @@ class PlanRegistryTest {
     assertThat(importBack.mergeOrganization()).isTrue();
   }
 
+  /**
+   * Vendor doc review §4.2, issue #144: the two export-only skip flags survive the stored
+   * arguments.
+   */
+  @Test
+  void should_round_trip_skip_dependent_and_favorite_resources_on_export_arguments()
+      throws IOException {
+    ExportImportOperations.ExportOptions export =
+        new ExportImportOperations.ExportOptions(
+            Set.of("/public/report.jrxml"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Path.of("out.zip"),
+            Optional.empty(),
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            true,
+            true);
+
+    ExportImportOperations.ExportOptions exportBack =
+        PlanRegistry.exportOptions(tree(PlanRegistry.exportArgs(export)));
+
+    assertThat(exportBack.skipDependentResources()).isTrue();
+    assertThat(exportBack.skipFavoriteResources()).isTrue();
+  }
+
+  @Test
+  void should_default_skip_dependent_and_favorite_resources_when_arguments_predate_the_option()
+      throws IOException {
+    ExportImportOperations.ExportOptions export =
+        new ExportImportOperations.ExportOptions(
+            Set.of(),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Path.of("out.zip"),
+            Optional.empty());
+
+    ExportImportOperations.ExportOptions exportBack =
+        PlanRegistry.exportOptions(tree(PlanRegistry.exportArgs(export)));
+
+    assertThat(exportBack.skipDependentResources()).isFalse();
+    assertThat(exportBack.skipFavoriteResources()).isFalse();
+  }
+
   @Test
   void should_round_trip_upgrade_arguments() throws IOException {
     JsonNode rollback =

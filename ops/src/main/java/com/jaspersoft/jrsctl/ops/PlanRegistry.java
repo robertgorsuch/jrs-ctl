@@ -132,6 +132,8 @@ public final class PlanRegistry {
     node.put("out", o.out().toAbsolutePath().normalize().toString());
     putText(node, "keyAlias", o.keyAlias());
     putText(node, "organization", o.organization());
+    node.put("skipDependentResources", o.skipDependentResources());
+    node.put("skipFavoriteResources", o.skipFavoriteResources());
     return Json.write(node);
   }
 
@@ -193,7 +195,10 @@ public final class PlanRegistry {
         // #67: arguments stored before the flag existed describe a plan that stopped the service
         args.path("stopService").asBoolean(true),
         text(args, "keyAlias"),
-        text(args, "organization"));
+        text(args, "organization"),
+        // arguments stored before the option existed describe an export made with neither
+        args.path("skipDependentResources").asBoolean(false),
+        args.path("skipFavoriteResources").asBoolean(false));
   }
 
   public static ExportImportOperations.ImportOptions importOptions(JsonNode args) {

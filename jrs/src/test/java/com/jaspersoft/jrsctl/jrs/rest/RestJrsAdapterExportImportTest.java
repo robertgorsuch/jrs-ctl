@@ -143,6 +143,42 @@ class RestJrsAdapterExportImportTest {
   }
 
   @Test
+  void should_send_skip_dependent_and_favorite_parameters_when_requested() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    wm.stubFor(
+        post(urlPathEqualTo(f.path("/rest_v2/export")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody("{\"id\":\"exp-3\",\"phase\":\"inprogress\"}")));
+
+    f.adapter.startExport(
+        new ExportRequest(
+            ExportRequest.Scope.REPOSITORY,
+            Set.of("/public/report.jrxml"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            tmp.resolve("x.zip"),
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            true,
+            true));
+
+    wm.verify(
+        postRequestedFor(urlPathEqualTo(f.path("/rest_v2/export")))
+            .withRequestBody(
+                equalToJson(
+                    "{\"uris\":[\"/public/report.jrxml\"],\"roles\":[],\"users\":[],"
+                        + "\"parameters\":[\"repository-permissions\",\"skip-dependent-resources\","
+                        + "\"skip-favorite-resources\"]}")));
+  }
+
+  @Test
   void should_report_failed_when_export_state_is_failed() {
     AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
     wm.stubFor(

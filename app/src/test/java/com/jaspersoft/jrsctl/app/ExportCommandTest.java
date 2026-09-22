@@ -139,6 +139,29 @@ class ExportCommandTest {
     assertThat(fake.lastExport.orElseThrow().organization()).contains("org1");
   }
 
+  /** Issue #144: dependent and favorite resources are included unless skipped. */
+  @Test
+  void should_default_skip_dependent_and_favorite_resources_to_false() {
+    assertThat(export("--uri", "/public", "--plan").code()).isZero();
+    assertThat(fake.lastExport.orElseThrow().skipDependentResources()).isFalse();
+    assertThat(fake.lastExport.orElseThrow().skipFavoriteResources()).isFalse();
+  }
+
+  @Test
+  void should_pass_skip_dependent_and_favorite_resources_to_the_operation_when_given() {
+    assertThat(
+            export(
+                    "--uri",
+                    "/public",
+                    "--skip-dependent-resources",
+                    "--skip-favorite-resources",
+                    "--plan")
+                .code())
+        .isZero();
+    assertThat(fake.lastExport.orElseThrow().skipDependentResources()).isTrue();
+    assertThat(fake.lastExport.orElseThrow().skipFavoriteResources()).isTrue();
+  }
+
   @Test
   void should_run_every_step_and_exit_0_when_yes_given() {
     InitCommandTest.Run run = export("--uri", "/public", "--yes");
