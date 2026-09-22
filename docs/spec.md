@@ -510,7 +510,7 @@ Compensations restore from Snapshot in reverse. After `RecordInstalled`, rollbac
 record ExportRequest(Scope scope, Set<String> uris, boolean includeUsersRoles, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
                      boolean fullServer, Path output, boolean stopService, Optional<String> keyAlias,
-                     Optional<String> organization)
+                     Optional<String> organization, boolean skipDependentResources, boolean skipFavoriteResources)
 record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boolean includeAccessEvents,
                      boolean includeAuditEvents, boolean includeMonitoring, boolean includeSettings,
                      boolean skipThemes, Optional<Path> sourceKeystore, Optional<SecretRef> sourceKeystorePassword,
@@ -521,6 +521,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `organization` limits an export to one organisation (its resources, users and roles, sub-organisations included; every URI relative to it) and names the organisation an import goes into; `mergeOrganization` merges the archive's organisation into the target when their ids differ, the archive's users, roles and resources overriding same-named ones (REST reference 10.1 pp.110, 115, 121; administrator guide 10.0 pp.263, 267). REST: export body `organization`, import query `organization` and `mergeOrganization`; vendor: `--organization` on both scripts and `--merge-organization` on `js-import`. The sidecar records the organisation an export was scoped to (field test 2, E5, I4).
 
 - `keyAlias` names a key of the server's keystore to encrypt the export with, or to decrypt the import with, instead of the server's own import/export key (REST reference 10.1 pp.110, 117: the alias must exist in the importing server's keystore). It reaches the server as the REST export body field `keyAlias` and the import query parameter `keyAlias`, and the vendor tools as `--keyalias` on both scripts. `export --portable` is `--key-alias deprecatedImportExportEncSecret`, the alias every keystore since 7.5 holds, which makes the archive importable on any server that names the same alias (field test 2, E4, I1).
+
+- `skipDependentResources` and `skipFavoriteResources` are export-only parameters (REST reference 10.1 p.111; no import equivalent): the first omits resources a selected resource depends on (data sources, queries, files included by reference), the second omits resources added to Favorites. Both default `false`. REST: export body `skip-dependent-resources` and `skip-favorite-resources`; vendor: `--skip-dependent-resources` and `--skip-favorite-resources` on `js-export`. An archive made with `skipDependentResources` will fail to import cleanly unless the same dependencies already exist at the destination; `export`'s help text says so (vendor doc review §4.2, issue #144).
 
 ### 9.2 Strategy selection
 
@@ -549,7 +551,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 9.5 Commands
 
-- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] [--organization <id>] --out <file>`
+- `jrsctl export [--uri ...] [--users-roles] [--access-events] [--full-server] [--strategy rest|vendor] [--key-alias <alias> | --portable] [--organization <id>] [--skip-dependent-resources] [--skip-favorite-resources] --out <file>`
 - `jrsctl import <archive> [--update] [--skip-user-update] [--skip-themes | --themes] [--broken-dependencies fail|skip|include] [--source-keystore ...] [--key-alias <alias>] [--organization <id> [--merge-organization]] [--strategy rest|vendor] [--plan] [--yes]`
 
 ---

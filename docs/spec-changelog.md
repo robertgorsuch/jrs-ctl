@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-22 (issue #144, export's skip-dependent/favorite-resources)
+
+- §9.1: `ExportRequest` gains `skipDependentResources` and `skipFavoriteResources`, both defaulting `false` so every existing caller is unaffected. They map to the REST export body fields `skip-dependent-resources`/`skip-favorite-resources` and the vendor flags `--skip-dependent-resources`/`--skip-favorite-resources` on `js-export`; there is no import-side equivalent. Exposed on the CLI as `export --skip-dependent-resources`/`--skip-favorite-resources`, in `PlanRegistry`'s stored plan arguments (older stored arguments default both to `false`), and in the console's export form. Found by the vendor doc review, §4.2.
+
 ## Draft 1.1 amendment — 2026-09-19 (issue #139, rollback of a failed import of new content)
 
 - §9.4: a failed import of a folder that does not exist yet used to leave everything it created while the run reported a rollback (exit 3): no snapshot and no listing covered it. Every import plan whose sidecar names folders now has the rollback anchor `import.new-content-rollback` (ADR-0036); at run time it records the topmost missing ancestor of each folder that does not exist yet, and its compensation deletes them with their content; an organisation's own folder is not recorded (log names `DELETE /rest_v2/organizations/<id>`); a failed deletion is exit 4. The plan's rollback sentence and the two snapshot warnings say what is deleted instead of "nothing to put back". Found by a live check against a real 10.0.0 server.

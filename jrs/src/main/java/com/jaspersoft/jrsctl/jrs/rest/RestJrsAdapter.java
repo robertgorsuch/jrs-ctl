@@ -626,6 +626,12 @@ public final class RestJrsAdapter implements JrsAdapter {
     if (request.includeSettings()) {
       parameters.add("include-server-settings");
     }
+    if (request.skipDependentResources()) {
+      parameters.add("skip-dependent-resources");
+    }
+    if (request.skipFavoriteResources()) {
+      parameters.add("skip-favorite-resources");
+    }
     List<String> uris = new ArrayList<>(new TreeSet<>(request.uris()));
     if (uris.isEmpty() && !everything) {
       uris.add("/");

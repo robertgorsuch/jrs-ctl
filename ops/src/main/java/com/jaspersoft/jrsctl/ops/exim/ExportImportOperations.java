@@ -31,7 +31,9 @@ public interface ExportImportOperations {
       Optional<ExportImportStrategy.Kind> strategy,
       boolean stopService,
       Optional<String> keyAlias,
-      Optional<String> organization) {
+      Optional<String> organization,
+      boolean skipDependentResources,
+      boolean skipFavoriteResources) {
 
     public ExportOptions {
       uris = Set.copyOf(uris);
@@ -39,6 +41,36 @@ public interface ExportImportOperations {
       Objects.requireNonNull(strategy, "strategy");
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(organization, "organization");
+    }
+
+    public ExportOptions(
+        Set<String> uris,
+        boolean usersRoles,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean fullServer,
+        Path out,
+        Optional<ExportImportStrategy.Kind> strategy,
+        boolean stopService,
+        Optional<String> keyAlias,
+        Optional<String> organization) {
+      this(
+          uris,
+          usersRoles,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          fullServer,
+          out,
+          strategy,
+          stopService,
+          keyAlias,
+          organization,
+          false,
+          false);
     }
 
     public ExportOptions(

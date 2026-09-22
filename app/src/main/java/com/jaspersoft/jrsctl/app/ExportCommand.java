@@ -115,6 +115,19 @@ final class ExportCommand implements Callable<Integer> {
   String organization;
 
   @Option(
+      names = "--skip-dependent-resources",
+      description =
+          "With --uri, do not include resources a selected resource depends on (data sources,"
+              + " queries, files included by reference). The archive will cause broken"
+              + " dependencies on import unless the same dependencies already exist there.")
+  boolean skipDependentResources;
+
+  @Option(
+      names = "--skip-favorite-resources",
+      description = "Do not export resources added to Favorites.")
+  boolean skipFavoriteResources;
+
+  @Option(
       names = "--out",
       required = true,
       paramLabel = "<file>",
@@ -157,7 +170,9 @@ final class ExportCommand implements Callable<Integer> {
             portable
                 ? Optional.of(ExportRequest.PORTABLE_KEY_ALIAS)
                 : Optional.ofNullable(keyAlias),
-            Optional.ofNullable(organization));
+            Optional.ofNullable(organization),
+            skipDependentResources,
+            skipFavoriteResources);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

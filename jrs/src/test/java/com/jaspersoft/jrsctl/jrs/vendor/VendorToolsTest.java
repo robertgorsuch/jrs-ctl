@@ -130,6 +130,38 @@ class VendorToolsTest {
     assertThat(VendorTools.exportArgs(r, out)).containsSequence("--uris", "/");
   }
 
+  /** REST API reference 10.1 p.111, vendor doc review §4.2, issue #144. */
+  @Test
+  void should_pass_skip_dependent_and_favorite_resource_flags_when_requested() {
+    Path out = Path.of("skip.zip");
+    ExportRequest r =
+        new ExportRequest(
+            ExportRequest.Scope.REPOSITORY,
+            Set.of("/public/report.jrxml"),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            out,
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            true,
+            true);
+
+    assertThat(VendorTools.exportArgs(r, out))
+        .containsExactly(
+            "--output-zip",
+            "skip.zip",
+            "--uris",
+            "/public/report.jrxml",
+            "--repository-permissions",
+            "--skip-dependent-resources",
+            "--skip-favorite-resources");
+  }
+
   /** Field test 2, E4 and I1: a named key reaches both vendor scripts as {@code --keyalias}. */
   @Test
   void should_pass_the_key_alias_to_js_export_and_js_import_when_given() {

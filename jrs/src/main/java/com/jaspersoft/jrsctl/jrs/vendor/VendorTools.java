@@ -187,6 +187,12 @@ public final class VendorTools {
     if (request.includeSettings()) {
       args.add(VendorFlags.INCLUDE_SERVER_SETTINGS);
     }
+    if (request.skipDependentResources()) {
+      args.add(VendorFlags.SKIP_DEPENDENT_RESOURCES);
+    }
+    if (request.skipFavoriteResources()) {
+      args.add(VendorFlags.SKIP_FAVORITE_RESOURCES);
+    }
     request
         .keyAlias()
         .ifPresent(

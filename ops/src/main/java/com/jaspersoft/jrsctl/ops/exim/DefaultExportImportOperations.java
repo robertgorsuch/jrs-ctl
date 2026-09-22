@@ -122,7 +122,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             out,
             options.stopService(),
             options.keyAlias(),
-            options.organization());
+            options.organization(),
+            options.skipDependentResources(),
+            options.skipFavoriteResources());
     JrsAdapter adapter = services.adapter().get();
     ServerIdentity identity = adapter.identity();
     refuseMissingUris(adapter, request);
