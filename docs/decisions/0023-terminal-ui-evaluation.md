@@ -39,3 +39,10 @@ If testers of 1.6.0 still ask for a live terminal dashboard, build it with optio
 
 - #75 stays open until the maintainers accept option A (close the issue) or ask for the option B spike.
 - No dependency is added and the jlink image is unchanged.
+
+## Amendment, 2026-09-22 (#102)
+
+A 1.6.0 tester asked again, meeting the trigger above, but only for line editing and path completion —
+not the full-screen dashboard this ADR evaluates. That narrower spike and its result are ADR-0037:
+JLine 3 (`jline-terminal-jni`, no JNA) adopted for `Prompter.path` only. This ADR's recommendation
+(option A, no full-screen UI) is otherwise unchanged; #75 stays open.

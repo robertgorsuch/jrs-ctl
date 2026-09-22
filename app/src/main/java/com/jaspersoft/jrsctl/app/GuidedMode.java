@@ -122,7 +122,7 @@ final class GuidedMode {
     boolean asked = false;
     while (true) {
       Optional<String> dir =
-          Prompter.line(out, "Installation directory (Enter to search for it): ");
+          Prompter.path(out, "Installation directory (Enter to search for it): ");
       if (dir.isEmpty()) {
         return;
       }
@@ -194,7 +194,7 @@ final class GuidedMode {
         return;
       }
     }
-    Optional<String> file = text("Backup file to write, e.g. /backups/repository.zip");
+    Optional<String> file = path("Backup file to write, e.g. /backups/repository.zip");
     if (file.isEmpty()) {
       return;
     }
@@ -469,6 +469,11 @@ final class GuidedMode {
     return Prompter.line(out, prompt + ": ").filter(s -> !s.isEmpty());
   }
 
+  /** Like {@link #text}, for a prompt whose answer is a filesystem path (#102, ADR-0037). */
+  private Optional<String> path(String prompt) {
+    return Prompter.path(out, prompt + ": ").filter(s -> !s.isEmpty());
+  }
+
   /**
    * One of {@code allowed}, case-insensitively; Enter gives {@code fallback}; anything else is
    * asked again; empty only at end of input.
@@ -497,7 +502,7 @@ final class GuidedMode {
 
   private Optional<String> existingFile(String prompt) {
     while (true) {
-      Optional<String> answer = text(prompt);
+      Optional<String> answer = path(prompt);
       if (answer.isEmpty() || Files.isRegularFile(local(answer.get()))) {
         return answer;
       }
@@ -507,7 +512,7 @@ final class GuidedMode {
 
   private Optional<String> existingDirectory(String prompt) {
     while (true) {
-      Optional<String> answer = text(prompt);
+      Optional<String> answer = path(prompt);
       if (answer.isEmpty() || Files.isDirectory(local(answer.get()))) {
         return answer;
       }
@@ -521,7 +526,7 @@ final class GuidedMode {
    */
   private Optional<Optional<String>> optionalExistingFile(String prompt) {
     while (true) {
-      Optional<String> answer = Prompter.line(out, prompt + ": ");
+      Optional<String> answer = Prompter.path(out, prompt + ": ");
       if (answer.isEmpty()) {
         return Optional.empty();
       }
@@ -537,7 +542,7 @@ final class GuidedMode {
 
   private Optional<Optional<String>> optionalExistingDirectory(String prompt) {
     while (true) {
-      Optional<String> answer = Prompter.line(out, prompt + ": ");
+      Optional<String> answer = Prompter.path(out, prompt + ": ");
       if (answer.isEmpty()) {
         return Optional.empty();
       }
