@@ -721,7 +721,7 @@ Every response document is an immutable record in `app.console` with a JSON Sche
 
 ### 13.3 Approved dependencies
 
-Runtime: `picocli`, `javalin`, `jackson-databind`, `jackson-dataformat-yaml`, `slf4j-api`, `logback-classic`, `logstash-logback-encoder`, `sqlite-jdbc`, `networknt json-schema-validator`, `commons-compress`, `semver4j`.
+Runtime: `picocli`, `javalin`, `jackson-databind`, `jackson-dataformat-yaml`, `slf4j-api`, `logback-classic`, `logstash-logback-encoder`, `sqlite-jdbc`, `networknt json-schema-validator`, `commons-compress`, `semver4j`, `jline-terminal`/`jline-terminal-jni`/`jline-native`/`jline-reader` (ADR-0037, `Prompter.path` only).
 Test: `junit5`, `assertj`, `wiremock`, `testcontainers`, `jqwik`, `mockito`.
 Not approved without an ADR: `bouncycastle` (JDK provides Ed25519 and AES-GCM), `jna`.
 

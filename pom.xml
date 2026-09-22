@@ -56,6 +56,7 @@
     <commons-lang3.version>3.20.0</commons-lang3.version>
     <kotlin-stdlib.version>2.4.20</kotlin-stdlib.version>
     <semver4j.version>5.3.0</semver4j.version>
+    <jline.version>3.30.4</jline.version>
 
     <!-- Test dependencies -->
     <junit.version>5.14.4</junit.version>
@@ -123,6 +124,13 @@
            backward compatible, so Javalin runs on the newer one unchanged. Not a new dependency. -->
       <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin-stdlib.version}</version></dependency>
       <dependency><groupId>org.semver4j</groupId><artifactId>semver4j</artifactId><version>${semver4j.version}</version></dependency>
+      <!-- ADR-0037: line editing and path completion for Prompter.line/path only (issue #102, ADR-0023
+           option B). BSD-3-Clause. jline-native carries the platform natives (Windows x86/x86_64/arm64,
+           Linux x86/x86_64/arm/arm64/ppc64, FreeBSD), loaded with System.load, not JNA (spec §13.3). -->
+      <dependency><groupId>org.jline</groupId><artifactId>jline-terminal</artifactId><version>${jline.version}</version></dependency>
+      <dependency><groupId>org.jline</groupId><artifactId>jline-terminal-jni</artifactId><version>${jline.version}</version></dependency>
+      <dependency><groupId>org.jline</groupId><artifactId>jline-native</artifactId><version>${jline.version}</version></dependency>
+      <dependency><groupId>org.jline</groupId><artifactId>jline-reader</artifactId><version>${jline.version}</version></dependency>
 
       <!-- Aligns jackson-core and jackson-annotations with the four modules declared above: without
            the BOM they resolve through other libraries' transitive declarations and can lag behind

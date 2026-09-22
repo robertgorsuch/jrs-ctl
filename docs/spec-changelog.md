@@ -3,6 +3,9 @@
 ## Draft 1.1 amendment — 2026-09-22 (issue #144, export's skip-dependent/favorite-resources)
 
 - §9.1: `ExportRequest` gains `skipDependentResources` and `skipFavoriteResources`, both defaulting `false` so every existing caller is unaffected. They map to the REST export body fields `skip-dependent-resources`/`skip-favorite-resources` and the vendor flags `--skip-dependent-resources`/`--skip-favorite-resources` on `js-export`; there is no import-side equivalent. Exposed on the CLI as `export --skip-dependent-resources`/`--skip-favorite-resources`, in `PlanRegistry`'s stored plan arguments (older stored arguments default both to `false`), and in the console's export form. Found by the vendor doc review, §4.2.
+## Draft 1.1 amendment — 2026-09-22 (field test 2, G2/G4: path completion in the guided menu)
+
+- §13.3: JLine 3 (`jline-terminal`, `jline-terminal-jni`, `jline-native`, `jline-reader`) approved for `Prompter.path` only (ADR-0037, ADR-0023 option B spike, issue #102): a JNI console provider with no JNA, BSD-3-Clause, and no change to ADR-0008's jlink module list (`jdeps` already reports only `java.base`/`java.logging` for it). `Prompter.path` tab-completes filesystem entries and supports normal line editing for the guided menu's path prompts (installation directory, hotfix package, export/import archive); every other prompt is unchanged, `--ascii` and redaction are unaffected, and `Prompter.override` (the test seam) is unaffected. Full interactive proof (arrow keys and completion in `cmd.exe`, PowerShell, Windows Terminal and over SSH) needs a human at a real terminal, recorded once in `docs/BUILD_STATUS.md` rather than by a test, since no automation environment used here has a real console to test against. #75 (a full-screen dashboard) is unchanged and stays open.
 
 ## Draft 1.1 amendment — 2026-09-19 (issue #139, rollback of a failed import of new content)
 
