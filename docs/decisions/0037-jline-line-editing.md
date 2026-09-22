@@ -92,3 +92,18 @@ at `${jline.version}` in the root POM) for `Prompter.path` only:
   package prompt in `cmd.exe`, PowerShell, Windows Terminal, and over SSH on the Linux laptop
   (`docs/BUILD_STATUS.md`'s Linux laptop test gate), confirming tab completion offers real filesystem
   entries and the arrow keys move within the line, and records the result here or in BUILD_STATUS.
+
+## Amendment (2026-09-22): CVE-2026-56740/56741
+
+`${jline.version}` moved from `3.30.4` (the spike version, above) to `3.30.17`, the latest patch on
+the same minor line, before this PR's CI ran the dependency audit. The OWASP gate flagged
+`jline-native-3.30.4.jar` against `cpe:2.3:a:jline:jline:3.30.4` for both CVEs (CVSS 7.5 each): an
+unauthenticated heap-exhaustion and CPU-exhaustion pair in JLine's **Telnet server**
+(`jline-remote-telnet`'s `NEW-ENVIRON`/`NAWS` option handling), fixed upstream in 3.30.14. jrsctl
+depends on `jline-terminal`, `jline-terminal-jni`, `jline-native` and `jline-reader` only — the
+telnet server module is never on the classpath, so the CPE match is a false positive by name
+(NVD's CPE dictionary has no separate entry for `jline-native`, only the umbrella `jline:jline`
+product, so dependency-check's version-range match catches every JLine artifact at 3.30.4
+regardless of module). The clean fix is still the version bump rather than a suppression: it is a
+same-minor-line patch release with no expected breaking change, and it removes the flag entirely
+instead of asserting the finding is safe to ignore.
