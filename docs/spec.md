@@ -355,6 +355,7 @@ Rules:
 ### 6.6 Resume and recovery
 
 - `jrsctl runs recover <runId> --resume|--rollback`.
+- `jrsctl runs support-bundle <id> [--out <zip>]` — zip of plan, transitions (JSONL), logs, server info, doctor report, redacted config, vendor logs.
 - Resume re-runs the precheck of the interrupted Step and then re-executes it (idempotency guarantees convergence). If the precheck fails, only rollback is offered.
 - Rollback compensates every succeeded Step of the run in reverse, after first compensating a mutating Step the journal left `RUNNING` or `FAILED` (the process died before that Step's own compensation ran). A compensation must therefore converge from any partial state, including one where `execute` never started.
 
@@ -695,7 +696,7 @@ All endpoints require the bearer token (§11.2).
 | GET | `/api/runs/{id}/events` | SSE stream (replays `step_transitions`, then live) |
 | POST | `/api/runs/{id}/cancel` | cancel |
 | POST | `/api/runs/{id}/rollback` | rollback where available |
-| GET | `/api/runs/{id}/support-bundle` | zip of plan, transitions (JSONL), logs, server info, state excerpt (redacted), and the vendor's own troubleshooting files under `vendor/` (issue #111, review §3.4): the newest `buildomatic/logs/js-*.log`, `WEB-INF/logs/jasperserver.log`, `catalina.out` or the newest `catalina.<date>.log`, `installation.log` and `default_master.properties` with every password key blanked, each the last 5 MB and every line redacted; a missing file yields no entry. Every vendor run also logs `buildomatic log: <path>`, the newest log the tool wrote under `buildomatic/logs`, so the run record names the file the vendor's troubleshooting starts from. Everything that can fail, the live doctor run included, is computed before the response is committed, so a failure is an error document rather than a truncated zip delivered as 200; the log is the file named by `jrsctl.log.file` and both the log and the event stream are tailed |
+| GET | `/api/runs/{id}/support-bundle` | as `runs support-bundle` |
 | GET | `/api/doctor` | run doctor, return report |
 | POST | `/api/auth/launch` | exchange a single-use launch code for the bearer token (§11.2) |
 | POST | `/api/runs/{id}/resume` | resume a pending run from its interrupted step |
