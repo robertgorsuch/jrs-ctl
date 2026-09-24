@@ -1,6 +1,6 @@
 # ADR-0038: remove the web console; jrsctl is a CLI
 
-Status: proposed · Date: 2026-09-24 · Spec: §1, §4, §11.2, §13, §14 phase 6 · Issues #75, #64 · Supersedes ADR-0007 · Narrows ADR-0023
+Status: proposed · Date: 2026-09-24 · Spec: §1, §4, §11.2, §13, §14 phase 6 · Issues #75, #64, #150, #151 · Supersedes ADR-0007 · Narrows ADR-0023 · Plan: `docs/superpowers/plans/2026-09-24-remove-web-console.md`
 
 ## Context
 
