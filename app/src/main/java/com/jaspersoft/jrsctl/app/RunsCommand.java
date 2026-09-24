@@ -18,8 +18,10 @@ import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -535,8 +537,23 @@ final class RunsCommand implements Runnable {
         }
         SupportBundle bundle = new SupportBundle(services);
         SupportBundle.Prepared prepared = bundle.prepare(found.get()); // everything that can fail
-        try (OutputStream zip = Files.newOutputStream(target)) {
-          bundle.write(prepared, zip);
+        try {
+          try (OutputStream zip = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) {
+            bundle.write(prepared, zip);
+          }
+        } catch (FileAlreadyExistsException raced) {
+          // the file appeared between the precheck above and this open (review: closes the race)
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              target + " already exists",
+              Optional.of("choose another --out or move the old bundle"));
+        } catch (IOException | RuntimeException failed) {
+          // a bundle that fails partway must not leave a truncated or zero-byte zip behind
+          Files.deleteIfExists(target);
+          throw failed;
         }
         List<String> entries = new ArrayList<>();
         try (ZipInputStream in = new ZipInputStream(Files.newInputStream(target))) {

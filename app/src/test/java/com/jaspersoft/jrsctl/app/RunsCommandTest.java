@@ -314,15 +314,21 @@ class RunsCommandTest {
 
   @Test
   void should_refuse_with_exit_2_and_write_nothing_when_the_run_is_unknown() throws Exception {
+    Path out = tmp.resolve("r-nope.zip");
+
     InitCommandTest.Run r =
         InitCommandTest.run(
-            "runs", "support-bundle", "r-nope", "--json", "--home", home.toString());
+            "runs",
+            "support-bundle",
+            "r-nope",
+            "--out",
+            out.toString(),
+            "--json",
+            "--home",
+            home.toString());
 
     assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
-    try (var files = Files.list(tmp)) {
-      assertThat(files.filter(p -> p.getFileName().toString().contains("support-bundle")))
-          .isEmpty();
-    }
+    assertThat(Files.exists(out)).isFalse();
   }
 
   @Test
@@ -340,5 +346,26 @@ class RunsCommandTest {
     assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
     assertThat(Files.readString(out)).isEqualTo("old");
     assertThat(r.err()).contains("already exists");
+  }
+
+  @Test
+  void should_delete_the_partial_zip_when_writing_the_bundle_fails_midway() throws Exception {
+    try (StateStore store = open()) {
+      seedFinishedRun(store);
+    }
+    // events.jsonl with a byte sequence that is not valid UTF-8: SupportBundle.write tails this
+    // file after the zip is already open, so decoding failure here fails the write partway
+    // through, once the target file already exists on disk.
+    Path events =
+        Files.createDirectories(home.resolve("runs").resolve("r-1")).resolve("events.jsonl");
+    Files.write(events, new byte[] {(byte) 0x80, '\n'});
+    Path out = tmp.resolve("partial.zip");
+
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs", "support-bundle", "r-1", "--out", out.toString(), "--home", home.toString());
+
+    assertThat(r.code()).as(r.out() + r.err()).isNotZero();
+    assertThat(Files.exists(out)).as("no partial zip left behind").isFalse();
   }
 }
