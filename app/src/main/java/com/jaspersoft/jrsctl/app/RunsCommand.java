@@ -102,6 +102,29 @@ final class RunsCommand implements Runnable {
     return m;
   }
 
+  /** The `runs show --json` document (runs-show.schema.json); the support bundle's run.json. */
+  static Map<String, Object> showTree(
+      RunRecord run,
+      Optional<JsonNode> plan,
+      List<Transition> transitions,
+      List<SnapshotRecord> snapshots,
+      Clock clock) {
+    Map<String, Object> root = new LinkedHashMap<>();
+    root.put("run", runTree(run, clock));
+    root.put("plan", plan);
+    root.put("transitions", transitions);
+    root.put("snapshots", snapshots);
+    return root;
+  }
+
+  static JsonNode parse(String json) {
+    try {
+      return Json.mapper().readTree(json);
+    } catch (IOException e) {
+      return Json.mapper().createObjectNode();
+    }
+  }
+
   /** {@code jrsctl runs list [--json] [--limit N]}. */
   @Command(
       name = "list",
@@ -200,12 +223,10 @@ final class RunsCommand implements Runnable {
         List<Transition> transitions = store.transitions(runId);
         List<SnapshotRecord> snapshots = store.snapshots(runId);
         if (global.json()) {
-          Map<String, Object> root = new LinkedHashMap<>();
-          root.put("run", runTree(run, services.clock()));
-          root.put("plan", planTree);
-          root.put("transitions", transitions);
-          root.put("snapshots", snapshots);
-          out.println(redactor.redact(JsonOut.write(root)));
+          out.println(
+              redactor.redact(
+                  JsonOut.write(
+                      showTree(run, planTree, transitions, snapshots, services.clock()))));
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -261,14 +282,6 @@ final class RunsCommand implements Runnable {
         }
         out.flush();
         return ExitCodes.SUCCESS;
-      }
-    }
-
-    private static JsonNode parse(String json) {
-      try {
-        return Json.mapper().readTree(json);
-      } catch (java.io.IOException e) {
-        return Json.mapper().createObjectNode();
       }
     }
   }

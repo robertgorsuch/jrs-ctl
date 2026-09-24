@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.app.console;
+package com.jaspersoft.jrsctl.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

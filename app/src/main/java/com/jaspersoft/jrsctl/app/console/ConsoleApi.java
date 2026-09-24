@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app.console;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.jaspersoft.jrsctl.app.SupportBundle;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
