@@ -129,10 +129,10 @@ own branch; it is one logical change, large and almost entirely deletions, and m
 
 ## Action items
 
-1. [ ] PR 1: `runs support-bundle` command, schema, help example, test; operator guide support
-       section; ships in the next minor.
-2. [ ] PR 2: remove `app.console`, the UI, the tests, the schemas, the dependencies; tolerated
-       `console:` block with a warning; spec Draft 1.2; docs; ADR-0007 superseded; `fast` guards list;
-       2.0.0.
+1. [ ] PR 1 (issue #150): `runs support-bundle` command, schema, help example, test; operator guide
+       support section; ships in the next minor.
+2. [ ] PR 2 (issue #151): remove `app.console`, the UI, the tests, the schemas, the dependencies;
+       tolerated `console:` block with a warning; spec Draft 1.2; docs; ADR-0007 superseded; `fast`
+       guards list; 2.0.0.
 3. [ ] Release after: drop the tolerated `console:` block from `ConfigLoader` and `config.schema.json`.
 4. [ ] Revisit #75 with the field testers once 2.0.0 is in their hands.
