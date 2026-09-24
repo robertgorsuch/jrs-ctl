@@ -7,17 +7,24 @@ import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.ops.PlanJson;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -250,5 +257,88 @@ class RunsCommandTest {
 
     assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
     assertThat(run.err()).contains("no stored plan");
+  }
+
+  @Test
+  void should_write_a_redacted_zip_and_report_its_entries_when_the_run_exists() throws Exception {
+    String secret = "hunter2-support";
+    try (StateStore store = open()) {
+      seedFinishedRun(store);
+    }
+    Redactor.global().register(secret);
+    Files.createDirectories(home.resolve("logs"));
+    Files.writeString(
+        home.resolve("logs").resolve("jrsctl.log"),
+        "{\"message\":\"login password=" + secret + "\"}\n",
+        StandardCharsets.UTF_8);
+    Path out = tmp.resolve("r-1.zip");
+
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs",
+            "support-bundle",
+            "r-1",
+            "--out",
+            out.toString(),
+            "--json",
+            "--home",
+            home.toString());
+
+    assertThat(r.code()).as(r.out() + r.err()).isZero();
+    JsonNode doc = Json.mapper().readTree(r.out());
+    assertThat(doc.get("runId").asText()).isEqualTo("r-1");
+    assertThat(Path.of(doc.get("path").asText())).isEqualTo(out.toAbsolutePath());
+    assertThat(doc.get("bytes").asLong()).isEqualTo(Files.size(out));
+    List<String> entries = new ArrayList<>();
+    StringBuilder everything = new StringBuilder();
+    try (ZipInputStream in =
+        new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(out)))) {
+      ZipEntry e;
+      while ((e = in.getNextEntry()) != null) {
+        entries.add(e.getName());
+        everything.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      }
+    }
+    assertThat(entries)
+        .contains(
+            "run.json",
+            "transitions.jsonl",
+            "server.json",
+            "doctor.json",
+            "config-redacted.yaml",
+            "logs/jrsctl.log");
+    assertThat(doc.get("entries")).extracting(JsonNode::asText).containsExactlyElementsOf(entries);
+    assertThat(everything).doesNotContain(secret);
+    assertThat(everything).contains("\"reachable\" : false"); // no server in this fixture
+  }
+
+  @Test
+  void should_refuse_with_exit_2_and_write_nothing_when_the_run_is_unknown() throws Exception {
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs", "support-bundle", "r-nope", "--json", "--home", home.toString());
+
+    assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    try (var files = Files.list(tmp)) {
+      assertThat(files.filter(p -> p.getFileName().toString().contains("support-bundle")))
+          .isEmpty();
+    }
+  }
+
+  @Test
+  void should_refuse_with_exit_2_when_the_output_file_already_exists() throws Exception {
+    try (StateStore store = open()) {
+      seedFinishedRun(store);
+    }
+    Path out = tmp.resolve("taken.zip");
+    Files.writeString(out, "old");
+
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs", "support-bundle", "r-1", "--out", out.toString(), "--home", home.toString());
+
+    assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(Files.readString(out)).isEqualTo("old");
+    assertThat(r.err()).contains("already exists");
   }
 }

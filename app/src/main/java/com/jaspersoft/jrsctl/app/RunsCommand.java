@@ -16,7 +16,10 @@ import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +31,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -54,7 +59,8 @@ import picocli.CommandLine.Spec;
       RunsCommand.ListRuns.class,
       RunsCommand.Show.class,
       RunsCommand.Recover.class,
-      RunsCommand.Prune.class
+      RunsCommand.Prune.class,
+      RunsCommand.SupportBundleCommand.class
     })
 final class RunsCommand implements Runnable {
 
@@ -472,6 +478,87 @@ final class RunsCommand implements Runnable {
       root.put("kept", result.kept());
       root.put("protected", result.protectedCount());
       return root;
+    }
+  }
+
+  /**
+   * {@code jrsctl runs support-bundle <id> [--out <zip>] [--json]}: the support bundle as a file.
+   */
+  @Command(
+      name = "support-bundle",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "Write one run's support bundle: run, plan, step transitions, doctor report, server"
+              + " identity, redacted configuration, log tails and the vendor's own logs, all"
+              + " redacted.")
+  static final class SupportBundleCommand implements Callable<Integer> {
+
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Parameters(index = "0", paramLabel = "<id>", description = "Run id from `runs list`.")
+    String runId;
+
+    @Option(
+        names = "--out",
+        paramLabel = "<zip>",
+        description = "File to write (default: <id>-support-bundle.zip in the current directory).")
+    Path out;
+
+    @Override
+    public Integer call() throws IOException {
+      PrintWriter o = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      Redactor redactor = Redactor.global();
+      Path target = (out == null ? Path.of(runId + "-support-bundle.zip") : out).toAbsolutePath();
+      if (Files.exists(target)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            target + " already exists",
+            Optional.of("choose another --out or move the old bundle"));
+      }
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        Services services = boot.services();
+        Optional<RunRecord> found = services.stateStore().get().run(runId);
+        if (found.isEmpty()) {
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "unknown run " + runId,
+              Optional.of("see `jrsctl runs list`"));
+        }
+        SupportBundle bundle = new SupportBundle(services);
+        SupportBundle.Prepared prepared = bundle.prepare(found.get()); // everything that can fail
+        try (OutputStream zip = Files.newOutputStream(target)) {
+          bundle.write(prepared, zip);
+        }
+        List<String> entries = new ArrayList<>();
+        try (ZipInputStream in = new ZipInputStream(Files.newInputStream(target))) {
+          for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+            entries.add(e.getName());
+          }
+        }
+        if (global.json()) {
+          Map<String, Object> doc = new LinkedHashMap<>();
+          doc.put("runId", runId);
+          doc.put("path", target.toString());
+          doc.put("entries", entries);
+          doc.put("bytes", Files.size(target));
+          o.println(redactor.redact(JsonOut.write(doc)));
+        } else {
+          o.println(
+              redactor.redact(
+                  "Support bundle written: " + target + " (" + entries.size() + " entries)"));
+        }
+        o.flush();
+        return ExitCodes.SUCCESS;
+      }
     }
   }
 }

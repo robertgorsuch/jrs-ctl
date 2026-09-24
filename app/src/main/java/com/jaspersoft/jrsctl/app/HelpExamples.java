@@ -333,6 +333,14 @@ final class HelpExamples {
             new Example(
                 "The same as JSON, for a support ticket", "jrsctl runs show <run-id> --json")));
     m.put(
+        "runs support-bundle",
+        List.of(
+            new Example(
+                "Write the bundle for a support ticket", "jrsctl runs support-bundle <run-id>"),
+            new Example(
+                "Into a named file, listing the entries as JSON",
+                "jrsctl runs support-bundle <run-id> --out bundle.zip --json")));
+    m.put(
         "runs recover",
         List.of(
             new Example(
