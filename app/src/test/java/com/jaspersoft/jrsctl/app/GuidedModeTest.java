@@ -283,10 +283,10 @@ class GuidedModeTest {
                 "--strategy",
                 "rest",
                 "--users-roles",
+                "--settings",
                 "--access-events",
                 "--audit-events",
                 "--monitoring",
-                "--settings",
                 "--legacy-key",
                 "--organization",
                 "org1",
@@ -298,7 +298,7 @@ class GuidedModeTest {
 
   @Test
   void should_ask_about_stopping_for_the_vendor_export_and_skip_the_scope_questions() {
-    guided(List.of(), List.of(), "3", "1", "y", "y", "/tmp/all.zip", "n", "", "q");
+    guided(List.of(), List.of(), "3", "1", "y", "y", "/tmp/all.zip", "n", "n", "", "q");
 
     assertThat(text.toString()).contains("Stop the server while js-export runs");
     assertThat(ran)
@@ -712,5 +712,23 @@ class GuidedModeTest {
         .doesNotContain("Actian");
     assertThat(ran)
         .containsExactly(List.of("import", archive.toString(), "--strategy", "buildomatic"));
+  }
+
+  /** Review of #172: js-export --everything leaves the events out, so they are still offered. */
+  @Test
+  void should_offer_the_events_when_everything_includes_report_jobs() {
+    guided(List.of(), List.of(), "3", "1", "y", "n", "/tmp/all.zip", "y", "n", "", "q");
+
+    assertThat(text.toString()).contains("Include access, audit and monitoring events?");
+    assertThat(ran)
+        .containsExactly(
+            List.of(
+                "export",
+                "--full-server",
+                "--access-events",
+                "--audit-events",
+                "--monitoring",
+                "--out",
+                "/tmp/all.zip"));
   }
 }

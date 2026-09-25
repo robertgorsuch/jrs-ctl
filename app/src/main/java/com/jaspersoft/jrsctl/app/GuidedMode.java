@@ -330,16 +330,18 @@ final class GuidedMode {
       return;
     }
     if (!fullServer) {
-      // a full-server export already carries users, roles, events and settings
+      // a full-server export already carries users, roles and settings
       if (Prompter.yes(out, "Include users and roles? [y/N] ", false)) {
         args.add("--users-roles");
-      }
-      if (Prompter.yes(out, "Include access, audit and monitoring events? [y/N] ", false)) {
-        args.addAll(List.of("--access-events", "--audit-events", "--monitoring"));
       }
       if (Prompter.yes(out, "Include server settings? [y/N] ", false)) {
         args.add("--settings");
       }
+    }
+    // review of #172: js-export --everything leaves the events out (administrator guide p.266), so
+    // they are asked about for every export, the full-server one included
+    if (Prompter.yes(out, "Include access, audit and monitoring events? [y/N] ", false)) {
+      args.addAll(List.of("--access-events", "--audit-events", "--monitoring"));
     }
     if (Prompter.yes(
         out,
