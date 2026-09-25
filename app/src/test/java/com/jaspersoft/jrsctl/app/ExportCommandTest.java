@@ -129,7 +129,15 @@ class ExportCommandTest {
 
     InitCommandTest.Run both = export("--portable", "--key-alias", "k1", "--plan");
     assertThat(both.code()).isEqualTo(ExitCodes.USAGE);
-    assertThat(both.err()).contains("--portable is --key-alias");
+    assertThat(both.err()).contains("--legacy-key (--portable) is --key-alias");
+  }
+
+  /** Jaspersoft calls deprecatedImportExportEncSecret the Legacy key; --portable stays an alias. */
+  @Test
+  void should_encrypt_with_the_legacy_key_when_legacy_key_is_given() {
+    assertThat(export("--legacy-key", "--plan").code()).isZero();
+    assertThat(fake.lastExport.orElseThrow().keyAlias())
+        .contains("deprecatedImportExportEncSecret");
   }
 
   /** Field test 2, E5: one organisation. */

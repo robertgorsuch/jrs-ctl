@@ -326,11 +326,11 @@ final class GuidedMode {
     }
     if (Prompter.yes(
         out,
-        "Encrypt with the legacy import/export key ("
+        "Encrypt with the Legacy key ("
             + ExportRequest.PORTABLE_KEY_ALIAS
             + ") so another server can import it? [y/N] ",
         false)) {
-      args.add("--portable");
+      args.add("--legacy-key");
     }
     Optional<String> organization = Prompter.line(out, "Organisation (Enter for all): ");
     if (organization.isEmpty()) {
@@ -418,8 +418,8 @@ final class GuidedMode {
 
   /**
    * Field test 3: the archive's {@code .jrsctl.json} says which key encrypted it, so there is
-   * nothing to ask when it is there; without it the question is whether the legacy import/export
-   * key was used, not the alias's name. Empty when input ended.
+   * nothing to ask when it is there; without it the question is whether the Legacy key key was
+   * used, not the alias's name. Empty when input ended.
    */
   private Optional<List<String>> keyAlias(Path archive) {
     Optional<Sidecar> sidecar;
@@ -449,9 +449,9 @@ final class GuidedMode {
     Optional<String> answer =
         Prompter.line(
             out,
-            "No .jrsctl.json beside the archive. Was it exported with the legacy import/export key ("
+            "No .jrsctl.json beside the archive. Was it exported with the Legacy key ("
                 + ExportRequest.PORTABLE_KEY_ALIAS
-                + ", jrsctl export --portable)? yes, no, or type another key alias [no]: ");
+                + ", jrsctl export --legacy-key)? yes, no, or type another key alias [no]: ");
     if (answer.isEmpty()) {
       return Optional.empty();
     }

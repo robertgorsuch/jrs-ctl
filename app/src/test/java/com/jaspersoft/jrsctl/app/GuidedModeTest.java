@@ -232,13 +232,13 @@ class GuidedModeTest {
                 "--audit-events",
                 "--monitoring",
                 "--settings",
-                "--portable",
+                "--legacy-key",
                 "--organization",
                 "org1",
                 "--out",
                 "/tmp/repo.zip"));
     assertThat(text.toString())
-        .contains("Encrypt with the legacy import/export key (deprecatedImportExportEncSecret)");
+        .contains("Encrypt with the Legacy key (deprecatedImportExportEncSecret)");
   }
 
   @Test
@@ -330,7 +330,7 @@ class GuidedModeTest {
         .contains("Merge when the archive's organisation id differs");
     assertThat(text.toString())
         .contains("No .jrsctl.json beside the archive")
-        .contains("legacy import/export key (deprecatedImportExportEncSecret");
+        .contains("Legacy key (deprecatedImportExportEncSecret");
   }
 
   /** Field test 3: with a sidecar the key alias is known, so nothing is asked about it. */
