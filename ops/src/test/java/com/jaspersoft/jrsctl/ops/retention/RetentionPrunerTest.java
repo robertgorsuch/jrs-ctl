@@ -317,6 +317,33 @@ class RetentionPrunerTest {
     assertThat(fresh).exists();
   }
 
+  /**
+   * Field test 3: a converted official package ({@code runs/hotfix-official-*.jrsctl.zip} and its
+   * notes) is a cache, rebuilt from the downloaded package when needed, so it goes by age.
+   */
+  @Test
+  void should_remove_an_old_converted_package_when_it_is_older_than_retention() throws Exception {
+    services(30, 20);
+    Files.createDirectories(fake.home.runs());
+    Path old = fake.home.runs().resolve("hotfix-official-0123456789abcdef.jrsctl.zip");
+    Path oldNotes = fake.home.runs().resolve(old.getFileName() + ".notes.json");
+    Path fresh = fake.home.runs().resolve("hotfix-official-fedcba9876543210.jrsctl.zip");
+    for (Path p : List.of(old, oldNotes, fresh)) {
+      Files.writeString(p, "x", StandardCharsets.UTF_8);
+    }
+    for (Path p : List.of(old, oldNotes)) {
+      Files.setLastModifiedTime(p, FileTime.from(now.minus(Duration.ofDays(40))));
+    }
+    Files.setLastModifiedTime(fresh, FileTime.from(now.minus(Duration.ofDays(1))));
+
+    RetentionPruner.Result result = pruner().prune(false);
+
+    assertThat(ids(result)).contains("runs/" + old.getFileName());
+    assertThat(old).doesNotExist();
+    assertThat(oldNotes).doesNotExist();
+    assertThat(fresh).exists();
+  }
+
   @Test
   void should_keep_the_bundle_copy_of_an_installed_hotfix_when_its_run_is_expired()
       throws Exception {

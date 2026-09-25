@@ -276,6 +276,8 @@ Settings, history and backups are kept in one folder, the **jrsctl home**:
 
 The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (backups taken before each change) and `logs\jrsctl.log`. Passwords never appear in any of them. Back this folder up along with the server.
 
+`jrsctl home show` says where the home is, how much room its volume has and what uses it. If it sits on a small volume, `jrsctl home set <dir>` moves it to a bigger one for everyone who uses this machine's jrsctl (`jrsctl home reset` undoes it); `--home <dir>` or the `JRSCTL_HOME` variable choose a home for one command or one shell.
+
 ### Checking your download
 
 Each release file has a `.sha256` checksum beside it:

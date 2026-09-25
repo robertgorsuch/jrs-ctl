@@ -436,7 +436,7 @@ final class InitCommand implements Callable<Integer> {
         + root
         + " ("
         + free
-        + " free; backups and state live here; move it with --home or JRSCTL_HOME)";
+        + " free; backups and state live here; move it with jrsctl home set <dir>)";
   }
 
   private int alreadyExists(PrintWriter out, PrintWriter err, FileAlreadyExistsException e) {

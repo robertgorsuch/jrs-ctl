@@ -95,7 +95,11 @@ public final class SnapshotStore {
         DiskSpace.problems(
             files, List.of(new DiskSpace.Need("snapshot " + runId + "/" + stepId, dir, bytes)));
     if (!short_.isEmpty()) {
-      throw new IOException("not enough free space for the snapshot: " + String.join("; ", short_));
+      throw new IOException(
+          "not enough free space for the snapshot: "
+              + String.join("; ", short_)
+              + "; "
+              + DiskSpace.remedy(home.root()));
     }
     Path payload = dir.resolve(Snapshot.PAYLOAD_DIR);
     Files.createDirectories(payload);

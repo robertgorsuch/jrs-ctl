@@ -50,6 +50,9 @@ public final class RetentionPruner {
   /** Working directories {@code BundleWorkspace} leaves under {@code runs/} when cleanup fails. */
   static final String VERIFY_PREFIX = "hotfix-verify-";
 
+  /** Converted official packages under {@code runs/}: a cache rebuilt from the download. */
+  static final String CONVERTED_PREFIX = "hotfix-official-";
+
   /** {@code EmbeddedStep.RUN_SUFFIX}: a re-applied hotfix runs as {@code <runId>-hf-<slug>}. */
   static final String SUB_RUN_SUFFIX = "-hf-";
 
@@ -163,6 +166,7 @@ public final class RetentionPruner {
     protectedKept += loose.protectedKept();
     // run directories are listed with what was removed; kept and protected stay snapshot counts
     removed.addAll(runDirectories(store, protectedRuns, retention, dryRun));
+    removed.addAll(convertedPackages(retention, dryRun));
     if (!dryRun) {
       sweepStaleRows(store, protectedRuns);
     }
@@ -323,6 +327,42 @@ public final class RetentionPruner {
       if (!dryRun) {
         LOG.info("pruning run directory {}", entry);
         Trees.deleteRecursively(entry);
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Field test 3: {@code runs/hotfix-official-<sha>.jrsctl.zip} and its {@code .notes.json} are
+   * what planning converts an official package into. Nothing refers to them after planning: a run
+   * keeps its own bundle copy under its run directory, and a later command converts the download
+   * again. So they go by age, like the {@code hotfix-verify-*} leftovers, and never by run.
+   */
+  private List<Removed> convertedPackages(Duration retention, boolean dryRun) throws IOException {
+    Path root = services.home().runs();
+    if (retention.isZero() || retention.isNegative() || !Files.isDirectory(root)) {
+      return List.of();
+    }
+    Instant cutoff = services.clock().instant().minus(retention);
+    List<Path> entries;
+    try (Stream<Path> listing = Files.list(root)) {
+      entries =
+          listing
+              .filter(Files::isRegularFile)
+              .filter(p -> p.getFileName().toString().startsWith(CONVERTED_PREFIX))
+              .sorted()
+              .toList();
+    }
+    List<Removed> removed = new ArrayList<>();
+    for (Path entry : entries) {
+      if (!Files.getLastModifiedTime(entry).toInstant().isBefore(cutoff)) {
+        continue;
+      }
+      String name = entry.getFileName().toString();
+      removed.add(new Removed("runs/" + name, name, "*", entry));
+      if (!dryRun) {
+        LOG.info("pruning converted hotfix package {}", entry);
+        Files.deleteIfExists(entry);
       }
     }
     return removed;

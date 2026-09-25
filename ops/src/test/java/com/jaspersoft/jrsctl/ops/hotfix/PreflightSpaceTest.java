@@ -34,6 +34,11 @@ class PreflightSpaceTest {
 
       assertThat(result).isInstanceOf(CheckResult.Fail.class);
       assertThat(((CheckResult.Fail) result).message()).contains("snapshot").contains("free");
+      // field test 3: the remedy names the home and how to move it, not only "free disk space"
+      assertThat(((CheckResult.Fail) result).remediation())
+          .contains(f.fake.home.root().toString())
+          .contains("jrsctl home set")
+          .contains("jrsctl runs prune");
     }
   }
 

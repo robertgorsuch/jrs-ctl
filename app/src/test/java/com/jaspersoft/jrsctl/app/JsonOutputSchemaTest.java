@@ -1270,6 +1270,35 @@ class JsonOutputSchemaTest {
 
     s.add(
         of(
+            "home show",
+            "home show",
+            0,
+            dir -> run("home", "show", "--json", "--home", emptyHome(dir).toString())));
+    s.add(
+        of(
+            "home set",
+            "home set",
+            0,
+            dir ->
+                run(
+                    "home",
+                    "set",
+                    dir.resolve("bigger").toString(),
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "home reset",
+            "home reset",
+            0,
+            dir -> {
+              Path home = emptyHome(dir);
+              run("home", "set", dir.resolve("bigger").toString(), "--home", home.toString());
+              return run("home", "reset", "--json", "--home", home.toString());
+            }));
+    s.add(
+        of(
             "keys list",
             "keys list",
             0,

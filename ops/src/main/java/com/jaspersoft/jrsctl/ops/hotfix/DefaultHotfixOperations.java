@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.core.engine.Sleeper;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
+import com.jaspersoft.jrsctl.core.platform.DiskSpace;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
@@ -191,6 +192,14 @@ public final class DefaultHotfixOperations implements HotfixOperations {
       notes.addAll(converted.notes());
       return new Source(out, true, notes, sourceHash);
     } catch (IOException e) {
+      if (DiskSpace.outOfSpace(e)) {
+        // field test 3: converting into a full home is not a bad download
+        throw new HotfixException(
+            HotfixException.PRECHECK,
+            "the jrsctl home ran out of space converting " + given + " into " + out,
+            DiskSpace.remedy(rt.home().root()),
+            e);
+      }
       throw new HotfixException(
           HotfixException.PRECHECK,
           "cannot read the official hotfix package " + given + ": " + e.getMessage(),

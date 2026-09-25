@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-09-25 (field test 3, moving the jrsctl home; ADR-0041)
+
+- §5.1: a home holding a `home.redirect` file is replaced by the directory it names, one hop only, whichever source chose the home; `jrsctl home show|set|reset` read, write and remove it. Space failures in hotfix, snapshot and upgrade checks name the home and say how to make room or move it, and converted official hotfix packages under `runs/` are pruned by age.
+
 ## Draft 1.2 amendment — 2026-09-25 (issue #160, the run's log lines)
 
 - §12.4: the bundle's `logs/<name>` is the run's own lines (by the `runId` the runner now puts on every line it writes during a run, or by the run's time window for lines without one), at most 2,000, and `logs/tail-<name>` holds the last 200 lines of the log. The JSON log gains one INFO line per invocation and per run start, step transition and run end, each written after the journal.

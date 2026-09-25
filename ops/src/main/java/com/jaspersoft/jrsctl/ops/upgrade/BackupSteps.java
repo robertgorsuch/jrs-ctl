@@ -496,9 +496,7 @@ final class BackupSteps {
               rt.files(),
               List.of(new DiskSpace.Need("webapp backup", in.snapshots(ctx).archivesDir(), bytes)));
       if (!problems.isEmpty()) {
-        return CheckResult.fail(
-            String.join("; ", problems),
-            "free space under " + rt.home().snapshots() + " or move the jrsctl home");
+        return CheckResult.fail(String.join("; ", problems), DiskSpace.remedy(rt.home().root()));
       }
       return CheckResult.pass();
     }

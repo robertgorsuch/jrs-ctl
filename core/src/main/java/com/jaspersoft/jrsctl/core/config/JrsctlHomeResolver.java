@@ -2,11 +2,13 @@ package com.jaspersoft.jrsctl.core.config;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
+import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Locates {@code $JRSCTL_HOME} (spec §5.1): the {@code JRSCTL_HOME} environment variable wins,
@@ -38,11 +40,26 @@ public final class JrsctlHomeResolver {
     Objects.requireNonNull(choice, "choice");
     String fromEnv = env.get(ENV_VAR);
     if (fromEnv != null && !fromEnv.isBlank()) {
-      return new JrsctlHome(
-          Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize());
+      return new JrsctlHome(HomeRedirect.follow(Path.of(UserPaths.expand(fromEnv.strip(), env))));
     }
     Path root = platform.defaultHome().toAbsolutePath().normalize();
-    if (choice.systemHomeUnwritable() && root.equals(normalise(choice.home()))) {
+    boolean fallback = choice.systemHomeUnwritable() && root.equals(normalise(choice.home()));
+    if (fallback) {
+      // ADR-0041, review of #169: the system home this user cannot write is the shared one. Only a
+      // redirect written there (by someone who could) is followed; one in the per-user fallback
+      // would let any operator give themselves a second journal and run lock.
+      Optional<Path> shared = HomeRedirect.target(normalise(choice.systemHome()));
+      if (shared.isPresent()) {
+        return new JrsctlHome(shared.get());
+      }
+    } else {
+      // ADR-0041: a default home that has been pointed elsewhere is followed
+      Optional<Path> redirected = HomeRedirect.target(root);
+      if (redirected.isPresent()) {
+        return new JrsctlHome(redirected.get());
+      }
+    }
+    if (fallback) {
       throw new ConfigException(
           choice.systemHome()
               + " exists but this user cannot write to it, so jrsctl would keep its state and run"

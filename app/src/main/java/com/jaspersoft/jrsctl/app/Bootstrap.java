@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.JrsctlHomeResolver;
+import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
 import com.jaspersoft.jrsctl.core.platform.NativeTempDir;
 import com.jaspersoft.jrsctl.core.platform.OperatorPrompt;
 import com.jaspersoft.jrsctl.core.platform.Platform;
@@ -75,7 +76,7 @@ final class Bootstrap implements AutoCloseable {
     JrsctlHome home =
         options
             .home()
-            .map(h -> new JrsctlHome(h.toAbsolutePath().normalize()))
+            .map(h -> new JrsctlHome(HomeRedirect.follow(h)))
             .orElseGet(() -> JrsctlHomeResolver.resolve(env, detected));
     // review 4.1: the home holds secrets.enc, a 1.x console.token, state.db and the snapshots, so a
     // home jrsctl creates is private to its owner from the start. An existing home is left as the

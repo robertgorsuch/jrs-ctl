@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
+import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
 import java.util.Map;
@@ -57,22 +58,23 @@ public final class LogFile {
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       if (arg.equals("--home") && i + 1 < args.length) {
-        return Path.of(UserPaths.expand(args[i + 1], env)).toAbsolutePath().normalize();
+        return HomeRedirect.follow(Path.of(UserPaths.expand(args[i + 1], env)));
       }
       if (arg.startsWith("--home=")) {
-        return Path.of(UserPaths.expand(arg.substring("--home=".length()), env))
-            .toAbsolutePath()
-            .normalize();
+        return HomeRedirect.follow(
+            Path.of(UserPaths.expand(arg.substring("--home=".length()), env)));
       }
     }
     String fromEnv = env.get("JRSCTL_HOME");
     if (fromEnv != null && !fromEnv.isBlank()) {
-      return Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize();
+      return HomeRedirect.follow(Path.of(UserPaths.expand(fromEnv.strip(), env)));
     }
-    return platformDefault(env);
-  }
-
-  private static Path platformDefault(Map<String, String> env) {
-    return DefaultHome.choose(env).home();
+    // ADR-0041: the same one-hop redirect Bootstrap follows, so logs land in the home state uses;
+    // with an unwritable system home only its own redirect counts, as in JrsctlHomeResolver
+    DefaultHome.Choice choice = DefaultHome.choose(env);
+    if (choice.systemHomeUnwritable()) {
+      return HomeRedirect.target(choice.systemHome()).orElse(choice.home());
+    }
+    return HomeRedirect.follow(choice.home());
   }
 }

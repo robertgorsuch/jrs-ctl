@@ -107,12 +107,27 @@ final class GuidedMode {
     out.println();
     out.println("  1) Detect the installation and write the settings");
     out.println("  2) Show and change settings");
-    switch (Prompter.line(out, "Choose [1-2]: ").orElse("")) {
+    out.println("  3) Where jrsctl keeps its state and backups (free space, move it)");
+    switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
       case "1" -> detect();
       case "2" -> changeSettings();
+      case "3" -> home();
       default -> {
         // back to the menu
       }
+    }
+  }
+
+  /**
+   * Field test 3 (ADR-0041): the home is not a setting in config.yaml, which lives inside it, so
+   * the menu shows it and offers to move it with {@code jrsctl home set}.
+   */
+  private void home() {
+    execute("home", "show");
+    Optional<String> dir =
+        Prompter.path(out, "Move it to (a directory on a bigger volume; Enter to keep it): ");
+    if (dir.isPresent() && !dir.get().isBlank()) {
+      execute("home", "set", UserPaths.expand(dir.get().strip(), Env.vars()));
     }
   }
 

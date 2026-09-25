@@ -46,6 +46,7 @@ import picocli.CommandLine.Spec;
       CustomizationsCommand.class,
       RunsCommand.class,
       KeysCommand.class,
+      HomeCommand.class,
       SecretsCommand.class,
       DocsCommand.class,
       picocli.CommandLine.HelpCommand.class

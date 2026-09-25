@@ -377,11 +377,13 @@ final class LocalChecks {
           "disk", "cannot read free space of " + home + ": " + e.getMessage(), "check the path");
     }
     long least = homeFree;
+    long installFreeSeen = Long.MAX_VALUE;
     StringBuilder detail =
         new StringBuilder(human(homeFree) + " free under " + home + " (backups and state)");
     if (install.isPresent()) {
       try {
         long installFree = s.platform().files().freeSpaceBytes(install.get());
+        installFreeSeen = installFree;
         least = Math.min(least, installFree);
         detail
             .append(", ")
@@ -398,19 +400,26 @@ final class LocalChecks {
     } catch (IOException | RuntimeException e) {
       detail.append("; snapshot size unknown");
     }
+    // field test 3: say which volume is short and give the advice that fits it; moving the
+    // jrsctl home does nothing for a full installation volume
+    boolean installShort = installFreeSeen < homeFree;
+    String where =
+        installShort
+            ? "the installation's volume ("
+                + install.map(Path::toString).orElse("")
+                + ") has the least room; free space there, since hotfixes and upgrades write"
+                + " into it"
+            : "the jrsctl home's volume ("
+                + home
+                + ") has the least room: remove old snapshots with `jrsctl runs prune`, or move"
+                + " the home to a bigger volume with `jrsctl home set <dir>`";
     if (least < DISK_FAIL_BYTES) {
       return ReportItem.fail(
-          "disk",
-          detail.toString(),
-          "free at least 1 GB (5 GB recommended) on that volume, prune snapshots with jrsctl runs"
-              + " prune, or move the jrsctl home with --home or JRSCTL_HOME");
+          "disk", detail.toString(), "at least 1 GB is needed (5 GB recommended); " + where);
     }
     if (least < DISK_WARN_BYTES) {
       return ReportItem.warn(
-          "disk",
-          detail.toString(),
-          "5 GB recommended for backups and staging; the jrsctl home can be moved with --home or"
-              + " JRSCTL_HOME");
+          "disk", detail.toString(), "5 GB recommended for backups and staging; " + where);
     }
     return ReportItem.pass("disk", detail.toString());
   }

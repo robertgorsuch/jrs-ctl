@@ -77,6 +77,15 @@ final class HotfixVerifySteps {
         Trees.deleteRecursively(dir);
         bundle = HotfixBundle.extract(in.bundle(), dir);
       } catch (IOException e) {
+        if (DiskSpace.outOfSpace(e)) {
+          // field test 3: a full home is not a broken bundle
+          return CheckResult.fail(
+              "the jrsctl home ran out of space unpacking "
+                  + in.bundle()
+                  + " under "
+                  + in.bundleDir(ctx),
+              DiskSpace.remedy(ctx.home().root()));
+        }
         return CheckResult.fail(
             "cannot unpack " + in.bundle() + ": " + e.getMessage(),
             "check that the bundle is a readable jrsctl hotfix ZIP");
@@ -309,13 +318,14 @@ final class HotfixVerifySteps {
           problems.add("cannot size " + existing + " for the snapshot: " + e.getMessage());
         }
       }
-      problems.addAll(
+      List<String> space =
           DiskSpace.problems(
               files,
               List.of(
                   new DiskSpace.Need("staging", in.stagingDir(ctx), payloadBytes),
                   new DiskSpace.Need("snapshot", ctx.home().snapshots(), snapshotBytes),
-                  new DiskSpace.Need("landing", base, payloadBytes))));
+                  new DiskSpace.Need("landing", base, payloadBytes)));
+      problems.addAll(space);
       Set<Path> dirs = new HashSet<>();
       for (Path p : in.touched()) {
         dirs.add(nearestExistingDir(p.getParent()));
@@ -375,10 +385,12 @@ final class HotfixVerifySteps {
         }
       }
       if (!problems.isEmpty()) {
+        String remedy =
+            "free disk space, fix permissions, stop the process holding the files, or fix"
+                + " service.* and database.* in config.yaml";
         return CheckResult.fail(
             String.join("; ", problems),
-            "free disk space, fix permissions, stop the process holding the files, or fix"
-                + " service.* and database.* in config.yaml");
+            space.isEmpty() ? remedy : DiskSpace.remedy(ctx.home().root()) + "; " + remedy);
       }
       return notes.isEmpty() ? CheckResult.pass() : CheckResult.warn(String.join("; ", notes));
     }
