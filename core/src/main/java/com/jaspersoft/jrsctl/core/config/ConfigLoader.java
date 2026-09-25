@@ -107,6 +107,11 @@ public final class ConfigLoader {
       }
     }
     for (Map.Entry<String, String> flag : flags.entrySet()) {
+      if (flag.getKey().startsWith("console.")) {
+        throw new ConfigException(
+            flag.getKey() + " is no longer used (ADR-0038)",
+            "remove console.* from the command line: jrsctl has no web console");
+      }
       SchemaKeys.Type type = leafKeys.getOrDefault(flag.getKey(), SchemaKeys.Type.STRING);
       put(tree, flag.getKey(), coerce(flag.getValue(), type));
     }

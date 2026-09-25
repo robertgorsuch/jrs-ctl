@@ -422,11 +422,24 @@ class RunsCommandTest {
     Files.write(log, new byte[] {(byte) 0x80, '\n'});
     Path out = tmp.resolve("partial.zip");
 
-    InitCommandTest.Run r =
-        InitCommandTest.run(
-            "runs", "support-bundle", "r-1", "--out", out.toString(), "--home", home.toString());
+    // pin the log file this run reads: SupportBundle.logFile() prefers jrsctl.log.file when it
+    // names a regular file, and another test in a full app-module run can leave that property
+    // set, which would make it skip the corrupted <home>/logs/jrsctl.log above (#151 PR2 finding C)
+    String savedLogFile = System.getProperty(LogFile.PROPERTY);
+    System.setProperty(LogFile.PROPERTY, log.toString());
+    try {
+      InitCommandTest.Run r =
+          InitCommandTest.run(
+              "runs", "support-bundle", "r-1", "--out", out.toString(), "--home", home.toString());
 
-    assertThat(r.code()).as(r.out() + r.err()).isNotZero();
-    assertThat(Files.exists(out)).as("no partial zip left behind").isFalse();
+      assertThat(r.code()).as(r.out() + r.err()).isNotZero();
+      assertThat(Files.exists(out)).as("no partial zip left behind").isFalse();
+    } finally {
+      if (savedLogFile == null) {
+        System.clearProperty(LogFile.PROPERTY);
+      } else {
+        System.setProperty(LogFile.PROPERTY, savedLogFile);
+      }
+    }
   }
 }

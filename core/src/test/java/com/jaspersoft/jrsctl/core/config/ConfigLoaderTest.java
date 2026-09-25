@@ -578,6 +578,16 @@ class ConfigLoaderTest {
         .hasMessageContaining("console.port is no longer used (ADR-0038)");
   }
 
+  @Test
+  void should_refuse_a_console_flag_naming_the_adr_when_loading() {
+    assertThatThrownBy(
+            () ->
+                new ConfigLoader()
+                    .load(tmp.resolve("missing.yaml"), Map.of(), Map.of("console.port", "7421")))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console.port is no longer used (ADR-0038)");
+  }
+
   /**
    * The gap ADR-0038's promise depends on: an operator's first move on a 1.x file is often {@code
    * config set}, which must not be refused just because a stale {@code console:} block is still
