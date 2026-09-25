@@ -64,7 +64,6 @@ class GuidedModeTest {
         .contains("8) Read the documentation")
         .contains("jrsctl --help lists")
         .contains("every command")
-        .contains("jrsctl console opens the web console")
         .contains("--json makes any command");
   }
 

@@ -415,12 +415,11 @@ class RunsCommandTest {
     try (StateStore store = open()) {
       seedFinishedRun(store);
     }
-    // events.jsonl with a byte sequence that is not valid UTF-8: SupportBundle.write tails this
+    // jrsctl.log with a byte sequence that is not valid UTF-8: SupportBundle.write tails this
     // file after the zip is already open, so decoding failure here fails the write partway
     // through, once the target file already exists on disk.
-    Path events =
-        Files.createDirectories(home.resolve("runs").resolve("r-1")).resolve("events.jsonl");
-    Files.write(events, new byte[] {(byte) 0x80, '\n'});
+    Path log = Files.createDirectories(home.resolve("logs")).resolve("jrsctl.log");
+    Files.write(log, new byte[] {(byte) 0x80, '\n'});
     Path out = tmp.resolve("partial.zip");
 
     InitCommandTest.Run r =

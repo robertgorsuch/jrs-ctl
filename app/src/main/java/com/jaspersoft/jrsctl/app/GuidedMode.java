@@ -82,8 +82,7 @@ final class GuidedMode {
       out.println("  q) Quit");
       out.println();
       out.println("Each entry runs an ordinary command and prints it first. jrsctl --help lists");
-      out.println("every command, jrsctl console opens the web console, --json makes any command");
-      out.println("machine-readable.");
+      out.println("every command, and --json makes any command machine-readable.");
       Optional<String> choice = Prompter.line(out, "Choose [1-8, q]: ");
       if (choice.isEmpty() || choice.get().equalsIgnoreCase("q")) {
         return ExitCodes.SUCCESS;

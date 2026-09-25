@@ -18,11 +18,10 @@ import java.util.TreeSet;
  * com.jaspersoft.jrsctl.core.event.Event} per line ({@code events.schema.json}), then exactly one
  * of {@code {"outcome": ...}} ({@code outcome.schema.json}) or {@code {"error": ...}}; any command
  * may instead print a single {@code error.schema.json} document when it refuses or fails, and with
- * {@code --plan} a stream command prints only the plan. The file also holds the console API
- * schemas, keyed by endpoint path (spec §13.1). Every schema carries an {@code $id} under {@link
- * #IRI_PREFIX}; {@link #resourcePath} maps such an id back to the classpath resource so {@code
- * $ref}s between schemas (plan inside {@code runs show}, the configuration inside {@code init})
- * resolve from the jar without network access.
+ * {@code --plan} a stream command prints only the plan. Every schema carries an {@code $id} under
+ * {@link #IRI_PREFIX}; {@link #resourcePath} maps such an id back to the classpath resource so
+ * {@code $ref}s between schemas (plan inside {@code runs show}, the configuration inside {@code
+ * init}) resolve from the jar without network access.
  */
 public final class JsonSchemas {
 
@@ -95,7 +94,6 @@ public final class JsonSchemas {
     m.put("secrets set", new Document("secrets-set.schema.json"));
     m.put("secrets remove", new Document("secrets-remove.schema.json"));
     m.put("secrets list", new Document("secrets-list.schema.json"));
-    m.put("console", new Document("console.schema.json"));
     return Collections.unmodifiableMap(m);
   }
 
@@ -107,48 +105,6 @@ public final class JsonSchemas {
   /** Every command path that has a schema, in declaration order. */
   public static Set<String> commands() {
     return BY_COMMAND.keySet();
-  }
-
-  /** The console API schemas, keyed by endpoint path (spec §13.1). */
-  private static final Map<String, String> BY_ENDPOINT = endpointSchemas();
-
-  private static Map<String, String> endpointSchemas() {
-    Map<String, String> m = new LinkedHashMap<>();
-    m.put("GET /api/health", "api-health.schema.json");
-    m.put("GET /api/server", "api-server.schema.json");
-    m.put("POST /api/plan", "api-plan.schema.json");
-    m.put("POST /api/run", "api-run-started.schema.json");
-    m.put("GET /api/runs", "api-runs.schema.json");
-    m.put("GET /api/runs/{id}", "api-runs-show.schema.json");
-    m.put("POST /api/runs/{id}/rollback", "api-run-started.schema.json");
-    m.put("POST /api/runs/{id}/resume", "api-run-started.schema.json");
-    m.put("POST /api/runs/{id}/cancel", "api-cancelled.schema.json");
-    m.put("POST /api/auth/launch", "api-launch-token.schema.json");
-    m.put("GET /api/doctor", "api-doctor.schema.json");
-    m.put("GET /api/hotfixes", "api-hotfixes.schema.json");
-    m.put("GET /api/smoke", "api-smoke.schema.json");
-    m.put("POST /api/smoke", "api-smoke.schema.json");
-    m.put("GET /api/customizations", "api-customizations.schema.json");
-    m.put("GET /api/customizations/diff", "api-customizations-diff.schema.json");
-    m.put("POST /api/customizations/register", "customization.schema.json");
-    m.put("POST /api/customizations/unregister", "customizations-unregister.schema.json");
-    m.put("GET /api/snapshots", "api-snapshots.schema.json");
-    m.put("POST /api/snapshots/prune", "api-snapshots-prune.schema.json");
-    m.put("GET /api/config", "api-config.schema.json");
-    m.put("GET /api/selfcheck", "selfcheck.schema.json");
-    m.put("GET /api/keys", "keys-list.schema.json");
-    m.put("GET /api/repository/tree", "api-repository.schema.json");
-    return Collections.unmodifiableMap(m);
-  }
-
-  /** The schema file for a console endpoint such as {@code "GET /api/health"}. */
-  public static Optional<String> forEndpoint(String endpoint) {
-    return Optional.ofNullable(BY_ENDPOINT.get(endpoint));
-  }
-
-  /** Every console endpoint that has a schema, in declaration order. */
-  public static Set<String> endpoints() {
-    return BY_ENDPOINT.keySet();
   }
 
   /** Every schema file name a consumer may need, including the shared stream and error schemas. */
@@ -164,7 +120,6 @@ public final class JsonSchemas {
         case Stream s -> {}
       }
     }
-    names.addAll(BY_ENDPOINT.values());
     return Collections.unmodifiableSet(names);
   }
 

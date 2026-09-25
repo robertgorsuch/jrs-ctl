@@ -390,13 +390,6 @@ final class HelpExamples {
         "secrets list",
         List.of(new Example("Show the names stored (never the values)", "jrsctl secrets list")));
     m.put(
-        "console",
-        List.of(
-            new Example("Open the web console in this machine's browser", "jrsctl console"),
-            new Example(
-                "Server without a desktop: start it here, open the printed URL through an SSH tunnel",
-                "jrsctl console --no-open")));
-    m.put(
         "docs",
         List.of(
             new Example("List the built-in documents", "jrsctl docs"),

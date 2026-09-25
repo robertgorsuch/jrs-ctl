@@ -33,23 +33,20 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * The zip behind {@code jrsctl runs support-bundle} (and, until ADR-0038 lands, {@code GET
- * /api/runs/{id}/support-bundle}): {@code run.json}, {@code plan.json}, {@code transitions.jsonl},
- * {@code events.jsonl} (when the console kept one), {@code server.json}, {@code doctor.json},
- * {@code config-redacted.yaml} and the tail of the JSON log. Invariants: every byte passes through
- * the {@link Redactor} on its way into the archive, so a registered secret cannot appear in any
+ * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json}, {@code
+ * plan.json}, {@code transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code
+ * config-redacted.yaml} and the tail of the JSON log. Invariants: every byte passes through the
+ * {@link Redactor} on its way into the archive, so a registered secret cannot appear in any
  * encoding the redactor knows; everything that can fail, which is the live doctor run and the
- * server probe behind it, happens in {@link #prepare} before a single response header is committed,
- * so a failure is an error document and never a truncated zip delivered as 200 (review 4.8); the
- * archive is then streamed entry by entry and both tails are kept in bounded deques, so memory
- * stays flat whatever the log or event stream size; a missing optional input yields no entry rather
- * than an error; the log is the file the running process actually writes, named by {@link
- * LogFile#PROPERTY}, not a guess at its location.
+ * server probe behind it, runs in {@link #prepare} before the file is created, so a failure is an
+ * exit-2 or exit-4 message and never a partial zip (review 4.8); the archive is then streamed entry
+ * by entry and the log tail is kept in a bounded deque, so memory stays flat whatever the log size;
+ * a missing optional input yields no entry rather than an error; the log is the file the running
+ * process actually writes, named by {@link LogFile#PROPERTY}, not a guess at its location.
  */
 public final class SupportBundle {
 
   static final int LOG_TAIL_LINES = 2000;
-  static final int EVENT_TAIL_LINES = 20_000;
 
   private final Services services;
   private final Redactor redactor;
@@ -122,14 +119,6 @@ public final class SupportBundle {
         line(zip, Json.write(t));
       }
       zip.closeEntry();
-      Path events = services.home().runDir(run.runId()).resolve("events.jsonl");
-      if (Files.isRegularFile(events)) {
-        zip.putNextEntry(new ZipEntry("events.jsonl"));
-        for (String l : tail(events, EVENT_TAIL_LINES)) {
-          line(zip, l);
-        }
-        zip.closeEntry();
-      }
       text(zip, "server.json", prepared.serverJson());
       text(zip, "doctor.json", prepared.doctorJson());
       text(zip, "config-redacted.yaml", prepared.configYaml());
@@ -188,7 +177,7 @@ public final class SupportBundle {
   /**
    * The log this process is writing (review 4.8). {@code Main} always sets the property, from
    * {@code --home}, {@code JRSCTL_HOME} or the platform default; the home-relative path is only a
-   * fallback for a console started in-process by a test.
+   * fallback for a test that runs the CLI in-process without going through {@code Main}.
    */
   Path logFile() {
     Path underHome = services.home().root().resolve("logs").resolve("jrsctl.log");
@@ -198,7 +187,7 @@ public final class SupportBundle {
     }
     // The property is what Main set from --home, so the two are normally the same file. When the
     // property names a file that is not there, the home's log is the better answer: a bundle with
-    // no log in it is worse than a bundle with the log the console has been writing.
+    // no log in it is worse than a bundle with the log the running process has been writing.
     Path named = Path.of(configured);
     return Files.isRegularFile(named) ? named : underHome;
   }

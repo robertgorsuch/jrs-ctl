@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
@@ -41,14 +42,17 @@ class Phase0SkeletonTest {
   }
 
   @Test
-  void packaged_jar_carries_no_mock_backend() throws Exception {
+  void packaged_jar_carries_no_web_console() throws Exception {
     Path jar = Path.of(System.getProperty("jrsctl.jar"));
     try (JarFile packaged = new JarFile(jar.toFile())) {
-      assertThat(packaged.getEntry("web/app.js")).as("the console UI ships").isNotNull();
-      assertThat(packaged.getEntry("web/mock.js"))
-          .as("the sample backend must not be reachable from a real console")
-          .isNull();
-      assertThat(packaged.getEntry("web/README.md")).isNull();
+      assertThat(packaged.stream().map(JarEntry::getName))
+          .as("ADR-0038: no static UI, no Javalin, no Jetty, no Kotlin in the jar")
+          .noneMatch(
+              n ->
+                  n.startsWith("web/")
+                      || n.startsWith("io/javalin/")
+                      || n.startsWith("org/eclipse/jetty/")
+                      || n.startsWith("kotlin/"));
     }
   }
 
