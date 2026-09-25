@@ -69,11 +69,12 @@ public final class LogFile {
     if (fromEnv != null && !fromEnv.isBlank()) {
       return HomeRedirect.follow(Path.of(UserPaths.expand(fromEnv.strip(), env)));
     }
-    // ADR-0041: the same one-hop redirect Bootstrap follows, so logs land in the home state uses
-    return HomeRedirect.follow(platformDefault(env));
-  }
-
-  private static Path platformDefault(Map<String, String> env) {
-    return DefaultHome.choose(env).home();
+    // ADR-0041: the same one-hop redirect Bootstrap follows, so logs land in the home state uses;
+    // with an unwritable system home only its own redirect counts, as in JrsctlHomeResolver
+    DefaultHome.Choice choice = DefaultHome.choose(env);
+    if (choice.systemHomeUnwritable()) {
+      return HomeRedirect.target(choice.systemHome()).orElse(choice.home());
+    }
+    return HomeRedirect.follow(choice.home());
   }
 }

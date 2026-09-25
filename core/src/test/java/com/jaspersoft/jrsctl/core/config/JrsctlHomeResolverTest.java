@@ -56,6 +56,32 @@ class JrsctlHomeResolverTest {
         .isEqualTo(big.toAbsolutePath().normalize());
   }
 
+  /**
+   * Review of #169: with the system home unwritable, a redirect in the per-user fallback must not
+   * get around the refusal; a redirect in the system home itself is the shared answer.
+   */
+  @Test
+  void should_follow_only_the_system_homes_redirect_when_the_system_home_is_unwritable(
+      @org.junit.jupiter.api.io.TempDir Path tmp) throws java.io.IOException {
+    Path perUser = java.nio.file.Files.createDirectories(tmp.resolve("user").resolve(".jrsctl"));
+    Path systemHome = java.nio.file.Files.createDirectories(tmp.resolve("var").resolve("jrsctl"));
+    java.nio.file.Files.writeString(
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.file(perUser),
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.content(tmp.resolve("mine")));
+    when(platform.defaultHome()).thenReturn(perUser);
+    DefaultHome.Choice choice = new DefaultHome.Choice(perUser, systemHome, true, true);
+
+    assertThatThrownBy(() -> JrsctlHomeResolver.resolve(Map.of(), platform, choice))
+        .isInstanceOf(ConfigException.class);
+
+    java.nio.file.Files.writeString(
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.file(systemHome),
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.content(tmp.resolve("shared")));
+
+    assertThat(JrsctlHomeResolver.resolve(Map.of(), platform, choice).root())
+        .isEqualTo(tmp.resolve("shared").toAbsolutePath().normalize());
+  }
+
   @Test
   void should_fall_back_to_platform_default_when_env_var_is_absent_or_blank() {
     Path dflt = Path.of("platform-default").toAbsolutePath();

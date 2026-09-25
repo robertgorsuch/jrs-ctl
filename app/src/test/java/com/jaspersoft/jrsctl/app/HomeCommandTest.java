@@ -77,6 +77,22 @@ class HomeCommandTest {
     assertThat(HomeRedirect.file(small)).doesNotExist();
   }
 
+  /** Review of #169: after one move, the home holding the redirect is guarded as well. */
+  @Test
+  void should_refuse_a_directory_when_it_is_inside_the_home_that_holds_the_redirect()
+      throws Exception {
+    Path small = Files.createDirectories(tmp.resolve("small"));
+    InitCommandTest.run("home", "set", tmp.resolve("big").toString(), "--home", small.toString());
+
+    InitCommandTest.Run nested =
+        InitCommandTest.run(
+            "home", "set", small.resolve("inner").toString(), "--home", small.toString());
+
+    assertThat(nested.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(HomeRedirect.target(small))
+        .contains(tmp.resolve("big").toAbsolutePath().normalize());
+  }
+
   @Test
   void should_refuse_a_directory_when_it_is_the_home_or_inside_it() throws Exception {
     Path small = Files.createDirectories(tmp.resolve("small"));

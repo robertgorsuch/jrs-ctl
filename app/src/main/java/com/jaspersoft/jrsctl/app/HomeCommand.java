@@ -71,7 +71,13 @@ final class HomeCommand implements Runnable {
         base = Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize();
         source = "JRSCTL_HOME";
       } else {
-        base = DefaultHome.choose(env).home().toAbsolutePath().normalize();
+        DefaultHome.Choice choice = DefaultHome.choose(env);
+        // review of #169: when the system home exists but this user cannot write it, the shared
+        // home is the system one, and that is where a redirect must be read or written
+        base =
+            (choice.systemHomeUnwritable() ? choice.systemHome() : choice.home())
+                .toAbsolutePath()
+                .normalize();
         source = "default";
       }
     }
@@ -177,13 +183,21 @@ final class HomeCommand implements Runnable {
             target + " is already the jrsctl home",
             Optional.of("name another directory, or use jrsctl home reset to undo a move"));
       }
-      if (target.startsWith(w.home()) || w.home().startsWith(target)) {
+      if (target.startsWith(w.home())
+          || w.home().startsWith(target)
+          || target.startsWith(w.base())
+          || w.base().startsWith(target)) {
         return ExitCodes.fail(
             out,
             err,
             global.json(),
             ExitCodes.USAGE,
-            target + " is inside the current home " + w.home() + ", or contains it",
+            target
+                + " is inside the current home "
+                + w.home()
+                + " or the home that redirects to it ("
+                + w.base()
+                + "), or contains one of them",
             Optional.of("choose a directory outside it"));
       }
       if (HomeRedirect.target(target).isPresent()) {

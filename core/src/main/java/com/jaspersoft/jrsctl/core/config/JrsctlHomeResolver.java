@@ -43,13 +43,23 @@ public final class JrsctlHomeResolver {
       return new JrsctlHome(HomeRedirect.follow(Path.of(UserPaths.expand(fromEnv.strip(), env))));
     }
     Path root = platform.defaultHome().toAbsolutePath().normalize();
-    // ADR-0041: a default home that has been pointed elsewhere is followed, and the refusal below
-    // concerns the home jrsctl would actually use, not the one it was redirected from
-    Optional<Path> redirected = HomeRedirect.target(root);
-    if (redirected.isPresent()) {
-      return new JrsctlHome(redirected.get());
+    boolean fallback = choice.systemHomeUnwritable() && root.equals(normalise(choice.home()));
+    if (fallback) {
+      // ADR-0041, review of #169: the system home this user cannot write is the shared one. Only a
+      // redirect written there (by someone who could) is followed; one in the per-user fallback
+      // would let any operator give themselves a second journal and run lock.
+      Optional<Path> shared = HomeRedirect.target(normalise(choice.systemHome()));
+      if (shared.isPresent()) {
+        return new JrsctlHome(shared.get());
+      }
+    } else {
+      // ADR-0041: a default home that has been pointed elsewhere is followed
+      Optional<Path> redirected = HomeRedirect.target(root);
+      if (redirected.isPresent()) {
+        return new JrsctlHome(redirected.get());
+      }
     }
-    if (choice.systemHomeUnwritable() && root.equals(normalise(choice.home()))) {
+    if (fallback) {
       throw new ConfigException(
           choice.systemHome()
               + " exists but this user cannot write to it, so jrsctl would keep its state and run"
