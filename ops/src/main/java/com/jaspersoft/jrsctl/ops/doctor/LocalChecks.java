@@ -95,6 +95,8 @@ final class LocalChecks {
     }
     List<String> problems = new ArrayList<>();
     List<String> unavailable = new ArrayList<>();
+    List<String> weak = new ArrayList<>();
+    Map<String, Optional<String>> usernames = usernames(s.config());
     for (Map.Entry<String, SecretRef> ref : refs.entrySet()) {
       // field test 2, D1: doctor never prompts, so a reference that would (an enc: entry with no
       // passphrase at hand) or that is simply not supplied yet is a WARN, not a FAIL; a reference
@@ -104,8 +106,11 @@ final class LocalChecks {
             ref.getKey() + " (" + ref.getValue().render() + "): " + unavailable(ref.getValue()));
         continue;
       }
-      try (Secret unused = s.secrets().resolve(ref.getValue())) {
+      try (Secret secret = s.secrets().resolve(ref.getValue())) {
         // resolvable: file is owner-only, env is set, store unlocks
+        if (isGuessable(secret, usernames.getOrDefault(ref.getKey(), Optional.empty()))) {
+          weak.add(ref.getKey() + " (" + ref.getValue().render() + ")");
+        }
       } catch (SecretException e) {
         problems.add(ref.getKey() + " (" + ref.getValue().render() + "): " + e.getMessage());
       }
@@ -126,8 +131,67 @@ final class LocalChecks {
           "set the variable, create the file, or unlock secrets.enc with --passphrase-file or"
               + " JRSCTL_PASSPHRASE; a command that needs the secret asks for it or stops");
     }
+    if (!weak.isEmpty()) {
+      // #158: the redactor masks a secret wherever it occurs, so a common word or a username is
+      // masked inside other words and names, and what surrounds the mask gives it away
+      return ReportItem.warn(
+          "secrets",
+          String.join(", ", weak)
+              + ": equals its username or a vendor installer default, so redaction cannot hide it;"
+              + " logs and support bundles mask the word wherever it appears, which makes them"
+              + " hard to read and shows what it is",
+          "change the password on the server or database, then store the new one with jrsctl"
+              + " config set <key>");
+    }
     return ReportItem.pass(
         "secrets", refs.size() + " reference(s) resolvable: " + String.join(", ", refs.keySet()));
+  }
+
+  /**
+   * Passwords the vendor's installers and samples set by default (installation guide: the admin
+   * accounts, the sample user, the bundled PostgreSQL), compared without regard to case.
+   */
+  private static final List<String> INSTALLER_DEFAULTS =
+      List.of("jasperadmin", "superuser", "joeuser", "demo", "postgres");
+
+  private static Map<String, Optional<String>> usernames(Config c) {
+    return Map.of(
+        "server.auth.passwordRef", c.server().auth().username(),
+        "database.passwordRef", c.database().username(),
+        "network.proxy.passwordRef", c.network().proxy().username());
+  }
+
+  /**
+   * Whether the secret equals its username or an installer default, ignoring case. Compared on a
+   * copy of the characters that is zeroed afterwards; no String of the secret is made.
+   */
+  static boolean isGuessable(Secret secret, Optional<String> username) {
+    char[] value = secret.chars();
+    try {
+      if (username.isPresent() && equalsIgnoreCase(value, username.get())) {
+        return true;
+      }
+      for (String known : INSTALLER_DEFAULTS) {
+        if (equalsIgnoreCase(value, known)) {
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      java.util.Arrays.fill(value, '\0');
+    }
+  }
+
+  private static boolean equalsIgnoreCase(char[] value, String text) {
+    if (value.length != text.length()) {
+      return false;
+    }
+    for (int i = 0; i < value.length; i++) {
+      if (Character.toLowerCase(value[i]) != Character.toLowerCase(text.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static String unavailable(SecretRef ref) {

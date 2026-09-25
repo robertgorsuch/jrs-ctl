@@ -533,6 +533,63 @@ class DoctorOperationTest {
     }
   }
 
+  /**
+   * Issue #158: a password that equals its username or is a vendor installer default cannot be
+   * hidden by redaction, which masks the word everywhere and so gives it away by context.
+   */
+  @Test
+  void should_warn_secrets_when_a_password_equals_its_username_or_an_installer_default()
+      throws Exception {
+    Path dbPass = tmp.resolve("db.pass");
+    Files.writeString(dbPass, "Postgres\n", StandardCharsets.UTF_8);
+    Path adminPass = tmp.resolve("admin.pass");
+    Files.writeString(adminPass, "opsadmin", StandardCharsets.UTF_8);
+    try (FakeServices fake =
+        FakeServices.in(tmp.resolve("home")).yaml(weakSecretsYaml(dbPass, adminPass))) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      ReportItem secrets = byName(report).get("secrets");
+      assertThat(secrets.status()).isEqualTo(Status.WARN);
+      assertThat(secrets.detail())
+          .contains("server.auth.passwordRef")
+          .contains("database.passwordRef")
+          .contains("redaction cannot hide")
+          .doesNotContainIgnoringCase("postgres")
+          .doesNotContain("opsadmin");
+      assertThat(secrets.remediation()).isNotBlank();
+    }
+  }
+
+  @Test
+  void should_pass_secrets_when_no_password_is_weak() throws Exception {
+    Path dbPass = tmp.resolve("db.pass");
+    Files.writeString(dbPass, "k7#Vq9!mZ2", StandardCharsets.UTF_8);
+    Path adminPass = tmp.resolve("admin.pass");
+    Files.writeString(adminPass, "r4Tq-88xw", StandardCharsets.UTF_8);
+    try (FakeServices fake =
+        FakeServices.in(tmp.resolve("home")).yaml(weakSecretsYaml(dbPass, adminPass))) {
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      assertThat(byName(report).get("secrets").status()).isEqualTo(Status.PASS);
+    }
+  }
+
+  private static String weakSecretsYaml(Path dbPass, Path adminPass) {
+    return """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+          auth:
+            username: opsadmin
+            passwordRef: file:%s
+        database:
+          type: postgresql
+          url: jdbc:postgresql://localhost/jrs
+          username: jrs_owner
+          passwordRef: file:%s
+        """
+        .formatted(adminPass.toString().replace("\\", "/"), dbPass.toString().replace("\\", "/"));
+  }
+
   /** Issue #105: a keystore anyone on the host can read is reported, not passed. */
   @Test
   void should_warn_keystore_when_its_files_are_readable_beyond_the_owner() throws Exception {
