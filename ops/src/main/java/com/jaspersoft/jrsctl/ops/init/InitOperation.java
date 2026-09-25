@@ -2,7 +2,9 @@ package com.jaspersoft.jrsctl.ops.init;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.platform.InstallScan;
 import com.jaspersoft.jrsctl.core.platform.LinuxInit;
+import com.jaspersoft.jrsctl.core.platform.NaturalOrder;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
@@ -10,6 +12,7 @@ import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
+import com.jaspersoft.jrsctl.ops.JrsVersion;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
 import java.net.URI;
@@ -18,6 +21,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -35,10 +40,12 @@ import org.slf4j.LoggerFactory;
 /**
  * {@code jrsctl init} (spec §12.0): detects the installation and proposes a {@code config.yaml}.
  * Invariants: {@link #detect} is read-only and never throws for a missing or odd installation (it
- * reports what it found and defaults the rest); every value in the report carries its source; the
- * only write is {@link #write}, which refuses to overwrite an existing file unless forced;
- * passwords are never read from anywhere, only {@code env:} placeholders are written; confirmation
- * is the caller's job.
+ * reports what it found and defaults the rest); without {@code --install-dir} every installation
+ * the platform search finds is listed, ranked running first, then highest version by number, then
+ * path, and the first is proposed, while {@link #choose} proposes another from the same list (field
+ * test 3); every value in the report carries its source; the only write is {@link #write}, which
+ * refuses to overwrite an existing file unless forced; passwords are never read from anywhere, only
+ * {@code env:} placeholders are written; confirmation is the caller's job.
  */
 public final class InitOperation {
 
@@ -100,38 +107,108 @@ public final class InitOperation {
     Objects.requireNonNull(installDirHint, "installDirHint");
     Objects.requireNonNull(buildomaticDirHint, "buildomaticDirHint");
     Platform platform = services.platform();
+    if (installDirHint.isPresent()) {
+      return platform
+          .detectTomcat(installDirHint.get())
+          .map(
+              layout ->
+                  detected(layout, "from --install-dir", buildomaticDirHint, List.of(), List.of()))
+          .orElseGet(() -> notDetected(installDirHint, List.of()));
+    }
+    Found found = search(platform);
+    if (found.candidates().isEmpty()) {
+      return notDetected(installDirHint, found.notes());
+    }
+    return detected(found.candidates(), 0, buildomaticDirHint, found.notes(), false);
+  }
+
+  /**
+   * The report {@link #detect} would give had the operator picked candidate {@code index} of {@code
+   * report}'s list (field test 3): the same list, without searching again, with that one chosen.
+   *
+   * @throws IllegalArgumentException when {@code index} is not a position in the list
+   */
+  public InitReport choose(InitReport report, int index, Optional<Path> buildomaticDirHint) {
+    Objects.requireNonNull(report, "report");
+    Objects.requireNonNull(buildomaticDirHint, "buildomaticDirHint");
+    if (index < 0 || index >= report.candidates().size()) {
+      throw new IllegalArgumentException(
+          "no installation " + (index + 1) + " of " + report.candidates().size());
+    }
+    return detected(report.candidates(), index, buildomaticDirHint, report.notes(), true);
+  }
+
+  private InitReport detected(
+      List<InitReport.Candidate> candidates,
+      int index,
+      Optional<Path> buildomaticDirHint,
+      List<String> notes,
+      boolean pickedByOperator) {
+    List<InitReport.Candidate> marked = new ArrayList<>();
+    for (int i = 0; i < candidates.size(); i++) {
+      marked.add(candidates.get(i).withChosen(i == index));
+    }
+    InitReport.Candidate chosen = marked.get(index);
+    String source =
+        pickedByOperator
+            ? "chosen from " + candidates.size() + " detected installations"
+            : "detected candidate "
+                + chosen.layout().installDir()
+                + " ("
+                + describe(chosen)
+                + (candidates.size() > 1
+                    ? "; recommended of " + candidates.size() + " installations found"
+                    : "")
+                + ")";
+    return detected(chosen.layout(), source, buildomaticDirHint, marked, notes);
+  }
+
+  /** "running, JRS 10.0.0 commercial" and the like, for a source or a list line. */
+  public static String describe(InitReport.Candidate candidate) {
+    return (candidate.running() ? "running" : "not seen running")
+        + ", JasperReports Server "
+        + candidate.version().orElse("version unknown")
+        + " "
+        + candidate.edition();
+  }
+
+  private InitReport notDetected(Optional<Path> installDirHint, List<String> notes) {
     List<InitReport.Detected> values = new ArrayList<>();
     Config defaults = Config.defaults();
-
-    Optional<Located> located = locate(installDirHint, platform);
-    if (located.isEmpty()) {
-      values.add(
-          new InitReport.Detected(
-              "server.installDir",
-              "(not detected)",
-              installDirHint
-                  .map(p -> "no Tomcat layout under " + p)
-                  .orElse("no candidate install dir found; pass --install-dir")));
-      values.add(new InitReport.Detected("server.auth.username", DEFAULT_USERNAME, SOURCE_DEFAULT));
-      values.add(
-          new InitReport.Detected("server.auth.passwordRef", DEFAULT_PASSWORD_REF, SOURCE_DEFAULT));
-      values.add(new InitReport.Detected("smoke.reportUri", DEFAULT_SMOKE_REPORT, SOURCE_DEFAULT));
-      Config config =
-          new Config(
-              defaults.server(),
-              defaults.service(),
-              defaults.database(),
-              defaults.vendor(),
-              defaults.network(),
-              defaults.backups(),
-              new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
-      return new InitReport(config, values);
-    }
-
-    TomcatLayout layout = located.get().layout();
     values.add(
         new InitReport.Detected(
-            "server.installDir", layout.installDir().toString(), located.get().source()));
+            "server.installDir",
+            "(not detected)",
+            installDirHint
+                .map(p -> "no Tomcat layout under " + p)
+                .orElse("no candidate install dir found; pass --install-dir")));
+    values.add(new InitReport.Detected("server.auth.username", DEFAULT_USERNAME, SOURCE_DEFAULT));
+    values.add(
+        new InitReport.Detected("server.auth.passwordRef", DEFAULT_PASSWORD_REF, SOURCE_DEFAULT));
+    values.add(new InitReport.Detected("smoke.reportUri", DEFAULT_SMOKE_REPORT, SOURCE_DEFAULT));
+    Config config =
+        new Config(
+            defaults.server(),
+            defaults.service(),
+            defaults.database(),
+            defaults.vendor(),
+            defaults.network(),
+            defaults.backups(),
+            new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
+    return new InitReport(config, values, List.of(), notes);
+  }
+
+  private InitReport detected(
+      TomcatLayout layout,
+      String installDirSource,
+      Optional<Path> buildomaticDirHint,
+      List<InitReport.Candidate> candidates,
+      List<String> notes) {
+    List<InitReport.Detected> values = new ArrayList<>();
+    Config defaults = Config.defaults();
+    values.add(
+        new InitReport.Detected(
+            "server.installDir", layout.installDir().toString(), installDirSource));
     values.add(
         new InitReport.Detected(
             "server.tomcatDir", layout.tomcatDir().toString(), "detected from Tomcat layout"));
@@ -202,7 +279,7 @@ public final class InitOperation {
             defaults.network(),
             defaults.backups(),
             new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
-    return new InitReport(config, values);
+    return new InitReport(config, values, candidates, notes);
   }
 
   /**
@@ -322,30 +399,69 @@ public final class InitOperation {
         : DEFAULT_USERNAME;
   }
 
-  private record Located(TomcatLayout layout, String source) {}
+  /** Every installation the platform search found, ranked, and notes about the search. */
+  private record Found(List<InitReport.Candidate> candidates, List<String> notes) {}
 
-  private static Optional<Located> locate(Optional<Path> hint, Platform platform) {
-    if (hint.isPresent()) {
-      Optional<TomcatLayout> fromHint = platform.detectTomcat(hint.get());
-      if (fromHint.isPresent()) {
-        return Optional.of(new Located(fromHint.get(), "from --install-dir"));
-      }
-      return Optional.empty();
-    }
-    List<Path> candidates;
+  /**
+   * Field test 3: every candidate with a Tomcat layout, not just the first, one entry per Tomcat
+   * directory (a running Tomcat is found at its Tomcat directory, the search at the install root
+   * above it: the root is kept, and the entry counts as running), ranked by {@link #RANK}.
+   */
+  private static Found search(Platform platform) {
+    InstallScan scan;
     try {
-      candidates = platform.candidateInstallDirs();
+      scan = platform.scanInstallDirs();
     } catch (RuntimeException e) {
       LOG.debug("candidate install dir probe failed", e);
-      candidates = List.of();
+      scan = new InstallScan(List.of(), Set.of(), Optional.empty());
     }
-    for (Path candidate : candidates) {
-      Optional<TomcatLayout> layout = platform.detectTomcat(candidate);
-      if (layout.isPresent()) {
-        return Optional.of(new Located(layout.get(), "detected candidate " + candidate));
+    Map<String, InitReport.Candidate> byTomcat = new LinkedHashMap<>();
+    for (Path dir : scan.candidates()) {
+      Optional<TomcatLayout> layout = platform.detectTomcat(dir);
+      if (layout.isEmpty()) {
+        continue;
       }
+      boolean running = scan.isRunning(dir);
+      String tomcat = layout.get().tomcatDir().toAbsolutePath().normalize().toString();
+      String key =
+          platform.os() == Platform.OsFamily.WINDOWS ? tomcat.toLowerCase(Locale.ROOT) : tomcat;
+      InitReport.Candidate found =
+          new InitReport.Candidate(layout.get(), versionOf(layout.get()), running, false);
+      byTomcat.merge(
+          key,
+          found,
+          (a, b) -> {
+            TomcatLayout outer =
+                a.layout().installDir().getNameCount() <= b.layout().installDir().getNameCount()
+                    ? a.layout()
+                    : b.layout();
+            return new InitReport.Candidate(
+                outer, a.version().or(b::version), a.running() || b.running(), false);
+          });
     }
-    return Optional.empty();
+    List<InitReport.Candidate> ranked = new ArrayList<>(byTomcat.values());
+    ranked.sort(RANK);
+    return new Found(ranked, scan.processScanLimit().stream().toList());
+  }
+
+  /**
+   * Running first, then the highest version by number (one whose version is unknown last), then the
+   * path, so the order is stable.
+   */
+  static final Comparator<InitReport.Candidate> RANK =
+      Comparator.comparing(InitReport.Candidate::running)
+          .reversed()
+          .thenComparing(
+              (a, b) ->
+                  b.version().isPresent() && a.version().isPresent()
+                      ? NaturalOrder.compareVersions(b.version().get(), a.version().get())
+                      : Boolean.compare(b.version().isPresent(), a.version().isPresent()))
+          .thenComparing(c -> c.layout().installDir(), NaturalOrder.PATHS);
+
+  /** The version the webapp's jars state, else the one the install directory's name states. */
+  private static Optional<String> versionOf(TomcatLayout layout) {
+    return JrsVersion.ofWebapp(layout.webappDir())
+        .or(() -> JrsVersion.ofDistributionDir(layout.installDir()));
   }
 
   private Optional<String> probeTomcatOwner() {

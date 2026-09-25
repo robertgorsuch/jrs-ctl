@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.ops;
 
 import com.jaspersoft.jrsctl.core.platform.FileOps;
+import com.jaspersoft.jrsctl.core.platform.InstallScan;
 import com.jaspersoft.jrsctl.core.platform.LinuxFileOps;
 import com.jaspersoft.jrsctl.core.platform.OperatorPrompt;
 import com.jaspersoft.jrsctl.core.platform.Platform;
@@ -17,10 +18,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -42,6 +45,13 @@ public final class FakePlatform implements Platform {
   public final Map<String, Response> scripted = new HashMap<>();
   public final List<List<String>> invocations = new ArrayList<>();
   public final List<Path> candidates = new ArrayList<>();
+
+  /** Candidates a running Tomcat pointed at (field test 3). */
+  public final Set<Path> running = new HashSet<>();
+
+  /** What the process scan could not see, as the real platforms report it. */
+  public Optional<String> processScanLimit = Optional.empty();
+
   public OsFamily os;
   public Path home;
   public long freeSpace = 100L << 30;
@@ -263,5 +273,10 @@ public final class FakePlatform implements Platform {
   @Override
   public List<Path> candidateInstallDirs() {
     return List.copyOf(candidates);
+  }
+
+  @Override
+  public InstallScan scanInstallDirs() {
+    return new InstallScan(candidateInstallDirs(), Set.copyOf(running), processScanLimit);
   }
 }

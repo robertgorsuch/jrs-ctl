@@ -20,6 +20,30 @@
         }
       }
     },
+    "candidates": {
+      "type": "array",
+      "description": "Every installation the search found, ranked: running first, then the highest version, then the path. Empty with --install-dir.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["installDir", "tomcatDir", "webappName", "edition", "running", "recommended", "chosen"],
+        "properties": {
+          "installDir": { "type": "string" },
+          "tomcatDir": { "type": "string" },
+          "webappName": { "type": "string" },
+          "edition": { "enum": ["commercial", "community"] },
+          "version": { "type": "string", "description": "Absent when no file name states it." },
+          "running": { "type": "boolean", "description": "A running Tomcat's command line pointed at it." },
+          "recommended": { "type": "boolean" },
+          "chosen": { "type": "boolean", "description": "The installation config describes." }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "description": "What the search could not see, e.g. Java processes this account cannot read without elevation.",
+      "items": { "type": "string" }
+    },
     "config": { "$ref": "https://jaspersoft.com/jrsctl/config.schema.json" },
     "configFile": { "type": "string" },
     "written": { "type": "boolean", "description": "True only with --yes; JSON mode never prompts." },

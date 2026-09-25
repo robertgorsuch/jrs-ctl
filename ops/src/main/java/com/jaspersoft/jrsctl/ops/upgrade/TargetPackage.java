@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
+import com.jaspersoft.jrsctl.ops.JrsVersion;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -15,12 +16,9 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * What jrsctl could find out about the JasperReports Server distribution the operator pointed
@@ -37,11 +35,6 @@ record TargetPackage(
     Optional<String> discoveredVersion) {
 
   static final List<String> WEBAPP_NAMES = List.of("jasperserver-pro", "jasperserver");
-
-  private static final Pattern VERSION_IN_NAME =
-      Pattern.compile("(?i)jasperserver(?:-pro)?-(?:api-)?(?:common-|impl-)?(\\d+\\.\\d+\\.\\d+)");
-  private static final Pattern VERSION_IN_DIR =
-      Pattern.compile("(?i)jasperreports-server-(?:bin-|pro-|cp-)?(\\d+\\.\\d+\\.\\d+)");
 
   TargetPackage {
     dir = Objects.requireNonNull(dir, "dir").toAbsolutePath().normalize();
@@ -140,39 +133,8 @@ record TargetPackage(
   }
 
   private static Optional<String> versionOf(Path dir, Optional<Path> webapp, Optional<Path> war) {
-    Optional<String> fromDir = match(VERSION_IN_DIR, dir.getFileName());
-    if (fromDir.isPresent()) {
-      return fromDir;
-    }
-    if (war.isPresent()) {
-      Optional<String> fromWar = match(VERSION_IN_NAME, war.get().getFileName());
-      if (fromWar.isPresent()) {
-        return fromWar;
-      }
-    }
-    if (webapp.isPresent()) {
-      Path lib = webapp.get().resolve("WEB-INF").resolve("lib");
-      if (Files.isDirectory(lib)) {
-        try (DirectoryStream<Path> jars = Files.newDirectoryStream(lib, "jasperserver-*.jar")) {
-          for (Path jar : jars) {
-            Optional<String> v = match(VERSION_IN_NAME, jar.getFileName());
-            if (v.isPresent()) {
-              return v;
-            }
-          }
-        } catch (IOException e) {
-          return Optional.empty();
-        }
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Optional<String> match(Pattern pattern, Path name) {
-    if (name == null) {
-      return Optional.empty();
-    }
-    Matcher m = pattern.matcher(name.toString().toLowerCase(Locale.ROOT));
-    return m.find() ? Optional.of(m.group(1)) : Optional.empty();
+    return JrsVersion.ofDistributionDir(dir)
+        .or(() -> war.flatMap(JrsVersion::ofArtifactName))
+        .or(() -> webapp.flatMap(JrsVersion::ofWebapp));
   }
 }

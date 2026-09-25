@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.init;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
@@ -291,6 +292,139 @@ class InitOperationTest {
       assertThat(report.detectedInstall()).isTrue();
       assertThat(report.values())
           .anyMatch(v -> v.key().equals("server.installDir") && v.source().contains("candidate"));
+    }
+  }
+
+  /** An installation whose webapp jars state {@code version}, as a real WEB-INF/lib does. */
+  private Path installOf(String dir, String version) throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve(dir));
+    Files.writeString(
+        install
+            .resolve("apache-tomcat/webapps/jasperserver-pro/WEB-INF/lib")
+            .resolve("jasperserver-api-common-" + version + ".jar"),
+        "");
+    return install.toAbsolutePath().normalize();
+  }
+
+  /** Field test 3: a JRS 9 listed first was proposed while the JRS 10 beside it was running. */
+  @Test
+  void should_propose_the_running_installation_when_another_is_listed_first() throws Exception {
+    Path nine = installOf("jrs9", "9.0.0");
+    Path ten = installOf("jrs10", "10.0.0");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.candidates.addAll(List.of(nine, ten));
+      fake.platform.running.add(ten);
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.empty());
+
+      assertThat(report.config().server().installDir()).contains(ten);
+      assertThat(report.candidates())
+          .extracting(c -> c.layout().installDir(), InitReport.Candidate::running)
+          .containsExactly(tuple(ten, true), tuple(nine, false));
+      assertThat(report.candidates().get(0).chosen()).isTrue();
+      assertThat(report.candidates().get(0).version()).contains("10.0.0");
+      assertThat(report.candidates().get(0).edition()).isEqualTo("commercial");
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("server.installDir")
+                      && v.source().contains("running")
+                      && v.source().contains("2"));
+    }
+  }
+
+  @Test
+  void should_prefer_a_running_older_installation_when_a_newer_one_is_stopped() throws Exception {
+    Path nine = installOf("jrs9", "9.0.0");
+    Path ten = installOf("jrs10", "10.0.0");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.candidates.addAll(List.of(ten, nine));
+      fake.platform.running.add(nine);
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.empty());
+
+      assertThat(report.config().server().installDir()).contains(nine);
+    }
+  }
+
+  @Test
+  void should_rank_10_above_9_by_number_when_neither_installation_runs() throws Exception {
+    // path order and text order of the versions would both put 9.0.0 first
+    Path nine = installOf("jrs-a", "9.0.0");
+    Path ten = installOf("jrs-b", "10.0.0");
+    Path unknown = FakeLayout.linux(tmp.resolve("jrs-0")).toAbsolutePath().normalize();
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.candidates.addAll(List.of(unknown, nine, ten));
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.empty());
+
+      assertThat(report.candidates())
+          .extracting(c -> c.layout().installDir())
+          .containsExactly(ten, nine, unknown);
+      assertThat(report.config().server().installDir()).contains(ten);
+    }
+  }
+
+  /** A running Tomcat is found at its Tomcat dir, the search at the install root: one entry. */
+  @Test
+  void should_list_one_installation_when_the_root_and_its_tomcat_are_both_candidates()
+      throws Exception {
+    Path install = installOf("jrs", "10.0.0");
+    Path tomcat = install.resolve("apache-tomcat");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.candidates.addAll(List.of(tomcat, install));
+      fake.platform.running.add(tomcat);
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.empty());
+
+      assertThat(report.candidates()).hasSize(1);
+      assertThat(report.candidates().get(0).layout().installDir()).isEqualTo(install);
+      assertThat(report.candidates().get(0).running()).isTrue();
+    }
+  }
+
+  @Test
+  void should_detect_the_picked_installation_when_the_operator_chooses_another() throws Exception {
+    Path nine = installOf("jrs9", "9.0.0");
+    Path ten = installOf("jrs10", "10.0.0");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.platform.candidates.addAll(List.of(nine, ten));
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+      InitReport first = init.detect(Optional.empty());
+
+      InitReport picked = init.choose(first, 1, Optional.empty());
+
+      assertThat(picked.config().server().installDir()).contains(nine);
+      assertThat(picked.candidates())
+          .extracting(c -> c.layout().installDir(), InitReport.Candidate::chosen)
+          .containsExactly(tuple(ten, false), tuple(nine, true));
+      assertThat(picked.values())
+          .anyMatch(v -> v.key().equals("server.installDir") && v.source().contains("chosen"));
+      assertThatThrownBy(() -> init.choose(first, 2, Optional.empty()))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+  }
+
+  @Test
+  void should_pass_on_what_the_process_scan_could_not_see_when_the_platform_reports_it()
+      throws Exception {
+    Path install = installOf("jrs", "10.0.0");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.WINDOWS)) {
+      fake.platform.candidates.add(install);
+      fake.platform.processScanLimit =
+          Optional.of("1 Java process whose command line this account cannot read");
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      assertThat(init.detect(Optional.empty()).notes())
+          .singleElement()
+          .satisfies(n -> assertThat(n).contains("cannot read"));
+      // with --install-dir there is no search, so nothing to warn about
+      assertThat(init.detect(Optional.of(install)).notes()).isEmpty();
+      assertThat(init.detect(Optional.of(install)).candidates()).isEmpty();
     }
   }
 
