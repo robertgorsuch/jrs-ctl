@@ -109,7 +109,9 @@ class Phase7DistributionTest {
         .containsKeys(
             "lib/jrsctl.jar", "bin/jrsctl", "bin/jrsctl.cmd", "bin/jrsctl.ps1", "README.txt")
         .containsKeys("LICENSE", "LICENSE-THIRD-PARTY.txt");
-    assertThat(Files.readString(image.resolve("README.txt"))).contains("Actian Jaspersoft");
+    assertThat(Files.readString(image.resolve("README.txt")))
+        .contains("JasperReports Server lifecycle tool - Jaspersoft")
+        .doesNotContain("Actian Jaspersoft");
     assertThat(Files.readString(image.resolve("LICENSE")))
         .as("the image carries the product's own licence text, byte for byte (ADR-0010)")
         .isEqualTo(Files.readString(repoRoot().resolve("LICENSE")));

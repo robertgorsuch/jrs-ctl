@@ -1,5 +1,5 @@
 jrsctl ${project.version} (${dist.platform})
-JasperReports Server lifecycle tool - Actian Jaspersoft
+JasperReports Server lifecycle tool - Jaspersoft
 
 WHAT THIS IS
   A self-contained, portable installation of jrsctl: the application
