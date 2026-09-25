@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.core.platform;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * OS abstraction (spec §5.3). All process, service and file-system side effects go through this
@@ -38,6 +39,15 @@ public interface Platform {
 
   /** Places {@code init} should look for an installation, most likely first. */
   List<Path> candidateInstallDirs();
+
+  /**
+   * {@link #candidateInstallDirs()} with which of them a running Tomcat pointed at and what the
+   * process scan could not see. The default knows of no running Tomcat, which is what test fakes
+   * without process scanning need.
+   */
+  default InstallScan scanInstallDirs() {
+    return new InstallScan(candidateInstallDirs(), Set.of(), Optional.empty());
+  }
 
   /**
    * A platform whose process-based service controllers ({@code manual}, and {@code systemd}'s

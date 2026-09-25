@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.platform.FileOps;
+import com.jaspersoft.jrsctl.core.platform.InstallScan;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
@@ -58,5 +59,10 @@ abstract class DelegatingPlatform implements Platform {
   @Override
   public List<Path> candidateInstallDirs() {
     return delegate.candidateInstallDirs();
+  }
+
+  @Override
+  public InstallScan scanInstallDirs() {
+    return delegate.scanInstallDirs();
   }
 }

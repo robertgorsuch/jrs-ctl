@@ -37,13 +37,15 @@ import picocli.CommandLine.Spec;
  * {@code jrsctl init}: detect the installation and write {@code config.yaml} (spec §12.0).
  * Invariants: nothing is written without confirmation unless {@code --yes}; an existing file is
  * kept unless {@code --force}; the values are shown with their sources first so the operator can
- * judge them; interactively (#63) the operator may replace each {@link #REVIEW_FIELDS reviewed}
- * value, which is validated like a {@code --set} override before it is accepted, and may store the
- * server and database passwords in {@code secrets.enc}: they are read without echo into {@code
- * char[]}s that are zeroed and never printed, stored only after the write is confirmed and before
- * the configuration is written, and named by {@code enc:} references; otherwise, and always with
- * {@code --yes}, {@code --non-interactive} or {@code --json}, only {@code env:} placeholders are
- * written.
+ * judge them; when the search finds more than one installation they are all listed, and
+ * interactively the operator picks one by number, Enter keeping the recommended one, while {@code
+ * --yes} and {@code --non-interactive} take the recommended one (field test 3); interactively (#63)
+ * the operator may replace each {@link #REVIEW_FIELDS reviewed} value, which is validated like a
+ * {@code --set} override before it is accepted, and may store the server and database passwords in
+ * {@code secrets.enc}: they are read without echo into {@code char[]}s that are zeroed and never
+ * printed, stored only after the write is confirmed and before the configuration is written, and
+ * named by {@code enc:} references; otherwise, and always with {@code --yes}, {@code
+ * --non-interactive} or {@code --json}, only {@code env:} placeholders are written.
  */
 @Command(
     name = "init",
@@ -137,6 +139,21 @@ final class InitCommand implements Callable<Integer> {
           remote != null
               ? op.detectRemote(remote)
               : op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
+      if (!global.json()) {
+        // field test 3: every installation found is shown; interactively the operator picks one
+        InstallChoice.print(report, out);
+        if (report.candidates().size() > 1) {
+          if (global.yes() || global.nonInteractive()) {
+            out.println("using 1, the recommended one; pass --install-dir <dir> for another");
+          } else {
+            int picked = InstallChoice.ask(report, out);
+            if (picked != 0) {
+              report = op.choose(report, picked, Optional.ofNullable(buildomaticDir));
+            }
+          }
+          out.println();
+        }
+      }
       Config config = op.toConfig(report);
       Path target =
           format == Format.PROPERTIES
@@ -148,6 +165,8 @@ final class InitCommand implements Callable<Integer> {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("detectedInstall", report.detectedInstall());
         json.put("values", report.values());
+        json.put("candidates", InstallChoice.json(report));
+        json.put("notes", report.notes());
         json.put("config", ConfigWriter.toTree(config));
         json.put("configFile", target.toString());
         if (global.yes()) {

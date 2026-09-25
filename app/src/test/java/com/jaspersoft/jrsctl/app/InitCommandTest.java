@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
+import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.PassphraseSource;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.ops.init.InitReport;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -16,7 +18,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -91,6 +95,88 @@ class InitCommandTest {
         code,
         out.toString(),
         err.toString() + systemErr.toString(java.nio.charset.StandardCharsets.UTF_8));
+  }
+
+  /** Field test 3: a JRS 10 running and a JRS 9 beside it; the report ranks the 10 first. */
+  private static InitReport twoInstallations(Path tmp) {
+    return new InitReport(
+        Config.defaults(),
+        List.of(),
+        List.of(
+            candidate(tmp.resolve("jrs10"), "10.0.0", true, true),
+            candidate(tmp.resolve("jrs9"), "9.0.0", false, false)),
+        List.of("1 Java process whose command line this account cannot read"));
+  }
+
+  private static InitReport.Candidate candidate(
+      Path install, String version, boolean running, boolean chosen) {
+    Path tomcat = install.resolve("apache-tomcat");
+    return new InitReport.Candidate(
+        new TomcatLayout(
+            install,
+            tomcat,
+            tomcat.resolve("webapps").resolve("jasperserver-pro"),
+            "jasperserver-pro",
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(8080)),
+        Optional.of(version),
+        running,
+        chosen);
+  }
+
+  @Test
+  void should_number_every_installation_and_mark_the_recommended_one_when_listing() {
+    StringWriter text = new StringWriter();
+
+    InstallChoice.print(twoInstallations(tmp), new PrintWriter(text, true));
+
+    assertThat(text.toString())
+        .contains("Found 2 installations")
+        .containsPattern("1\\) .*jrs10.*running.*10\\.0\\.0.*recommended")
+        .containsPattern("2\\) .*jrs9.*not seen running.*9\\.0\\.0")
+        .contains("note: 1 Java process whose command line this account cannot read");
+  }
+
+  @Test
+  void should_return_the_picked_installation_when_the_operator_types_its_number() {
+    Prompter.override(new StringReader("7\n2\n"));
+    StringWriter text = new StringWriter();
+
+    int picked = InstallChoice.ask(twoInstallations(tmp), new PrintWriter(text, true));
+
+    assertThat(picked).isEqualTo(1);
+    assertThat(text.toString()).contains("[1-2, Enter = 1]").contains("no installation 7");
+  }
+
+  @Test
+  void should_keep_the_recommended_installation_when_the_operator_presses_enter() {
+    Prompter.override(new StringReader("\n"));
+
+    assertThat(InstallChoice.ask(twoInstallations(tmp), new PrintWriter(new StringWriter())))
+        .isZero();
+  }
+
+  @Test
+  void should_keep_the_recommended_installation_when_input_ends() {
+    Prompter.override(new StringReader(""));
+
+    assertThat(InstallChoice.ask(twoInstallations(tmp), new PrintWriter(new StringWriter())))
+        .isZero();
+  }
+
+  @Test
+  void should_describe_every_candidate_when_rendering_json() {
+    List<Map<String, Object>> json = InstallChoice.json(twoInstallations(tmp));
+
+    assertThat(json).hasSize(2);
+    assertThat(json.get(0))
+        .containsEntry("version", "10.0.0")
+        .containsEntry("running", true)
+        .containsEntry("recommended", true)
+        .containsEntry("chosen", true)
+        .containsEntry("edition", "commercial");
+    assertThat(json.get(1)).containsEntry("recommended", false).containsEntry("running", false);
   }
 
   @Test

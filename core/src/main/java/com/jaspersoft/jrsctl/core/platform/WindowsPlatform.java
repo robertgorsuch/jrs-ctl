@@ -73,15 +73,15 @@ public final class WindowsPlatform extends AbstractPlatform {
   }
 
   @Override
-  public List<Path> candidateInstallDirs() {
-    List<Path> candidates = new ArrayList<>(installDirsFromProcesses());
+  List<Path> wellKnownInstallDirs() {
+    List<Path> candidates = new ArrayList<>();
     candidates.addAll(installDirsFromRegistry());
     candidates.addAll(glob(Path.of("C:\\Jaspersoft"), "*"));
     Path programFiles =
         Path.of(Optional.ofNullable(System.getenv("ProgramFiles")).orElse("C:\\Program Files"));
     candidates.addAll(glob(programFiles, "jasperreports-server*"));
     candidates.addAll(glob(programFiles.resolve("Jaspersoft"), "*"));
-    return existingUnique(candidates);
+    return candidates;
   }
 
   private List<Path> installDirsFromRegistry() {

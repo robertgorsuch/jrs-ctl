@@ -7,11 +7,13 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,7 +168,25 @@ abstract class AbstractPlatform implements Platform {
     } catch (IOException e) {
       LOG.debug("cannot list {}", base, e);
     }
-    return matches.stream().min((a, b) -> a.toString().compareTo(b.toString()));
+    // field test 3: a Tomcat holding the webapp first, then the highest version by number (a string
+    // sort ranks "apache-tomcat-9" above "apache-tomcat-10"), then the first path, so a plain
+    // "apache-tomcat" still wins over "tomcat" as it always has
+    Comparator<Path> preference =
+        Comparator.comparing(AbstractPlatform::holdsWebapp)
+            .thenComparing((a, b) -> NaturalOrder.compareVersions(name(a), name(b)))
+            .thenComparing(NaturalOrder.PATHS.reversed());
+    return matches.stream().max(preference);
+  }
+
+  private static boolean holdsWebapp(Path tomcat) {
+    Path webapps = tomcat.resolve("webapps");
+    return Files.isDirectory(webapps.resolve("jasperserver-pro"))
+        || Files.isDirectory(webapps.resolve("jasperserver"));
+  }
+
+  private static String name(Path p) {
+    Path file = p.getFileName();
+    return file == null ? "" : file.toString();
   }
 
   private static boolean looksLikeJavaHome(Path dir) {
@@ -178,23 +198,65 @@ abstract class AbstractPlatform implements Platform {
     return Files.isDirectory(dir) ? Optional.of(dir) : Optional.empty();
   }
 
+  /** The well-known places to look after the running Tomcats, most likely first. */
+  abstract List<Path> wellKnownInstallDirs();
+
+  @Override
+  public final List<Path> candidateInstallDirs() {
+    return scanInstallDirs().candidates();
+  }
+
+  @Override
+  public final InstallScan scanInstallDirs() {
+    FromProcesses fromProcesses = installDirsFromProcesses();
+    List<Path> all = new ArrayList<>(fromProcesses.dirs());
+    all.addAll(wellKnownInstallDirs());
+    return new InstallScan(
+        existingUnique(all),
+        Set.copyOf(existingUnique(fromProcesses.dirs())),
+        fromProcesses.limit());
+  }
+
+  /** Install dirs of running Tomcats, and why the scan may have missed one. */
+  private record FromProcesses(List<Path> dirs, Optional<String> limit) {}
+
   /** Install dirs of running Tomcats, derived from catalina.home/base and working directory. */
-  final List<Path> installDirsFromProcesses() {
+  private FromProcesses installDirsFromProcesses() {
     List<Path> found = new ArrayList<>();
     List<TomcatProcessFinder.TomcatProcess> running;
     try {
       running = tomcats.find();
     } catch (TomcatScanException e) {
       LOG.debug("no install dirs from running Tomcats: {}", e.getMessage());
-      return found;
+      return new FromProcesses(
+          found,
+          Optional.of(
+              "the running-process scan failed ("
+                  + e.getMessage()
+                  + "), so a running server may not have been seen"));
     }
+    long opaque = 0;
     for (TomcatProcessFinder.TomcatProcess tomcat : running) {
+      if (tomcat.opaque()) {
+        opaque++;
+        continue;
+      }
       Stream.of(tomcat.catalinaBase(), tomcat.catalinaHome(), tomcat.workingDir())
           .flatMap(Optional::stream)
           .flatMap(p -> installDirAround(p).stream())
           .forEach(found::add);
     }
-    return found;
+    // WindowsTomcatProcesses reports another account's JVM (a service running as LocalSystem, seen
+    // without elevation) as opaque: it may be the running server, and nothing says where it lives
+    Optional<String> limit =
+        opaque == 0
+            ? Optional.empty()
+            : Optional.of(
+                opaque
+                    + (opaque == 1 ? " Java process" : " Java processes")
+                    + " whose command line this account cannot read (not elevated), so a running"
+                    + " server may not have been seen; run elevated or pass --install-dir");
+    return new FromProcesses(found, limit);
   }
 
   private Optional<Path> installDirAround(Path start) {
@@ -223,7 +285,8 @@ abstract class AbstractPlatform implements Platform {
     } catch (IOException e) {
       LOG.debug("cannot glob {} in {}", glob, parent, e);
     }
-    found.sort((a, b) -> b.toString().compareTo(a.toString()));
+    // highest version first by number, not by text (field test 3)
+    found.sort(NaturalOrder.PATHS.reversed());
     return found;
   }
 
