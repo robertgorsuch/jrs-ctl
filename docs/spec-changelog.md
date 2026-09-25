@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 — 2026-09-24 (ADR-0038, the web console is removed)
+
+- §1.2, §4, §5.1, §5.8, §6, §11.2, §11.3, §13, §14, §16, §19: the Javalin console, its 25 endpoints, SSE stream and static UI are removed; jrsctl is a CLI with guided mode as its interactive front end. `runs support-bundle` (Draft 1.1 amendment for #150) replaces the one endpoint without a CLI counterpart. The `console:` configuration block is ignored with one warning in 2.0.0 and refused from 2.1. `javalin` leaves the §13.3 runtime list; Jetty and the Kotlin stdlib leave the jar with it. Released as 2.0.0. Field test evidence in issue #75; decision and options in ADR-0038.
+
 ## Draft 1.1 amendment — 2026-09-24 (issue #150, support bundle on the CLI)
 
 - §12.4, §13.1, §6.6: `runs support-bundle <id> [--out <zip>]` writes the bundle the console served at `GET /api/runs/{id}/support-bundle`; same entries, same redaction, `server.json` degrades to `reachable:false` instead of failing. First step of ADR-0038. `SupportBundle` and `VendorLogs` move from `app.console` to `app`; the console delegates to them.

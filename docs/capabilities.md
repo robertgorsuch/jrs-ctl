@@ -1,10 +1,10 @@
 # jrsctl — Capability Summary
 
-Source: `docs/spec.md` Draft 1.1 (2026-09-08).
+Source: `docs/spec.md` Draft 1.2 (2026-09-24).
 
 ## What it is
 
-`jrsctl` is a single self-contained lifecycle tool for JasperReports Server (JRS). It runs on the server host, needs no pre-installed JDK, PowerShell or Python, and ships as a portable archive for Windows and Linux x86_64 with its own bundled runtime. It has a command-line interface and a local web console that share one execution engine and one event stream. It works in air-gapped environments.
+`jrsctl` is a single self-contained lifecycle tool for JasperReports Server (JRS). It runs on the server host, needs no pre-installed JDK, PowerShell or Python, and ships as a portable archive for Windows and Linux x86_64 with its own bundled runtime. It has a command-line interface, with guided mode as its interactive front end, built on one execution engine and one event stream. It works in air-gapped environments.
 
 ## Capabilities
 
@@ -36,11 +36,6 @@ Source: `docs/spec.md` Draft 1.1 (2026-09-08).
 - `smoke` exercises login, server info, repository listing, a reference report to PDF, the scheduler API and a small export round trip. A mutating variant uploads and runs a bundled report.
 - `selfcheck` verifies the runtime image, configuration, key ring and state schema.
 
-### Local web console
-- Dashboard, new-operation form that produces a plan for confirmation, live run view with step tree and log pane, history, doctor and hotfix views; smoke-test, customization (register, unregister, diff), snapshot (list, prune), effective-configuration and repository-browsing pages. Every API document is a typed record with a published JSON Schema.
-- Cancel, rollback and resume from the browser. Support bundle download with secrets redacted.
-- Loopback by default with a per-launch token; non-loopback requires TLS and a password. No external resources, so it works offline.
-
 ### Secrets and keys
 - Credentials resolved from environment variables, permission-checked files, or an AES-GCM encrypted store with an operator passphrase. Non-interactive unlock for scheduled runs.
 - Trusted key ring for hotfix signatures with the Jaspersoft publisher key pinned and customer keys addable.
@@ -53,7 +48,7 @@ Source: `docs/spec.md` Draft 1.1 (2026-09-08).
 - Transactional journal in SQLite; interrupted runs are detected at startup and can be resumed or rolled back.
 - One run at a time per host, enforced by a lock.
 - Fail closed: unsupported versions, unsigned bundles, keystore mismatches and missing backups stop before mutation unless an audited override is given.
-- Redaction of secrets in logs, events, JSON output, console streams and support bundles.
+- Redaction of secrets in logs, events, JSON output and support bundles.
 - Append-only audit of runs, overrides, key and configuration changes.
 - Isolated network mode that allows HTTP only to the server itself.
 
@@ -71,7 +66,7 @@ Source: `docs/spec.md` Draft 1.1 (2026-09-08).
 | `jrsctl runs recover <id> --resume\|--rollback` | Finish or undo an interrupted run |
 | `jrsctl secrets init\|set\|remove\|list` | Encrypted secret store |
 | `jrsctl keys list\|add\|remove\|generate` | Trusted signing keys |
-| `jrsctl console` | Start the local web console |
+| `jrsctl runs support-bundle <id>` | Write a run's redacted support bundle for a ticket |
 
 Common flags: `--plan` (show the plan only), `--yes` (non-interactive), `--json` (machine output), `--explain` (embedded documentation).
 

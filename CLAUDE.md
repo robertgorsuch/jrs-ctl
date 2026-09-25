@@ -23,7 +23,7 @@ Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-cha
 | `core` | config + schema, secrets, `Platform`, snapshots, compat matrix, redaction, sealed `Event`s, engine (`Plan`, `Step`, `Runner`, retry, cancel, `EventBus`, `Journal`, run lock, `Recovery`), state store (SQLite, implements `Journal`) | — |
 | `jrs` | REST v2 client, `RestJrsAdapter` (capability-driven, one impl), probes, `ExportImportStrategy` (`Rest`, `VendorCli`), vendor-tool wrappers, keystore inspection, the service stop/start/wait steps every plan shares (`jrs.service`, ADR-0015) | `core` |
 | `ops` | `hotfix`, `export`, `import`, `upgrade`, `customizations` → `Plan`; `init`, `doctor`, `smoke` → report; plan rebuilding and run glue both front ends share (`PlanRegistry`, `RunService`, `PlanJson`) | `core`, `jrs` |
-| `app` | picocli commands, `--json`, progress renderer, Javalin console + SSE + static UI, support bundle, `Main` | `ops` |
+| `app` | picocli commands, `--json`, progress renderer, guided mode, support bundle, `Main` | `ops` |
 | `dist` | jlink image, portable ZIP/tar.gz, SBOM, checksums; signing runs in CI only | `app` |
 | `acceptance` | `PhaseNXxxTest` tagged `phaseN`, run against the shaded jar | all |
 
@@ -53,4 +53,4 @@ Java 21; records + sealed interfaces; pattern-matching `switch` with no `default
 
 ## Branding
 
-Product name `jrsctl`, vendor line "Actian Jaspersoft". Colour and type tokens live in `docs/branding.md` and `app/src/main/resources/web/brand.css`; values are provisional until the official brand guide is supplied.
+Product name `jrsctl`, vendor line "Actian Jaspersoft". Colour and type tokens live in `docs/branding.md`; values are provisional until the official brand guide is supplied.

@@ -24,7 +24,7 @@ Six Maven modules, dependencies flowing one way (spec §4):
 | `core` | configuration and schema, secrets, `Platform` (file, process and service abstractions), the SQLite run journal, snapshots, the compatibility matrix, redaction, the sealed `Event` types, the engine (`Plan`, `Step`, `Runner`, retry, cancellation, `EventBus`), the run lock |
 | `jrs` | REST v2 client, the capability-driven `RestJrsAdapter`, probes, the export/import strategies, vendor-tool wrappers, keystore inspection |
 | `ops` | `hotfix`, `export`, `import`, `upgrade`, `customizations` as plans; `init`, `doctor`, `smoke` as reports |
-| `app` | picocli commands, `--json`, the progress renderer, the Javalin console with SSE and the static UI, the support bundle, `Main` |
+| `app` | picocli commands, `--json`, the progress renderer, guided mode, the support bundle, `Main` |
 | `dist` | jlink image, portable ZIP and tar.gz, SBOM, checksums; signing runs in CI only |
 | `acceptance` | `PhaseNXxxTest` classes tagged `phaseN`, run against the shaded jar `app/target/jrsctl.jar` |
 
@@ -171,7 +171,7 @@ each dual licence in use. `Phase0SkeletonTest` fails when any document names a d
 
 - Bugs and feature requests: open a GitHub issue with the jrsctl version (`jrsctl --version`),
   the operating system, the JasperReports Server version and edition, the exact command, and the
-  relevant lines of `logs/jrsctl.log` (already redacted). A support bundle from the console
+  relevant lines of `logs/jrsctl.log` (already redacted). `jrsctl runs support-bundle <id>`
   contains all of that.
 - Security vulnerabilities: do not open a public issue. Use GitHub's private vulnerability
   reporting for this repository (Security tab, "Report a vulnerability"), as described in

@@ -3,9 +3,9 @@
 **Product:** JasperReports Server Lifecycle Tool (`jrsctl`)
 **Owner:** Jaspersoft Product Management
 **Audience:** Claude Code (autonomous build agent) and reviewing engineers
-**Status:** Draft 1.1 — build contract
-**Date:** 2026-09-08
-**Supersedes:** Draft 1.0 (2026-09-08). Changes are listed in `docs/spec-changelog.md`.
+**Status:** Draft 1.2 — build contract
+**Date:** 2026-09-24
+**Supersedes:** Draft 1.1 (2026-09-08). Changes are listed in `docs/spec-changelog.md`.
 
 ---
 
@@ -45,7 +45,7 @@ across every supported JRS version and edition, on Windows and Linux, in both ai
 
 ### 1.2 In scope
 
-- Single self-contained application (`jrsctl`) with a CLI and a local web console.
+- Single self-contained application (`jrsctl`) with a CLI; guided mode (§17.1) is its interactive front end (ADR-0038 removed the web console).
 - Hotfix bundle format, authoring (`hotfix build`), application, verification, rollback.
 - Repository export/import via REST v2 with fallback to vendor CLI tools.
 - Upgrade orchestration over vendor buildomatic scripts.
@@ -96,11 +96,10 @@ across every supported JRS version and edition, on Windows and Linux, in both ai
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  app: Main entry + wiring                                        │
-│   ┌──────────────┐        ┌──────────────────────────────┐       │
-│   │  cli (Picocli)│        │  console (Javalin + SSE + UI)│       │
-│   └──────┬───────┘        └──────────────┬───────────────┘       │
-│          └──────────────┬────────────────┘                       │
-│                         ▼                                        │
+│              ┌──────────────┐                                    │
+│              │  cli (Picocli)│                                   │
+│              └──────┬───────┘                                    │
+│                     ▼                                             │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  ops: hotfix, export, import, upgrade, init, doctor,     │   │
 │  │       smoke, customizations  → produce Plans or Reports  │   │
@@ -119,7 +118,7 @@ across every supported JRS version and edition, on Windows and Linux, in both ai
 Principles:
 
 - **Plan then apply.** Nothing mutates until a Plan is shown and confirmed.
-- **One engine, two front-ends.** CLI and console consume the same event stream.
+- **One engine, one front end.** The CLI (direct commands and guided mode) consumes the event stream live; `runs show` and `runs support-bundle` replay it from the journal.
 - **Capabilities isolate version drift.** Ops code never branches on JRS version; it asks the adapter for capabilities.
 - **Orchestrate vendor tools.** Buildomatic and js-export/js-import are wrapped, not rewritten.
 - **Fail closed.** Any uncertainty halts before mutation with a clear next action.
@@ -136,7 +135,7 @@ Maven multi-module project. Package root: `com.jaspersoft.jrsctl`.
 | `core` | Config, secrets, platform abstraction, state store (incl. journal), snapshots, compat matrix, redaction, event model, engine (`Plan`, `Step`, `Runner`, retry/cancel, `EventBus`), run lock | — |
 | `jrs` | REST v2 client, `JrsAdapter`, capability probes, `ExportImportStrategy` implementations, vendor-tool process wrappers, keystore inspection, the service stop/start/wait steps every plan shares (ADR-0015) | `core` |
 | `ops` | Operation implementations producing Plans (mutating) or Reports (read-only) | `core`, `jrs` |
-| `app` | Picocli commands, `--json` output, progress tree renderer, Javalin console server, SSE endpoint, static UI, support bundle, main entry, shaded JAR | `ops` |
+| `app` | Picocli commands, `--json` output, progress tree renderer, guided mode, support bundle, main entry, shaded JAR | `ops` |
 | `dist` | jlink runtime image, portable ZIP/tar.gz, SBOM, checksum and signing steps (signing executes in CI only) | `app` |
 | `acceptance` | Phase acceptance scripts and Testcontainers harness | all |
 
@@ -147,7 +146,7 @@ Maven multi-module project. Package root: `com.jaspersoft.jrsctl`.
 ### 5.1 Configuration
 
 - Single config directory: `$JRSCTL_HOME` (default: `%ProgramData%\jrsctl` on Windows, `/var/lib/jrsctl` on Linux). It falls back to `~/.jrsctl` when the system home does not exist and cannot be created; a system home that exists but is not writable by this user is refused with the reason, since two operators would otherwise change one installation from two journals (#50).
-- Files: `config.yaml`, `state.db` (§5.4), `runs.lock` (§5.5), `snapshots/`, `runs/` (per-run temp and staging), `keys/`, `secrets.enc` (§5.2), `console.token` (§11.2).
+- Files: `config.yaml`, `state.db` (§5.4), `runs.lock` (§5.5), `snapshots/`, `runs/` (per-run temp and staging), `keys/`, `secrets.enc` (§5.2).
 - Every config key overridable by env var `JRSCTL_<UPPER_SNAKE_KEY>` and by CLI flag. Precedence: flag > env > file > default.
 - A leading `~` (alone, or `~/` and `~\`) in any path means the operator's home directory (`HOME`, else `USERPROFILE`, else the JVM's `user.home`) everywhere jrsctl reads one: `--home` and `JRSCTL_HOME`, every `Path` option, every path-valued key from the file, the environment or `--set`, and the guided menu's answers; `~user` and an inner `~` are left as typed (`UserPaths`, field test 2, G3). `config set` and `init`'s review refuse a directory or file setting whose target does not exist (exit 1, `no such directory: <expanded path>`) and store the expanded path, since the service account that reads the file later has another home; `--set` at load time stays syntax-only and `doctor` reports a tree that vanished after it was written (field test 2, G9).
 - `jrsctl init` (§12.0) detects the installation and writes `config.yaml`; `doctor` validates it.
@@ -185,17 +184,14 @@ network:
   mode: isolated                        # isolated | public
   proxy: { host, port, username, passwordRef, noProxy: [host | .suffix] }
   trustStore: { path, passwordRef }
-console:
-  bind: 127.0.0.1
-  port: 7420
-  tls: { enabled, certPath, keyPath }
-  auth: { mode: token }                 # token (default, always on) | local (token + password for non-loopback)
 backups:
   retentionDays: 30
   maxSnapshots: 20
 smoke:
   reportUri: /public/Samples/Reports/AllAccounts   # WARN if absent
 ```
+
+A `console:` block from a 1.x file is ignored with one warning in 2.0 and refused from 2.1 (ADR-0038).
 
 Rules:
 - `network.mode: isolated` is enforced in the HTTP client: an allowlist containing only the `server.baseUrl` host. Any request to another host is refused, logged as `FAIL`, and audited. This makes isolated mode testable with WireMock.
@@ -274,8 +270,8 @@ Rules:
 
 ### 5.8 Redaction
 
-- `RedactingFilter` applied to all log appenders, event payloads, console SSE, support bundles, and `--json` output.
-- Patterns: configured secret values in raw, Base64, URL-encoded and JSON-string-escaped forms (the JSON outputs serialise first and redact afterwards, so a value holding `"` or `\` appears there escaped); `password=`; `Authorization:`; JSESSIONID; bearer tokens; keystore passwords; the console token.
+- `RedactingFilter` applied to all log appenders, event payloads, support bundles, and `--json` output.
+- Patterns: configured secret values in raw, Base64, URL-encoded and JSON-string-escaped forms (the JSON outputs serialise first and redact afterwards, so a value holding `"` or `\` appears there escaped); `password=`; `Authorization:`; JSESSIONID; bearer tokens; keystore passwords.
 - Test: any string registered as a secret must not appear in any output stream in any of the three encodings (property-based test with jqwik).
 
 ### 5.9 Event model
@@ -330,7 +326,7 @@ Rules:
 ### 6.2 Plan and fingerprint
 
 - `Plan` = ordered `List<Step>` grouped by `phase()` + `PlanSummary` (files touched, resources touched, service restarts, backup locations, rollback point per phase, chosen strategy, explicit warnings such as "database rollback is the operator's responsibility").
-- Plans serialize to JSON for `--plan` output and the console; stored in the `plans` table with a 30-minute TTL.
+- Plans serialize to JSON for `--plan` output; stored in the `plans` table with a 30-minute TTL for `runs recover`.
 - `PlanFingerprint` = SHA-256 over: server identity (`serverInfo` response), input artifact hash (bundle, archive, or upgrade package), SHA-256 of every target file the Plan will touch, and the resolved effective config. Execution recomputes the fingerprint and refuses to run (exit code 2) if it differs.
 
 ### 6.3 Runner
@@ -344,7 +340,7 @@ Rules:
 
 ### 6.4 Cancellation
 
-- Single cancellation token shared by Ctrl-C, console cancel, and timeouts.
+- Single cancellation token shared by Ctrl-C and timeouts.
 - Cancellation completes or compensates the in-flight Step; it never abandons a partial write. Exit code 5.
 
 ### 6.5 Retry policy
@@ -624,17 +620,13 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `jrsctl keys list|add|remove|generate`.
 - Publisher-key signing of release bundles and of the jrsctl distribution executes only in CI (rule 11).
 
-### 11.2 Console security
+### 11.2 Console security — removed
 
-- A per-launch bearer token is generated on every console start, printed once to the terminal, and written to `$JRSCTL_HOME/console.token` with owner-only permissions. Every `/api/*` request must carry it. This applies on loopback as well; a shared host must not allow other local users to start runs. The token file is restricted before the token is written into it, never afterwards, and on Windows its inherited access control entries are dropped; a file that cannot be made owner-only is deleted rather than left holding the token.
-- The browser is opened with a single-use launch code, never with the token, because the URL becomes a command line any local account can read. The code is worth 10 seconds, only one is outstanding at a time, it is consumed by the first exchange, and both the exchange and every refusal are audited with the peer address. A home other accounts can reach gets no browser at all unless `--open` is given; a home jrsctl creates is owner-only from the start.
-- The `Host` header must match the bound address or `localhost`; otherwise 421. This blocks DNS rebinding.
-- Default bind `127.0.0.1`. Non-loopback bind additionally requires TLS and `console.auth.mode: local` (token plus operator password); refused otherwise.
-- No cookies are set. Because auth is a header token, CSRF is not applicable.
+Removed in Draft 1.2 by ADR-0038. jrsctl opens no listening socket.
 
 ### 11.3 Redaction and audit
 
-- As §5.8. Audit rows for: every run start/end, every override flag (`--allow-unsigned`, `--allow-unsupported`, `--db-backup-confirmed`), key ring changes, config changes, console token issuance, launch-code exchanges and refusals, isolated-mode refusals.
+- As §5.8. Audit rows for: every run start/end, every override flag (`--allow-unsigned`, `--allow-unsupported`, `--db-backup-confirmed`), key ring changes, config changes, isolated-mode refusals.
 
 ### 11.4 Least privilege
 
@@ -679,58 +671,27 @@ Verifies every jar in the runtime image against a build-time manifest of hashes,
 
 ### 12.4 `runs support-bundle`
 
-`jrsctl runs support-bundle <id> [--out <zip>] [--json]` (§6.6) writes one run's support bundle as a zip, meant to be attached to a support ticket; the same zip is served at `GET /api/runs/{id}/support-bundle` until ADR-0038 removes the console (§13.1).
+`jrsctl runs support-bundle <id> [--out <zip>] [--json]` (§6.6) writes one run's support bundle as a zip, meant to be attached to a support ticket.
 
-- Entries: `run.json` (the `runs show --json` document: steps, statuses, durations, failure block); `plan.json` (the stored plan, present when the run has one); `transitions.jsonl` (every `step_transitions` row of the run, one JSON object per line); `events.jsonl` (present only when the run kept one); `server.json` (server identity, or `reachable: false` with the probe's error when the server cannot be reached — a bundle is wanted most when the server is broken, so this entry never causes a failure); `doctor.json` (a fresh `doctor` run, never a cached one); `config-redacted.yaml` (the effective configuration with secret references, never values); `logs/<name>` (the last 2,000 lines of the log file named by the `jrsctl.log.file` system property, the log this process is actually writing); and, under `vendor/`, the newest buildomatic script log, `jasperserver.log`, the Tomcat `catalina` log, `installation.log` and `default_master.properties` (with password keys blanked before the redactor sees the line), each tail-capped at 5 MB.
+- Entries: `run.json` (the `runs show --json` document: steps, statuses, durations, failure block); `plan.json` (the stored plan, present when the run has one); `transitions.jsonl` (every `step_transitions` row of the run, one JSON object per line); `server.json` (server identity, or `reachable: false` with the probe's error when the server cannot be reached — a bundle is wanted most when the server is broken, so this entry never causes a failure); `doctor.json` (a fresh `doctor` run, never a cached one); `config-redacted.yaml` (the effective configuration with secret references, never values); `logs/<name>` (the last 2,000 lines of the log file named by the `jrsctl.log.file` system property, the log this process is actually writing); and, under `vendor/`, the newest buildomatic script log, `jasperserver.log`, the Tomcat `catalina` log, `installation.log` and `default_master.properties` (with password keys blanked before the redactor sees the line), each tail-capped at 5 MB.
 - Every byte written passes the redactor on its way into the archive, so a registered secret cannot appear in the bundle in any encoding the redactor knows.
 - Everything that can fail — the live doctor run and the server probe behind it, and every document read from the state store — runs before the archive file is created, so a failure is a clean refusal and never a truncated or zero-byte zip.
-- A missing optional input (no stored plan, no `events.jsonl`, no vendor file at a given location) yields no entry rather than an error.
+- A missing optional input (no stored plan, no vendor file at a given location) yields no entry rather than an error.
 - A write that fails partway through the archive leaves no file behind: the target is opened `CREATE_NEW`, and any exception while writing deletes the partial file before it propagates.
 - `--out` defaults to `<id>-support-bundle.zip` in the current directory.
 - Exit 2, before anything is read from the state store: the run id is unknown; `--out` already exists; `--out` names a directory; or `--out`'s parent directory does not exist.
 
 ---
 
-## 13. Console (in `app`)
+## 13. Console — removed (ADR-0038)
 
 ### 13.1 Endpoints
 
-All endpoints require the bearer token (§11.2).
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/health` | tool version, matrix version, last run, lock state |
-| GET | `/api/server` | detected server identity |
-| POST | `/api/plan` | `{op, args}` → Plan JSON + `planId` (stored, 30-minute TTL) |
-| POST | `/api/run` | `{planId, confirm: true}` → `runId`; refuses if fingerprint changed or TTL expired |
-| GET | `/api/runs` | history |
-| GET | `/api/runs/{id}` | plan, steps, outcome, backups |
-| GET | `/api/runs/{id}/events` | SSE stream (replays `step_transitions`, then live) |
-| POST | `/api/runs/{id}/cancel` | cancel |
-| POST | `/api/runs/{id}/rollback` | rollback where available |
-| GET | `/api/runs/{id}/support-bundle` | as `runs support-bundle` (§12.4) |
-| GET | `/api/doctor` | run doctor, return report |
-| POST | `/api/auth/launch` | exchange a single-use launch code for the bearer token (§11.2) |
-| POST | `/api/runs/{id}/resume` | resume a pending run from its interrupted step |
-| GET | `/api/hotfixes` | installed, superseded and rolled-back hotfixes |
-| GET, POST | `/api/smoke` | last smoke report; `{mutating}` runs the probes and returns the report |
-| GET | `/api/customizations` | registered customizations |
-| GET | `/api/customizations/diff?path=` | three-way comparison of one registered customization |
-| POST | `/api/customizations/register`, `/api/customizations/unregister` | `{path}`, confined to the installation and Tomcat directories |
-| GET | `/api/snapshots` | snapshot sets with their retention protection |
-| POST | `/api/snapshots/prune` | `{dryRun}` retention pruning, the same pass `runs prune` makes, under the run lock (409 while another run holds it) |
-| GET | `/api/config` | effective configuration as `config show` prints it (redacted) |
-| GET | `/api/selfcheck` | selfcheck report |
-| GET | `/api/keys` | trusted key ring |
-| GET | `/api/repository/tree?path=` | one level of the repository folder tree, from the server |
-
-Every response document is an immutable record in `app.console` with a JSON Schema under `schema/json/api-*.schema.json`; the schema tests validate the live responses against them.
+The endpoints of Draft 1.1 are gone; `runs support-bundle` replaces `GET /api/runs/{id}/support-bundle`, every other endpoint had a CLI command already.
 
 ### 13.2 UI
 
-- Static single-page app, vanilla JS + minimal CSS, no build step, served from the JAR. No external CDN references (isolated mode).
-- Views: Dashboard (server identity, health, pending runs), New Operation (form → plan → confirm), Run (step tree with live status, elapsed, log pane, cancel, rollback, resume), History, Doctor, Hotfixes; and since 2026-09-12 Smoke, Customizations (register, unregister, diff), Snapshots (list, prune), Config and a repository browser, one module per page.
-- Step status colors and icons must be distinguishable without color (icon + text).
+Removed.
 
 ### 13.3 Approved dependencies
 
@@ -762,8 +723,7 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 **Phase 5 — Upgrade**
 - Full orchestration with fake vendor scripts for both modes, the fake `js-upgrade-newdb` refusing to run without an existing export file; either mode refused without `--db-backup-confirmed`; rollback to point B restores webapp, keystore, config and buildomatic; hotfix reapply classification (`REAPPLICABLE`/`SUPERSEDED`) and confirmation gating; customization 3-way comparison auto-applies only the no-conflict case; smoke gate.
 
-**Phase 6 — Console**
-- All endpoints implemented behind the token; `Host` header check; plan TTL and fingerprint refusal; SSE replays transitions then streams live; UI renders a run end-to-end in a headless browser test; support bundle contains no secrets; cancel and rollback from UI.
+**Phase 6 — Console** — removed in Draft 1.2 (ADR-0038); `Phase6ConsoleTest` deleted; the support bundle is covered by `Phase8JsonSchemaTest` through `runs support-bundle`.
 
 **Phase 7 — Distribution**
 - jlink runtime image; portable ZIP (Windows) and tar.gz (Linux) for x86_64; SBOM generated; SHA-256 checksums; signing step implemented and executed in CI only; installer smoke test of the portable archive on clean Windows and Linux VMs with no pre-installed JDK.
@@ -800,14 +760,14 @@ Each phase has an executable acceptance script in `acceptance/phaseN/` runnable 
 - `docs/spec.md` — this document; `docs/spec-changelog.md` — revision log.
 - `docs/operator-guide.md` — every command, flag, exit code, and error class with remediation; states explicitly which rollbacks are best-effort (import) and which require an operator database restore (`samedb` upgrade).
 - `docs/hotfix-authoring.md` — bundle format, `hotfix build`, signing, testing a bundle.
-- `docs/security.md` — threat model, key management, console token, hardening.
+- `docs/security.md` — threat model, key management, hardening.
 - `docs/decisions/` — ADRs. ADR-0001..0006 are pre-seeded for the scope decisions in §1.3.
 - `docs/BUILD_STATUS.md` — maintained by the agent: phase status, stubbed components, unsigned artifacts, known gaps.
 - Embedded help: `jrsctl help <command>` and `jrsctl <command> --explain`.
 
 ### 17.1 Guided mode
 
-`jrsctl` without a command, on a terminal and without `--json` or `--non-interactive`, opens a menu (#71). It is a front end over the CLI and nothing more: every entry builds an ordinary command line, prints it (`Running: jrsctl …`) and runs it in-process through the same command tree, so plans, confirmations, the run lock, audit and exit codes are exactly the CLI's, and the menu never runs a plan without the confirmation the CLI asks for. The global options it was started with are passed on to every command. It offers every option the vendor's documented paths need (field test 2, I4 and G1 to G7): the export scope and strategy (REST, or the vendor tools with an optional stop), the import's `--update`, `--skip-themes`, `--broken-dependencies` and `--strategy`, and the upgrade's mode, `--tomcat-dir`, `--export` with `--key-alias`, the `--test` rehearsal and, for samedb, the backup confirmation. Enter keeps the command's default for every question; a file, directory or choice that is not acceptable is asked again; an empty answer where one is required returns to the menu; end of input quits with exit 0. Settings are shown once and changed in a loop until Enter, with an unknown key re-asked rather than sent. The eighth entry lists the embedded documents (`docs <name>`), and the footer names `jrsctl --help`, `jrsctl console` and `--json`. Before the menu, runs that need recovery are announced. The menu writes nothing itself and does not do line editing beyond the terminal's own (ADR-0023).
+`jrsctl` without a command, on a terminal and without `--json` or `--non-interactive`, opens a menu (#71). It is a front end over the CLI and nothing more: every entry builds an ordinary command line, prints it (`Running: jrsctl …`) and runs it in-process through the same command tree, so plans, confirmations, the run lock, audit and exit codes are exactly the CLI's, and the menu never runs a plan without the confirmation the CLI asks for. The global options it was started with are passed on to every command. It offers every option the vendor's documented paths need (field test 2, I4 and G1 to G7): the export scope and strategy (REST, or the vendor tools with an optional stop), the import's `--update`, `--skip-themes`, `--broken-dependencies` and `--strategy`, and the upgrade's mode, `--tomcat-dir`, `--export` with `--key-alias`, the `--test` rehearsal and, for samedb, the backup confirmation. Enter keeps the command's default for every question; a file, directory or choice that is not acceptable is asked again; an empty answer where one is required returns to the menu; end of input quits with exit 0. Settings are shown once and changed in a loop until Enter, with an unknown key re-asked rather than sent. The eighth entry lists the embedded documents (`docs <name>`), and the footer names `jrsctl --help` and `--json`. Before the menu, runs that need recovery are announced. The menu writes nothing itself and does not do line editing beyond the terminal's own (ADR-0023).
 
 ---
 
@@ -843,7 +803,7 @@ Open questions for PM/engineering (record answers as ADRs):
 
 - Q1: Minimum JRS version to support in v1 (spec assumes 7.1).
 - Q2: Whether JBoss/WildFly or WebSphere deployments must be supported in v1 (spec assumes Tomcat only; abstraction allows extension).
-- Q3: Whether the console should support multiple registered servers in v1 (spec assumes one server per `JRSCTL_HOME`).
+- Q3: Whether the console should support multiple registered servers in v1 (spec assumes one server per `JRSCTL_HOME`). Resolved by ADR-0038: no console.
 - Q4: Publisher key custody and rotation process.
 - Q5: Whether `js-ant` accepts a `default_master.properties` path outside the buildomatic directory. Until answered, §7.4 writes into the invoked buildomatic directory with snapshot/restore.
 - Q6: Which JRS CE container image the `needs-jrs` suite uses (a `js-docker` build pushed to the private registry is the working assumption).
