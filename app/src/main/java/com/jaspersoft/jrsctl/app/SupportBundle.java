@@ -24,6 +24,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -136,10 +137,12 @@ public final class SupportBundle {
         zip.closeEntry();
       }
       // review §3.4 (issue #111): the vendor's own troubleshooting files, tail-capped and redacted
-      for (VendorLogs.Source source : vendorSources()) {
-        if (!belongsToRun(source, run)) {
+      for (VendorLogs.Source located : vendorSources()) {
+        Optional<VendorLogs.Source> forRun = forRun(located, run);
+        if (forRun.isEmpty()) {
           continue;
         }
+        VendorLogs.Source source = forRun.get();
         zip.putNextEntry(new ZipEntry(source.entry()));
         try {
           VendorLogs.tail(
@@ -169,21 +172,29 @@ public final class SupportBundle {
     return json.replace("{runId}", runId);
   }
 
+  /** Slack after a run's end for a vendor log's last write to land (#161). */
+  static final Duration VENDOR_LOG_SLACK = Duration.ofMinutes(2);
+
   /**
-   * Whether a vendor file says anything about {@code run} (#161): a buildomatic script log is
-   * written by one vendor run, so one last written before this run started is another run's and is
-   * left out; the server's own logs, the installer log and the properties are context whatever
-   * their age. A file whose time cannot be read is kept.
+   * The vendor file to bundle for {@code run} in place of {@code source} (#161). A buildomatic
+   * script log is written by one vendor run, so the run's own is the newest one in that directory
+   * last written while the run executed (from its start to {@link #VENDOR_LOG_SLACK} after its end,
+   * or up to now for a run still pending); a log from before the run or from a later run is never
+   * bundled, and a run that ran no vendor script gets none. The server's own logs, the installer
+   * log and the properties are context whatever their age, and are kept as they are.
    */
-  static boolean belongsToRun(VendorLogs.Source source, RunRecord run) {
-    if (!source.entry().startsWith(VendorLogs.ENTRY_PREFIX + "buildomatic/")) {
-      return true;
+  static Optional<VendorLogs.Source> forRun(VendorLogs.Source source, RunRecord run) {
+    String prefix = VendorLogs.ENTRY_PREFIX + "buildomatic/";
+    if (!source.entry().startsWith(prefix)) {
+      return Optional.of(source);
     }
-    try {
-      return !Files.getLastModifiedTime(source.file()).toInstant().isBefore(run.startedAt());
-    } catch (IOException e) {
-      return true;
+    Path dir = source.file().toAbsolutePath().getParent();
+    if (dir == null) {
+      return Optional.empty();
     }
+    Instant to = run.endedAt().map(e -> e.plus(VENDOR_LOG_SLACK)).orElse(Instant.MAX);
+    return VendorLogs.newestBetween(dir, VendorLogs.BUILDOMATIC_GLOB, run.startedAt(), to)
+        .map(p -> new VendorLogs.Source(prefix + p.getFileName(), p, false));
   }
 
   /** The vendor files this installation has, from the configuration and the buildomatic lookup. */
