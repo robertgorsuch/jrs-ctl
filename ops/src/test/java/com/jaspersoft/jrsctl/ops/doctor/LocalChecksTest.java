@@ -112,7 +112,11 @@ class LocalChecksTest {
 
       assertThat(item.status()).isEqualTo(ReportItem.Status.FAIL);
       assertThat(item.detail()).contains(fake.home.root().toString()).contains("backups and state");
-      assertThat(item.remediation()).contains("--home").contains("JRSCTL_HOME");
+      // field test 3: the advice names the short volume and how to make room or move the home
+      assertThat(item.remediation())
+          .contains("the jrsctl home's volume")
+          .contains("jrsctl runs prune")
+          .contains("jrsctl home set <dir>");
     }
   }
 
