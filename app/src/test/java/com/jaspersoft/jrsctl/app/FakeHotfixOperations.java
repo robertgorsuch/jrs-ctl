@@ -57,6 +57,8 @@ public final class FakeHotfixOperations implements HotfixOperations {
   public volatile String lastPlanId = "";
   public volatile Optional<Path> lastBundle = Optional.empty();
   public volatile boolean lastAllowUnsigned;
+  public volatile HotfixOperations.UnsignedAcceptance lastUnsigned =
+      HotfixOperations.UnsignedAcceptance.REFUSED;
   public volatile Optional<String> lastRollbackId = Optional.empty();
   public volatile boolean lastCascade;
 
@@ -103,6 +105,7 @@ public final class FakeHotfixOperations implements HotfixOperations {
         });
     lastBundle = Optional.of(bundle);
     lastAllowUnsigned = options.allowUnsigned();
+    lastUnsigned = options.unsigned();
     List<Step> steps =
         List.of(
             step("verify-signature", "verify", "Verify signature", "key customer"),

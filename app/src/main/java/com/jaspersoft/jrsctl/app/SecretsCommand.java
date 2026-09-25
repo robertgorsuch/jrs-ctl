@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.IOException;
@@ -75,7 +76,7 @@ final class SecretsCommand implements Runnable {
         boot.services()
             .stateStore()
             .get()
-            .audit("operator", "secrets.init", store.file().toString());
+            .audit(AuditActor.current(), "secrets.init", store.file().toString());
         if (global.json()) {
           JsonOut.print(out, Map.of("file", store.file().toString()));
         } else {
@@ -147,7 +148,7 @@ final class SecretsCommand implements Runnable {
         try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC());
             Secret secret = Secret.of(value)) {
           boot.secretStore().set(name, secret);
-          boot.services().stateStore().get().audit("operator", "secrets.set", name);
+          boot.services().stateStore().get().audit(AuditActor.current(), "secrets.set", name);
           if (global.json()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("name", name);
@@ -242,7 +243,7 @@ final class SecretsCommand implements Runnable {
               "no entry named " + name,
               Optional.of("see `jrsctl secrets list`"));
         }
-        boot.services().stateStore().get().audit("operator", "secrets.remove", name);
+        boot.services().stateStore().get().audit(AuditActor.current(), "secrets.remove", name);
         if (global.json()) {
           Map<String, Object> row = new LinkedHashMap<>();
           row.put("name", name);

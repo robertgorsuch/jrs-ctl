@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -259,10 +260,13 @@ final class ConfigCommand implements Runnable {
                   "password not stored; nothing changed: " + e.getMessage(),
                   "run the command again");
             }
-            boot.services().stateStore().get().audit("operator", "secrets.set", raw.substring(4));
+            boot.services()
+                .stateStore()
+                .get()
+                .audit(AuditActor.current(), "secrets.set", raw.substring(4));
           }
           Optional<Path> backup = write(updated, file);
-          boot.services().stateStore().get().audit("operator", "config.set", key);
+          boot.services().stateStore().get().audit(AuditActor.current(), "config.set", key);
           report(out, key, old, ConfigKeys.value(updated, key), file, backup, global);
           warnIfOverridden(out, loader, file, key, global);
           return ExitCodes.SUCCESS;
@@ -345,7 +349,7 @@ final class ConfigCommand implements Runnable {
               Optional.of(e.remediation()));
         }
         Optional<Path> backup = write(updated, file);
-        boot.services().stateStore().get().audit("operator", "config.unset", key);
+        boot.services().stateStore().get().audit(AuditActor.current(), "config.unset", key);
         report(out, key, old, ConfigKeys.value(updated, key), file, backup, global);
         warnIfOverridden(out, loader, file, key, global);
         return ExitCodes.SUCCESS;
@@ -381,7 +385,7 @@ final class ConfigCommand implements Runnable {
         return ExitCodes.SUCCESS;
       }
       Optional<Path> backup = write(updated.get(), file);
-      boot.services().stateStore().get().audit("operator", "config.unset", "console");
+      boot.services().stateStore().get().audit(AuditActor.current(), "config.unset", "console");
       if (!global.json()) {
         out.println("removed the console block (ADR-0038: jrsctl has no web console)");
       }

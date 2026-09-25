@@ -66,7 +66,7 @@ final class HotfixVerifySteps {
     public String detail() {
       return "Ed25519 over manifest.json; keys in "
           + rt.home().trustedKeys()
-          + (in.allowUnsigned() ? "; --allow-unsigned" : "");
+          + (in.allowUnsigned() ? "; unsigned, accepted: " + in.unsignedReason() : "");
     }
 
     @Override
@@ -95,8 +95,7 @@ final class HotfixVerifySteps {
                 + " does not waive a signature that fails to verify");
       }
       if (in.allowUnsigned()) {
-        return CheckResult.warn(
-            BundleSignatures.MISSING + "; accepted because --allow-unsigned was given");
+        return CheckResult.warn(BundleSignatures.MISSING + "; accepted: " + in.unsignedReason());
       }
       return CheckResult.fail(
           BundleSignatures.MISSING, "have the bundle signed, or re-run with --allow-unsigned");
@@ -121,9 +120,15 @@ final class HotfixVerifySteps {
         rt.store()
             .audit(
                 rt.actor(),
-                ApplySteps.AUDIT_ALLOW_UNSIGNED,
+                in.unsigned() == HotfixOperations.UnsignedAcceptance.CHECKSUM_CONFIRMED
+                    ? ApplySteps.AUDIT_CHECKSUM_CONFIRMED
+                    : ApplySteps.AUDIT_ALLOW_UNSIGNED,
                 in.manifest().id() + " from " + in.bundle() + " in run " + ctx.runId());
-        log(ctx, out, Event.Log.Level.WARN, "unsigned bundle accepted (--allow-unsigned, audited)");
+        log(
+            ctx,
+            out,
+            Event.Log.Level.WARN,
+            "unsigned bundle accepted (" + in.unsignedReason() + ", audited)");
         return StepResult.ok();
       } catch (IOException e) {
         return Failures.recoverable(

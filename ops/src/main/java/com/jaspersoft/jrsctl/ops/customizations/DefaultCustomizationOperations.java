@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotManifest;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.Customization;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
@@ -393,6 +394,6 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
   }
 
   private String actor() {
-    return System.getProperty("user.name", "unknown");
+    return AuditActor.current();
   }
 }

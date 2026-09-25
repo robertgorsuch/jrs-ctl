@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
@@ -237,7 +238,11 @@ final class HotfixCommand implements Runnable {
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Services services = boot.services();
         Plan planned;
-        boolean unsignedAccepted = allowUnsigned;
+        HotfixOperations.ApplyOptions options;
+        HotfixOperations.UnsignedAcceptance unsigned =
+            allowUnsigned
+                ? HotfixOperations.UnsignedAcceptance.ALLOW_UNSIGNED
+                : HotfixOperations.UnsignedAcceptance.REFUSED;
         try {
           HotfixOperations ops = HotfixOps.open(services);
           HotfixOperations.VerifyReport report = ops.verify(bundle);
@@ -290,10 +295,12 @@ final class HotfixCommand implements Runnable {
                   .stateStore()
                   .get()
                   .audit(
-                      "operator",
+                      AuditActor.current(),
                       "hotfix.apply.official-confirmed",
                       report.manifestId() + " sha256 " + report.sha256() + " from " + from);
-              unsignedAccepted = true;
+              // #159: the plan, the verify step and the audit say the checksum was confirmed, not
+              // that --allow-unsigned was given
+              unsigned = HotfixOperations.UnsignedAcceptance.CHECKSUM_CONFIRMED;
             }
           }
           if (!report.signatureValid() && !report.official()) {
@@ -313,11 +320,12 @@ final class HotfixCommand implements Runnable {
                 .stateStore()
                 .get()
                 .audit(
-                    "operator",
+                    AuditActor.current(),
                     "hotfix.apply.allow-unsigned",
                     report.manifestId() + " from " + from);
           }
-          planned = ops.planApply(bundle, new HotfixOperations.ApplyOptions(unsignedAccepted));
+          options = new HotfixOperations.ApplyOptions(unsigned);
+          planned = ops.planApply(bundle, options);
         } catch (RuntimeException e) {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
@@ -326,7 +334,7 @@ final class HotfixCommand implements Runnable {
             new PlanExecutor.Request(
                 planned,
                 PlanRegistry.HOTFIX_APPLY,
-                PlanRegistry.applyArgs(bundle, unsignedAccepted),
+                PlanRegistry.applyArgs(bundle, options),
                 plan,
                 rollbackAll));
       }

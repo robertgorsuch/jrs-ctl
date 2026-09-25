@@ -66,13 +66,7 @@ public final class PlanRegistry {
                         args.path("restoreDatabase").asBoolean(false))));
     builders.put(
         HOTFIX_APPLY,
-        args ->
-            hotfix
-                .get()
-                .planApply(
-                    Path.of(required(args, "bundle")),
-                    new HotfixOperations.ApplyOptions(
-                        args.path("allowUnsigned").asBoolean(false))));
+        args -> hotfix.get().planApply(Path.of(required(args, "bundle")), applyOptions(args)));
     builders.put(
         HOTFIX_ROLLBACK,
         args ->
@@ -104,10 +98,29 @@ public final class PlanRegistry {
   }
 
   public static String applyArgs(Path bundle, boolean allowUnsigned) {
+    return applyArgs(bundle, new HotfixOperations.ApplyOptions(allowUnsigned));
+  }
+
+  /**
+   * {@code unsigned} records how an unsigned bundle was accepted (#159); {@code allowUnsigned} is
+   * kept beside it so a build that predates the field still rebuilds the plan.
+   */
+  public static String applyArgs(Path bundle, HotfixOperations.ApplyOptions options) {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("bundle", bundle.toAbsolutePath().normalize().toString());
-    node.put("allowUnsigned", allowUnsigned);
+    node.put("allowUnsigned", options.allowUnsigned());
+    node.put("unsigned", options.unsigned().name());
     return Json.write(node);
+  }
+
+  /** Reads {@link #applyArgs}; arguments stored before #159 carry only {@code allowUnsigned}. */
+  private static HotfixOperations.ApplyOptions applyOptions(JsonNode args) {
+    JsonNode unsigned = args.path("unsigned");
+    if (unsigned.isTextual()) {
+      return new HotfixOperations.ApplyOptions(
+          HotfixOperations.UnsignedAcceptance.valueOf(unsigned.asText()));
+    }
+    return new HotfixOperations.ApplyOptions(args.path("allowUnsigned").asBoolean(false));
   }
 
   public static String rollbackArgs(String hotfixId, boolean cascade) {

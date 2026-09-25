@@ -226,7 +226,14 @@ public final class DefaultHotfixOperations implements HotfixOperations {
                     + " --allow-unsigned"
                 : "have the bundle signed, or re-run with --allow-unsigned");
       }
-      warnings.add(missing + "; accepted with --allow-unsigned");
+      warnings.add(
+          switch (options.unsigned()) {
+            case CHECKSUM_CONFIRMED ->
+                missing
+                    + "; accepted: checksum confirmed by the operator against the support portal"
+                    + " (ADR-0027)";
+            case ALLOW_UNSIGNED, REFUSED -> missing + "; accepted with --allow-unsigned";
+          });
     }
     Manifest manifest =
         switch (validator.validate(b.manifestJson())) {
@@ -256,7 +263,7 @@ public final class DefaultHotfixOperations implements HotfixOperations {
             manifest,
             paths,
             targets,
-            options.allowUnsigned(),
+            options.unsigned(),
             dbType,
             sqlScripts);
 

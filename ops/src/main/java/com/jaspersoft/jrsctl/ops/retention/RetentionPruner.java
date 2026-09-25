@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -80,7 +81,7 @@ public final class RetentionPruner {
     return new RetentionPruner(
         services,
         new SnapshotStore(services.home(), services.platform().files(), services.clock()),
-        System.getProperty("user.name", "unknown"));
+        AuditActor.current());
   }
 
   /**

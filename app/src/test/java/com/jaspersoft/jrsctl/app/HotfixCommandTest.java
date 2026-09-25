@@ -8,10 +8,12 @@ import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.RunLock;
 import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.HotfixFile;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.StateStore;
+import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -77,11 +79,22 @@ class HotfixCommandTest {
         .contains("Does this match the checksum on the support portal?")
         .contains("Run this plan?");
     assertThat(fake.executed).isNotEmpty();
-    assertThat(fake.lastAllowUnsigned).isTrue();
+    assertThat(fake.lastUnsigned)
+        .as("#159: a confirmed checksum is not --allow-unsigned")
+        .isEqualTo(HotfixOperations.UnsignedAcceptance.CHECKSUM_CONFIRMED);
     assertThat(audits(home))
         .contains("hotfix.apply.official-confirmed")
         .contains(FakeHotfixOperations.SHA256)
         .doesNotContain("hotfix.apply.allow-unsigned");
+    assertThat(actors(home)).containsOnly(AuditActor.current());
+  }
+
+  private static java.util.Set<String> actors(Path home) {
+    try (StateStore store = StateStore.open(new JrsctlHome(home), Clock.systemUTC())) {
+      java.util.Set<String> out = new java.util.HashSet<>();
+      store.auditRows(20).forEach(a -> out.add(a.actor()));
+      return out;
+    }
   }
 
   @Test

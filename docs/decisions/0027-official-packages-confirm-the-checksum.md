@@ -32,3 +32,7 @@ The same test showed the detector was narrower than support's packages: exact, c
 - **Keep the flag and fix the messages.** Rejected: the tester had already read the message; the objection was to the concept, not the wording.
 - **Trust the package on shape, no question.** Rejected, as in ADR-0024: it would install unverified code from any ZIP in that layout.
 - **Verify the package against a checksum jrsctl fetches from the support portal.** Not possible: the portal needs a login and publishes no machine-readable checksum list.
+
+## Amendment (#159)
+
+A confirmed checksum used to be carried into the plan as `--allow-unsigned`, so the plan warning, the `verify-signature` step and the run's audit row all named a flag the operator never gave. The plan options now record how an unsigned package was accepted (refused, checksum confirmed, or `--allow-unsigned`); the plan says *checksum confirmed by the operator against the support portal*, and the run audits `hotfix.checksum-confirmed` instead of `hotfix.allow-unsigned`. The stored arguments `runs recover` rebuilds from carry the same value, and arguments stored by 2.0.0 and earlier are read as before. Every audit row, from a command or from a step, now names the operating-system account that ran jrsctl (`AuditActor`), where commands used to write `operator`.

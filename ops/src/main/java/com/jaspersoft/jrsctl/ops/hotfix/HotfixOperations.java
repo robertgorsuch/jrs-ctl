@@ -15,8 +15,34 @@ import java.util.Optional;
  */
 public interface HotfixOperations {
 
+  /**
+   * Why a bundle without a jrsctl signature may be applied (#159): not at all, because the operator
+   * confirmed an official package's checksum against the support portal (ADR-0027), or because
+   * {@code --allow-unsigned} was given. The plan, the verify step and the audit name which one.
+   */
+  enum UnsignedAcceptance {
+    REFUSED,
+    CHECKSUM_CONFIRMED,
+    ALLOW_UNSIGNED
+  }
+
   /** Options for {@code hotfix apply}. */
-  record ApplyOptions(boolean allowUnsigned) {}
+  record ApplyOptions(UnsignedAcceptance unsigned) {
+
+    public ApplyOptions {
+      java.util.Objects.requireNonNull(unsigned, "unsigned");
+    }
+
+    /** {@code true} is {@code --allow-unsigned}, {@code false} refuses an unsigned bundle. */
+    public ApplyOptions(boolean allowUnsigned) {
+      this(allowUnsigned ? UnsignedAcceptance.ALLOW_UNSIGNED : UnsignedAcceptance.REFUSED);
+    }
+
+    /** Whether a bundle without a signature may be applied at all. */
+    public boolean allowUnsigned() {
+      return unsigned != UnsignedAcceptance.REFUSED;
+    }
+  }
 
   /** Options for {@code hotfix rollback}. */
   record RollbackOptions(boolean cascade) {}
