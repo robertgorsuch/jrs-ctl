@@ -50,7 +50,7 @@ class GuidedModeTest {
             },
             () -> pending,
             () -> Optional.of(tmp.resolve("home").resolve("snapshots")),
-            () -> settings);
+            () -> new GuidedMode.SettingsView(!settings.isEmpty(), Optional.empty(), settings));
     return mode.run();
   }
 
@@ -730,5 +730,40 @@ class GuidedModeTest {
                 "--monitoring",
                 "--out",
                 "/tmp/all.zip"));
+  }
+
+  /** Review of #172: a settings file that exists but cannot be read is offered for replacement. */
+  @Test
+  void should_offer_to_replace_the_settings_when_the_file_exists_but_is_broken() {
+    Prompter.override(new StringReader("1\ny\n\nq\n"));
+    new GuidedMode(
+            new PrintWriter(text, true),
+            List.of(),
+            args -> {
+              ran.add(List.of(args));
+              return 0;
+            },
+            List::of,
+            Optional::empty,
+            () ->
+                new GuidedMode.SettingsView(
+                    true, Optional.of("config.yaml: not a mapping (fix the YAML)"), Map.of()))
+        .run();
+
+    assertThat(text.toString()).contains("The settings file cannot be read: config.yaml");
+    assertThat(ran).containsExactly(List.of("init", "--force"));
+  }
+
+  /** Review of #172: a value with a masked part is not offered for editing, and Enter keeps it. */
+  @Test
+  void should_hide_a_redacted_value_and_keep_it_when_enter_is_the_answer() {
+    Map<String, String> settings = new java.util.LinkedHashMap<>();
+    settings.put("database.url", "jdbc:postgresql://db/jrs?password=[redacted]");
+
+    guided(settings, List.of(), List.of(), "1", "1", "1", "", "", "q");
+
+    assertThat(text.toString()).contains("database.url (current value hidden; Enter keeps it");
+    assertThat(text.toString()).contains("unchanged");
+    assertThat(ran).isEmpty();
   }
 }

@@ -124,19 +124,29 @@ public final class JrsctlCommand implements Callable<Integer> {
    * Every setting's current value in schema order, secrets as references, for the menu's settings
    * entry (field test 3); empty when there is no configuration file yet or it cannot be read.
    */
-  private Map<String, String> settings() {
+  GuidedMode.SettingsView settings() {
+    // review of #172: find the file without Bootstrap, which throws on a broken one, so a file that
+    // exists but cannot be read is reported as such rather than as "no settings yet"
+    Path home = LogFile.home(passOn(global).toArray(String[]::new), Env.vars());
+    Path file = new com.jaspersoft.jrsctl.core.JrsctlHome(home).configFile();
+    if (!java.nio.file.Files.isRegularFile(file)) {
+      return GuidedMode.SettingsView.none();
+    }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
-      Path file = boot.services().home().configFile();
-      if (!java.nio.file.Files.isRegularFile(file)) {
-        return Map.of();
-      }
       Map<String, String> values = new java.util.LinkedHashMap<>();
+      com.jaspersoft.jrsctl.core.redact.Redactor redactor =
+          com.jaspersoft.jrsctl.core.redact.Redactor.global();
       for (String key : new ConfigLoader().sources(file, Env.vars(), global.set()).keySet()) {
-        values.put(key, ConfigKeys.value(boot.services().config(), key));
+        // every output stream passes the redaction filter, as config show's does
+        values.put(key, redactor.redact(ConfigKeys.value(boot.services().config(), key)));
       }
-      return values;
+      return new GuidedMode.SettingsView(true, Optional.empty(), values);
+    } catch (com.jaspersoft.jrsctl.core.config.ConfigException e) {
+      return new GuidedMode.SettingsView(
+          true, Optional.of(e.getMessage() + " (" + e.remediation() + ")"), Map.of());
     } catch (RuntimeException e) {
-      return Map.of();
+      return new GuidedMode.SettingsView(
+          true, Optional.of(String.valueOf(e.getMessage())), Map.of());
     }
   }
 

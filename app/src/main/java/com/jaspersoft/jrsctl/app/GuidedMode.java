@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.ops.StrategyFlag;
@@ -38,7 +39,23 @@ final class GuidedMode {
   private final Function<String[], Integer> runner;
   private final Supplier<List<String>> pendingRuns;
   private final Supplier<Optional<Path>> snapshotsDir;
-  private final Supplier<Map<String, String>> settings;
+  private final Supplier<SettingsView> settings;
+
+  /**
+   * What the settings entry shows (review of #172): whether a configuration file exists, why it
+   * could not be read when it exists but is broken, and every setting's value, already redacted, in
+   * schema order.
+   */
+  record SettingsView(boolean exists, Optional<String> problem, Map<String, String> values) {
+    SettingsView {
+      Objects.requireNonNull(problem, "problem");
+      values = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(values));
+    }
+
+    static SettingsView none() {
+      return new SettingsView(false, Optional.empty(), Map.of());
+    }
+  }
 
   GuidedMode(
       PrintWriter out,
@@ -54,7 +71,7 @@ final class GuidedMode {
       Function<String[], Integer> runner,
       Supplier<List<String>> pendingRuns,
       Supplier<Optional<Path>> snapshotsDir) {
-    this(out, globalArgs, runner, pendingRuns, snapshotsDir, Map::of);
+    this(out, globalArgs, runner, pendingRuns, snapshotsDir, SettingsView::none);
   }
 
   /**
@@ -67,7 +84,7 @@ final class GuidedMode {
       Function<String[], Integer> runner,
       Supplier<List<String>> pendingRuns,
       Supplier<Optional<Path>> snapshotsDir,
-      Supplier<Map<String, String>> settings) {
+      Supplier<SettingsView> settings) {
     this.out = Objects.requireNonNull(out, "out");
     this.globalArgs = List.copyOf(globalArgs);
     this.runner = Objects.requireNonNull(runner, "runner");
@@ -128,13 +145,24 @@ final class GuidedMode {
    * choosing an option and can pick one by number; with no configuration yet, detection runs.
    */
   private void settings() {
-    Map<String, String> current = settings.get();
-    if (current.isEmpty()) {
+    SettingsView view = settings.get();
+    if (!view.exists()) {
       out.println();
       out.println("There are no settings yet; jrsctl detects the installation first.");
       detect();
       return;
     }
+    if (view.problem().isPresent()) {
+      // review of #172: a file that exists but cannot be read needs --force to be replaced
+      out.println();
+      out.println("The settings file cannot be read: " + view.problem().get());
+      if (Prompter.yes(
+          out, "Detect the installation again and replace the settings file? [y/N] ", false)) {
+        detect(true);
+      }
+      return;
+    }
+    Map<String, String> current = view.values();
     printSettings(current);
     out.println();
     out.println("  1) Change a setting");
@@ -248,12 +276,22 @@ final class GuidedMode {
         execute("config", "set", key.get());
       } else {
         String old = current.getOrDefault(key.get(), "");
+        // review of #172: a value the redactor masked part of is not put on the line to edit, or
+        // its mask would be saved back; Enter keeps the real value
+        boolean hidden = old.contains(Redactor.MASK);
         Optional<String> value =
-            Prompter.edit(out, key.get() + " (- removes it): ", old, List.of());
+            Prompter.edit(
+                out,
+                key.get()
+                    + (hidden
+                        ? " (current value hidden; Enter keeps it, - removes it): "
+                        : " (- removes it): "),
+                hidden ? "" : old,
+                List.of());
         if (value.isEmpty()) {
           return;
         }
-        if (value.get().equals(old)) {
+        if (value.get().equals(old) || (hidden && value.get().isEmpty())) {
           out.println("  unchanged");
           continue;
         }
@@ -267,8 +305,8 @@ final class GuidedMode {
           execute("config", "set", key.get(), value.get());
         }
       }
-      Map<String, String> refreshed = settings.get();
-      current = refreshed.isEmpty() ? current : refreshed;
+      SettingsView refreshed = settings.get();
+      current = refreshed.values().isEmpty() ? current : refreshed.values();
     }
   }
 
