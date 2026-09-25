@@ -91,6 +91,28 @@ class ConfigCommandTest {
     assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
   }
 
+  @Test
+  void should_refuse_a_console_key_naming_the_adr_when_setting() throws IOException {
+    String before = Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8);
+
+    InitCommandTest.Run run = jrsctl("config", "set", "console.port", "1");
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("ADR-0038");
+    assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
+  }
+
+  @Test
+  void should_refuse_a_console_key_naming_the_adr_when_unsetting() throws IOException {
+    String before = Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8);
+
+    InitCommandTest.Run run = jrsctl("config", "unset", "console.port");
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("ADR-0038");
+    assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
+  }
+
   /** Field test 2, G9: a directory setting that does not exist is refused when it is written. */
   @Test
   void should_refuse_config_set_of_a_directory_key_that_does_not_exist() throws IOException {
@@ -196,7 +218,7 @@ class ConfigCommandTest {
 
   @Test
   void should_list_every_key_with_its_value_source_and_description() {
-    Env.override(Map.of("JRSCTL_CONSOLE_PORT", "7500"));
+    Env.override(Map.of("JRSCTL_BACKUPS_RETENTION_DAYS", "45"));
 
     InitCommandTest.Run run = jrsctl("config", "keys");
 
@@ -205,8 +227,8 @@ class ConfigCommandTest {
       assertThat(run.out()).contains(key);
     }
     assertThat(run.out())
-        .contains("JRSCTL_CONSOLE_PORT")
-        .contains("7500")
+        .contains("JRSCTL_BACKUPS_RETENTION_DAYS")
+        .contains("45")
         .contains(ConfigKeys.description("server.baseUrl"));
   }
 
@@ -290,13 +312,78 @@ class ConfigCommandTest {
 
   @Test
   void should_note_overridden_values_when_showing_the_configuration() {
-    Env.override(Map.of("JRSCTL_CONSOLE_PORT", "7500"));
+    Env.override(Map.of("JRSCTL_BACKUPS_RETENTION_DAYS", "45"));
 
     InitCommandTest.Run run = jrsctl("config", "show", "--set", "server.runAsUser=jrs");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(run.out())
-        .contains("# console.port: overridden by JRSCTL_CONSOLE_PORT")
+        .contains("# backups.retentionDays: overridden by JRSCTL_BACKUPS_RETENTION_DAYS")
         .contains("# server.runAsUser: overridden by --set");
+  }
+
+  /**
+   * ADR-0038, PR2 finding I: a 1.x {@code console:} block is tolerated with one warning, and that
+   * warning must reach the operator's terminal in text mode and stay off standard error under
+   * {@code --json} (spec §18). {@link InitCommandTest#run} does not rebind logback's console
+   * appender to the stream it captures, so this test does that itself, the way {@link
+   * LogFileTest#reloadLogback()} does for the logging-threshold tests.
+   */
+  @Test
+  void should_warn_about_a_1x_console_block_on_stderr_exactly_once_when_showing_in_text_mode()
+      throws IOException {
+    writeOneXConfigWithConsoleBlock();
+
+    String stderr = runCapturingRealStderr("config", "show", "--home", home.toString());
+
+    assertThat(stderr.split("ADR-0038", -1).length - 1).isEqualTo(1);
+  }
+
+  @Test
+  void should_keep_stderr_empty_under_json_when_a_1x_console_block_is_tolerated()
+      throws IOException {
+    writeOneXConfigWithConsoleBlock();
+
+    String stderr = runCapturingRealStderr("config", "show", "--json", "--home", home.toString());
+
+    assertThat(stderr).isEmpty();
+  }
+
+  private void writeOneXConfigWithConsoleBlock() throws IOException {
+    Files.writeString(
+        home.resolve("config.yaml"),
+        """
+        server:
+          baseUrl: http://old.example.com:8080/jasperserver-pro
+        console:
+          port: 7421
+        """,
+        StandardCharsets.UTF_8);
+  }
+
+  /**
+   * Runs the real command tree with logback's console appender rebound to the captured stream
+   * (mirroring {@link LogFile#configure}'s threshold choice), so a warning the loggers emit is
+   * observed exactly as an operator's terminal would see it.
+   */
+  private static String runCapturingRealStderr(String... args) {
+    String savedLevel = System.getProperty(LogFile.CONSOLE_LEVEL_PROPERTY);
+    java.io.PrintStream savedErr = System.err;
+    java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+    try {
+      System.setProperty(LogFile.CONSOLE_LEVEL_PROPERTY, LogFile.consoleLevel(args));
+      System.setErr(new java.io.PrintStream(buffer, true, StandardCharsets.UTF_8));
+      LogFileTest.reloadLogback();
+      Main.commandLine().execute(args);
+    } finally {
+      System.setErr(savedErr);
+      if (savedLevel == null) {
+        System.clearProperty(LogFile.CONSOLE_LEVEL_PROPERTY);
+      } else {
+        System.setProperty(LogFile.CONSOLE_LEVEL_PROPERTY, savedLevel);
+      }
+      LogFileTest.reloadLogback();
+    }
+    return buffer.toString(StandardCharsets.UTF_8);
   }
 }

@@ -66,15 +66,6 @@ final class ConfigKeys {
           Map.entry(
               "network.trustStore.passwordRef",
               "Truststore password: enc:NAME, env:NAME or file:/path"),
-          Map.entry("console.bind", "Address the web console listens on (127.0.0.1 by default)"),
-          Map.entry("console.port", "Port of the web console"),
-          Map.entry("console.tls.enabled", "Serve the console over HTTPS (needed off loopback)"),
-          Map.entry("console.tls.certPath", "PEM certificate chain for the console"),
-          Map.entry("console.tls.keyPath", "PKCS#8 PEM private key for the console"),
-          Map.entry("console.auth.mode", "token, or local to also ask for the operator password"),
-          Map.entry(
-              "console.auth.passwordRef",
-              "Console operator password: enc:NAME, env:NAME or file:/path"),
           Map.entry("backups.retentionDays", "Days backups are kept; 0 turns off pruning by age"),
           Map.entry("backups.maxSnapshots", "Most backups kept (protected ones are never removed)"),
           Map.entry("smoke.reportUri", "Report smoke runs to check the server"));
@@ -97,11 +88,7 @@ final class ConfigKeys {
           "vendor.javaHome",
           "database.driverDir");
   private static final java.util.Set<String> FILE_KEYS =
-      java.util.Set.of(
-          "service.scriptPath",
-          "network.trustStore.path",
-          "console.tls.certPath",
-          "console.tls.keyPath");
+      java.util.Set.of("service.scriptPath", "network.trustStore.path");
 
   static PathKind pathKind(String key) {
     if (DIRECTORY_KEYS.contains(key)) {
@@ -143,7 +130,6 @@ final class ConfigKeys {
       case "database.passwordRef" -> "JRS_DB_PASSWORD";
       case "network.proxy.passwordRef" -> "JRS_PROXY_PASSWORD";
       case "network.trustStore.passwordRef" -> "JRS_TRUSTSTORE_PASSWORD";
-      case "console.auth.passwordRef" -> "JRS_CONSOLE_PASSWORD";
       default ->
           "JRS_" + DOT.matcher(key.replace("Ref", "")).replaceAll("_").toUpperCase(Locale.ROOT);
     };

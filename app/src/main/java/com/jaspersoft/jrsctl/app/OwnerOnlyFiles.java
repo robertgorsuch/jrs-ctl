@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Writes small secret files (private keys, the console token) that only their owner may read (spec
+ * Writes small secret files (private keys, file: secrets) that only their owner may read (spec
  * §5.2). Invariants: the file is created empty and exclusively, so an existing key is never
  * overwritten; it is restricted <em>before</em> the content is written, so no byte of the secret
  * ever exists under the inherited permissions (review 4.2); on Windows the inherited access control

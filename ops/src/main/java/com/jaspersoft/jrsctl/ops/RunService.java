@@ -29,13 +29,13 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The parts of "plan to run" that the CLI ({@link PlanExecutor}) and the console share (spec §5.5,
- * §6.2, §13.1): the pending-run gate, plan storage with its 30-minute TTL, the one-shot claim of a
- * plan for a run id, the run {@link Context} with every service a step may need, and the {@link
- * Runner} construction. Invariants: a plan is claimed at most once ({@link #claim} returns empty
- * when it is unknown, expired or already consumed); every context carries {@link Services}, {@link
- * StateStore}, {@link Config}, {@link SnapshotStore} and {@link KeyRing}; nothing here prints,
- * prompts or decides exit codes, so the two front ends keep their own presentation.
+ * The parts of "plan to run" that the CLI ({@link PlanExecutor}) and {@code runs recover} share
+ * (spec §5.5, §6.2, §13.1): the pending-run gate, plan storage with its 30-minute TTL, the one-shot
+ * claim of a plan for a run id, the run {@link Context} with every service a step may need, and the
+ * {@link Runner} construction. Invariants: a plan is claimed at most once ({@link #claim} returns
+ * empty when it is unknown, expired or already consumed); every context carries {@link Services},
+ * {@link StateStore}, {@link Config}, {@link SnapshotStore} and {@link KeyRing}; nothing here
+ * prints, prompts or decides exit codes, so the two front ends keep their own presentation.
  */
 public final class RunService {
 
@@ -126,7 +126,7 @@ public final class RunService {
 
   /**
    * Executes a fresh, claimed plan whose fingerprint the caller has already recomputed and compared
-   * (the console rebuilds the stored plan before it calls this).
+   * (runs recover rebuilds the stored plan before it calls this).
    */
   public RunOutcome run(Runner runner, Plan plan, Context ctx, RunOptions options) {
     return runner.run(plan, ctx, plan.fingerprint(), options);

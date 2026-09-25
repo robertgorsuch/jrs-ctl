@@ -7,10 +7,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Typed, sealed event hierarchy shared by the CLI renderer, the console SSE stream and {@code
- * --json} output (spec §5.9). Invariant: every event carries the run id and phase it belongs to,
- * and payloads are typed records, never free-form maps, so the JSON schema in Phase 8 can validate
- * them. Messages must already be redacted by the emitter; consumers never see raw secrets.
+ * Typed, sealed event hierarchy shared by the CLI renderer and {@code --json} output (spec §5.9).
+ * Invariant: every event carries the run id and phase it belongs to, and payloads are typed
+ * records, never free-form maps, so the JSON schema in Phase 8 can validate them. Messages must
+ * already be redacted by the emitter; consumers never see raw secrets.
  */
 public sealed interface Event
     permits Event.PlanCreated,

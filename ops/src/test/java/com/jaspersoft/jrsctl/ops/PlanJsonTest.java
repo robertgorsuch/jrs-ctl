@@ -19,8 +19,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The plan document is what {@code --json} prints, what the console renders and what the store
- * keeps for a resumed run. A field missing from it is a field the operator never sees again.
+ * The plan document is what {@code --json} prints and what the store keeps for a resumed run. A
+ * field missing from it is a field the operator never sees again.
  */
 class PlanJsonTest {
 

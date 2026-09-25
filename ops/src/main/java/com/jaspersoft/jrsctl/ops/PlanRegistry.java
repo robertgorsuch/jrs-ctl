@@ -26,11 +26,11 @@ import java.util.function.Supplier;
  * recover} can rebuild the plan of a pending run from {@code StoredPlan.argsJson()} (spec §6.6).
  * Invariants: the argument documents written by {@link #applyArgs}, {@link #rollbackArgs}, {@link
  * #exportArgs} and {@link #importArgs} are exactly what {@link #rebuild} reads, so a plan stored by
- * any mutating command always rebuilds; the export and import documents use the field names the
- * console front-end sends ({@code uris, usersRoles, accessEvents, fullServer, strategy, out};
- * {@code archive, update, skipUserUpdate, sourceKeystore, sourceKeystorePassword, strategy}); an
- * unknown operation fails with a message naming the known ones; the operations are obtained lazily
- * so listing the registry never touches the server.
+ * any mutating command always rebuilds; {@code uris, usersRoles, accessEvents, fullServer,
+ * strategy, out} and {@code archive, update, skipUserUpdate, sourceKeystore,
+ * sourceKeystorePassword, strategy} are the field names the export and import argument documents
+ * use; an unknown operation fails with a message naming the known ones; the operations are obtained
+ * lazily so listing the registry never touches the server.
  */
 public final class PlanRegistry {
 

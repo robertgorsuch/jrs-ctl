@@ -6,8 +6,8 @@ import java.util.Optional;
 
 /**
  * The {@code --strategy rest|vendor} flag shared by {@code export} and {@code import}. Invariant:
- * the two spellings accepted here are the ones the operator guide and the console send; anything
- * else is a usage error (exit 1) raised before any bootstrap happens.
+ * the two spellings accepted here are the ones the operator guide documents; anything else is a
+ * usage error (exit 1) raised before any bootstrap happens.
  */
 public final class StrategyFlag {
 

@@ -1,13 +1,13 @@
 # jrsctl — agent guide
 
-Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-changelog.md`. Decisions: `docs/decisions/`. Progress and gaps: `docs/BUILD_STATUS.md`. Read the spec before changing architecture.
+Single source of truth: `docs/spec.md` (Draft 1.2). Revision log: `docs/spec-changelog.md`. Decisions: `docs/decisions/`. Progress and gaps: `docs/BUILD_STATUS.md`. Read the spec before changing architecture.
 
 ## Build
 
 - Always build through `scripts\mvn.cmd` (Windows) or `scripts/mvn.sh`; they select JDK 21. The machine's default `java` is 11.
 - **Three tiers; iterate on the first two, leave the third to CI.** A full `verify` takes 7 to 15 minutes; do not run it between edits.
   1. `scripts\fast.cmd test <core|jrs|ops|app> <TestClass[,TestClass]>` (`scripts/fast.sh` on Linux and Git Bash): compile with Error Prone and `-Werror`, then only those classes. About 10 seconds warm, a minute on a fresh checkout. It fails when the name matches no test.
-  2. `scripts\fast.cmd guards`: the tests that catch a change that is right in one module and wrong across them: `Phase0SkeletonTest` (the `core.engine` to `core.state` rule), `IdempotencyCoverageTest`, `HelpExamplesTest`, `JsonOutputSchemaTest`, `ConsoleSchemaTest`. About a minute. Run it before every commit; a new leaf command or JSON field needs it. `scripts\fast.cmd phase <N>` runs one acceptance phase against the shaded jar; `scripts\fast.cmd fmt` formats.
+  2. `scripts\fast.cmd guards`: the tests that catch a change that is right in one module and wrong across them: `Phase0SkeletonTest` (the `core.engine` to `core.state` rule), `IdempotencyCoverageTest`, `HelpExamplesTest`, `JsonOutputSchemaTest`. About a minute. Run it before every commit; a new leaf command or JSON field needs it. `scripts\fast.cmd phase <N>` runs one acceptance phase against the shaded jar; `scripts\fast.cmd fmt` formats.
   3. `scripts\mvn.cmd verify` = compile, unit tests, Spotless check, acceptance for every phase, Jacoco floors. Push the branch and read CI (`gh pr checks <n>`, `gh run view <id> --log-failed`) instead of running it locally, unless a failure needs the full log on this machine.
 - Do not run `-Dtest=...` through `mvn` directly: it needs `-pl <module> -am`, `-Dsurefire.failIfNoSpecifiedTests=false` and `-Djacoco.skip=true` (a partial run cannot meet the coverage floor). `fast` sets them.
 - Formatting: `scripts\mvn.cmd spotless:apply` (or `fast fmt`) before committing (google-java-format). The check runs in the `validate` phase and as the first CI step, so a slip fails in seconds.
@@ -23,7 +23,7 @@ Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-cha
 | `core` | config + schema, secrets, `Platform`, snapshots, compat matrix, redaction, sealed `Event`s, engine (`Plan`, `Step`, `Runner`, retry, cancel, `EventBus`, `Journal`, run lock, `Recovery`), state store (SQLite, implements `Journal`) | — |
 | `jrs` | REST v2 client, `RestJrsAdapter` (capability-driven, one impl), probes, `ExportImportStrategy` (`Rest`, `VendorCli`), vendor-tool wrappers, keystore inspection, the service stop/start/wait steps every plan shares (`jrs.service`, ADR-0015) | `core` |
 | `ops` | `hotfix`, `export`, `import`, `upgrade`, `customizations` → `Plan`; `init`, `doctor`, `smoke` → report; plan rebuilding and run glue both front ends share (`PlanRegistry`, `RunService`, `PlanJson`) | `core`, `jrs` |
-| `app` | picocli commands, `--json`, progress renderer, Javalin console + SSE + static UI, support bundle, `Main` | `ops` |
+| `app` | picocli commands, `--json`, progress renderer, guided mode, support bundle, `Main` | `ops` |
 | `dist` | jlink image, portable ZIP/tar.gz, SBOM, checksums; signing runs in CI only | `app` |
 | `acceptance` | `PhaseNXxxTest` tagged `phaseN`, run against the shaded jar | all |
 
@@ -53,4 +53,4 @@ Java 21; records + sealed interfaces; pattern-matching `switch` with no `default
 
 ## Branding
 
-Product name `jrsctl`, vendor line "Actian Jaspersoft". Colour and type tokens live in `docs/branding.md` and `app/src/main/resources/web/brand.css`; values are provisional until the official brand guide is supplied.
+Product name `jrsctl`, vendor line "Actian Jaspersoft". Colour and type tokens live in `docs/branding.md`; values are provisional until the official brand guide is supplied.

@@ -17,7 +17,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Copy content to another server | `jrsctl import` |
 | Install a hotfix, or take one out | `jrsctl hotfix apply` / `jrsctl hotfix rollback` |
 | Upgrade to a new version | `jrsctl upgrade` |
-| Watch everything in a web browser | `jrsctl console` |
+| Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
 
@@ -201,30 +201,6 @@ jrsctl upgrade rollback <run id> --to-point B
 ```
 
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
-
-### Use the web console
-
-Prefer a browser? Start the console:
-
-```bash
-jrsctl console
-```
-
-Your browser opens a private page on this machine, showing server health, installed hotfixes, backups and live progress of every job. Press `Ctrl+C` in the terminal, or type `stop`, to close it.
-
-**Server without a desktop?** Use the console from your own computer through SSH. Start it on the server:
-
-```bash
-jrsctl console --no-open
-```
-
-Then, on your own computer, open a tunnel (use the port the `Console:` line shows) and open the printed `http://127.0.0.1:7420/#token=...` address in your browser:
-
-```bash
-ssh -L 7420:127.0.0.1:7420 you@jrs-server
-```
-
-The console stays bound to the server's own loopback address, so nothing is exposed on the network. On a Linux server with no desktop, `jrsctl console` prints this `ssh` command for you.
 
 ---
 

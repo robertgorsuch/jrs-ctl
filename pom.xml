@@ -44,7 +44,6 @@
 
     <!-- Runtime dependencies (spec §13.3 approved list) -->
     <picocli.version>4.7.7</picocli.version>
-    <javalin.version>7.2.3</javalin.version>
     <jackson.version>2.22.2</jackson.version>
     <slf4j.version>2.0.19</slf4j.version>
     <logback.version>1.5.38</logback.version>
@@ -54,7 +53,6 @@
     <commons-compress.version>1.28.0</commons-compress.version>
     <!-- transitive through commons-compress; pinned so the SBOM never carries an old lang3 -->
     <commons-lang3.version>3.20.0</commons-lang3.version>
-    <kotlin-stdlib.version>2.4.20</kotlin-stdlib.version>
     <semver4j.version>5.3.0</semver4j.version>
     <jline.version>3.30.17</jline.version>
 
@@ -107,7 +105,6 @@
       <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-app</artifactId><version>${project.version}</version></dependency>
 
       <dependency><groupId>info.picocli</groupId><artifactId>picocli</artifactId><version>${picocli.version}</version></dependency>
-      <dependency><groupId>io.javalin</groupId><artifactId>javalin</artifactId><version>${javalin.version}</version></dependency>
       <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${jackson.version}</version></dependency>
       <dependency><groupId>com.fasterxml.jackson.dataformat</groupId><artifactId>jackson-dataformat-yaml</artifactId><version>${jackson.version}</version></dependency>
       <dependency><groupId>com.fasterxml.jackson.datatype</groupId><artifactId>jackson-datatype-jsr310</artifactId><version>${jackson.version}</version></dependency>
@@ -119,10 +116,6 @@
       <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>${json-schema-validator.version}</version></dependency>
       <dependency><groupId>org.apache.commons</groupId><artifactId>commons-compress</artifactId><version>${commons-compress.version}</version></dependency>
       <dependency><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>${commons-lang3.version}</version></dependency>
-      <!-- Transitive through Javalin (7.2.3 declares 2.2.20). Pinned past the Kotlin advisory the
-           release audit flags (CVE-2026-53914, fixed in 2.4.20); the standard library is
-           backward compatible, so Javalin runs on the newer one unchanged. Not a new dependency. -->
-      <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin-stdlib.version}</version></dependency>
       <dependency><groupId>org.semver4j</groupId><artifactId>semver4j</artifactId><version>${semver4j.version}</version></dependency>
       <!-- ADR-0037: line editing and path completion for Prompter.line/path only (issue #102, ADR-0023
            option B). BSD-3-Clause. jline-native carries the platform natives (Windows x86/x86_64/arm64,

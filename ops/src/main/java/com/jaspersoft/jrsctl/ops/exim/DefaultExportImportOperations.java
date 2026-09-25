@@ -395,8 +395,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       throw new IllegalArgumentException(
           String.join(", ", missing)
               + (missing.size() == 1 ? " does" : " do")
-              + " not exist on the server; check the folder in the repository browser or with"
-              + " jrsctl console, and pass --uri with the exact path");
+              + " not exist on the server; check the folder in the server's repository browser and"
+              + " pass --uri with the exact path");
     }
   }
 

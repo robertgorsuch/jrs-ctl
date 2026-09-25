@@ -144,6 +144,6 @@ changes remain. Snapshots of installed hotfixes are never pruned.
 
 ## Getting the facts to whoever helps you
 
-`jrsctl console` and the run page's support bundle, or by hand: `jrsctl runs show <id> --json`,
+`jrsctl runs support-bundle <id>`, or by hand: `jrsctl runs show <id> --json`,
 `jrsctl doctor --json`, and `logs/jrsctl.log` from the jrsctl home. All three are already
 redacted; none contains a secret, the key ring, the keystore or an archive.

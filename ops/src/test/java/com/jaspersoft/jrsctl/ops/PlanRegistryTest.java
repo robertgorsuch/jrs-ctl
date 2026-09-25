@@ -25,9 +25,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The arguments of every mutating operation, written to the {@code plans} table and read back when
- * the console or {@code runs recover} rebuilds a plan. A field that is written but not read, or
- * read under another name, turns a resumed run into a different run than the one the operator
- * confirmed, and nothing else in the suite would notice.
+ * {@code runs recover} rebuilds a plan. A field that is written but not read, or read under another
+ * name, turns a resumed run into a different run than the one the operator confirmed, and nothing
+ * else in the suite would notice.
  */
 class PlanRegistryTest {
 

@@ -15,12 +15,13 @@ import java.util.Set;
 
 /**
  * The effective configuration, mirroring {@code config.yaml} key for key (spec §5.1). Invariants:
- * every value the schema gives a default for is always present (auth mode, network mode, console
- * bind/port/auth mode, backup retention, service stop timeout); everything else is an {@link
- * Optional} so callers must decide what an absent key means; paths are {@link Path}s and secret
- * references are parsed {@link SecretRef}s, so an instance never holds an unvalidated string. The
- * tree is immutable; {@link ConfigLoader} builds it and {@link ConfigWriter} serialises it back so
- * that {@code init} output round-trips.
+ * every value the schema gives a default for is always present (auth mode, network mode, backup
+ * retention, service stop timeout); everything else is an {@link Optional} so callers must decide
+ * what an absent key means; paths are {@link Path}s and secret references are parsed {@link
+ * SecretRef}s, so an instance never holds an unvalidated string. The tree is immutable; {@link
+ * ConfigLoader} builds it and {@link ConfigWriter} serialises it back so that {@code init} output
+ * round-trips. There is no {@code console} block: ADR-0038 removed the web console; {@link
+ * ConfigLoader} tolerates one still sitting in a 1.x file for this release only.
  */
 public record Config(
     Server server,
@@ -28,7 +29,6 @@ public record Config(
     Database database,
     Vendor vendor,
     Network network,
-    Console console,
     Backups backups,
     Smoke smoke) {
 
@@ -38,7 +38,6 @@ public record Config(
     Objects.requireNonNull(database, "database");
     Objects.requireNonNull(vendor, "vendor");
     Objects.requireNonNull(network, "network");
-    Objects.requireNonNull(console, "console");
     Objects.requireNonNull(backups, "backups");
     Objects.requireNonNull(smoke, "smoke");
   }
@@ -51,19 +50,17 @@ public record Config(
         Database.empty(),
         Vendor.empty(),
         Network.defaults(),
-        Console.defaults(),
         Backups.defaults(),
         Smoke.empty());
   }
 
-  /** Every configured secret reference: server, database, proxy, trust store, console. */
+  /** Every configured secret reference: server, database, proxy, trust store. */
   public List<SecretRef> secretRefs() {
     List<SecretRef> refs = new ArrayList<>();
     server().auth().passwordRef().ifPresent(refs::add);
     database().passwordRef().ifPresent(refs::add);
     network().proxy().passwordRef().ifPresent(refs::add);
     network().trustStore().passwordRef().ifPresent(refs::add);
-    console().auth().passwordRef().ifPresent(refs::add);
     return List.copyOf(refs);
   }
 
@@ -189,19 +186,6 @@ public record Config(
     PUBLIC;
 
     public static final NetworkMode DEFAULT = ISOLATED;
-
-    @Override
-    public String yamlValue() {
-      return name().toLowerCase(Locale.ROOT);
-    }
-  }
-
-  /** {@code console.auth.mode}; the token is always required, local adds a password. */
-  public enum ConsoleAuthMode implements YamlValued {
-    TOKEN,
-    LOCAL;
-
-    public static final ConsoleAuthMode DEFAULT = TOKEN;
 
     @Override
     public String yamlValue() {
@@ -425,52 +409,6 @@ public record Config(
 
     public static TrustStore empty() {
       return new TrustStore(Optional.empty(), Optional.empty());
-    }
-  }
-
-  /** The {@code console:} block. */
-  public record Console(String bind, int port, Tls tls, ConsoleAuth auth) {
-
-    public static final String DEFAULT_BIND = "127.0.0.1";
-    public static final int DEFAULT_PORT = 7420;
-
-    public Console {
-      Objects.requireNonNull(bind, "bind");
-      Objects.requireNonNull(tls, "tls");
-      Objects.requireNonNull(auth, "auth");
-      if (port < 1 || port > 65535) {
-        throw new IllegalArgumentException("console.port must be within 1..65535");
-      }
-    }
-
-    public static Console defaults() {
-      return new Console(DEFAULT_BIND, DEFAULT_PORT, Tls.disabled(), ConsoleAuth.defaults());
-    }
-  }
-
-  /** The {@code console.tls:} block. */
-  public record Tls(boolean enabled, Optional<Path> certPath, Optional<Path> keyPath) {
-
-    public Tls {
-      Objects.requireNonNull(certPath, "certPath");
-      Objects.requireNonNull(keyPath, "keyPath");
-    }
-
-    public static Tls disabled() {
-      return new Tls(false, Optional.empty(), Optional.empty());
-    }
-  }
-
-  /** The {@code console.auth:} block. */
-  public record ConsoleAuth(ConsoleAuthMode mode, Optional<SecretRef> passwordRef) {
-
-    public ConsoleAuth {
-      Objects.requireNonNull(mode, "mode");
-      Objects.requireNonNull(passwordRef, "passwordRef");
-    }
-
-    public static ConsoleAuth defaults() {
-      return new ConsoleAuth(ConsoleAuthMode.DEFAULT, Optional.empty());
     }
   }
 

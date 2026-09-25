@@ -36,12 +36,11 @@ import java.util.function.Function;
  * confirmation, and a non-interactive caller without {@code --yes} exits 2; the plan is claimed for
  * its run id before the first step so it can never execute twice and survives plan expiry while the
  * run is pending; the fingerprint is recomputed after the operator's answer by rebuilding the plan
- * from its stored arguments, as the console does, so inputs that changed while the prompt waited
+ * from its stored arguments, as runs recover does, so inputs that changed while the prompt waited
  * are refused with exit 2 before anything is claimed (spec §6.2); Ctrl-C cancels through the run's
  * single {@link CancellationToken} and waits up to 30 s for the in-flight step to finish or
  * compensate; the exit code is {@link RunOutcome#exitCode()}, or 9 when the run lock is held. The
- * pending-run gate, plan storage, claim and run context come from {@link RunService}, which the
- * console shares.
+ * pending-run gate, plan storage, claim and run context come from {@link RunService}.
  */
 final class PlanExecutor {
 
@@ -140,7 +139,7 @@ final class PlanExecutor {
       }
     }
     // spec §6.2: recomputed now, after the answer, by rebuilding the plan from its stored
-    // arguments the way the console does. The CLI used to hand the runner the plan's own
+    // arguments the way runs recover does. The CLI used to hand the runner the plan's own
     // fingerprint, so a target replaced while the prompt waited ran with stale before-hashes
     // (assessment item E2).
     PlanFingerprint recomputed;

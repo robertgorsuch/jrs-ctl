@@ -20,7 +20,7 @@ COMMON=(-Djacoco.skip=true -Dspotless.check.skip=true -Dsurefire.failIfNoSpecifi
 # The tests that break when a change is right locally and wrong across modules: the architecture rule
 # (Phase0SkeletonTest), every Step's idempotency and compensation, every command's help example, and
 # the JSON documents against their schemas. Keep this list in step with CLAUDE.md.
-GUARDS='IdempotencyCoverageTest,HelpExamplesTest,JsonOutputSchemaTest,ConsoleSchemaTest,Phase0SkeletonTest'
+GUARDS='IdempotencyCoverageTest,HelpExamplesTest,JsonOutputSchemaTest,Phase0SkeletonTest'
 
 usage() {
   sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'

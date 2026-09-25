@@ -71,7 +71,6 @@ public final class BuildomaticDefaults {
             merged,
             config.vendor(),
             config.network(),
-            config.console(),
             config.backups(),
             config.smoke()),
         filled);

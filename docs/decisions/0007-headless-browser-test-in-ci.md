@@ -2,6 +2,8 @@
 
 ## Status
 
+Superseded by ADR-0038 (2026-09-24): there is no console to test in a browser.
+
 Deferred (2026-09-10). Accepted in principle in Phase 6, but the CI job it describes has not been
 written: the `integration` job in `ci.yml` selects tests tagged `needs-docker` and no test carries
 that tag, so the job passes on zero tests (assessment item 5.2). Since 2026-09-11 the `release`

@@ -147,9 +147,17 @@ final class ConfigCommand implements Runnable {
     public Integer call() throws IOException {
       PrintWriter out = spec.commandLine().getOut();
       PrintWriter err = spec.commandLine().getErr();
+      // no-op warnings: Bootstrap.open already warned once for this file
       ConfigLoader loader = new ConfigLoader();
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Path file = boot.services().home().configFile();
+        if (key.startsWith("console.")) {
+          return fail(
+              out,
+              err,
+              key + " is no longer used (ADR-0038)",
+              "remove console.* from the configuration: jrsctl has no web console");
+        }
         if (!loader.knownKeys().contains(key)) {
           return fail(
               out,

@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -54,8 +55,15 @@ public final class ConfigLoader {
   private final JsonSchema schema;
   private final Map<String, SchemaKeys.Type> leafKeys;
   private final YAMLMapper yaml = new YAMLMapper();
+  private final Consumer<String> warnings;
 
   public ConfigLoader() {
+    this(w -> {});
+  }
+
+  /** {@code warnings} receives each tolerated-but-obsolete key (ADR-0038) once per load. */
+  public ConfigLoader(Consumer<String> warnings) {
+    this.warnings = Objects.requireNonNull(warnings, "warnings");
     JsonNode schemaNode;
     try (InputStream in = ConfigLoader.class.getResourceAsStream(SCHEMA_RESOURCE)) {
       if (in == null) {
@@ -91,7 +99,7 @@ public final class ConfigLoader {
     Objects.requireNonNull(file, "file");
     Objects.requireNonNull(env, "env");
     Objects.requireNonNull(flags, "flags");
-    ObjectNode tree = readFile(file);
+    ObjectNode tree = readTree(file);
     for (Map.Entry<String, SchemaKeys.Type> key : leafKeys.entrySet()) {
       String value = env.get(envKey(key.getKey()));
       if (value != null) {
@@ -99,6 +107,11 @@ public final class ConfigLoader {
       }
     }
     for (Map.Entry<String, String> flag : flags.entrySet()) {
+      if (flag.getKey().startsWith("console.")) {
+        throw new ConfigException(
+            flag.getKey() + " is no longer used (ADR-0038)",
+            "remove console.* from the command line: jrsctl has no web console");
+      }
       SchemaKeys.Type type = leafKeys.getOrDefault(flag.getKey(), SchemaKeys.Type.STRING);
       put(tree, flag.getKey(), coerce(flag.getValue(), type));
     }
@@ -126,7 +139,7 @@ public final class ConfigLoader {
     Objects.requireNonNull(file, "file");
     Objects.requireNonNull(env, "env");
     Objects.requireNonNull(flags, "flags");
-    ObjectNode tree = readFile(file);
+    ObjectNode tree = readTree(file);
     Map<String, Source> out = new LinkedHashMap<>();
     for (String key : leafKeys.keySet()) {
       String variable = envKey(key);
@@ -150,7 +163,7 @@ public final class ConfigLoader {
   public Config fileWith(Path file, String key, String raw) {
     Objects.requireNonNull(raw, "raw");
     requireKnown(key);
-    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    ObjectNode tree = readTree(Objects.requireNonNull(file, "file"));
     put(tree, key, coerce(raw, leafKeys.get(key)));
     validate(tree);
     return toConfig(tree, Map.of());
@@ -159,7 +172,7 @@ public final class ConfigLoader {
   /** As {@link #fileWith} with {@code key} removed, so its default (or nothing) applies. */
   public Config fileWithout(Path file, String key) {
     requireKnown(key);
-    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    ObjectNode tree = readTree(Objects.requireNonNull(file, "file"));
     String[] segments = key.split("\\.", -1);
     JsonNode parent = tree.at("/" + String.join("/", Arrays.copyOf(segments, segments.length - 1)));
     if (parent instanceof ObjectNode obj) {
@@ -170,9 +183,25 @@ public final class ConfigLoader {
   }
 
   private void requireKnown(String key) {
-    if (!leafKeys.containsKey(Objects.requireNonNull(key, "key"))) {
+    Objects.requireNonNull(key, "key");
+    if (key.startsWith("console.")) {
+      throw new ConfigException(
+          key + " is no longer used (ADR-0038)",
+          "remove console.* from the configuration: jrsctl has no web console");
+    }
+    if (!leafKeys.containsKey(key)) {
       throw new ConfigException(
           "unknown configuration key " + key, "list the keys with: jrsctl config keys");
+    }
+  }
+
+  /** ADR-0038: a 1.x file may still carry {@code console:}; drop it with one warning. */
+  private void dropConsoleBlock(ObjectNode tree, Path file) {
+    if (tree.remove("console") != null) {
+      warnings.accept(
+          "console: in "
+              + file
+              + " is no longer used (ADR-0038): remove the block; jrsctl 2.1 will refuse it");
     }
   }
 
@@ -248,6 +277,18 @@ public final class ConfigLoader {
 
   // ---- tree assembly ----------------------------------------------------------------------------
 
+  /**
+   * {@code file} parsed and with a stale {@code console:} block dropped (ADR-0038); the single
+   * point every file-reading entry point ({@link #load(Path, Map, Map)}, {@link #sources}, {@link
+   * #fileWith} and {@link #fileWithout}) goes through, so the one-release tolerance and its one
+   * warning per parse apply everywhere a file is read, not only when loading the effective config.
+   */
+  private ObjectNode readTree(Path file) {
+    ObjectNode tree = readFile(file);
+    dropConsoleBlock(tree, file);
+    return tree;
+  }
+
   private ObjectNode readFile(Path file) {
     if (!Files.isRegularFile(file)) {
       return JsonNodeFactory.instance.objectNode();
@@ -307,6 +348,10 @@ public final class ConfigLoader {
         value = value.substring(1).strip();
       }
       String where = file + " line " + (i + 1);
+      if (key.startsWith("console.")) {
+        warnings.accept(key + " at " + where + " is no longer used (ADR-0038): remove the line");
+        continue;
+      }
       if (!leafKeys.containsKey(key)) {
         throw new ConfigException(
             "unknown configuration key " + key + " at " + where,
@@ -407,9 +452,6 @@ public final class ConfigLoader {
     JsonNode network = root.path("network");
     JsonNode proxy = network.path("proxy");
     JsonNode trust = network.path("trustStore");
-    JsonNode console = root.path("console");
-    JsonNode tls = console.path("tls");
-    JsonNode consoleAuth = console.path("auth");
     JsonNode backups = root.path("backups");
     JsonNode smoke = root.path("smoke");
 
@@ -460,19 +502,6 @@ public final class ConfigLoader {
                 text(trust, "path").map(v -> path("network.trustStore.path", v, env)),
                 text(trust, "passwordRef")
                     .map(v -> secretRef("network.trustStore.passwordRef", v)))),
-        new Config.Console(
-            text(console, "bind").orElse(Config.Console.DEFAULT_BIND),
-            integer(console, "port").orElse(Config.Console.DEFAULT_PORT),
-            new Config.Tls(
-                bool(tls, "enabled").orElse(false),
-                text(tls, "certPath").map(v -> path("console.tls.certPath", v, env)),
-                text(tls, "keyPath").map(v -> path("console.tls.keyPath", v, env))),
-            new Config.ConsoleAuth(
-                text(consoleAuth, "mode")
-                    .map(v -> yamlEnum("console.auth.mode", Config.ConsoleAuthMode.class, v))
-                    .orElse(Config.ConsoleAuthMode.DEFAULT),
-                text(consoleAuth, "passwordRef")
-                    .map(v -> secretRef("console.auth.passwordRef", v)))),
         new Config.Backups(
             integer(backups, "retentionDays").orElse(Config.Backups.DEFAULT_RETENTION_DAYS),
             integer(backups, "maxSnapshots").orElse(Config.Backups.DEFAULT_MAX_SNAPSHOTS)),
@@ -503,11 +532,6 @@ public final class ConfigLoader {
   private static Optional<Integer> integer(JsonNode parent, String field) {
     JsonNode v = parent.get(field);
     return v == null || !v.isNumber() ? Optional.empty() : Optional.of(v.intValue());
-  }
-
-  private static Optional<Boolean> bool(JsonNode parent, String field) {
-    JsonNode v = parent.get(field);
-    return v == null || !v.isBoolean() ? Optional.empty() : Optional.of(v.booleanValue());
   }
 
   private static URI uri(String key, String value) {

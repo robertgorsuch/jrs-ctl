@@ -11,12 +11,11 @@
 
   <artifactId>jrsctl-app</artifactId>
   <name>jrsctl :: app</name>
-  <description>Picocli CLI, Javalin console, main entry, shaded JAR</description>
+  <description>Picocli CLI, main entry, shaded JAR</description>
 
   <dependencies>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-ops</artifactId></dependency>
     <dependency><groupId>info.picocli</groupId><artifactId>picocli</artifactId></dependency>
-    <dependency><groupId>io.javalin</groupId><artifactId>javalin</artifactId></dependency>
     <!-- ADR-0037: Prompter.path line editing and filesystem completion, issue #102 -->
     <dependency><groupId>org.jline</groupId><artifactId>jline-terminal</artifactId></dependency>
     <dependency><groupId>org.jline</groupId><artifactId>jline-terminal-jni</artifactId></dependency>
@@ -25,18 +24,6 @@
   </dependencies>
 
   <build>
-    <resources>
-      <resource>
-        <directory>src/main/resources</directory>
-        <!-- The sample backend and the front-end's developer notes stay in the source tree: a real
-             console must never be able to show sample runs from its own URL, so neither file reaches
-             the classpath or the jar (WebAssetsTest and Phase0SkeletonTest assert this). -->
-        <excludes>
-          <exclude>web/mock.js</exclude>
-          <exclude>web/README.md</exclude>
-        </excludes>
-      </resource>
-    </resources>
     <plugins>
       <plugin>
         <!-- One test JVM for this module (assessment item B2): the root pom forks one JVM per core,

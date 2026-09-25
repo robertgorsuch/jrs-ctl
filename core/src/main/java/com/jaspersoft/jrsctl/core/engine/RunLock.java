@@ -24,11 +24,11 @@ import org.slf4j.LoggerFactory;
  * ({@code tryLock() == null}) and in the same JVM both surface as {@link LockHeldException}; {@link
  * #close()} truncates and releases. A process that holds the lock never opens a second handle on
  * the file: on Linux the lock is a POSIX record lock, which the kernel drops the moment any
- * descriptor of the process on that file is closed, so a doctor or console probe that read the
- * holder text through {@code Files.readString} released the live run's lock (assessment item E1).
- * The locks this process holds are kept in a registry keyed by lock file, and {@link #heldBy} and
- * {@link #readHolder} answer from it before touching the file; every open of the file happens under
- * one monitor so a probe and an acquisition never overlap.
+ * descriptor of the process on that file is closed, so a doctor probe that read the holder text
+ * through {@code Files.readString} released the live run's lock (assessment item E1). The locks
+ * this process holds are kept in a registry keyed by lock file, and {@link #heldBy} and {@link
+ * #readHolder} answer from it before touching the file; every open of the file happens under one
+ * monitor so a probe and an acquisition never overlap.
  */
 public final class RunLock implements AutoCloseable {
 

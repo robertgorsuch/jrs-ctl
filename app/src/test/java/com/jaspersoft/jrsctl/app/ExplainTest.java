@@ -153,7 +153,7 @@ class ExplainTest {
     cmd.setOut(new PrintWriter(out));
     int code = cmd.execute("--explain");
     assertThat(code).isZero();
-    assertThat(out.toString()).contains("jrsctl selfcheck").contains("jrsctl console");
+    assertThat(out.toString()).contains("jrsctl selfcheck").contains("jrsctl docs");
   }
 
   @Test

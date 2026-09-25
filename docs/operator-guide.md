@@ -1,6 +1,6 @@
 # jrsctl operator guide
 
-`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command: tool self-checks, detection and diagnostics, configuration, signed hotfixes, repository export and import, vendor upgrades with rollback and registered customizations, run history, recovery and snapshot retention, trusted keys, the encrypted secret store, the local web console and the documentation embedded in the tool itself.
+`jrsctl` is the JasperReports Server lifecycle tool from Actian Jaspersoft. This guide covers every command: tool self-checks, detection and diagnostics, configuration, signed hotfixes, repository export and import, vendor upgrades with rollback and registered customizations, run history, recovery and snapshot retention, trusted keys, the encrypted secret store and the documentation embedded in the tool itself.
 
 This guide is embedded in the tool: `jrsctl docs operator-guide` prints it, and `jrsctl <command> --explain` prints the section of this guide that describes that command. No network access is needed for either.
 
@@ -15,7 +15,7 @@ Everything the tool stores lives under one directory, the **jrsctl home** (`--ho
 | `snapshots/` | backups taken before files are replaced or deleted |
 | `keys/trusted/<name>.pub` | public keys trusted to sign hotfix bundles |
 | `secrets.enc` | AES-GCM encrypted secrets referenced as `enc:NAME` |
-| `console.token` | the per-launch console token while `jrsctl console` runs (owner-only) |
+| `console.token` | left behind by jrsctl 1.x only; safe to delete |
 | `logs/jrsctl.log` | JSON log of every invocation |
 
 ## Installing (portable archive)
@@ -59,7 +59,7 @@ Type `jrsctl` with nothing after it, in a terminal, and a menu opens (#71, spec 
 7. **Recent jobs and recovery**: `runs list`, and for an interrupted job `runs recover <id> --resume` or `--rollback`. An interrupted job is also announced before the menu.
 8. **Read the documentation**: the embedded documents by title, opened with `docs <name>`.
 
-The footer names the other entry points: `jrsctl --help` lists every command, `jrsctl console` opens the web console, and `--json` makes any command machine-readable. Global options given with `jrsctl` (`--home`, `--set`, `--passphrase-file`, `--ascii`, `--no-color`) are passed on to every command. Without a terminal, or with `--json` or `--non-interactive`, `jrsctl` alone still prints its usage and exits 1, so scripts see no change. What the menu does not do: write anything itself, or offer a live dashboard (see ADR-0023; #75 is the tracking issue for that).
+The footer names the other entry point: `jrsctl --help` lists every command, and `--json` makes any command machine-readable. Global options given with `jrsctl` (`--home`, `--set`, `--passphrase-file`, `--ascii`, `--no-color`) are passed on to every command. Without a terminal, or with `--json` or `--non-interactive`, `jrsctl` alone still prints its usage and exits 1, so scripts see no change. What the menu does not do: write anything itself, or offer a live dashboard (see ADR-0023; #75 is the tracking issue for that).
 
 A path prompt (the installation directory, a hotfix package, an export or import archive) tab-completes filesystem entries and supports normal line editing — arrow keys, backspace across the line — through a bundled JLine terminal (#102, ADR-0037); every other prompt (menu choices, key aliases, organisation ids) is still the terminal's own line editing, unchanged. If a host's terminal cannot give jrsctl a real console (an unusual emulator, a very old Windows console), path prompts fall back to plain line input with no error; `rlwrap jrsctl` on Linux gives history and completion at the shell level regardless, and on Windows the guided menu works the same way from `cmd.exe`, PowerShell or Windows Terminal.
 
@@ -77,7 +77,7 @@ Neither `--explain` nor `docs` reads the configuration, the secret store or the 
 
 jrsctl is built to run on a server that has no route to the internet.
 
-- **Nothing is downloaded at run time.** The portable archive carries its own Java runtime, every library, the console's static files, this documentation and the compatibility matrix. There is no update check, no telemetry and no CDN reference in the console (the assets are checked for that at build time).
+- **Nothing is downloaded at run time.** The portable archive carries its own Java runtime, every library, this documentation and the compatibility matrix. There is no update check and no telemetry.
 - **`network.mode: isolated`** (the default written by `init`) makes the HTTP client refuse any request to a host other than the one in `server.baseUrl`. A refused request is logged as `FAIL` and audited, so a misconfigured proxy or a redirect to another host cannot leak anything. `network.mode: public` lifts the allowlist and honours `network.proxy` and `network.trustStore`. `network.proxy.noProxy` lists hosts that bypass the proxy (a bare name matches exactly, a `.suffix` matches every host under it); loopback always bypasses. An authenticated proxy works for `https://` base URLs as well, since jrsctl enables Basic authentication on CONNECT tunnels, which the Java runtime disables by default. A `network.trustStore` adds its certificates to the runtime's own CA set instead of replacing it, so a corporate CA and a public certificate both verify. Client certificates are not supported.
 - **Hotfix bundles** are signed ZIP files: build them on a connected machine with `jrsctl hotfix build`, carry them over by any means, and `jrsctl hotfix verify <bundle>` checks the signature against the key ring on the target before `hotfix apply` touches anything. Add the publisher's public key once with `jrsctl keys add <name> <publicKeyFile>`; the bundled Actian Jaspersoft publisher key is used automatically when present.
 - **Upgrade packages** are the vendor's distribution directories, copied to the server and given to `jrsctl upgrade`; jrsctl runs the package's own buildomatic scripts with `vendor.javaHome` and never fetches anything.
@@ -181,7 +181,7 @@ Exercises the server end to end: login, repository listing, a sample report run 
 
 ### `jrsctl config show [--format yaml|properties] [--json]`
 
-Prints the effective configuration after precedence is applied (flag `--set` > environment > `config.yaml` > built-in default) as YAML, followed by one comment line per value an environment variable or `--set` overrides (`# console.port: overridden by JRSCTL_CONSOLE_PORT`). `jrsctl config keys` gives the source of every value. Every secret appears as its reference (`env:NAME`, `file:/path`, `enc:NAME`), never as a value, so the output is safe to paste into a ticket.
+Prints the effective configuration after precedence is applied (flag `--set` > environment > `config.yaml` > built-in default) as YAML, followed by one comment line per value an environment variable or `--set` overrides (`# server.baseUrl: overridden by JRSCTL_SERVER_BASEURL`). `jrsctl config keys` gives the source of every value. Every secret appears as its reference (`env:NAME`, `file:/path`, `enc:NAME`), never as a value, so the output is safe to paste into a ticket.
 
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.
@@ -190,9 +190,9 @@ Prints the effective configuration after precedence is applied (flag `--set` > e
 
 ### `jrsctl config set <key> [<value>]`
 
-Changes one setting in `config.yaml` without editing the file (#70). The new value is checked the way `--set` values are, and the whole file must still pass the schema before it is written. The previous file is kept as `config.yaml.bak`. The command prints `key: old -> new`, and adds a note when an environment variable or `--set` still overrides the key. Without a value it asks for one, showing the current value in brackets (Enter changes nothing). A path setting (`server.installDir`, `server.tomcatDir`, `server.buildomaticDir`, `vendor.javaHome`, `database.driverDir`; the files `service.scriptPath`, `network.trustStore.path`, `console.tls.certPath`, `console.tls.keyPath`) must exist when it is written: `no such directory: <path>` exits 1 and changes nothing. A leading `~` is your home directory and is stored expanded, because the service account that reads the file later has another one; `--set` on a command line stays syntax-only, and `doctor` reports a directory that vanished after it was written.
+Changes one setting in `config.yaml` without editing the file (#70). The new value is checked the way `--set` values are, and the whole file must still pass the schema before it is written. The previous file is kept as `config.yaml.bak`. The command prints `key: old -> new`, and adds a note when an environment variable or `--set` still overrides the key. Without a value it asks for one, showing the current value in brackets (Enter changes nothing). A path setting (`server.installDir`, `server.tomcatDir`, `server.buildomaticDir`, `vendor.javaHome`, `database.driverDir`; the files `service.scriptPath`, `network.trustStore.path`) must exist when it is written: `no such directory: <path>` exits 1 and changes nothing. A leading `~` is your home directory and is stored expanded, because the service account that reads the file later has another one; `--set` on a command line stays syntax-only, and `doctor` reports a directory that vanished after it was written.
 
-A password key (`server.auth.passwordRef`, `database.passwordRef`, `network.proxy.passwordRef`, `network.trustStore.passwordRef`, `console.auth.passwordRef`) never takes a password on the command line, where shell history and the process list would keep it. Give a reference (`env:NAME`, `file:/path`, `enc:NAME`), or give no value: the password is then typed without echo and stored in `secrets.enc` under the existing `enc:` name or a default (`JRS_PASSWORD`, `JRS_DB_PASSWORD`, `JRS_PROXY_PASSWORD`, `JRS_TRUSTSTORE_PASSWORD`, `JRS_CONSOLE_PASSWORD`), and the key is set to `enc:NAME`. The store's passphrase comes from `--passphrase-file` or `JRSCTL_PASSPHRASE`, or is asked for (twice for a new store).
+A password key (`server.auth.passwordRef`, `database.passwordRef`, `network.proxy.passwordRef`, `network.trustStore.passwordRef`) never takes a password on the command line, where shell history and the process list would keep it. Give a reference (`env:NAME`, `file:/path`, `enc:NAME`), or give no value: the password is then typed without echo and stored in `secrets.enc` under the existing `enc:` name or a default (`JRS_PASSWORD`, `JRS_DB_PASSWORD`, `JRS_PROXY_PASSWORD`, `JRS_TRUSTSTORE_PASSWORD`), and the key is set to `enc:NAME`. The store's passphrase comes from `--passphrase-file` or `JRSCTL_PASSPHRASE`, or is asked for (twice for a new store).
 
 A list value (`network.proxy.noProxy`) is given comma-separated. The file is rewritten in its own format, `config.yaml` or `jrsctl.properties`.
 
@@ -218,6 +218,10 @@ Every setting the configuration accepts, in schema order, with its current value
 - **Rollback:** not applicable.
 - **Exit codes:** 0; **2** when `config.yaml` is malformed.
 - **Flags:** `--json` — an array of `{key, value, source, description}`.
+
+### Upgrading from 1.x
+
+ADR-0038 removed the web console; a `config.yaml` from jrsctl 1.x that still has a `console:` block keeps loading in 2.0.0, with one warning naming ADR-0038, and jrsctl 2.1 will refuse it. `jrsctl config set` and `jrsctl config unset` rewrite such a file without the block the next time either runs, keeping the original as `config.yaml.bak`. A `console.*` line in `jrsctl.properties` is skipped the same way, with one warning per line. `jrsctl config set console.<key> <value>` and `--set console.<key>=<value>` are refused outright, naming ADR-0038, since there is nothing left to set. Any `JRSCTL_CONSOLE_*` environment variable and `JRS_CONSOLE_PASSWORD` are ignored. Under `--json` the warning goes only to `logs/jrsctl.log`; standard error stays silent by design (spec §18). `$JRSCTL_HOME/console.token`, left over from a 1.x console, is unused now and safe to delete.
 
 ### Applying a hotfix from Jaspersoft support
 
@@ -487,11 +491,11 @@ One run: the plan summary it was started from (operation, target, files, service
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.
 - **Exit codes:** 0; **2** when the id is unknown.
-- **Flags:** `<id>` — the run id from `runs list`; `--json` — the run document (the same one the console and the support bundle use).
+- **Flags:** `<id>` — the run id from `runs list`; `--json` — the run document (the one the support bundle carries as `run.json`).
 
 ### `jrsctl runs support-bundle <id> [--out <zip>] [--json]`
 
-Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `events.jsonl` when the run kept one, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, `catalina.out` and the installer log, each tail-capped at 5 MB with passwords blanked. Every byte passes the redactor.
+Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, the Tomcat `catalina` log (`catalina.out`, or the newest `catalina.<date>.log` on Windows), the installer log and `default_master.properties`, each tail-capped at 5 MB with `default_master.properties`'s password keys blanked. Every byte passes the redactor.
 
 - **Mutates:** only the zip it writes; refuses to overwrite an existing file.
 - **Rollback:** not applicable.
@@ -590,38 +594,9 @@ Lists the entry names in `secrets.enc`; values are never shown. No passphrase is
 - **Exit codes:** 0; **2** when the store does not exist.
 - **Flags:** `--json` — the names as a JSON array.
 
-### `jrsctl console [--bind <addr>] [--port <n>] [--open|--no-open]`
-
-Serves the local web console until Ctrl-C, or until you type `stop` and Enter. On start it prints one line:
-
-```
-Console: http://127.0.0.1:7420/#token=<token>
-```
-
-Open that URL: the token in the fragment is the per-launch key to the API and is never shown again (it is redacted from every log, response and support bundle). When a terminal is present the default browser is opened for you with a single-use launch code rather than the token, because a browser command line is readable by every local account; the code is worth ten seconds and is exchanged for the token by the page itself. On a home other accounts can reach, no browser is opened and the reason is printed; pass `--open` to override that, or `--no-open` to skip the browser anywhere, for example from a service or a script.
-
-**From a server without a desktop** (#64): run `jrsctl console --no-open` on the server, then on your own computer `ssh -L 7420:127.0.0.1:7420 <user>@<server>` (the port of the `Console:` line) and open the printed URL in a local browser. The console stays bound to the server's loopback address, so neither TLS nor `console.auth.mode: local` is needed, and the token still never crosses the network outside the SSH connection. On Linux, when neither `DISPLAY` nor `WAYLAND_DISPLAY` is set and the console is bound to loopback, `jrsctl console` opens no browser and prints this `ssh` command with the actual port, `$USER` and `$HOSTNAME` instead. A home jrsctl creates is owner-only on both operating systems (on Windows one inheritable entry for its owner, with the permissions of `%ProgramData%` no longer inherited); an existing one is left as you set it up. To make an existing Windows home private, run `icacls "%ProgramData%\jrsctl" /inheritance:r /grant:r "%USERNAME%":(OI)(CI)F` as the account that runs jrsctl.
-
-The web console provides a lightweight, zero-build, air-gapped operational station featuring:
-- **Dashboard (`#/dashboard`)**: Server state, health summary, active locks, pending runs requiring recovery, installed hotfixes, and quick links to operational stations.
-- **Smoke Testing Station (`#/smoke`)**: Single-click synthetic validation probing login authentication, repository root listings, sample PDF report execution, Quartz scheduler state, catalog export round-trip, and mutating deployment tests (`--mutating`), with JSON report export.
-- **Customizations Registry (`#/customizations`)**: Manage registered customized files under `installDir` and `tomcatDir`, check SHA-256 integrity against baseline vendor snapshots, and view side-by-side or unified line-by-line diffs in-browser.
-- **Snapshots & Storage Lifecycle (`#/snapshots`)**: Monitor disk consumption across historical pre-mutation rollback snapshots, inspect file manifests, check retention protection tags (`UPGRADE_CHECKPOINT`, `CUSTOMIZATION_PROTECTED`), and trigger retention pruning on demand.
-- **Server Configuration & SelfCheck (`#/config`)**: Read-only inspection of target URLs, auth settings, platform runtime environment, SQLite schema status, trusted Ed25519 signing keys, and redacted `config.yaml`.
-- **Interactive Repository Picker**: Visual folder tree browser inside Export and Import operation forms for folder URI selection.
-- **Live Run Monitor & Comparison (`#/runs/<id>`)**: Real-time SSE execution telemetry with text search, severity filters (INFO, WARN, ERROR), step duration timeline indicators, and side-by-side historical run comparison.
-- **Keyboard Shortcuts**: Press `?` for cheat sheet, `/` to focus search/log filter, `r` to refresh view, `d` for dashboard, `n` for new operation, and `Escape` to dismiss active dialogs.
-
-Runs started from the console go through the same plan, confirmation, fingerprint, run lock and journal as the CLI; they are non-interactive, so a step that would need a terminal prompt fails instead of waiting. `GET /api/runs/<id>/support-bundle` (the "Support bundle" button on a run) downloads a redacted zip of the plan, journal, events, server identity, doctor report, effective configuration and the last 2000 lines of the log this process is writing, to attach to a ticket. The doctor report is produced before the download starts, so a server that cannot be reached gives you an error rather than a zip that is missing its tail. A run that needs recovery blocks new runs in the console exactly as it does on the CLI; its run page offers Resume and Roll back.
-
-- **Mutates:** by itself only `<home>/console.token` (owner-only, deleted on stop). Operations started from the console mutate exactly what the corresponding CLI command mutates, under the same rules, with audit actor `console`.
-- **Rollback:** per operation, as on the CLI; the run page offers cancel and rollback through the same code as `runs recover`.
-- **Exit codes:** 0 after a clean stop; **2** when the bind address or TLS material is refused or the port is busy.
-- **Flags:** `--bind <addr>` — override `console.bind` (default `127.0.0.1`); a non-loopback bind is refused with exit 2 unless `console.tls.enabled: true` (`certPath` PEM chain, `keyPath` unencrypted PKCS#8 PEM) and `console.auth.mode: local` (`passwordRef` for the operator password) are both configured, see `docs/security.md`; `--port <n>` — override `console.port` (default `7420`); `--port 0` picks a free port; `--open` / `--no-open` — open (default when a terminal is present) or do not open the default browser.
-
 ### `jrsctl docs [<name>] [--format auto|text|markdown] [--json]`
 
-Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document to standard output: as plain text in a terminal (headings underlined, tables aligned or listed row by row, no Markdown markup, wrapped to `COLUMNS` or 80 columns), and as its Markdown source when redirected to a file or a pipe (#60). The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, console token, hardening) and `readme`.
+Offline documentation. Without an argument it lists the documents embedded in the jar at build time (name, title, size); with a name it prints that document to standard output: as plain text in a terminal (headings underlined, tables aligned or listed row by row, no Markdown markup, wrapped to `COLUMNS` or 80 columns), and as its Markdown source when redirected to a file or a pipe (#60). The embedded documents are `operator-guide` (this guide), `hotfix-authoring` (bundle format, `hotfix build`, signing, testing a bundle), `security` (threat model, key management, hardening) and `readme`.
 
 - **Mutates:** nothing; read-only and independent of the jrsctl home, configuration and server.
 - **Rollback:** not applicable.
@@ -646,7 +621,7 @@ Prints the usage synopsis of the tool (no argument) or of one top-level command,
 | 2 | precheck / doctor / fingerprint failure, nothing mutated | configuration or secret problem, unreachable server, failed doctor item, plan inputs changed since planning, confirmation needed but not interactive, planning failed |
 | 3 | run failed, rolled back cleanly | a step failed and every succeeded step of the phase (or plan) was compensated; also the code of `runs recover --rollback` |
 | 4 | run failed, rollback incomplete — manual action required | a compensation failed, or a fatal step failure after mutation; the outcome block lists backups and the next action |
-| 5 | cancelled | Ctrl-C or console cancel; the in-flight step was completed or compensated |
+| 5 | cancelled | Ctrl-C; the in-flight step was completed or compensated |
 | 6 | unsupported server / configuration | compatibility matrix rejects the combination, or the upgrade path |
 | 7 | signature / verification failure | untrusted or missing bundle signature, hash mismatch, or a `verify` that is not fully ok |
 | 8 | pending recovery required | a previous run has no terminal state; run `jrsctl runs recover <id> --resume|--rollback` |

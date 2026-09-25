@@ -1475,21 +1475,6 @@ class JsonOutputSchemaTest {
       s.add(of("docs lists the embedded documents", "docs", 0, dir -> run("docs", "--json")));
     }
 
-    s.add(
-        of(
-            "console refuses a non-loopback bind without TLS",
-            "console",
-            2,
-            dir ->
-                run(
-                    "console",
-                    "--bind",
-                    "0.0.0.0",
-                    "--no-open",
-                    "--json",
-                    "--home",
-                    emptyHome(dir).toString())));
-
     return s;
   }
 
