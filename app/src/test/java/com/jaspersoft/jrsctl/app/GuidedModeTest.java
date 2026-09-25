@@ -146,7 +146,7 @@ class GuidedModeTest {
         .containsExactly(
             List.of("config", "set", "server.baseUrl", "http://x"),
             List.of("config", "set", "vendor.javaHome", "/jdk"));
-    assertThat(text.toString()).contains("vendor.javaHome: [/old/jdk]");
+    assertThat(text.toString()).contains("vendor.javaHome (- removes it): [/old/jdk]");
   }
 
   @Test
@@ -173,11 +173,66 @@ class GuidedModeTest {
     assertThat(ran).containsExactly(List.of("config", "set", "server.baseUrl", "http://x"));
   }
 
+  /**
+   * Review of #172: init refuses to overwrite config.yaml without --force, so ask, then pass it.
+   */
   @Test
-  void should_detect_again_when_settings_exist_and_the_operator_asks() {
-    guided(someSettings(), List.of(), List.of(), "1", "2", "", "q");
+  void should_detect_again_with_force_when_settings_exist_and_the_operator_confirms() {
+    guided(someSettings(), List.of(), List.of(), "1", "2", "y", "", "q");
 
-    assertThat(ran).containsExactly(List.of("init"));
+    assertThat(text.toString()).contains("This replaces the current settings file");
+    assertThat(ran).containsExactly(List.of("init", "--force"));
+  }
+
+  @Test
+  void should_not_detect_again_when_the_operator_does_not_confirm() {
+    guided(someSettings(), List.of(), List.of(), "1", "2", "n", "q");
+
+    assertThat(ran).isEmpty();
+  }
+
+  /** Review of #172: "-" removes a setting even where the value cannot be cleared on the line. */
+  @Test
+  void should_offer_to_remove_a_setting_when_the_answer_is_a_dash() {
+    guided(someSettings(), List.of(), List.of(), "1", "1", "3", "-", "y", "", "q");
+
+    assertThat(ran).containsExactly(List.of("config", "unset", "vendor.javaHome"));
+  }
+
+  /** Review of #172: a ~ path finds the sidecar beside the archive in the operator's home. */
+  @Test
+  void should_find_the_sidecar_when_the_archive_path_starts_with_a_tilde() throws Exception {
+    Path home = Files.createDirectories(tmp.resolve("user-home"));
+    Path archive = Files.writeString(home.resolve("in.zip"), "zip");
+    com.jaspersoft.jrsctl.jrs.strategy.Sidecar.write(
+        com.jaspersoft.jrsctl.jrs.strategy.Sidecar.pathFor(archive),
+        new com.jaspersoft.jrsctl.jrs.strategy.Sidecar(
+            java.time.Instant.parse("2026-09-25T10:00:00Z"),
+            "http://src",
+            "10.0.0",
+            Optional.empty(),
+            new com.jaspersoft.jrsctl.jrs.strategy.Sidecar.Flags(
+                com.jaspersoft.jrsctl.jrs.api.ExportRequest.Scope.EVERYTHING,
+                List.of("/"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty()),
+            "abc",
+            com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.REST));
+    Env.override(java.util.Map.of("HOME", home.toString(), "USERPROFILE", home.toString()));
+    try {
+      guided(List.of(), List.of(), "4", "~/in.zip", "", "", "", "", "", "q");
+    } finally {
+      Env.reset();
+    }
+
+    assertThat(text.toString())
+        .contains("says it was encrypted with its server's own key")
+        .doesNotContainIgnoringCase("no .jrsctl.json beside the archive");
   }
 
   @Test
@@ -362,7 +417,7 @@ class GuidedModeTest {
 
     assertThat(text.toString())
         .contains("says it was encrypted with the key alias deprecatedImportExportEncSecret")
-        .doesNotContain("Was it exported with the legacy");
+        .doesNotContainIgnoringCase("was it exported with the legacy");
     assertThat(ran).containsExactly(List.of("import", archive.toString()));
   }
 

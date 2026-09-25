@@ -142,7 +142,15 @@ final class GuidedMode {
     out.println("  3) Where jrsctl keeps its state and backups (free space, move it)");
     switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
       case "1" -> changeSettings(current);
-      case "2" -> detect();
+      case "2" -> {
+        // review of #172: init refuses to overwrite config.yaml without --force
+        if (Prompter.yes(
+            out,
+            "This replaces the current settings file with what is detected now. Go on? [y/N] ",
+            false)) {
+          detect(true);
+        }
+      }
       case "3" -> home();
       default -> {
         // back to the menu
@@ -183,6 +191,12 @@ final class GuidedMode {
 
   /** Enter means "search for it"; a directory that does not exist is asked for again. */
   private void detect() {
+    detect(false);
+  }
+
+  /** {@code replace}: a configuration exists and the operator agreed to overwrite it. */
+  private void detect(boolean replace) {
+    List<String> force = replace ? List.of("--force") : List.of();
     boolean asked = false;
     while (true) {
       Optional<String> dir =
@@ -192,12 +206,12 @@ final class GuidedMode {
       }
       if (dir.get().isEmpty()) {
         if (!asked) {
-          execute("init");
+          execute(concat(List.of("init"), force));
         }
         return;
       }
       if (Files.isDirectory(local(dir.get()))) {
-        execute("init", "--install-dir", dir.get());
+        execute(concat(List.of("init", "--install-dir", dir.get()), force));
         return;
       }
       out.println("  no such directory: " + dir.get() + " (press Enter to go back)");
@@ -234,7 +248,8 @@ final class GuidedMode {
         execute("config", "set", key.get());
       } else {
         String old = current.getOrDefault(key.get(), "");
-        Optional<String> value = Prompter.edit(out, key.get() + ": ", old, List.of());
+        Optional<String> value =
+            Prompter.edit(out, key.get() + " (- removes it): ", old, List.of());
         if (value.isEmpty()) {
           return;
         }
@@ -242,7 +257,9 @@ final class GuidedMode {
           out.println("  unchanged");
           continue;
         }
-        if (value.get().isEmpty()) {
+        // review of #172: "-" works where the value cannot be cleared (the plain fallback maps
+        // an empty answer back to the old value), and clearing it works on a JLine terminal
+        if (value.get().isEmpty() || value.get().equals("-")) {
           if (Prompter.yes(out, "Remove " + key.get() + " so its default applies? [y/N] ", false)) {
             execute("config", "unset", key.get());
           }
@@ -396,7 +413,7 @@ final class GuidedMode {
     if (!strategy.get().equals("auto")) {
       args.addAll(List.of("--strategy", strategy.get()));
     }
-    Optional<List<String>> key = keyAlias(Path.of(archive.get()));
+    Optional<List<String>> key = keyAlias(local(archive.get()));
     if (key.isEmpty()) {
       return;
     }
@@ -675,6 +692,12 @@ final class GuidedMode {
   }
 
   /** The path as the command will read it: a leading {@code ~} is the operator's home. */
+  private static String[] concat(List<String> a, List<String> b) {
+    List<String> all = new ArrayList<>(a);
+    all.addAll(b);
+    return all.toArray(String[]::new);
+  }
+
   private static Path local(String typed) {
     return Path.of(UserPaths.expand(typed, Env.vars()));
   }
