@@ -10,10 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jline.reader.CompletingParsedLine;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
-import org.jline.reader.ParsedLine;
 import org.jline.reader.Parser;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.TerminalBuilder;
@@ -38,11 +38,16 @@ final class Prompter {
 
   /**
    * A parser that treats the whole line as one word: these are single-path prompts, not commands.
+   * Package-private for tests.
    */
-  private static final Parser WHOLE_LINE_PARSER =
-      (text, cursor, context) -> new WholeLine(text, cursor);
+  static final Parser WHOLE_LINE_PARSER = (text, cursor, context) -> new WholeLine(text, cursor);
 
-  private record WholeLine(String line, int cursor) implements ParsedLine {
+  /**
+   * The whole line as one path. It implements {@link CompletingParsedLine} so JLine completes it
+   * without quoting and without its warning; a path is never quoted or escaped, so a completed
+   * candidate is inserted as is, spaces included.
+   */
+  private record WholeLine(String line, int cursor) implements CompletingParsedLine {
     @Override
     public String word() {
       return line;
@@ -61,6 +66,21 @@ final class Prompter {
     @Override
     public List<String> words() {
       return List.of(line);
+    }
+
+    @Override
+    public CharSequence escape(CharSequence candidate, boolean complete) {
+      return candidate;
+    }
+
+    @Override
+    public int rawWordCursor() {
+      return cursor;
+    }
+
+    @Override
+    public int rawWordLength() {
+      return line.length();
     }
   }
 
