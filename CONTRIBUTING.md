@@ -4,7 +4,7 @@ jrsctl is the JasperReports Server lifecycle tool from Actian Jaspersoft. It sto
 swaps files under `WEB-INF`, runs vendor upgrade scripts and re-imports repositories, so the
 project puts execution safety, idempotent steps, honest rollback and credential hygiene ahead of
 everything else. This guide says how to build, test and submit a change that keeps those
-promises. The contract is `docs/spec.md` (Draft 1.1); `CLAUDE.md` at the repository root is the
+promises. The contract is `docs/spec.md` (Draft 1.2); `CLAUDE.md` at the repository root is the
 short form every contributor and agent follows.
 
 ## Before you start

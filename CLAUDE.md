@@ -1,6 +1,6 @@
 # jrsctl — agent guide
 
-Single source of truth: `docs/spec.md` (Draft 1.1). Revision log: `docs/spec-changelog.md`. Decisions: `docs/decisions/`. Progress and gaps: `docs/BUILD_STATUS.md`. Read the spec before changing architecture.
+Single source of truth: `docs/spec.md` (Draft 1.2). Revision log: `docs/spec-changelog.md`. Decisions: `docs/decisions/`. Progress and gaps: `docs/BUILD_STATUS.md`. Read the spec before changing architecture.
 
 ## Build
 

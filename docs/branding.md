@@ -33,6 +33,8 @@ web console that once read these values from `app/src/main/resources/web/brand.c
 | `--warn` | `#E87722` | Warn / attention (Actian's chart-accent amber, reused — actian.com's own palette has no warn colour) |
 | `--fail` | `#DC3545` | Fail / irreversible (Actian's own error colour) |
 
+The CLI uses the banner and status colours; the remaining roles describe surfaces jrsctl no longer ships and are kept as the palette for any future UI.
+
 Actian's identity also carries a teal (`#35BBD8` / `#36D6D9`) and a magenta (`#990073`, used sparingly) that jrsctl doesn't currently need as tokens.
 
 Type: **"Open Sans"** for UI text (Actian's own body font on actian.com; system fallbacks `"Segoe UI", Roboto, Helvetica, Arial, sans-serif`) and a native monospace stack (`"Consolas", "Cascadia Mono", ui-monospace, monospace`) for commands, ids and logs — Actian's site doesn't specify a code/monospace face, so this stays a neutral OS-provided choice rather than an invented brand claim. Actian's real heading face is the proprietary "Roobert PRO" (with an Inter fallback in the source stylesheet); since it isn't licensed for redistribution, a future distinct heading style should use `"Inter", "Open Sans", "Segoe UI", system-ui, sans-serif`. jrsctl loads no fonts from a CDN and bundles none itself; every face above is left to resolve through the OS's own font substitution, and a terminal shows only its own configured font regardless.
