@@ -27,7 +27,6 @@ ticket:
 | Entry | Content |
 |---|---|
 | `run.json` | The `runs show --json` document (steps, statuses, durations, failure block) |
-| `plan.json` | The stored plan: summary, fingerprint inputs, steps |
 | `transitions.jsonl` | Every `step_transitions` row of the run, one JSON object per line |
 | `server.json` | `{baseUrl, reachable, identity}`, or `{baseUrl, reachable: false, error}` when the server cannot be probed |
 | `doctor.json` | A fresh `doctor` run (not cached) |

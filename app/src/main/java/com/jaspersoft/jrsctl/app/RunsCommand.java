@@ -511,7 +511,9 @@ final class RunsCommand implements Runnable {
     @Option(
         names = "--out",
         paramLabel = "<zip>",
-        description = "File to write (default: <id>-support-bundle.zip in the current directory).")
+        description =
+            "File to write (default: <id>-support-bundle.zip in the current directory, or in the"
+                + " jrsctl home when the current directory is inside the unpacked distribution).")
     Path out;
 
     @Override
@@ -519,7 +521,18 @@ final class RunsCommand implements Runnable {
       PrintWriter o = spec.commandLine().getOut();
       PrintWriter err = spec.commandLine().getErr();
       Redactor redactor = Redactor.global();
-      Path target = (out == null ? Path.of(runId + "-support-bundle.zip") : out).toAbsolutePath();
+      Path target =
+          (out != null
+                  ? out
+                  : defaultOut(
+                      runId,
+                      Path.of("").toAbsolutePath(),
+                      distributionRoot(),
+                      global
+                          .home()
+                          .map(h -> h.toAbsolutePath().normalize())
+                          .orElseGet(() -> LogFile.home(new String[0], Env.vars()))))
+              .toAbsolutePath();
       // every refusal below must happen before Bootstrap.open: a typo in --out must not pay for a
       // doctor run, and must not touch the state store (review finding 2)
       if (Files.isDirectory(target)) {
@@ -612,5 +625,40 @@ final class RunsCommand implements Runnable {
         return ExitCodes.SUCCESS;
       }
     }
+  }
+
+  /**
+   * Where {@code runs support-bundle} writes without {@code --out} (#161): the current directory,
+   * unless that is inside the unpacked distribution, which jrsctl never writes to (operator guide,
+   * "Installing"); then the jrsctl home.
+   */
+  static Path defaultOut(String runId, Path cwd, Optional<Path> distribution, Path home) {
+    String name = runId + "-support-bundle.zip";
+    Path here = cwd.toAbsolutePath().normalize();
+    boolean inside =
+        distribution.map(d -> here.startsWith(d.toAbsolutePath().normalize())).orElse(false);
+    return (inside ? home : here).resolve(name);
+  }
+
+  /**
+   * The unpacked distribution this process runs from: the directory above {@code lib/} holding the
+   * jar. Empty when jrsctl runs from anywhere else (a build tree, a test).
+   */
+  static Optional<Path> distributionRoot() {
+    try {
+      Path jar =
+          Path.of(RunsCommand.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      Path lib = jar.getParent();
+      if (jar.getFileName().toString().endsWith(".jar")
+          && lib != null
+          && lib.getFileName() != null
+          && lib.getFileName().toString().equals("lib")
+          && lib.getParent() != null) {
+        return Optional.of(lib.getParent());
+      }
+    } catch (java.net.URISyntaxException | RuntimeException e) {
+      // no code source to reason about
+    }
+    return Optional.empty();
   }
 }

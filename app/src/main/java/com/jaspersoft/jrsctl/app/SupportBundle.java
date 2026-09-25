@@ -24,6 +24,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -38,17 +39,17 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json}, {@code
- * plan.json}, {@code transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code
- * config-redacted.yaml}, the run's lines of the JSON log and a short tail of it for context (#160).
- * Invariants: every byte passes through the {@link Redactor} on its way into the archive, so a
- * registered secret cannot appear in any encoding the redactor knows; everything that can fail,
- * which is the live doctor run and the server probe behind it, runs in {@link #prepare} before the
- * file is created, so a failure is an exit-2 or exit-4 message and never a partial zip (review
- * 4.8); the archive is then streamed entry by entry and the log tail is kept in a bounded deque, so
- * memory stays flat whatever the log size; a missing optional input yields no entry rather than an
- * error; the log is the file the running process actually writes, named by {@link
- * LogFile#PROPERTY}, not a guess at its location.
+ * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json} (which carries
+ * the stored plan, with its {@code {runId}} placeholders filled in, #161), {@code
+ * transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code config-redacted.yaml}, the
+ * run's lines of the JSON log and a short tail of it for context (#160). Invariants: every byte
+ * passes through the {@link Redactor} on its way into the archive, so a registered secret cannot
+ * appear in any encoding the redactor knows; everything that can fail, which is the live doctor run
+ * and the server probe behind it, runs in {@link #prepare} before the file is created, so a failure
+ * is an exit-2 or exit-4 message and never a partial zip (review 4.8); the archive is then streamed
+ * entry by entry and the log lines are kept in bounded deques, so memory stays flat whatever the
+ * log size; a missing optional input yields no entry rather than an error; the log is the file the
+ * running process actually writes, named by {@link LogFile#PROPERTY}, not a guess at its location.
  */
 public final class SupportBundle {
 
@@ -70,12 +71,7 @@ public final class SupportBundle {
    * the server probe behind it, plus the documents that read the state store (review 4.8).
    */
   public record Prepared(
-      RunRecord run,
-      String runJson,
-      Optional<String> planJson,
-      String serverJson,
-      String doctorJson,
-      String configYaml) {}
+      RunRecord run, String runJson, String serverJson, String doctorJson, String configYaml) {}
 
   /** Runs everything that can fail. Throws before any byte of the archive is written. */
   public Prepared prepare(RunRecord run) {
@@ -90,8 +86,7 @@ public final class SupportBundle {
             services.clock());
     return new Prepared(
         run,
-        Json.writePretty(runDoc),
-        plan.map(StoredPlan::planJson),
+        withRunId(Json.writePretty(runDoc), run.runId()),
         Json.writePretty(serverDocument()),
         JsonOut.write(new DoctorOperation(services).run(DoctorOptions.DEFAULT)),
         ConfigShow.render(services.config()));
@@ -120,9 +115,6 @@ public final class SupportBundle {
     StateStore store = services.stateStore().get();
     try (ZipOutputStream zip = new ZipOutputStream(target, StandardCharsets.UTF_8)) {
       text(zip, "run.json", prepared.runJson());
-      if (prepared.planJson().isPresent()) {
-        text(zip, "plan.json", prepared.planJson().get());
-      }
       zip.putNextEntry(new ZipEntry("transitions.jsonl"));
       for (Transition t : store.transitions(run.runId())) {
         line(zip, Json.write(t));
@@ -145,7 +137,12 @@ public final class SupportBundle {
         zip.closeEntry();
       }
       // review §3.4 (issue #111): the vendor's own troubleshooting files, tail-capped and redacted
-      for (VendorLogs.Source source : vendorSources()) {
+      for (VendorLogs.Source located : vendorSources()) {
+        Optional<VendorLogs.Source> forRun = forRun(located, run);
+        if (forRun.isEmpty()) {
+          continue;
+        }
+        VendorLogs.Source source = forRun.get();
         zip.putNextEntry(new ZipEntry(source.entry()));
         try {
           VendorLogs.tail(
@@ -165,6 +162,39 @@ public final class SupportBundle {
         zip.closeEntry();
       }
     }
+  }
+
+  /**
+   * A plan is stored before its run has an id, so paths in it read {@code snapshots/{runId}/...};
+   * the bundle belongs to one run, so it names that run instead (#161).
+   */
+  static String withRunId(String json, String runId) {
+    return json.replace("{runId}", runId);
+  }
+
+  /** Slack after a run's end for a vendor log's last write to land (#161). */
+  static final Duration VENDOR_LOG_SLACK = Duration.ofMinutes(2);
+
+  /**
+   * The vendor file to bundle for {@code run} in place of {@code source} (#161). A buildomatic
+   * script log is written by one vendor run, so the run's own is the newest one in that directory
+   * last written while the run executed (from its start to {@link #VENDOR_LOG_SLACK} after its end,
+   * or up to now for a run still pending); a log from before the run or from a later run is never
+   * bundled, and a run that ran no vendor script gets none. The server's own logs, the installer
+   * log and the properties are context whatever their age, and are kept as they are.
+   */
+  static Optional<VendorLogs.Source> forRun(VendorLogs.Source source, RunRecord run) {
+    String prefix = VendorLogs.ENTRY_PREFIX + "buildomatic/";
+    if (!source.entry().startsWith(prefix)) {
+      return Optional.of(source);
+    }
+    Path dir = source.file().toAbsolutePath().getParent();
+    if (dir == null) {
+      return Optional.empty();
+    }
+    Instant to = run.endedAt().map(e -> e.plus(VENDOR_LOG_SLACK)).orElse(Instant.MAX);
+    return VendorLogs.newestBetween(dir, VendorLogs.BUILDOMATIC_GLOB, run.startedAt(), to)
+        .map(p -> new VendorLogs.Source(prefix + p.getFileName(), p, false));
   }
 
   /** The vendor files this installation has, from the configuration and the buildomatic lookup. */

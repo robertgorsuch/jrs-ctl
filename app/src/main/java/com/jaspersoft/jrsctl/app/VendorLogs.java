@@ -12,6 +12,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -52,7 +53,7 @@ public final class VendorLogs {
       Optional<Path> buildomaticDir) {
     List<Source> sources = new ArrayList<>();
     buildomaticDir
-        .flatMap(b -> newest(b.resolve("logs"), "js-*.log"))
+        .flatMap(b -> newest(b.resolve("logs"), BUILDOMATIC_GLOB))
         .ifPresent(
             p ->
                 sources.add(new Source(ENTRY_PREFIX + "buildomatic/" + p.getFileName(), p, false)));
@@ -85,8 +86,19 @@ public final class VendorLogs {
     return newest(logs, "catalina.*.log");
   }
 
+  /** The buildomatic script logs: one file per vendor run, named by script, date, time and pid. */
+  static final String BUILDOMATIC_GLOB = "js-*.log";
+
   /** The most recently modified regular file matching the glob, if any. */
   static Optional<Path> newest(Path dir, String glob) {
+    return newestBetween(dir, glob, Instant.MIN, Instant.MAX);
+  }
+
+  /**
+   * The most recently modified regular file matching the glob whose last modification lies between
+   * {@code from} and {@code to}, inclusive (#161: a buildomatic log of the run being bundled).
+   */
+  static Optional<Path> newestBetween(Path dir, String glob, Instant from, Instant to) {
     if (!Files.isDirectory(dir)) {
       return Optional.empty();
     }
@@ -98,6 +110,10 @@ public final class VendorLogs {
           continue;
         }
         FileTime t = Files.getLastModifiedTime(f);
+        Instant at = t.toInstant();
+        if (at.isBefore(from) || at.isAfter(to)) {
+          continue;
+        }
         if (bestTime == null || t.compareTo(bestTime) > 0) {
           best = f;
           bestTime = t;
