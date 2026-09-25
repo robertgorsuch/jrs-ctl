@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
+import com.jaspersoft.jrsctl.ops.StrategyFlag;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -77,7 +78,7 @@ final class GuidedMode {
 
   /** Shows the menu until the operator quits or input ends; returns 0. */
   int run() {
-    out.println("jrsctl - JasperReports Server lifecycle tool (Actian Jaspersoft)");
+    out.println("jrsctl - JasperReports Server lifecycle tool");
     List<String> pending = pendingRuns.get();
     if (!pending.isEmpty()) {
       out.println();
@@ -385,7 +386,10 @@ final class GuidedMode {
       args.addAll(List.of("--broken-dependencies", broken.get()));
     }
     Optional<String> strategy =
-        choice("Strategy: auto, rest or vendor [auto]", "auto", Set.of("auto", "rest", "vendor"));
+        choice(
+            "Strategy: auto, rest or buildomatic [auto]",
+            "auto",
+            Set.of("auto", "rest", StrategyFlag.BUILDOMATIC));
     if (strategy.isEmpty()) {
       return;
     }
@@ -538,14 +542,14 @@ final class GuidedMode {
       // upgrade guide 10.1 p.80: the newdb script leaves the events behind (issue #106)
       if (Prompter.yes(
           out,
-          "Import the access, audit and monitoring events after the vendor run"
+          "Import the access, audit and monitoring events after buildomatic's upgrade"
               + " (js-upgrade-newdb leaves them behind)? [y/N] ",
           false)) {
         args.add("--include-events");
       }
     }
     if (Prompter.yes(
-        out, "Rehearse with the vendor's validation first (changes nothing)? [Y/n] ", true)) {
+        out, "Rehearse with buildomatic's own validation first (changes nothing)? [Y/n] ", true)) {
       List<String> rehearsal = new ArrayList<>(args);
       rehearsal.add("--test");
       if (execute(rehearsal.toArray(String[]::new)) != ExitCodes.SUCCESS) {

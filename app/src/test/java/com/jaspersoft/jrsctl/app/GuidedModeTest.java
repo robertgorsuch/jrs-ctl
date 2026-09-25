@@ -303,7 +303,7 @@ class GuidedModeTest {
         "",
         "y",
         "skip",
-        "vendor",
+        "buildomatic",
         "deprecatedImportExportEncSecret",
         "org1",
         "y",
@@ -319,7 +319,7 @@ class GuidedModeTest {
                 "--broken-dependencies",
                 "skip",
                 "--strategy",
-                "vendor",
+                "buildomatic",
                 "--key-alias",
                 "deprecatedImportExportEncSecret",
                 "--organization",
@@ -513,7 +513,7 @@ class GuidedModeTest {
         .containsExactly(
             List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString(), "--test"),
             List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
-    assertThat(text.toString()).contains("Rehearse with the vendor's validation first");
+    assertThat(text.toString()).contains("Rehearse with buildomatic's own validation first");
   }
 
   @Test
@@ -638,5 +638,23 @@ class GuidedModeTest {
     assertThat(text.toString()).contains("please answer newdb, samedb");
     assertThat(ran)
         .containsExactly(List.of("upgrade", "--to", "10.0.0", "--package", pkg.toString()));
+  }
+
+  /**
+   * The menu says buildomatic, never "vendor", and names no company: the operator's own words for
+   * the tools, and the product name alone.
+   */
+  @Test
+  void should_say_buildomatic_and_name_no_company_when_the_menu_is_shown() throws Exception {
+    Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
+
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "buildomatic", "", "", "q");
+
+    assertThat(text.toString())
+        .contains("Strategy: auto, rest or buildomatic")
+        .doesNotContainIgnoringCase("vendor")
+        .doesNotContain("Actian");
+    assertThat(ran)
+        .containsExactly(List.of("import", archive.toString(), "--strategy", "buildomatic"));
   }
 }
