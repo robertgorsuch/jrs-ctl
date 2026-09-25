@@ -495,7 +495,7 @@ One run: the plan summary it was started from (operation, target, files, service
 
 ### `jrsctl runs support-bundle <id> [--out <zip>] [--json]`
 
-Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, the Tomcat `catalina` log (`catalina.out`, or the newest `catalina.<date>.log` on Windows), the installer log and `default_master.properties`, each tail-capped at 5 MB with `default_master.properties`'s password keys blanked. Every byte passes the redactor.
+Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the run's own lines of `logs/jrsctl.log` (those carrying its `runId`, and lines without one written while it ran, at most 2,000) with the last 200 lines of the log beside them as `logs/tail-jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, the Tomcat `catalina` log (`catalina.out`, or the newest `catalina.<date>.log` on Windows), the installer log and `default_master.properties`, each tail-capped at 5 MB with `default_master.properties`'s password keys blanked. Every byte passes the redactor.
 
 - **Mutates:** only the zip it writes; refuses to overwrite an existing file.
 - **Rollback:** not applicable.

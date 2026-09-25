@@ -32,7 +32,8 @@ ticket:
 | `server.json` | `{baseUrl, reachable, identity}`, or `{baseUrl, reachable: false, error}` when the server cannot be probed |
 | `doctor.json` | A fresh `doctor` run (not cached) |
 | `config-redacted.yaml` | The effective configuration with secret references, never values |
-| `logs/jrsctl.log` | The last 2000 lines of the JSON log |
+| `logs/jrsctl.log` | The run's own lines of the JSON log (its `runId`, or written while it ran), at most 2,000 |
+| `logs/tail-jrsctl.log` | The last 200 lines of the JSON log, for context |
 | `vendor/buildomatic/js-*.log` | The newest buildomatic script log |
 | `vendor/jasperserver.log` | The webapp's own log |
 | `vendor/catalina.out` (or `catalina.<date>.log`) | Tomcat's own log |

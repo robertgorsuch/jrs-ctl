@@ -46,6 +46,36 @@ class RunnerTest {
   }
 
   /**
+   * Issue #160: the JSON log recorded nothing about a run; every line the runner writes now names
+   * the run (MDC {@code runId}) and there is one line for the start, each transition and the end.
+   */
+  @Test
+  void should_log_the_start_each_transition_and_the_end_with_the_run_id() {
+    ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+        new ch.qos.logback.core.read.ListAppender<>();
+    appender.start();
+    ch.qos.logback.classic.Logger logger =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(Runner.class);
+    logger.addAppender(appender);
+    try {
+      run(EngineFixture.plan("p1", fx.step("s1", "apply"), fx.step("s2", "apply")));
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    assertThat(appender.list)
+        .isNotEmpty()
+        .allSatisfy(e -> assertThat(e.getMDCPropertyMap()).containsEntry("runId", RUN));
+    assertThat(appender.list)
+        .extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+        .anySatisfy(m -> assertThat(m).contains("run " + RUN + " started"))
+        .anySatisfy(m -> assertThat(m).contains("s1").contains("SUCCEEDED"))
+        .anySatisfy(m -> assertThat(m).contains("s2").contains("SUCCEEDED"))
+        .anySatisfy(m -> assertThat(m).contains("run " + RUN + " ended SUCCEEDED"));
+    assertThat(org.slf4j.MDC.get("runId")).as("the run id must not leak past the run").isNull();
+  }
+
+  /**
    * A step that records a mutation made by an earlier phase undoes the whole run when it fails: a
    * phase-scoped rollback would leave that mutation in place while reporting "rolled back"
    * (assessment item H4).

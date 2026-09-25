@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /**
  * Executes a {@link Plan} step by step under the run lock (spec §6.3-§6.6). Invariants: a plan
@@ -41,6 +44,11 @@ public final class Runner {
 
   /** Phase name carried by run-level events. */
   public static final String RUN_PHASE = "run";
+
+  /** MDC key naming the run on every log line written while it executes (#160). */
+  public static final String MDC_RUN_ID = "runId";
+
+  private static final Logger LOG = LoggerFactory.getLogger(Runner.class);
 
   private final Journal store;
   private final EventSink sink;
@@ -71,7 +79,8 @@ public final class Runner {
     if (!plan.fingerprint().matches(recomputed)) {
       return new RunOutcome.FingerprintMismatch(plan.fingerprint().changedKeys(recomputed));
     }
-    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant())) {
+    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant());
+        MDC.MDCCloseable unusedMdc = MDC.putCloseable(MDC_RUN_ID, ctx.runId())) {
       try {
         store.recordRunStart(
             ctx.runId(), plan.summary().operation(), Optional.of(plan.planId()), clock.instant());
@@ -85,6 +94,12 @@ public final class Runner {
                 + " changed",
             List.of());
       }
+      LOG.info(
+          "run {} started: {} (plan {}, {} steps)",
+          ctx.runId(),
+          plan.summary().operation(),
+          plan.planId(),
+          plan.steps().size());
       return new Execution(plan, ctx, opts, Map.of()).proceed(0);
     }
   }
@@ -98,7 +113,9 @@ public final class Runner {
     if (startIndex < 0 || startIndex > plan.steps().size()) {
       throw new IllegalArgumentException("startIndex out of range: " + startIndex);
     }
-    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant())) {
+    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant());
+        MDC.MDCCloseable unusedMdc = MDC.putCloseable(MDC_RUN_ID, ctx.runId())) {
+      LOG.info("run {} resumed at step {}", ctx.runId(), startIndex + 1);
       return new Execution(plan, ctx, opts, journal).proceed(startIndex);
     }
   }
@@ -110,7 +127,9 @@ public final class Runner {
    * from any partial state, including one where {@code execute} never started.
    */
   public RunOutcome rollback(Plan plan, Context ctx, Map<String, StepState> journal, String cause) {
-    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant())) {
+    try (RunLock unusedLock = new RunLock(ctx.home(), ctx.runId(), clock.instant());
+        MDC.MDCCloseable unusedMdc = MDC.putCloseable(MDC_RUN_ID, ctx.runId())) {
+      LOG.info("run {} rolling back: {}", ctx.runId(), cause);
       return new Execution(plan, ctx, RunOptions.DEFAULT, journal).rollbackRecorded(cause);
     }
   }
@@ -200,7 +219,7 @@ public final class Runner {
               + " --resume or --rollback";
       RunOutcome.Failed outcome = new RunOutcome.Failed(cause, mutated, nextAction, List.of());
       try {
-        store.recordRunEnd(runId, now(), TerminalState.FAILED, outcome.exitCode());
+        ended(TerminalState.FAILED, outcome.exitCode());
       } catch (JournalException again) {
         // the journal is what failed; the pending row is what runs recover will find
       }
@@ -536,7 +555,7 @@ public final class Runner {
     }
 
     private RunOutcome succeeded() {
-      store.recordRunEnd(runId, now(), TerminalState.SUCCEEDED, 0);
+      ended(TerminalState.SUCCEEDED, 0);
       emit(
           new Event.RunSucceeded(
               now(), runId, RUN_PHASE, Duration.between(runStart, now()).toMillis()));
@@ -546,7 +565,7 @@ public final class Runner {
     private RunOutcome precheckFailed(StepOutcome.PrecheckFailed p) {
       RunOutcome.PrecheckFailed outcome =
           new RunOutcome.PrecheckFailed(p.stepId(), p.message(), p.remediation());
-      store.recordRunEnd(runId, now(), TerminalState.PRECHECK_FAILED, outcome.exitCode());
+      ended(TerminalState.PRECHECK_FAILED, outcome.exitCode());
       emit(
           new Event.RunFailed(
               now(),
@@ -561,13 +580,13 @@ public final class Runner {
 
     private RunOutcome finishRolledBack(String phase, String cause) {
       RunOutcome.RolledBack outcome = new RunOutcome.RolledBack(phase, cause);
-      store.recordRunEnd(runId, now(), TerminalState.ROLLED_BACK, outcome.exitCode());
+      ended(TerminalState.ROLLED_BACK, outcome.exitCode());
       emit(new Event.RunRolledBack(now(), runId, RUN_PHASE, phase, cause));
       return outcome;
     }
 
     private RunOutcome finishFailed(RunOutcome.Failed outcome) {
-      store.recordRunEnd(runId, now(), TerminalState.FAILED, outcome.exitCode());
+      ended(TerminalState.FAILED, outcome.exitCode());
       emit(
           new Event.RunFailed(
               now(),
@@ -582,7 +601,7 @@ public final class Runner {
 
     private RunOutcome finishCancelled(String reason) {
       RunOutcome.Cancelled outcome = new RunOutcome.Cancelled(reason);
-      store.recordRunEnd(runId, now(), TerminalState.CANCELLED, outcome.exitCode());
+      ended(TerminalState.CANCELLED, outcome.exitCode());
       emit(new Event.RunCancelled(now(), runId, RUN_PHASE, reason));
       return outcome;
     }
@@ -591,6 +610,20 @@ public final class Runner {
       Optional<String> from = Optional.ofNullable(states.get(step.id())).map(StepState::name);
       store.appendTransition(runId, step.id(), step.phase(), from, to.name(), detail);
       states.put(step.id(), to);
+      // after the journal, like every event: the log is never ahead of state.db
+      LOG.info(
+          "step {} [{}] {} -> {}{}",
+          step.id(),
+          step.phase(),
+          from.orElse("-"),
+          to.name(),
+          detail.map(d -> ": " + d).orElse(""));
+    }
+
+    /** Records the run's end in the journal, then logs it. */
+    private void ended(TerminalState state, int exitCode) {
+      store.recordRunEnd(runId, now(), state, exitCode);
+      LOG.info("run {} ended {} (exit {})", runId, state, exitCode);
     }
 
     private CheckResult check(Supplier<CheckResult> check) {

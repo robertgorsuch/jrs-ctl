@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-09-25 (issue #160, the run's log lines)
+
+- §12.4: the bundle's `logs/<name>` is the run's own lines (by the `runId` the runner now puts on every line it writes during a run, or by the run's time window for lines without one), at most 2,000, and `logs/tail-<name>` holds the last 200 lines of the log. The JSON log gains one INFO line per invocation and per run start, step transition and run end, each written after the journal.
+
 ## Draft 1.2 — 2026-09-24 (ADR-0038, the web console is removed)
 
 - §1.2, §4, §5.1, §5.8, §6, §11.2, §11.3, §13, §14, §16, §19: the Javalin console, its 25 endpoints, SSE stream and static UI are removed; jrsctl is a CLI with guided mode as its interactive front end. `runs support-bundle` (Draft 1.1 amendment for #150) replaces the one endpoint without a CLI counterpart. The `console:` configuration block is ignored with one warning in 2.0.0 and refused from 2.1. `javalin` leaves the §13.3 runtime list; Jetty and the Kotlin stdlib leave the jar with it. Released as 2.0.0. Field test evidence in issue #75; decision and options in ADR-0038.
