@@ -156,7 +156,8 @@ final class ConfigCommand implements Runnable {
               out,
               err,
               key + " is no longer used (ADR-0038)",
-              "remove console.* from the configuration: jrsctl has no web console");
+              "jrsctl has no web console; remove the whole block with: jrsctl config unset"
+                  + " console");
         }
         if (!loader.knownKeys().contains(key)) {
           return fail(
@@ -305,7 +306,9 @@ final class ConfigCommand implements Runnable {
       name = "unset",
       mixinStandardHelpOptions = true,
       exitCodeOnInvalidInput = ExitCodes.USAGE,
-      description = "Remove one setting from config.yaml so its default applies.")
+      description =
+          "Remove one setting from config.yaml so its default applies; console removes the"
+              + " whole 1.x console block (ADR-0038).")
   static final class Unset implements Callable<Integer> {
 
     @Spec CommandSpec spec;
@@ -321,6 +324,9 @@ final class ConfigCommand implements Runnable {
       ConfigLoader loader = new ConfigLoader();
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Path file = boot.services().home().configFile();
+        if (key.equals("console") || key.startsWith("console.")) {
+          return unsetConsole(boot, loader, file, out, err);
+        }
         Config updated;
         String old;
         try {
@@ -344,6 +350,43 @@ final class ConfigCommand implements Runnable {
         warnIfOverridden(out, loader, file, key, global);
         return ExitCodes.SUCCESS;
       }
+    }
+
+    /**
+     * ADR-0038: the 1.x {@code console:} block has no keys left to unset one by one, so {@code
+     * console} or any {@code console.*} key removes all of it; a file without one is left as is.
+     */
+    private int unsetConsole(
+        Bootstrap boot, ConfigLoader loader, Path file, PrintWriter out, PrintWriter err)
+        throws IOException {
+      Optional<Config> updated;
+      try {
+        updated = loader.fileWithoutConsole(file);
+      } catch (ConfigException e) {
+        return ExitCodes.fail(
+            out,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            e.getMessage(),
+            Optional.of(e.remediation()));
+      }
+      if (updated.isEmpty()) {
+        if (global.json()) {
+          report(out, "console", "", "", file, Optional.empty(), global);
+        } else {
+          out.println("no console block in " + file + "; nothing changed");
+          out.flush();
+        }
+        return ExitCodes.SUCCESS;
+      }
+      Optional<Path> backup = write(updated.get(), file);
+      boot.services().stateStore().get().audit("operator", "config.unset", "console");
+      if (!global.json()) {
+        out.println("removed the console block (ADR-0038: jrsctl has no web console)");
+      }
+      report(out, "console", "(1.x console block)", "", file, backup, global);
+      return ExitCodes.SUCCESS;
     }
   }
 

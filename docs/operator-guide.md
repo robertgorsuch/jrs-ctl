@@ -203,7 +203,7 @@ A list value (`network.proxy.noProxy`) is given comma-separated. The file is rew
 
 ### `jrsctl config unset <key>`
 
-Removes one setting from `config.yaml`, so its default applies, or nothing when it has none. Prints `key: old -> new` and keeps the previous file as `config.yaml.bak`.
+Removes one setting from `config.yaml`, so its default applies, or nothing when it has none. Prints `key: old -> new` and keeps the previous file as `config.yaml.bak`. `jrsctl config unset console` (or any `console.*` key) removes the whole 1.x `console:` block, or the `console.*` lines of `jrsctl.properties` (ADR-0038). When there is none, it says so and leaves the file alone.
 
 - **Mutates:** `config.yaml` and `config.yaml.bak` in the jrsctl home. Audited as `config.unset`.
 - **Rollback:** copy `config.yaml.bak` back, or `jrsctl config set <key> <old value>`.
@@ -221,7 +221,7 @@ Every setting the configuration accepts, in schema order, with its current value
 
 ### Upgrading from 1.x
 
-ADR-0038 removed the web console; a `config.yaml` from jrsctl 1.x that still has a `console:` block keeps loading in 2.0.0, with one warning naming ADR-0038, and jrsctl 2.1 will refuse it. `jrsctl config set` and `jrsctl config unset` rewrite such a file without the block the next time either runs, keeping the original as `config.yaml.bak`. A `console.*` line in `jrsctl.properties` is skipped the same way, with one warning per line. `jrsctl config set console.<key> <value>` and `--set console.<key>=<value>` are refused outright, naming ADR-0038, since there is nothing left to set. Any `JRSCTL_CONSOLE_*` environment variable and `JRS_CONSOLE_PASSWORD` are ignored. Under `--json` the warning goes only to `logs/jrsctl.log`; standard error stays silent by design (spec §18). `$JRSCTL_HOME/console.token`, left over from a 1.x console, is unused now and safe to delete.
+ADR-0038 removed the web console; a `config.yaml` from jrsctl 1.x that still has a `console:` block keeps loading in 2.0.0, with one warning naming ADR-0038, and jrsctl 2.1 will refuse it. `jrsctl config unset console` removes the block and keeps the original as `config.yaml.bak`. The warning names that command. Any other `jrsctl config set` or `jrsctl config unset` also rewrites the file without the block. A `console.*` line in `jrsctl.properties` is skipped the same way, with one warning per line. `jrsctl config set console.<key> <value>` and `--set console.<key>=<value>` are refused outright, naming ADR-0038, since there is nothing left to set. Any `JRSCTL_CONSOLE_*` environment variable and `JRS_CONSOLE_PASSWORD` are ignored. Under `--json` the warning goes only to `logs/jrsctl.log`; standard error stays silent by design (spec §18). `$JRSCTL_HOME/console.token`, left over from a 1.x console, is unused now and safe to delete.
 
 ### Applying a hotfix from Jaspersoft support
 
