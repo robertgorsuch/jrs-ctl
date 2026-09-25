@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.ops.init.InitOperation;
 import com.jaspersoft.jrsctl.ops.init.InitReport;
 import java.io.IOException;
@@ -391,7 +392,7 @@ final class InitCommand implements Callable<Integer> {
       try (Secret secret = Secret.of(p.getValue())) {
         store.set(p.getKey(), secret);
       }
-      boot.services().stateStore().get().audit("operator", "secrets.set", p.getKey());
+      boot.services().stateStore().get().audit(AuditActor.current(), "secrets.set", p.getKey());
     }
   }
 

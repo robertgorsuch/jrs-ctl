@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.service.CompanionDatabase;
@@ -88,7 +89,7 @@ record HotfixRuntime(
   }
 
   String actor() {
-    return System.getProperty("user.name", "unknown");
+    return AuditActor.current();
   }
 
   BundleVerifier verifier() {

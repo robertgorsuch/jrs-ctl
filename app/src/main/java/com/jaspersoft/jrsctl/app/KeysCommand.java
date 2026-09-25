@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.crypto.Ed25519;
 import com.jaspersoft.jrsctl.core.keys.KeyRing;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.ops.Services;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -141,7 +142,10 @@ final class KeysCommand implements Runnable {
         } catch (IllegalArgumentException e) {
           return ExitCodes.fail(out, err, global.json(), ExitCodes.USAGE, e.getMessage());
         }
-        services.stateStore().get().audit("operator", "keys.add", name + " " + added.fingerprint());
+        services
+            .stateStore()
+            .get()
+            .audit(AuditActor.current(), "keys.add", name + " " + added.fingerprint());
         if (global.json()) {
           Map<String, Object> row = new LinkedHashMap<>();
           row.put("name", name);
@@ -191,7 +195,7 @@ final class KeysCommand implements Runnable {
               "no trusted key named " + name,
               Optional.of("see `jrsctl keys list`"));
         }
-        services.stateStore().get().audit("operator", "keys.remove", name);
+        services.stateStore().get().audit(AuditActor.current(), "keys.remove", name);
         if (global.json()) {
           Map<String, Object> row = new LinkedHashMap<>();
           row.put("name", name);
@@ -262,7 +266,7 @@ final class KeysCommand implements Runnable {
         services
             .stateStore()
             .get()
-            .audit("operator", "keys.generate", name + " " + added.fingerprint());
+            .audit(AuditActor.current(), "keys.generate", name + " " + added.fingerprint());
         if (global.json()) {
           Map<String, Object> row = new LinkedHashMap<>();
           row.put("name", name);

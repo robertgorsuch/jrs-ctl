@@ -523,6 +523,31 @@ class PlanRegistryTest {
   }
 
   @Test
+  void should_keep_a_confirmed_checksum_when_rebuilding_a_hotfix_apply() {
+    Path bundle = Path.of("bundles", "hf-1.zip");
+    HotfixOperations.ApplyOptions confirmed =
+        new HotfixOperations.ApplyOptions(HotfixOperations.UnsignedAcceptance.CHECKSUM_CONFIRMED);
+
+    registry().rebuild(PlanRegistry.HOTFIX_APPLY, PlanRegistry.applyArgs(bundle, confirmed));
+
+    assertThat(hotfix.args.get(0)).containsExactly(bundle.toAbsolutePath().normalize(), confirmed);
+  }
+
+  /** Arguments stored by 2.0.0 and earlier carry only the boolean. */
+  @Test
+  void should_read_the_boolean_of_older_stored_arguments_as_allow_unsigned() {
+    String older =
+        "{\"bundle\":\""
+            + Path.of("hf-1.zip").toAbsolutePath().toString().replace("\\", "\\\\")
+            + "\",\"allowUnsigned\":true}";
+
+    registry().rebuild(PlanRegistry.HOTFIX_APPLY, older);
+
+    assertThat(((HotfixOperations.ApplyOptions) hotfix.args.get(0).get(1)).unsigned())
+        .isEqualTo(HotfixOperations.UnsignedAcceptance.ALLOW_UNSIGNED);
+  }
+
+  @Test
   void should_plan_the_same_hotfix_rollback_when_rebuilding_from_the_stored_arguments() {
     registry().rebuild(PlanRegistry.HOTFIX_ROLLBACK, PlanRegistry.rollbackArgs("hf-1", true));
 

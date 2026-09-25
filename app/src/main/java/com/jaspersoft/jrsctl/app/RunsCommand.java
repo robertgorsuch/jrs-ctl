@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
@@ -376,7 +377,9 @@ final class RunsCommand implements Runnable {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         store.audit(
-            "operator", "runs.recover", runId + (mode.resume ? " --resume" : " --rollback"));
+            AuditActor.current(),
+            "runs.recover",
+            runId + (mode.resume ? " --resume" : " --rollback"));
         PlanExecutor executor = new PlanExecutor(services, global, out, err, Env.vars());
         return executor.recover(runId, plan, mode.resume);
       }

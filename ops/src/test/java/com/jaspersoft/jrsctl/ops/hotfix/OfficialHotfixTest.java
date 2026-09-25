@@ -29,6 +29,8 @@ class OfficialHotfixTest {
 
   private static final ApplyOptions SIGNED = new ApplyOptions(false);
   private static final ApplyOptions UNSIGNED = new ApplyOptions(true);
+  private static final ApplyOptions CONFIRMED =
+      new ApplyOptions(HotfixOperations.UnsignedAcceptance.CHECKSUM_CONFIRMED);
 
   private static final String LIB = "WEB-INF/lib/";
 
@@ -246,6 +248,48 @@ class OfficialHotfixTest {
       assertThat(f.target(HotfixFixture.FOO_OLDER)).hasContent(HotfixFixture.OLDER_FOO);
       assertThat(f.target(HotfixFixture.BAR)).hasContent(HotfixFixture.BAR_BYTES);
       assertThat(f.target(HotfixFixture.LIB + "new-1.0.jar")).doesNotExist();
+    }
+  }
+
+  /**
+   * Issue #159: an operator who compared the checksum with the support portal (ADR-0027) passed no
+   * flag, so the plan, the verify step and the audit must say the checksum was confirmed, never
+   * that --allow-unsigned was given.
+   */
+  @Test
+  void should_report_a_confirmed_checksum_and_not_allow_unsigned_when_the_operator_confirmed_it()
+      throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(fullPackage(), CONFIRMED);
+
+      assertThat(plan.summary().warnings())
+          .anySatisfy(w -> assertThat(w).contains("checksum confirmed by the operator"))
+          .noneSatisfy(w -> assertThat(w).contains("--allow-unsigned"));
+      assertThat(plan.steps())
+          .noneSatisfy(s -> assertThat(s.detail()).contains("--allow-unsigned"));
+
+      RunOutcome outcome = f.run(plan, "r-official-confirmed");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.store().auditRows(20))
+          .anyMatch(a -> a.action().equals(ApplySteps.AUDIT_CHECKSUM_CONFIRMED))
+          .noneMatch(a -> a.action().equals(ApplySteps.AUDIT_ALLOW_UNSIGNED));
+    }
+  }
+
+  @Test
+  void should_report_and_audit_allow_unsigned_when_the_flag_was_given() throws IOException {
+    try (HotfixFixture f = HotfixFixture.create(tmp)) {
+      Plan plan = f.ops().planApply(fullPackage(), UNSIGNED);
+
+      assertThat(plan.summary().warnings())
+          .anySatisfy(w -> assertThat(w).contains("accepted with --allow-unsigned"));
+
+      f.run(plan, "r-official-flag");
+
+      assertThat(f.store().auditRows(20))
+          .anyMatch(a -> a.action().equals(ApplySteps.AUDIT_ALLOW_UNSIGNED))
+          .noneMatch(a -> a.action().equals(ApplySteps.AUDIT_CHECKSUM_CONFIRMED));
     }
   }
 

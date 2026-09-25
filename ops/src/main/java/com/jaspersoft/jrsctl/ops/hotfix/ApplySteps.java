@@ -36,6 +36,7 @@ final class ApplySteps {
   static final String RECORD_INSTALLED = "record-installed";
 
   static final String AUDIT_ALLOW_UNSIGNED = "hotfix.allow-unsigned";
+  static final String AUDIT_CHECKSUM_CONFIRMED = "hotfix.checksum-confirmed";
   static final String AUDIT_APPLIED = "hotfix.applied";
   static final String AUDIT_ROLLED_BACK = "hotfix.rolled-back";
 

@@ -19,7 +19,7 @@ record ApplyInput(
     Manifest manifest,
     HotfixPaths paths,
     List<FileTarget> targets,
-    boolean allowUnsigned,
+    HotfixOperations.UnsignedAcceptance unsigned,
     Optional<Config.DatabaseType> dbType,
     List<Manifest.SqlEntry> sqlScripts) {
 
@@ -30,9 +30,23 @@ record ApplyInput(
     Objects.requireNonNull(bundleSha256, "bundleSha256");
     Objects.requireNonNull(manifest, "manifest");
     Objects.requireNonNull(paths, "paths");
+    Objects.requireNonNull(unsigned, "unsigned");
     targets = List.copyOf(targets);
     Objects.requireNonNull(dbType, "dbType");
     sqlScripts = List.copyOf(sqlScripts);
+  }
+
+  boolean allowUnsigned() {
+    return unsigned != HotfixOperations.UnsignedAcceptance.REFUSED;
+  }
+
+  /** How an unsigned bundle was accepted, for the plan and the log; empty when it was not. */
+  String unsignedReason() {
+    return switch (unsigned) {
+      case REFUSED -> "";
+      case CHECKSUM_CONFIRMED -> "checksum confirmed by the operator (ADR-0027)";
+      case ALLOW_UNSIGNED -> "--allow-unsigned";
+    };
   }
 
   boolean restartRequired() {
