@@ -355,6 +355,22 @@ final class HelpExamples {
             new Example(
                 "Delete them (backups a rollback needs are always kept)", "jrsctl runs prune")));
     m.put(
+        "home show",
+        List.of(
+            new Example(
+                "See where jrsctl keeps its state and backups, and how full that volume is",
+                "jrsctl home show")));
+    m.put(
+        "home set",
+        List.of(
+            new Example(
+                "Keep state and backups on a bigger volume from now on",
+                "jrsctl home set /data/jrsctl")));
+    m.put(
+        "home reset",
+        List.of(
+            new Example("Go back to the home the redirect was written in", "jrsctl home reset")));
+    m.put(
         "keys list",
         List.of(new Example("Show the keys trusted to sign hotfixes", "jrsctl keys list")));
     m.put(

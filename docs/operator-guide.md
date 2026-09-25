@@ -17,6 +17,7 @@ Everything the tool stores lives under one directory, the **jrsctl home** (`--ho
 | `secrets.enc` | AES-GCM encrypted secrets referenced as `enc:NAME` |
 | `console.token` | left behind by jrsctl 1.x only; safe to delete |
 | `logs/jrsctl.log` | JSON log of every invocation |
+| `home.redirect` | present only after `jrsctl home set`: names the directory jrsctl uses instead of this one (ADR-0041) |
 
 ## Installing (portable archive)
 
@@ -41,7 +42,7 @@ jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-
    | `MANIFEST.sha256` | SHA-256 of every file in the directory; `sha256sum -c MANIFEST.sha256` (Linux) verifies the unpacked tree |
 
 3. **Run it**: `bin\jrsctl.cmd --version`, then `bin\jrsctl.cmd selfcheck`, then `bin\jrsctl.cmd init --install-dir <JRS install dir>` and `bin\jrsctl.cmd doctor`. Run as a user that may stop and start the server service (see "Least privilege" in `docs/security.md`). Adding `bin\` to `PATH` is optional; the launcher locates its own runtime and jar relative to itself and works through symlinks on Linux.
-4. **Choose the jrsctl home.** Everything jrsctl stores (configuration, run journal, snapshots, keys, secrets, logs) lives under the home directory described above: `--home <dir>`, else `$JRSCTL_HOME` / `%JRSCTL_HOME%`, else the platform default. Set `JRSCTL_HOME` system-wide (or in the service account's profile) when several operators share one installation, so they share one journal and one run lock. The unpack directory itself is never written to; you can place it on a read-only share. A leading `~` means your home directory everywhere jrsctl takes a path: `--home ~/jrsctl`, `JRSCTL_HOME=~/jrsctl`, any path flag, any path setting in `config.yaml` or `--set`, and every answer in the guided menu (`~user` is not expanded).
+4. **Choose the jrsctl home.** `jrsctl home show` says where it is and how much room it has; `jrsctl home set <dir>` moves it to a bigger volume for everyone who reaches it (see the `jrsctl home` commands below). Everything jrsctl stores (configuration, run journal, snapshots, keys, secrets, logs) lives under the home directory described above: `--home <dir>`, else `$JRSCTL_HOME` / `%JRSCTL_HOME%`, else the platform default. Set `JRSCTL_HOME` system-wide (or in the service account's profile) when several operators share one installation, so they share one journal and one run lock. The unpack directory itself is never written to; you can place it on a read-only share. A leading `~` means your home directory everywhere jrsctl takes a path: `--home ~/jrsctl`, `JRSCTL_HOME=~/jrsctl`, any path flag, any path setting in `config.yaml` or `--set`, and every answer in the guided menu (`~user` is not expanded).
 5. **Upgrading jrsctl**: unpack the new version next to the old one and point at it; the home directory (and its `state.db`) is version-independent, and `selfcheck` reports the state schema version. Remove the old directory once the new one passes `selfcheck` and `doctor`.
 
 `JRSCTL_JAVA_OPTS` passes extra options to the bundled JVM when needed (proxy settings such as `-Dhttps.proxyHost=...`, an extra truststore with `-Djavax.net.ssl.trustStore=...`, or a heap limit). The runtime has no `jdk.localedata`, so output uses English formatting whatever the OS locale. **Do not add `-XX:TieredStopAtLevel=1` to make it start faster:** without the optimising compiler the JVM's SHA-256 is about eight times slower (600 MB took 4.5 s instead of 0.55 s in the measurement behind ADR-0035), and jrsctl hashes every archive, snapshot and bundle it handles, so a large export would take minutes longer. A class-data-sharing archive (`-XX:SharedArchiveFile`) would save about 300 ms a launch, but a stale one, which is what an archive is after the jar is replaced or re-extracted, makes the JVM print warnings on standard output and so corrupts `--json`; add `-Xlog:disable` if you use one, and prefer not to.
@@ -50,7 +51,7 @@ jrsctl ships as one portable archive per platform (ADR-0003, ADR-0008): `jrsctl-
 
 Type `jrsctl` with nothing after it, in a terminal, and a menu opens (#71, spec §17.1). It is a front end over the command line and nothing more: each entry asks for what its job needs, prints the command line it is about to run (`Running: jrsctl export --strategy rest --out /backups/repository.zip`) and runs that ordinary command, with the same plan, confirmation, run lock and exit code as typing it. Enter keeps the command's own default for every question; a file, directory or choice that is not acceptable is asked again. The eight entries:
 
-1. **Set up or change settings.** *Detect the installation and write the settings* runs `init` (Enter searches for the installation; a directory that does not exist is asked again). *Show and change settings* prints the table once (`config keys`), then asks for a setting and its value until Enter, running `config set <key> <value>` for each; an unknown key is re-asked, not sent.
+1. **Set up or change settings.** *Where jrsctl keeps its state and backups* runs `home show` and offers to move the home with `home set`. *Detect the installation and write the settings* runs `init` (Enter searches for the installation; a directory that does not exist is asked again). *Show and change settings* prints the table once (`config keys`), then asks for a setting and its value until Enter, running `config set <key> <value>` for each; an unknown key is re-asked, not sent.
 2. **Check server health**: `doctor`.
 3. **Back up content.** *Everything in the repository, over REST (no vendor tools; the server keeps running)* runs `export --strategy rest`; *One folder* asks for the folder (`--uri`); *Everything including users, roles and settings, with the vendor js-export* runs `export --full-server` and asks whether to stop the server while it runs (`--stop-service`, a consistent copy with a short outage). The first two also ask whether to include users and roles, the access, audit and monitoring events, and the server settings.
 4. **Restore or copy content.** Asks for the archive, says where the pre-import rollback copy goes (the resources the archive will touch, or the whole repository when the archive has no `.jrsctl.json` beside it, exported under the home's `snapshots/` first), then asks the import's options: replace existing resources (`--update`), skip themes (`--skip-themes`), what to do with broken dependencies (`--broken-dependencies fail|skip|include`), and the strategy (`--strategy rest|vendor`, Enter for automatic).
@@ -523,6 +524,33 @@ The same pruning runs automatically after every successful mutating run (best ef
 - **Rollback:** none; a pruned snapshot is gone. Protected snapshots are never candidates, and `--dry-run` shows the exact list before anything is removed.
 - **Exit codes:** 0 (also when nothing qualifies); **2** when the configuration or state store cannot be read; **9** when another jrsctl process holds the run lock (the message names its run id and pid).
 - **Flags:** `--dry-run` — list what would be removed and remove nothing (read-only, no lock); `--json` — exactly `{"dryRun": bool, "removed": [{"id", "runId", "stepId", "path"}], "kept": n, "protected": n}` where `kept` is the number of snapshots remaining on disk after the pass and `protected` how many of those belong to a protected run; removed run directories appear in `removed` with `stepId` `*` and do not change either count.
+
+### `jrsctl home show [--json]`
+
+Where jrsctl keeps its state, backups and logs, what chose that directory (`--home`, `JRSCTL_HOME` or the platform default, and a redirect when `home set` wrote one), the free space on its volume and how much of it snapshots, run directories and logs use. It needs no configuration and no server, so it works on a host that has run out of space.
+
+- **Mutates:** nothing; read-only.
+- **Rollback:** not applicable.
+- **Exit codes:** 0.
+- **Flags:** `--json` — `{home, source, base, redirectFile, freeBytes, usage: {snapshots, runs, logs, other}}`.
+
+### `jrsctl home set <dir> [--force] [--json]`
+
+Moves the jrsctl home to `<dir>` from the next command on (field test 3, ADR-0041). It writes `home.redirect` into the home that would otherwise be used (`--home`, else `JRSCTL_HOME`, else the platform default), so every operator and scheduled task that reaches that home follows it, and nothing has to be exported in every shell. One redirect is followed, never a chain. **Nothing is copied**: snapshots are recorded by absolute path, so what the old home holds stays where it is, and a later rollback still reads it there. That is why the command refuses (exit **2**) while the old home still holds installed hotfixes, registered customizations or runs pending recovery: roll them back or finish them first, or pass `--force` to move anyway and keep the old home until they are done. `<dir>` is created if needed and must be writable; writing the redirect into the system home needs the rights that home needs (elevated on Windows, root on Linux).
+
+- **Mutates:** `home.redirect` in the home being left; creates `<dir>`.
+- **Rollback:** `jrsctl home reset`.
+- **Exit codes:** 0; **1** when `<dir>` is the home already or inside it; **2** when `<dir>` cannot be written, is itself redirected, the redirect cannot be written, or the old home still holds what a rollback or recovery needs (without `--force`).
+- **Flags:** `<dir>` — the new home; `--force` — move even though the old home still holds installed hotfixes, customizations or pending runs; `--json` — `{home, previous, base, redirectFile, leftBehind}`.
+
+### `jrsctl home reset [--force] [--json]`
+
+Removes the redirect `home set` wrote, so the home it was written in is used again. Refuses, like `set`, while the redirected home holds installed hotfixes, registered customizations or runs pending recovery, unless `--force`. Nothing is copied back.
+
+- **Mutates:** removes `home.redirect`.
+- **Rollback:** `jrsctl home set <dir>` again.
+- **Exit codes:** 0 (also when there is no redirect); **2** as for `set`.
+- **Flags:** `--force`; `--json` — as for `set`.
 
 ### `jrsctl keys list [--json]`
 

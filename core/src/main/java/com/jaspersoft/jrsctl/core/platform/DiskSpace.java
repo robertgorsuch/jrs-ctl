@@ -48,20 +48,22 @@ public final class DiskSpace {
       StringBuilder parts = new StringBuilder();
       for (Need need : volume.getValue()) {
         total += need.bytes();
-        parts.append(need.what()).append(' ').append(need.bytes()).append(" + ");
+        parts.append(need.what()).append(' ').append(human(need.bytes())).append(" + ");
       }
-      parts.append("margin ").append(MARGIN_BYTES);
+      parts.append("margin ").append(human(MARGIN_BYTES));
       try {
-        long free = files.freeSpaceBytes(probes.get(volume.getKey()));
+        Path where = probes.get(volume.getKey());
+        long free = files.freeSpaceBytes(where);
         if (free < total) {
+          // field test 3: say where, in units an operator reads, not a volume id and raw bytes
           problems.add(
-              "volume "
-                  + volume.getKey()
+              "not enough free space on the volume of "
+                  + where
                   + ": "
-                  + free
-                  + " bytes free, need "
-                  + total
-                  + " ("
+                  + human(free)
+                  + " free, "
+                  + human(total)
+                  + " needed ("
                   + parts
                   + ")");
         }
@@ -71,6 +73,31 @@ public final class DiskSpace {
       }
     }
     return List.copyOf(problems);
+  }
+
+  /**
+   * What to do when the jrsctl home is short of space (field test 3): the same advice wherever the
+   * shortage is found, naming the home and the commands that make room or move it (ADR-0041).
+   */
+  public static String remedy(Path home) {
+    return "free space on that volume, remove old snapshots with `jrsctl runs prune`, or move the"
+        + " jrsctl home ("
+        + home
+        + ") to a bigger volume with `jrsctl home set <dir>`";
+  }
+
+  /**
+   * Whether {@code e}, or a cause of it, is the file system saying it is full: Windows' "There is
+   * not enough space on the disk" and POSIX's "No space left on device" ({@code ENOSPC}).
+   */
+  public static boolean outOfSpace(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      String message = String.valueOf(t.getMessage()).toLowerCase(java.util.Locale.ROOT);
+      if (message.contains("not enough space") || message.contains("no space left")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** {@code 1.5 GB}, {@code 800.0 MB} or {@code 12 B}, for messages an operator reads. */

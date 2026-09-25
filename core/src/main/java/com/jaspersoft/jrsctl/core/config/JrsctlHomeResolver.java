@@ -2,11 +2,13 @@ package com.jaspersoft.jrsctl.core.config;
 
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
+import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Locates {@code $JRSCTL_HOME} (spec §5.1): the {@code JRSCTL_HOME} environment variable wins,
@@ -38,10 +40,15 @@ public final class JrsctlHomeResolver {
     Objects.requireNonNull(choice, "choice");
     String fromEnv = env.get(ENV_VAR);
     if (fromEnv != null && !fromEnv.isBlank()) {
-      return new JrsctlHome(
-          Path.of(UserPaths.expand(fromEnv.strip(), env)).toAbsolutePath().normalize());
+      return new JrsctlHome(HomeRedirect.follow(Path.of(UserPaths.expand(fromEnv.strip(), env))));
     }
     Path root = platform.defaultHome().toAbsolutePath().normalize();
+    // ADR-0041: a default home that has been pointed elsewhere is followed, and the refusal below
+    // concerns the home jrsctl would actually use, not the one it was redirected from
+    Optional<Path> redirected = HomeRedirect.target(root);
+    if (redirected.isPresent()) {
+      return new JrsctlHome(redirected.get());
+    }
     if (choice.systemHomeUnwritable() && root.equals(normalise(choice.home()))) {
       throw new ConfigException(
           choice.systemHome()

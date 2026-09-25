@@ -130,7 +130,7 @@ class InitCommandTest {
     assertThat(run.out())
         .containsPattern(
             "jrsctl home: .* \\([0-9.]+ (GB|MB|B) free; backups and state live here; move it with"
-                + " --home or JRSCTL_HOME\\)");
+                + " jrsctl home set <dir>\\)");
   }
 
   @Test

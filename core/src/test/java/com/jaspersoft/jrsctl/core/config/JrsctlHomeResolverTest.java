@@ -39,6 +39,23 @@ class JrsctlHomeResolverTest {
     assertThat(home.root()).isEqualTo(expected);
   }
 
+  /** ADR-0041: a home pointed elsewhere by `jrsctl home set` is followed, from any source. */
+  @Test
+  void should_follow_a_redirect_when_the_env_home_or_the_default_home_holds_one(
+      @org.junit.jupiter.api.io.TempDir Path tmp) throws java.io.IOException {
+    Path small = java.nio.file.Files.createDirectories(tmp.resolve("small"));
+    Path big = tmp.resolve("big");
+    java.nio.file.Files.writeString(
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.file(small),
+        com.jaspersoft.jrsctl.core.platform.HomeRedirect.content(big));
+    when(platform.defaultHome()).thenReturn(small);
+
+    assertThat(JrsctlHomeResolver.resolve(Map.of("JRSCTL_HOME", small.toString()), platform).root())
+        .isEqualTo(big.toAbsolutePath().normalize());
+    assertThat(JrsctlHomeResolver.resolve(Map.of(), platform).root())
+        .isEqualTo(big.toAbsolutePath().normalize());
+  }
+
   @Test
   void should_fall_back_to_platform_default_when_env_var_is_absent_or_blank() {
     Path dflt = Path.of("platform-default").toAbsolutePath();

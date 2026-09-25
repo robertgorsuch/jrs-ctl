@@ -64,4 +64,20 @@ class DiskSpaceTest {
     assertThat(DiskSpace.treeBytes(root.getParent())).isEqualTo(8);
     assertThat(DiskSpace.treeBytes(tmp.resolve("missing"))).isZero();
   }
+
+  /** Field test 3: a full disk is recognised on both platforms, also as a wrapped cause. */
+  @Test
+  void should_recognise_a_full_disk_when_windows_or_posix_says_so() {
+    assertThat(
+            DiskSpace.outOfSpace(
+                new java.nio.file.FileSystemException(
+                    "C:/x", null, "There is not enough space on the disk")))
+        .isTrue();
+    assertThat(
+            DiskSpace.outOfSpace(
+                new java.io.UncheckedIOException(
+                    new java.io.IOException("write failed: No space left on device"))))
+        .isTrue();
+    assertThat(DiskSpace.outOfSpace(new java.io.IOException("Access is denied"))).isFalse();
+  }
 }
