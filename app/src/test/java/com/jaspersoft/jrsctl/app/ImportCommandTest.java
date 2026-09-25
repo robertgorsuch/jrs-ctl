@@ -109,6 +109,20 @@ class ImportCommandTest {
     assertThat(fake.lastImport.orElseThrow().forceVersion()).isFalse();
   }
 
+  /**
+   * ADR-0040: {@code --no-snapshot} reaches the operation; every command-line plan takes the
+   * snapshot with the server running.
+   */
+  @Test
+  void should_pass_no_snapshot_to_the_operation_when_given() {
+    assertThat(importOf("--no-snapshot", "--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().noSnapshot()).isTrue();
+    assertThat(fake.lastImport.orElseThrow().snapshotStopsService()).isFalse();
+
+    assertThat(importOf("--plan").code()).isZero();
+    assertThat(fake.lastImport.orElseThrow().noSnapshot()).isFalse();
+  }
+
   /** Issue #115: themes are skipped across a major version unless {@code --themes} says not. */
   @Test
   void should_pass_themes_to_the_operation_and_refuse_it_with_skip_themes() {

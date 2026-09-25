@@ -28,9 +28,9 @@ import java.util.function.Supplier;
  * #exportArgs} and {@link #importArgs} are exactly what {@link #rebuild} reads, so a plan stored by
  * any mutating command always rebuilds; {@code uris, usersRoles, accessEvents, fullServer,
  * strategy, out} and {@code archive, update, skipUserUpdate, sourceKeystore,
- * sourceKeystorePassword, strategy} are the field names the export and import argument documents
- * use; an unknown operation fails with a message naming the known ones; the operations are obtained
- * lazily so listing the registry never touches the server.
+ * sourceKeystorePassword, strategy, snapshotStopsService, noSnapshot} are the field names the
+ * export and import argument documents use; an unknown operation fails with a message naming the
+ * known ones; the operations are obtained lazily so listing the registry never touches the server.
  */
 public final class PlanRegistry {
 
@@ -177,6 +177,8 @@ public final class PlanRegistry {
     node.put("mergeOrganization", o.mergeOrganization());
     node.put("forceVersion", o.forceVersion());
     node.put("keepThemes", o.keepThemes());
+    node.put("snapshotStopsService", o.snapshotStopsService());
+    node.put("noSnapshot", o.noSnapshot());
     return Json.write(node);
   }
 
@@ -237,7 +239,12 @@ public final class PlanRegistry {
         // arguments stored before the option existed describe an import that was not forced
         args.path("forceVersion").asBoolean(false),
         // arguments stored before the option existed describe an import with the themes default
-        args.path("keepThemes").asBoolean(false));
+        args.path("keepThemes").asBoolean(false),
+        // ADR-0040: arguments stored before the key existed describe a plan whose vendor snapshot
+        // stopped and started the service, so a journaled run rebuilds the steps it recorded
+        args.path("snapshotStopsService").asBoolean(true),
+        // and one that took the pre-import snapshot
+        args.path("noSnapshot").asBoolean(false));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

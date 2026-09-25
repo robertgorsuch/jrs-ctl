@@ -155,7 +155,11 @@ public interface ExportImportOperations {
    * records a source version the vendor says cannot be imported here (10.1 and later into a server
    * below 10.1; issue #107) instead of refusing it; the override is audited. {@code keepThemes}
    * (issue #115) turns off the default of skipping themes when the archive comes from another major
-   * version than this server.
+   * version than this server. {@code snapshotStopsService} (ADR-0040) is true only for a plan
+   * rebuilt from arguments an earlier jrsctl stored, whose vendor snapshot stopped and started the
+   * service; every new plan takes the snapshot with the server running. {@code noSnapshot}
+   * (ADR-0040) leaves out the pre-import snapshot and its re-import on rollback; the override is
+   * audited.
    */
   record ImportOptions(
       Path archive,
@@ -174,7 +178,9 @@ public interface ExportImportOperations {
       Optional<String> organization,
       boolean mergeOrganization,
       boolean forceVersion,
-      boolean keepThemes) {
+      boolean keepThemes,
+      boolean snapshotStopsService,
+      boolean noSnapshot) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -184,6 +190,95 @@ public interface ExportImportOperations {
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(organization, "organization");
+    }
+
+    /** The options of a new import: the snapshot is taken, with the server running. */
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies,
+        Optional<String> keyAlias,
+        Optional<String> organization,
+        boolean mergeOrganization,
+        boolean forceVersion,
+        boolean keepThemes) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keepThemes,
+          false,
+          false);
+    }
+
+    /** The same options, the vendor snapshot stopping the service as it did before ADR-0040. */
+    public ImportOptions withSnapshotStopsService(boolean stops) {
+      return new ImportOptions(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keepThemes,
+          stops,
+          noSnapshot);
+    }
+
+    /** The same options with or without the pre-import snapshot ({@code --no-snapshot}). */
+    public ImportOptions withNoSnapshot(boolean skip) {
+      return new ImportOptions(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keepThemes,
+          snapshotStopsService,
+          skip);
     }
 
     /** The options that keep the themes default: skipped only across a major version. */
@@ -278,7 +373,9 @@ public interface ExportImportOperations {
           organization,
           mergeOrganization,
           force,
-          keepThemes);
+          keepThemes,
+          snapshotStopsService,
+          noSnapshot);
     }
 
     public ImportOptions withKeepThemes(boolean keep) {
@@ -299,7 +396,9 @@ public interface ExportImportOperations {
           organization,
           mergeOrganization,
           forceVersion,
-          keep);
+          keep,
+          snapshotStopsService,
+          noSnapshot);
     }
 
     public ImportOptions(

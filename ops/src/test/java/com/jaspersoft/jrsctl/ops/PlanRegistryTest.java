@@ -231,6 +231,71 @@ class PlanRegistryTest {
   }
 
   /**
+   * ADR-0040: a new import stores that its snapshot runs with the server up; arguments an earlier
+   * jrsctl stored have no such key and describe the snapshot that stopped the service, so {@code
+   * runs recover} rebuilds the steps that run journaled.
+   */
+  @Test
+  void should_read_the_old_stopping_snapshot_when_stored_import_arguments_predate_the_key()
+      throws IOException {
+    ExportImportOperations.ImportOptions fresh =
+        new ExportImportOperations.ImportOptions(
+            Path.of("a.zip").toAbsolutePath().normalize(),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+
+    JsonNode args = tree(PlanRegistry.importArgs(fresh));
+
+    assertThat(fresh.snapshotStopsService()).isFalse();
+    assertThat(args.get("snapshotStopsService").asBoolean(true)).isFalse();
+    assertThat(PlanRegistry.importOptions(args).snapshotStopsService()).isFalse();
+    assertThat(PlanRegistry.importOptions(args)).isEqualTo(fresh);
+    ExportImportOperations.ImportOptions old =
+        PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}"));
+    assertThat(old.snapshotStopsService()).isTrue();
+    assertThat(
+            PlanRegistry.importOptions(tree(PlanRegistry.importArgs(old))).snapshotStopsService())
+        .as("a recovered old plan keeps its shape when stored again")
+        .isTrue();
+  }
+
+  /** ADR-0040: {@code --no-snapshot} survives the stored arguments; older arguments mean no. */
+  @Test
+  void should_round_trip_no_snapshot_when_import_arguments_carry_it() throws IOException {
+    ExportImportOperations.ImportOptions options =
+        new ExportImportOperations.ImportOptions(
+                Path.of("a.zip").toAbsolutePath().normalize(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty())
+            .withNoSnapshot(true)
+            .withForceVersion(true)
+            .withKeepThemes(true);
+
+    JsonNode args = tree(PlanRegistry.importArgs(options));
+
+    assertThat(args.get("noSnapshot").asBoolean()).isTrue();
+    assertThat(PlanRegistry.importOptions(args)).isEqualTo(options);
+    assertThat(PlanRegistry.importOptions(args).noSnapshot()).isTrue();
+    assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).noSnapshot()).isFalse();
+  }
+
+  /**
    * Issue #115: {@code --themes} survives the stored arguments, and an old row means the default.
    */
   @Test

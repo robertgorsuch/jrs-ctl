@@ -257,6 +257,9 @@ final class HelpExamples {
                 "Import, replacing resources that already exist",
                 "jrsctl import /backups/samples.zip --update"),
             new Example(
+                "Skip the rollback copy; a failed import then cannot put back what it overwrote",
+                "jrsctl import /backups/samples.zip --update --no-snapshot"),
+            new Example(
                 "Archive from a server with another keystore",
                 "jrsctl import /backups/full-server.zip --source-keystore /tmp/source/.jrsks"
                     + " --source-keystore-password-ref enc:SOURCE_KEYSTORE_PASSWORD")));

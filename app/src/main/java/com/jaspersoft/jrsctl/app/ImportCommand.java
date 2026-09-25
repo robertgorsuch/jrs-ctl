@@ -23,13 +23,14 @@ import picocli.CommandLine.Spec;
 /**
  * {@code jrsctl import <archive> [--update] [--skip-user-update] [--access-events] [--audit-events]
  * [--monitoring] [--settings] [--skip-themes] [--source-keystore <path>]
- * [--source-keystore-password-ref <ref>] [--strategy rest|vendor] [--force-version] [--plan]
- * [--yes] [--json]} (spec §9.5). Invariants: the import only ever runs through {@link
- * PlanExecutor}; the plan always takes a pre-import snapshot first and its summary states that
- * rollback is best effort (spec §9.4); an unparseable secret reference is a usage error (exit 1)
- * raised before any bootstrap; a planning failure exits 2 because nothing has been touched yet,
- * which includes an archive from 10.1 or later refused for an older server without {@code
- * --force-version} (issue #107).
+ * [--source-keystore-password-ref <ref>] [--strategy rest|vendor] [--force-version] [--no-snapshot]
+ * [--plan] [--yes] [--json]} (spec §9.5). Invariants: the import only ever runs through {@link
+ * PlanExecutor}; the plan takes a pre-import snapshot first, with the server running, unless {@code
+ * --no-snapshot} is given (audited; ADR-0040), and its summary states what rollback can and cannot
+ * put back (spec §9.4); an unparseable secret reference is a usage error (exit 1) raised before any
+ * bootstrap; a planning failure exits 2 because nothing has been touched yet, which includes an
+ * archive from 10.1 or later refused for an older server without {@code --force-version} (issue
+ * #107).
  */
 @Command(
     name = "import",
@@ -139,6 +140,13 @@ final class ImportCommand implements Callable<Integer> {
               + " plan refuses it without this flag (audited).")
   boolean forceVersion;
 
+  @Option(
+      names = "--no-snapshot",
+      description =
+          "Do not export the affected folders before importing. A failed import can then not put"
+              + " back what it overwrote; it only deletes what it created (audited).")
+  boolean noSnapshot;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -192,7 +200,9 @@ final class ImportCommand implements Callable<Integer> {
             Optional.ofNullable(organization),
             mergeOrganization,
             forceVersion,
-            themes);
+            themes,
+            false,
+            noSnapshot);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

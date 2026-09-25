@@ -77,6 +77,9 @@ import org.junit.jupiter.api.Test;
  * <tr><td>exim RemoveNewContent</td>
  *     <td>EximStepIdempotencyTest#should_record_the_same_new_folders_when_remove_new_content_executes_twice</td>
  *     <td>EximStepIdempotencyTest#should_delete_the_new_folders_once_when_remove_new_content_compensates_twice</td></tr>
+ * <tr><td>exim RemoveImportAdditions</td>
+ *     <td>EximStepIdempotencyTest#should_not_mutate_when_remove_import_additions_executes_twice</td>
+ *     <td>EximStepIdempotencyTest#should_delete_the_additions_once_when_remove_import_additions_compensates_twice</td></tr>
  * <tr><td>exim Rephased</td>
  *     <td colspan="2">EximStepIdempotencyTest#should_delegate_unchanged_when_rephased_step_executes_twice</td></tr>
  * <tr><td>exim RestoreFromPreImportSnapshot</td>
@@ -326,6 +329,12 @@ class IdempotencyCoverageTest {
           Map.entry(
               OPS + "exim.RemoveNewContent",
               E + "should_delete_the_new_folders_once_when_remove_new_content_compensates_twice"),
+          Map.entry(
+              OPS + "exim.RemoveImportAdditions",
+              E
+                  + "should_not_mutate_when_remove_import_additions_executes_twice;"
+                  + E
+                  + "should_delete_the_additions_once_when_remove_import_additions_compensates_twice"),
           Map.entry(
               OPS + "exim.Rephased",
               E + "should_delegate_unchanged_when_rephased_step_executes_twice"),

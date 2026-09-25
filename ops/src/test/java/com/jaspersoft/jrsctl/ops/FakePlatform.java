@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Minimal {@link Platform} for ops tests: a scriptable process runner, file ops backed by the real
@@ -43,6 +44,13 @@ public final class FakePlatform implements Platform {
   }
 
   public final Map<String, Response> scripted = new HashMap<>();
+
+  /**
+   * Consulted before {@link #scripted}: an answer computed from the whole command, for a fake tool
+   * that must write a file or answer differently the second time.
+   */
+  public Function<List<String>, Optional<Response>> dynamic = command -> Optional.empty();
+
   public final List<List<String>> invocations = new ArrayList<>();
   public final List<Path> candidates = new ArrayList<>();
 
@@ -241,10 +249,10 @@ public final class FakePlatform implements Platform {
       @Override
       public Result run(Request request, Consumer<OutputLine> onLine) {
         invocations.add(List.copyOf(request.command()));
-        Response response = null;
+        Response response = dynamic.apply(List.copyOf(request.command())).orElse(null);
         String joined = String.join(" ", request.command());
         for (Map.Entry<String, Response> entry : scripted.entrySet()) {
-          if (joined.startsWith(entry.getKey())) {
+          if (response == null && joined.startsWith(entry.getKey())) {
             response = entry.getValue();
             break;
           }

@@ -56,6 +56,11 @@ class DefaultExportImportOperationsTest {
   }
 
   private static ImportOptions importOf(Path archive, boolean update) {
+    return importOf(archive, update, Optional.empty());
+  }
+
+  private static ImportOptions importOf(
+      Path archive, boolean update, Optional<ExportImportStrategy.Kind> kind) {
     return new ImportOptions(
         archive,
         update,
@@ -67,7 +72,7 @@ class DefaultExportImportOperationsTest {
         false,
         Optional.empty(),
         Optional.empty(),
-        Optional.empty());
+        kind);
   }
 
   private void sidecar(List<String> uris, boolean fullServer) throws IOException {
@@ -397,19 +402,196 @@ class DefaultExportImportOperationsTest {
     Plan plan = fx.ops().planImport(options);
 
     assertThat(phases(plan)).containsExactly("precheck", "backup", "import");
+    // ADR-0040: js-export reads the repository with the server up; the import is the one outage
     assertThat(ids(plan))
-        .startsWith(
+        .containsExactly(
             "precheck.import.check-keystore",
             "precheck.import.locate-vendor-tools",
             "backup.pre-import-snapshot",
             "backup.pre-import-listing",
             "backup.export.locate-vendor-tools",
-            "backup.export.stop-service")
-        .contains("import.snapshot-rollback", "import.stop-service", "import.js-import");
-    assertThat(ids(plan).indexOf("import.snapshot-rollback"))
-        .isLessThan(ids(plan).indexOf("import.stop-service"));
+            "backup.export.js-export",
+            "backup.export.sidecar",
+            "import.snapshot-rollback",
+            "import.new-content-rollback",
+            "import.stop-service",
+            "import.js-import",
+            "import.start-service",
+            "import.wait-for-server");
+    assertThat(ids(plan)).filteredOn(id -> id.endsWith("stop-service")).hasSize(1);
     assertThat(plan.summary().serviceRestart()).isTrue();
-    assertThat(plan.summary().warnings()).anyMatch(w -> w.contains("service will be stopped"));
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("service will be stopped for the vendor import"))
+        .anyMatch(w -> w.contains("snapshot") && w.contains("server running"))
+        .noneMatch(w -> w.contains("vendor snapshot and import"));
+  }
+
+  /**
+   * ADR-0040: arguments an earlier jrsctl stored rebuild the plan it journaled, whose vendor
+   * snapshot stopped and started the service, so {@code runs recover} still matches the run.
+   */
+  @Test
+  void should_stop_the_service_around_the_snapshot_when_stored_arguments_predate_adr_0040()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+    ImportOptions old =
+        com.jaspersoft.jrsctl.ops.PlanRegistry.importOptions(
+            com.jaspersoft.jrsctl.core.json.Json.mapper()
+                .createObjectNode()
+                .put("archive", archive.toString())
+                .put("strategy", "vendor"));
+
+    Plan plan = fx.ops().planImport(old);
+
+    assertThat(ids(plan))
+        .containsSubsequence(
+            "backup.export.locate-vendor-tools",
+            "backup.export.stop-service",
+            "backup.export.js-export",
+            "backup.export.start-service",
+            "backup.export.wait-for-server",
+            "backup.export.sidecar",
+            "import.stop-service");
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("stopped for the vendor snapshot and import"));
+  }
+
+  /**
+   * ADR-0040: forced to the vendor tools on a server that takes REST imports, say what it costs.
+   */
+  @Test
+  void should_say_rest_needs_no_outage_when_vendor_is_forced_on_a_rest_capable_server()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+    ImportOptions forced =
+        importOf(archive, false, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
+
+    Plan plan = fx.ops().planImport(forced);
+
+    assertThat(plan.summary().warnings())
+        .anyMatch(w -> w.contains("REST") && w.contains("no outage") && w.contains("--strategy"));
+  }
+
+  @Test
+  void should_not_offer_rest_when_the_server_cannot_import_over_rest() throws IOException {
+    sidecar(List.of("/public"), false);
+    adapter.capabilities = EnumSet.of(Capability.EXPORT_ASYNC);
+
+    Plan auto = fx.ops().planImport(importOf(archive, false));
+    Plan forced =
+        fx.ops()
+            .planImport(
+                importOf(archive, false, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI)));
+
+    assertThat(auto.summary().strategy()).startsWith("vendor (").contains("probe failed");
+    assertThat(auto.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+    assertThat(forced.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+  }
+
+  @Test
+  void should_not_offer_rest_when_the_archive_is_above_the_rest_limit() throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan big =
+        new DefaultExportImportOperations(fx.services, fx.strategies, 4)
+            .planImport(importOf(archive, false));
+    Plan forcedBig =
+        new DefaultExportImportOperations(fx.services, fx.strategies, 4)
+            .planImport(
+                importOf(archive, false, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI)));
+
+    assertThat(big.summary().strategy()).startsWith("vendor");
+    assertThat(big.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+    assertThat(forcedBig.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+  }
+
+  @Test
+  void should_not_offer_rest_when_a_source_keystore_needs_the_vendor_tools() throws IOException {
+    sidecar(List.of("/public"), false);
+    ImportOptions withKeystore =
+        new ImportOptions(
+            archive,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Optional.of(tmp.resolve("source.jrsks")),
+            Optional.empty(),
+            Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
+
+    Plan plan = fx.ops().planImport(withKeystore);
+
+    assertThat(plan.summary().strategy()).contains("source keystore");
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+  }
+
+  @Test
+  void should_not_offer_rest_when_rest_is_the_strategy() throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan plan = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(plan.summary().strategy()).startsWith("rest (");
+    assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("no outage"));
+  }
+
+  /**
+   * ADR-0040: {@code --no-snapshot} leaves out the snapshot export and its re-import; the listing
+   * and the new-content step stay, so what the failed import created is still deleted.
+   */
+  @Test
+  void should_plan_no_snapshot_steps_and_say_what_is_lost_when_no_snapshot_is_given()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+    ImportOptions options =
+        importOf(archive, false, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI))
+            .withNoSnapshot(true);
+
+    Plan plan = fx.ops().planImport(options);
+
+    assertThat(ids(plan))
+        .containsExactly(
+            "precheck.import.check-keystore",
+            "precheck.import.locate-vendor-tools",
+            "backup.pre-import-listing",
+            "import.additions-rollback",
+            "import.new-content-rollback",
+            "import.stop-service",
+            "import.js-import",
+            "import.start-service",
+            "import.wait-for-server");
+    assertThat(plan.summary().backupLocations()).isEmpty();
+    assertThat(plan.summary().warnings())
+        .doesNotContain(DefaultExportImportOperations.ROLLBACK_WARNING)
+        .contains(DefaultExportImportOperations.NO_SNAPSHOT_WARNING);
+    assertThat(DefaultExportImportOperations.NO_SNAPSHOT_WARNING)
+        .contains("--no-snapshot")
+        .contains("cannot put back what it overwrote");
+    assertThat(plan.summary().rollbackPointsByPhase().get("import"))
+        .contains("delete what the import created")
+        .contains("not put back");
+    assertThat(plan.summary().rollbackPointsByPhase()).doesNotContainKey("backup");
+    assertThat(fx.services.stateStore().get().auditRows(10))
+        .anyMatch(
+            a ->
+                a.action().equals("--no-snapshot") && a.detail().orElse("").contains("public.zip"));
+    assertThat(plan.fingerprint().inputs()).containsEntry("snapshot", "none");
+  }
+
+  /** ADR-0040: the fingerprint names a live snapshot, and a stopping one keeps its old inputs. */
+  @Test
+  void should_name_the_snapshot_choice_in_the_fingerprint_only_when_it_differs_from_before()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan live = fx.ops().planImport(importOf(archive, false));
+    Plan stopping = fx.ops().planImport(importOf(archive, false).withSnapshotStopsService(true));
+
+    assertThat(live.fingerprint().inputs()).containsEntry("snapshot", "live");
+    assertThat(stopping.fingerprint().inputs()).doesNotContainKey("snapshot");
   }
 
   @Test

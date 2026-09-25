@@ -3,6 +3,9 @@
 ## Draft 1.2 amendment — 2026-09-25 (field test 3, moving the jrsctl home; ADR-0041)
 
 - §5.1: a home holding a `home.redirect` file is replaced by the directory it names, one hop only, whichever source chose the home; `jrsctl home show|set|reset` read, write and remove it. Space failures in hotfix, snapshot and upgrade checks name the home and say how to make room or move it, and converted official hotfix packages under `runs/` are pruned by age.
+## Draft 1.2 amendment — 2026-09-25 (field test 3, one outage per vendor import)
+
+- §9.2, §9.4, §9.5: the pre-import snapshot runs with the server up (`stopService=false`), so a vendor import stops the service once, around `js-import`; ADR-0021 §4's snapshot bullet is superseded (ADR-0040). Stored import arguments gain `snapshotStopsService` (missing = true, which rebuilds the old stop/start around the snapshot for `runs recover`) and `noSnapshot` (missing = false). New `import --no-snapshot` leaves out the snapshot and its re-import: the listing and a new anchor `import.additions-rollback` still delete what a failed import created, `import.new-content-rollback` stays, the plan carries `NO_SNAPSHOT_WARNING` in place of the rollback sentence and the override is audited; the guided restore flow asks for it with Enter keeping the snapshot. A plan that forces `--strategy vendor` on a server whose `IMPORT_ASYNC` probe passes, with no `--source-keystore` and an archive within the REST limit, warns that REST needs no outage at all.
 
 ## Draft 1.2 amendment — 2026-09-25 (issue #160, the run's log lines)
 

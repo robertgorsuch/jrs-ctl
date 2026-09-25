@@ -169,6 +169,7 @@ final class EximFakeAdapter implements JrsAdapter {
   @Override
   public boolean resourceExists(String uri) {
     existenceChecks.add(uri);
+    requireUp("exists " + uri);
     if (existsFailure.isPresent()) {
       throw new IllegalStateException(existsFailure.get());
     }
@@ -209,8 +210,25 @@ final class EximFakeAdapter implements JrsAdapter {
   private int listings;
   private List<String> lastTree = List.of();
 
+  /**
+   * ADR-0040: whether the web application answers; a test ties it to the fake service's state so a
+   * REST listing or deletion made while the service is stopped fails as it would on a real server.
+   */
+  java.util.function.BooleanSupplier serverUp = () -> true;
+
+  /** REST calls refused because {@link #serverUp} said the server was down, in order. */
+  final List<String> refusedWhileDown = new ArrayList<>();
+
+  private void requireUp(String call) {
+    if (!serverUp.getAsBoolean()) {
+      refusedWhileDown.add(call);
+      throw new IllegalStateException("connection refused: the server is down (" + call + ")");
+    }
+  }
+
   @Override
   public List<String> listTree(String folderUri) {
+    requireUp("list " + folderUri);
     if (listFailure.isPresent() || ++listings > failListingAfter) {
       throw new IllegalStateException(listFailure.orElse("listing refused by the fake"));
     }
@@ -225,6 +243,7 @@ final class EximFakeAdapter implements JrsAdapter {
 
   @Override
   public void deleteResource(String uri) {
+    requireUp("delete " + uri);
     if (undeletable.contains(uri)) {
       throw new IllegalStateException("deletion of " + uri + " refused by the fake");
     }
