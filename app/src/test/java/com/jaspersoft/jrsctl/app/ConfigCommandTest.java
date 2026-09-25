@@ -15,6 +15,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,14 +103,36 @@ class ConfigCommandTest {
     assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
   }
 
+  /**
+   * The ADR-0038 warning tells the operator to remove the 1.x block; {@code config unset console}
+   * is how, and a single {@code console.*} key removes the whole block too.
+   */
   @Test
-  void should_refuse_a_console_key_naming_the_adr_when_unsetting() throws IOException {
+  void should_remove_the_1x_console_block_and_keep_other_settings_when_unsetting_console()
+      throws IOException {
+    for (String key : List.of("console", "console.port")) {
+      writeOneXConfigWithConsoleBlock();
+
+      InitCommandTest.Run run = jrsctl("config", "unset", key);
+
+      assertThat(run.code()).as(key + ": " + run.out() + run.err()).isZero();
+      assertThat(run.out()).contains("removed the console block");
+      assertThat(home.resolve("config.yaml")).content().doesNotContain("console");
+      assertThat(home.resolve("config.yaml.bak")).content().contains("console:");
+      assertThat(fileConfig().server().baseUrl())
+          .contains(URI.create("http://old.example.com:8080/jasperserver-pro"));
+    }
+  }
+
+  @Test
+  void should_change_nothing_when_unsetting_console_and_there_is_no_console_block()
+      throws IOException {
     String before = Files.readString(home.resolve("config.yaml"), StandardCharsets.UTF_8);
 
-    InitCommandTest.Run run = jrsctl("config", "unset", "console.port");
+    InitCommandTest.Run run = jrsctl("config", "unset", "console");
 
-    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
-    assertThat(run.err()).contains("ADR-0038");
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out()).contains("nothing changed");
     assertThat(home.resolve("config.yaml")).content().isEqualTo(before);
   }
 

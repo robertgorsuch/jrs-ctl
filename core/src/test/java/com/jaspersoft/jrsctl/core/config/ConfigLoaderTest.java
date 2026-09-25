@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -612,6 +613,51 @@ class ConfigLoaderTest {
     assertThat(updated.backups().retentionDays()).isEqualTo(10);
     assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
     assertThat(warnings).singleElement().asString().contains("ADR-0038");
+  }
+
+  /** {@code config unset console} (ADR-0038): the block goes, everything else stays, silently. */
+  @Test
+  void should_drop_the_console_block_and_keep_the_rest_when_removing_console() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+        console:
+          port: 7421
+        """);
+    List<String> warnings = new ArrayList<>();
+
+    Optional<Config> updated = new ConfigLoader(warnings::add).fileWithoutConsole(file);
+
+    assertThat(updated).isPresent();
+    assertThat(updated.get().server().baseUrl()).isPresent();
+    ConfigWriter.write(updated.get(), file);
+    assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
+    assertThat(warnings).isEmpty();
+  }
+
+  @Test
+  void should_drop_console_lines_when_removing_console_from_a_properties_file() throws IOException {
+    Path file = tmp.resolve("config.properties");
+    Files.writeString(
+        file, "server.baseUrl=http://localhost:8080/jasperserver-pro\nconsole.port=7421\n");
+
+    Optional<Config> updated = new ConfigLoader().fileWithoutConsole(file);
+
+    assertThat(updated).isPresent();
+    ConfigWriter.write(updated.get(), file);
+    assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
+  }
+
+  @Test
+  void should_report_nothing_to_remove_when_the_file_has_no_console_entry() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(file, "server:\n  baseUrl: http://localhost:8080/jasperserver-pro\n");
+
+    assertThat(new ConfigLoader().fileWithoutConsole(file)).isEmpty();
+    assertThat(new ConfigLoader().fileWithoutConsole(tmp.resolve("missing.yaml"))).isEmpty();
   }
 
   /** As above, for {@code jrsctl.properties}, whose tolerance already lives in the line parser. */

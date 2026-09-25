@@ -182,12 +182,28 @@ public final class ConfigLoader {
     return toConfig(tree, Map.of());
   }
 
+  /**
+   * The configuration {@code file} alone with the 1.x {@code console:} block (or {@code console.*}
+   * properties lines) removed, for {@code config unset console} to write back (ADR-0038); empty
+   * when the file has no console entry, so there is nothing to rewrite. Emits no warning: the
+   * caller is removing what the warning is about.
+   */
+  public Optional<Config> fileWithoutConsole(Path file) {
+    List<String> dropped = new ArrayList<>();
+    ObjectNode tree = readTree(Objects.requireNonNull(file, "file"), dropped::add);
+    if (dropped.isEmpty()) {
+      return Optional.empty();
+    }
+    validate(tree);
+    return Optional.of(toConfig(tree, Map.of()));
+  }
+
   private void requireKnown(String key) {
     Objects.requireNonNull(key, "key");
     if (key.startsWith("console.")) {
       throw new ConfigException(
           key + " is no longer used (ADR-0038)",
-          "remove console.* from the configuration: jrsctl has no web console");
+          "jrsctl has no web console; remove the whole block with: jrsctl config unset console");
     }
     if (!leafKeys.containsKey(key)) {
       throw new ConfigException(
@@ -196,12 +212,13 @@ public final class ConfigLoader {
   }
 
   /** ADR-0038: a 1.x file may still carry {@code console:}; drop it with one warning. */
-  private void dropConsoleBlock(ObjectNode tree, Path file) {
+  private static void dropConsoleBlock(ObjectNode tree, Path file, Consumer<String> dropped) {
     if (tree.remove("console") != null) {
-      warnings.accept(
+      dropped.accept(
           "console: in "
               + file
-              + " is no longer used (ADR-0038): remove the block; jrsctl 2.1 will refuse it");
+              + " is no longer used (ADR-0038): remove it with: jrsctl config unset console;"
+              + " jrsctl 2.1 will refuse it");
     }
   }
 
@@ -284,17 +301,22 @@ public final class ConfigLoader {
    * warning per parse apply everywhere a file is read, not only when loading the effective config.
    */
   private ObjectNode readTree(Path file) {
-    ObjectNode tree = readFile(file);
-    dropConsoleBlock(tree, file);
+    return readTree(file, warnings);
+  }
+
+  /** As {@link #readTree(Path)}, with each dropped console entry reported to {@code dropped}. */
+  private ObjectNode readTree(Path file, Consumer<String> dropped) {
+    ObjectNode tree = readFile(file, dropped);
+    dropConsoleBlock(tree, file, dropped);
     return tree;
   }
 
-  private ObjectNode readFile(Path file) {
+  private ObjectNode readFile(Path file, Consumer<String> dropped) {
     if (!Files.isRegularFile(file)) {
       return JsonNodeFactory.instance.objectNode();
     }
     if (file.getFileName().toString().endsWith(".properties")) {
-      return readProperties(file);
+      return readProperties(file, dropped);
     }
     JsonNode root;
     try (InputStream in = Files.newInputStream(file)) {
@@ -319,7 +341,7 @@ public final class ConfigLoader {
    * path needs no doubling; {@code #} and {@code !} start comments; {@code =}, {@code :} or
    * whitespace separates key and value; an unknown or repeated key is refused with its line number.
    */
-  private ObjectNode readProperties(Path file) {
+  private ObjectNode readProperties(Path file, Consumer<String> dropped) {
     ObjectNode tree = JsonNodeFactory.instance.objectNode();
     Set<String> seen = new java.util.HashSet<>();
     List<String> lines;
@@ -349,7 +371,11 @@ public final class ConfigLoader {
       }
       String where = file + " line " + (i + 1);
       if (key.startsWith("console.")) {
-        warnings.accept(key + " at " + where + " is no longer used (ADR-0038): remove the line");
+        dropped.accept(
+            key
+                + " at "
+                + where
+                + " is no longer used (ADR-0038): remove it with: jrsctl config unset console");
         continue;
       }
       if (!leafKeys.containsKey(key)) {
