@@ -324,9 +324,11 @@ class RunsCommandTest {
       }
     }
     assertThat(entries)
+        .as("#161: run.json already carries the stored plan")
+        .doesNotContain("plan.json");
+    assertThat(entries)
         .contains(
             "run.json",
-            "plan.json",
             "transitions.jsonl",
             "server.json",
             "doctor.json",

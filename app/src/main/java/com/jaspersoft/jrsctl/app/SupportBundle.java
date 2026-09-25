@@ -38,17 +38,17 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json}, {@code
- * plan.json}, {@code transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code
- * config-redacted.yaml}, the run's lines of the JSON log and a short tail of it for context (#160).
- * Invariants: every byte passes through the {@link Redactor} on its way into the archive, so a
- * registered secret cannot appear in any encoding the redactor knows; everything that can fail,
- * which is the live doctor run and the server probe behind it, runs in {@link #prepare} before the
- * file is created, so a failure is an exit-2 or exit-4 message and never a partial zip (review
- * 4.8); the archive is then streamed entry by entry and the log tail is kept in a bounded deque, so
- * memory stays flat whatever the log size; a missing optional input yields no entry rather than an
- * error; the log is the file the running process actually writes, named by {@link
- * LogFile#PROPERTY}, not a guess at its location.
+ * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json} (which carries
+ * the stored plan, with its {@code {runId}} placeholders filled in, #161), {@code
+ * transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code config-redacted.yaml}, the
+ * run's lines of the JSON log and a short tail of it for context (#160). Invariants: every byte
+ * passes through the {@link Redactor} on its way into the archive, so a registered secret cannot
+ * appear in any encoding the redactor knows; everything that can fail, which is the live doctor run
+ * and the server probe behind it, runs in {@link #prepare} before the file is created, so a failure
+ * is an exit-2 or exit-4 message and never a partial zip (review 4.8); the archive is then streamed
+ * entry by entry and the log lines are kept in bounded deques, so memory stays flat whatever the
+ * log size; a missing optional input yields no entry rather than an error; the log is the file the
+ * running process actually writes, named by {@link LogFile#PROPERTY}, not a guess at its location.
  */
 public final class SupportBundle {
 
@@ -70,12 +70,7 @@ public final class SupportBundle {
    * the server probe behind it, plus the documents that read the state store (review 4.8).
    */
   public record Prepared(
-      RunRecord run,
-      String runJson,
-      Optional<String> planJson,
-      String serverJson,
-      String doctorJson,
-      String configYaml) {}
+      RunRecord run, String runJson, String serverJson, String doctorJson, String configYaml) {}
 
   /** Runs everything that can fail. Throws before any byte of the archive is written. */
   public Prepared prepare(RunRecord run) {
@@ -90,8 +85,7 @@ public final class SupportBundle {
             services.clock());
     return new Prepared(
         run,
-        Json.writePretty(runDoc),
-        plan.map(StoredPlan::planJson),
+        withRunId(Json.writePretty(runDoc), run.runId()),
         Json.writePretty(serverDocument()),
         JsonOut.write(new DoctorOperation(services).run(DoctorOptions.DEFAULT)),
         ConfigShow.render(services.config()));
@@ -120,9 +114,6 @@ public final class SupportBundle {
     StateStore store = services.stateStore().get();
     try (ZipOutputStream zip = new ZipOutputStream(target, StandardCharsets.UTF_8)) {
       text(zip, "run.json", prepared.runJson());
-      if (prepared.planJson().isPresent()) {
-        text(zip, "plan.json", prepared.planJson().get());
-      }
       zip.putNextEntry(new ZipEntry("transitions.jsonl"));
       for (Transition t : store.transitions(run.runId())) {
         line(zip, Json.write(t));
@@ -146,6 +137,9 @@ public final class SupportBundle {
       }
       // review §3.4 (issue #111): the vendor's own troubleshooting files, tail-capped and redacted
       for (VendorLogs.Source source : vendorSources()) {
+        if (!belongsToRun(source, run)) {
+          continue;
+        }
         zip.putNextEntry(new ZipEntry(source.entry()));
         try {
           VendorLogs.tail(
@@ -164,6 +158,31 @@ public final class SupportBundle {
         }
         zip.closeEntry();
       }
+    }
+  }
+
+  /**
+   * A plan is stored before its run has an id, so paths in it read {@code snapshots/{runId}/...};
+   * the bundle belongs to one run, so it names that run instead (#161).
+   */
+  static String withRunId(String json, String runId) {
+    return json.replace("{runId}", runId);
+  }
+
+  /**
+   * Whether a vendor file says anything about {@code run} (#161): a buildomatic script log is
+   * written by one vendor run, so one last written before this run started is another run's and is
+   * left out; the server's own logs, the installer log and the properties are context whatever
+   * their age. A file whose time cannot be read is kept.
+   */
+  static boolean belongsToRun(VendorLogs.Source source, RunRecord run) {
+    if (!source.entry().startsWith(VendorLogs.ENTRY_PREFIX + "buildomatic/")) {
+      return true;
+    }
+    try {
+      return !Files.getLastModifiedTime(source.file()).toInstant().isBefore(run.startedAt());
+    } catch (IOException e) {
+      return true;
     }
   }
 

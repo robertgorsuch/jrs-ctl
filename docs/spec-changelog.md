@@ -3,6 +3,9 @@
 ## Draft 1.2 amendment — 2026-09-25 (issue #160, the run's log lines)
 
 - §12.4: the bundle's `logs/<name>` is the run's own lines (by the `runId` the runner now puts on every line it writes during a run, or by the run's time window for lines without one), at most 2,000, and `logs/tail-<name>` holds the last 200 lines of the log. The JSON log gains one INFO line per invocation and per run start, step transition and run end, each written after the journal.
+## Draft 1.2 amendment — 2026-09-25 (issue #161, support bundle details)
+
+- §12.4: `plan.json` is dropped, since `run.json` already carries the identical stored plan; the plan's `{runId}` placeholders are filled in with the run's id; a buildomatic script log written before the run started is left out; without `--out`, a bundle made from inside the unpacked distribution goes to the jrsctl home.
 
 ## Draft 1.2 — 2026-09-24 (ADR-0038, the web console is removed)
 
