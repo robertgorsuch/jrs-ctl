@@ -1,7 +1,9 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.jaspersoft.jrsctl.core.Version;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import java.nio.file.Path;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 /**
@@ -24,6 +26,10 @@ public final class Main {
 
   static int run(String... args) {
     LogFile.configure(args, System.getenv());
+    // #160: one line per invocation, so the log says what was asked for; the file appender
+    // redacts it like every other line, and secrets are never given as arguments
+    LoggerFactory.getLogger(Main.class)
+        .info("jrsctl {} invoked: {}", Version.current().version(), String.join(" ", args));
     return commandLine().execute(args);
   }
 

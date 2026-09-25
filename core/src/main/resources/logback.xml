@@ -33,6 +33,8 @@
         <logLevel><fieldName>level</fieldName></logLevel>
         <loggerName><fieldName>logger</fieldName></loggerName>
         <threadName><fieldName>thread</fieldName></threadName>
+        <!-- runId while a run executes (#160), so a support bundle can pick the run's lines -->
+        <mdc/>
         <pattern>
           <omitEmptyFields>true</omitEmptyFields>
           <pattern>{"message":"%redact","stack_trace":"%redactEx"}</pattern>

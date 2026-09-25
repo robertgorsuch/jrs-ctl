@@ -1,7 +1,9 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
+import com.jaspersoft.jrsctl.core.engine.Runner;
 import com.jaspersoft.jrsctl.core.engine.Transition;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
@@ -22,6 +24,9 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -35,18 +40,22 @@ import java.util.zip.ZipOutputStream;
 /**
  * The zip behind {@code jrsctl runs support-bundle} (spec §12.4): {@code run.json}, {@code
  * plan.json}, {@code transitions.jsonl}, {@code server.json}, {@code doctor.json}, {@code
- * config-redacted.yaml} and the tail of the JSON log. Invariants: every byte passes through the
- * {@link Redactor} on its way into the archive, so a registered secret cannot appear in any
- * encoding the redactor knows; everything that can fail, which is the live doctor run and the
- * server probe behind it, runs in {@link #prepare} before the file is created, so a failure is an
- * exit-2 or exit-4 message and never a partial zip (review 4.8); the archive is then streamed entry
- * by entry and the log tail is kept in a bounded deque, so memory stays flat whatever the log size;
- * a missing optional input yields no entry rather than an error; the log is the file the running
- * process actually writes, named by {@link LogFile#PROPERTY}, not a guess at its location.
+ * config-redacted.yaml}, the run's lines of the JSON log and a short tail of it for context (#160).
+ * Invariants: every byte passes through the {@link Redactor} on its way into the archive, so a
+ * registered secret cannot appear in any encoding the redactor knows; everything that can fail,
+ * which is the live doctor run and the server probe behind it, runs in {@link #prepare} before the
+ * file is created, so a failure is an exit-2 or exit-4 message and never a partial zip (review
+ * 4.8); the archive is then streamed entry by entry and the log tail is kept in a bounded deque, so
+ * memory stays flat whatever the log size; a missing optional input yields no entry rather than an
+ * error; the log is the file the running process actually writes, named by {@link
+ * LogFile#PROPERTY}, not a guess at its location.
  */
 public final class SupportBundle {
 
   static final int LOG_TAIL_LINES = 2000;
+
+  /** Lines of the whole log kept beside the run's own, for what happened around it (#160). */
+  static final int LOG_CONTEXT_LINES = 200;
 
   private final Services services;
   private final Redactor redactor;
@@ -125,7 +134,12 @@ public final class SupportBundle {
       Path log = logFile();
       if (Files.isRegularFile(log)) {
         zip.putNextEntry(new ZipEntry("logs/" + log.getFileName()));
-        for (String l : tail(log, LOG_TAIL_LINES)) {
+        for (String l : runLines(log, run, LOG_TAIL_LINES)) {
+          line(zip, l);
+        }
+        zip.closeEntry();
+        zip.putNextEntry(new ZipEntry("logs/tail-" + log.getFileName()));
+        for (String l : tail(log, LOG_CONTEXT_LINES)) {
           line(zip, l);
         }
         zip.closeEntry();
@@ -190,6 +204,58 @@ public final class SupportBundle {
     // no log in it is worse than a bundle with the log the running process has been writing.
     Path named = Path.of(configured);
     return Files.isRegularFile(named) ? named : underHome;
+  }
+
+  /**
+   * The lines of the JSON log that belong to {@code run}, at most the last {@code limit} of them,
+   * read with flat memory (#160): a line whose {@code runId} is the run's, and a line with no
+   * {@code runId} written inside the run's time window (another thread, or a build before #160). A
+   * line of another run, a line outside the window and a line that is not JSON are left out.
+   */
+  static Deque<String> runLines(Path file, RunRecord run, int limit) throws IOException {
+    Instant from = run.startedAt();
+    Instant to = run.endedAt().orElse(Instant.MAX);
+    Deque<String> lines = new ArrayDeque<>(limit);
+    boolean truncated = false;
+    try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+      String l;
+      while ((l = reader.readLine()) != null) {
+        if (!belongsTo(l, run.runId(), from, to)) {
+          continue;
+        }
+        if (lines.size() == limit) {
+          lines.removeFirst();
+          truncated = true;
+        }
+        lines.addLast(l);
+      }
+    }
+    if (truncated) {
+      lines.addFirst("... earlier lines of " + run.runId() + " omitted; this is the last " + limit);
+    }
+    return lines;
+  }
+
+  private static boolean belongsTo(String line, String runId, Instant from, Instant to) {
+    JsonNode node;
+    try {
+      node = Json.mapper().readTree(line);
+    } catch (IOException e) {
+      return false;
+    }
+    if (node == null || !node.isObject()) {
+      return false;
+    }
+    JsonNode id = node.path(Runner.MDC_RUN_ID);
+    if (id.isTextual()) {
+      return id.asText().equals(runId);
+    }
+    try {
+      Instant ts = OffsetDateTime.parse(node.path("ts").asText()).toInstant();
+      return !ts.isBefore(from) && !ts.isAfter(to);
+    } catch (DateTimeParseException e) {
+      return false;
+    }
   }
 
   /** The last {@code limit} lines of a text file, read with flat memory. */
