@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.1 amendment — 2026-09-24 (issue #150, support bundle on the CLI)
+
+- §12.4, §13.1, §6.6: `runs support-bundle <id> [--out <zip>]` writes the bundle the console served at `GET /api/runs/{id}/support-bundle`; same entries, same redaction, `server.json` degrades to `reachable:false` instead of failing. First step of ADR-0038. `SupportBundle` and `VendorLogs` move from `app.console` to `app`; the console delegates to them.
+
 ## Draft 1.1 amendment — 2026-09-22 (issue #144, export's skip-dependent/favorite-resources)
 
 - §9.1: `ExportRequest` gains `skipDependentResources` and `skipFavoriteResources`, both defaulting `false` so every existing caller is unaffected. They map to the REST export body fields `skip-dependent-resources`/`skip-favorite-resources` and the vendor flags `--skip-dependent-resources`/`--skip-favorite-resources` on `js-export`; there is no import-side equivalent. Exposed on the CLI as `export --skip-dependent-resources`/`--skip-favorite-resources`, in `PlanRegistry`'s stored plan arguments (older stored arguments default both to `false`), and in the console's export form. Found by the vendor doc review, §4.2.

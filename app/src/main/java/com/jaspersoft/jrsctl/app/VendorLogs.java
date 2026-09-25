@@ -1,4 +1,4 @@
-package com.jaspersoft.jrsctl.app.console;
+package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.MasterProperties;
@@ -28,16 +28,16 @@ import java.util.function.Consumer;
  * blanked before the redactor sees the line, so a password never depends on being registered as a
  * secret.
  */
-final class VendorLogs {
+public final class VendorLogs {
 
   /** The tail of each vendor file that goes into the bundle. */
-  static final long TAIL_BYTES = 5L << 20;
+  public static final long TAIL_BYTES = 5L << 20;
 
   static final String ENTRY_PREFIX = "vendor/";
   static final String BLANKED = "<blanked>";
 
   /** One file to bundle: the zip entry name, the file, and whether password keys are blanked. */
-  record Source(String entry, Path file, boolean masterProperties) {}
+  public record Source(String entry, Path file, boolean masterProperties) {}
 
   private VendorLogs() {}
 
@@ -45,7 +45,7 @@ final class VendorLogs {
    * The files that exist for this installation, in the vendor's troubleshooting order. Any location
    * may be absent (a jrsctl that reaches the server over REST only names none).
    */
-  static List<Source> locate(
+  public static List<Source> locate(
       Optional<Path> installDir,
       Optional<Path> tomcatDir,
       Optional<Path> webappDir,
@@ -113,7 +113,7 @@ final class VendorLogs {
    * Streams the last {@code cap} bytes of the file to {@code line}, whole lines only: when the file
    * is longer, the partial first line is dropped and a note says how much was omitted.
    */
-  static void tail(Path file, long cap, Consumer<String> line) throws IOException {
+  public static void tail(Path file, long cap, Consumer<String> line) throws IOException {
     long size = Files.size(file);
     long skip = Math.max(0, size - cap);
     try (SeekableByteChannel channel = Files.newByteChannel(file);
@@ -134,7 +134,7 @@ final class VendorLogs {
   }
 
   /** A {@code default_master.properties} line with a password key's value blanked. */
-  static String blankPassword(String line) {
+  public static String blankPassword(String line) {
     String trimmed = line.stripLeading();
     if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
       return line;

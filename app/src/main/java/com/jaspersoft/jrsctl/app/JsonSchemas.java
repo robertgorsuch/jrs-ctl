@@ -85,6 +85,7 @@ public final class JsonSchemas {
     m.put("runs show", new Document("runs-show.schema.json"));
     m.put("runs recover", new Stream(false));
     m.put("runs prune", new Document("runs-prune.schema.json"));
+    m.put("runs support-bundle", new Document("runs-support-bundle.schema.json"));
     m.put("docs", new Document("docs.schema.json"));
     m.put("keys list", new Document("keys-list.schema.json"));
     m.put("keys add", new Document("keys-add.schema.json"));

@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.app.console;
 
+import com.jaspersoft.jrsctl.app.SupportBundle;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
@@ -112,7 +113,7 @@ public final class ConsoleServer implements AutoCloseable {
     IntSupplier boundPort = () -> holder.get().port();
     ConsoleAuth auth = new ConsoleAuth(issued, cfg.auth().mode(), password, bind, boundPort);
     ConsoleViews views = new ConsoleViews(services, manager, doctor, bind, boundPort);
-    SupportBundle bundle = new SupportBundle(services, views, doctor);
+    SupportBundle bundle = new SupportBundle(services);
     ConsoleApi api = new ConsoleApi(this, services, runs, manager, catalog, views, doctor, bundle);
     Javalin javalin =
         Javalin.create(

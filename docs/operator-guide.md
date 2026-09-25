@@ -489,6 +489,15 @@ One run: the plan summary it was started from (operation, target, files, service
 - **Exit codes:** 0; **2** when the id is unknown.
 - **Flags:** `<id>` — the run id from `runs list`; `--json` — the run document (the same one the console and the support bundle use).
 
+### `jrsctl runs support-bundle <id> [--out <zip>] [--json]`
+
+Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `events.jsonl` when the run kept one, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, `catalina.out` and the installer log, each tail-capped at 5 MB with passwords blanked. Every byte passes the redactor.
+
+- **Mutates:** only the zip it writes; refuses to overwrite an existing file.
+- **Rollback:** not applicable.
+- **Exit codes:** 0; **2** when the id is unknown or the output file exists.
+- **Flags:** `<id>` — from `runs list`; `--out <zip>` — default `<id>-support-bundle.zip` in the current directory; `--json` — `{runId, path, entries, bytes}`.
+
 ### `jrsctl runs recover <id> --resume | --rollback [--yes] [--json]`
 
 For a run that never reached a terminal state (crash, `kill -9`, power loss). The plan is rebuilt from the stored arguments (the bundle or archive must still be where it was), then either continued or undone. Both modes take the run lock, journal every transition and print progress like any other run; the recovery request is audited. Until the run is recovered every other mutating command exits **8**.
@@ -698,4 +707,4 @@ It reads `JRSCTL_JAVA_OPTS` like `bin\jrsctl.cmd`. Starting the bundled runtime 
 | `rollback of <id> refused: blocked by ...` (exit 2) | a later hotfix owns one of the files | roll the later hotfix back first, or pass `--cascade` |
 | `no explanation is embedded for 'jrsctl ...'` (exit 1) | the jar was built without this guide, or the command has no section here | `jrsctl docs` lists what is embedded; `jrsctl <command> --help` always works |
 
-For a support request attach the support bundle from the console (`GET /api/runs/<id>/support-bundle`, or the button on the run page), which since issue #111 also carries the vendor's own files under `vendor/`: the newest buildomatic script log, `jasperserver.log`, the Tomcat `catalina` log, `installation.log` and `default_master.properties` with its passwords blanked, each capped at its last 5 MB and redacted; every vendor run also logs `buildomatic log: <path>` naming the file it wrote or, without the console, `logs/jrsctl.log` and the output of `jrsctl runs show <id> --json`. Both are redacted; review host names and paths before sharing.
+For a support request attach the bundle `jrsctl runs support-bundle <id>` writes, which since issue #111 also carries the vendor's own files under `vendor/`: the newest buildomatic script log, `jasperserver.log`, the Tomcat `catalina` log, `installation.log` and `default_master.properties` with its passwords blanked, each capped at its last 5 MB and redacted; every vendor run also logs `buildomatic log: <path>` naming the file it wrote. If the command cannot run, attach `logs/jrsctl.log` and the output of `jrsctl runs show <id> --json` instead. Both are redacted; review host names and paths before sharing.

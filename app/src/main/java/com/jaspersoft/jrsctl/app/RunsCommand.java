@@ -16,7 +16,13 @@ import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +34,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -37,13 +45,15 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 
 /**
- * {@code jrsctl runs list|show|recover|prune} (spec §5.5, §5.6, §6.6). Invariants: {@code list} and
- * {@code show} read the journal only; {@code recover} rebuilds the pending run's plan from its
- * stored arguments through {@link PlanRegistry} (never from the serialised plan, which cannot carry
- * step code) and then resumes or rolls back through {@link PlanExecutor}, so it holds the run lock
- * and journals every transition; a run that is not pending, has no stored plan, or whose plan
- * cannot be rebuilt exits 2 without touching anything; {@code prune} holds the run lock while it
- * removes snapshots (exit 9 when a run holds it) and {@code --dry-run} changes nothing.
+ * {@code jrsctl runs list|show|recover|prune|support-bundle} (spec §5.5, §5.6, §6.6, §12.4).
+ * Invariants: {@code list} and {@code show} read the journal only; {@code recover} rebuilds the
+ * pending run's plan from its stored arguments through {@link PlanRegistry} (never from the
+ * serialised plan, which cannot carry step code) and then resumes or rolls back through {@link
+ * PlanExecutor}, so it holds the run lock and journals every transition; a run that is not pending,
+ * has no stored plan, or whose plan cannot be rebuilt exits 2 without touching anything; {@code
+ * prune} holds the run lock while it removes snapshots (exit 9 when a run holds it) and {@code
+ * --dry-run} changes nothing; {@code support-bundle} refuses a bad {@code --out} before touching
+ * the state store and never leaves a partial zip behind.
  */
 @Command(
     name = "runs",
@@ -54,7 +64,8 @@ import picocli.CommandLine.Spec;
       RunsCommand.ListRuns.class,
       RunsCommand.Show.class,
       RunsCommand.Recover.class,
-      RunsCommand.Prune.class
+      RunsCommand.Prune.class,
+      RunsCommand.SupportBundleCommand.class
     })
 final class RunsCommand implements Runnable {
 
@@ -100,6 +111,29 @@ final class RunsCommand implements Runnable {
     m.put("exitCode", run.exitCode());
     m.put("pending", run.pending());
     return m;
+  }
+
+  /** The `runs show --json` document (runs-show.schema.json); the support bundle's run.json. */
+  static Map<String, Object> showTree(
+      RunRecord run,
+      Optional<JsonNode> plan,
+      List<Transition> transitions,
+      List<SnapshotRecord> snapshots,
+      Clock clock) {
+    Map<String, Object> root = new LinkedHashMap<>();
+    root.put("run", runTree(run, clock));
+    root.put("plan", plan);
+    root.put("transitions", transitions);
+    root.put("snapshots", snapshots);
+    return root;
+  }
+
+  static JsonNode parse(String json) {
+    try {
+      return Json.mapper().readTree(json);
+    } catch (IOException e) {
+      return Json.mapper().createObjectNode();
+    }
   }
 
   /** {@code jrsctl runs list [--json] [--limit N]}. */
@@ -200,12 +234,10 @@ final class RunsCommand implements Runnable {
         List<Transition> transitions = store.transitions(runId);
         List<SnapshotRecord> snapshots = store.snapshots(runId);
         if (global.json()) {
-          Map<String, Object> root = new LinkedHashMap<>();
-          root.put("run", runTree(run, services.clock()));
-          root.put("plan", planTree);
-          root.put("transitions", transitions);
-          root.put("snapshots", snapshots);
-          out.println(redactor.redact(JsonOut.write(root)));
+          out.println(
+              redactor.redact(
+                  JsonOut.write(
+                      showTree(run, planTree, transitions, snapshots, services.clock()))));
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -261,14 +293,6 @@ final class RunsCommand implements Runnable {
         }
         out.flush();
         return ExitCodes.SUCCESS;
-      }
-    }
-
-    private static JsonNode parse(String json) {
-      try {
-        return Json.mapper().readTree(json);
-      } catch (java.io.IOException e) {
-        return Json.mapper().createObjectNode();
       }
     }
   }
@@ -459,6 +483,131 @@ final class RunsCommand implements Runnable {
       root.put("kept", result.kept());
       root.put("protected", result.protectedCount());
       return root;
+    }
+  }
+
+  /**
+   * {@code jrsctl runs support-bundle <id> [--out <zip>] [--json]}: the support bundle as a file.
+   */
+  @Command(
+      name = "support-bundle",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "Write one run's support bundle: run, plan, step transitions, doctor report, server"
+              + " identity, redacted configuration, log tails and the vendor's own logs, all"
+              + " redacted.")
+  static final class SupportBundleCommand implements Callable<Integer> {
+
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Parameters(index = "0", paramLabel = "<id>", description = "Run id from `runs list`.")
+    String runId;
+
+    @Option(
+        names = "--out",
+        paramLabel = "<zip>",
+        description = "File to write (default: <id>-support-bundle.zip in the current directory).")
+    Path out;
+
+    @Override
+    public Integer call() throws IOException {
+      PrintWriter o = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      Redactor redactor = Redactor.global();
+      Path target = (out == null ? Path.of(runId + "-support-bundle.zip") : out).toAbsolutePath();
+      // every refusal below must happen before Bootstrap.open: a typo in --out must not pay for a
+      // doctor run, and must not touch the state store (review finding 2)
+      if (Files.isDirectory(target)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            target + " is a directory",
+            Optional.of("name a file"));
+      }
+      if (Files.exists(target)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            target + " already exists",
+            Optional.of("choose another --out or move the old bundle"));
+      }
+      Path parent = target.getParent();
+      if (parent != null && !Files.isDirectory(parent)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            parent + " is not a directory",
+            Optional.of("create it or choose another --out"));
+      }
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        Services services = boot.services();
+        Optional<RunRecord> found = services.stateStore().get().run(runId);
+        if (found.isEmpty()) {
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "unknown run " + runId,
+              Optional.of("see `jrsctl runs list`"));
+        }
+        SupportBundle bundle = new SupportBundle(services);
+        SupportBundle.Prepared prepared = bundle.prepare(found.get()); // everything that can fail
+        try {
+          try (OutputStream zip = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) {
+            bundle.write(prepared, zip);
+          }
+        } catch (FileAlreadyExistsException raced) {
+          // the file appeared between the precheck above and this open (review: closes the race)
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              target + " already exists",
+              Optional.of("choose another --out or move the old bundle"));
+        } catch (AccessDeniedException denied) {
+          Files.deleteIfExists(target);
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "cannot write " + target + ": permission denied");
+        } catch (IOException | RuntimeException failed) {
+          // a bundle that fails partway must not leave a truncated or zero-byte zip behind
+          Files.deleteIfExists(target);
+          throw failed;
+        }
+        List<String> entries = new ArrayList<>();
+        try (ZipInputStream in = new ZipInputStream(Files.newInputStream(target))) {
+          for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+            entries.add(e.getName());
+          }
+        }
+        if (global.json()) {
+          Map<String, Object> doc = new LinkedHashMap<>();
+          doc.put("runId", runId);
+          doc.put("path", target.toString());
+          doc.put("entries", entries);
+          doc.put("bytes", Files.size(target));
+          o.println(redactor.redact(JsonOut.write(doc)));
+        } else {
+          o.println(
+              redactor.redact(
+                  "Support bundle written: " + target + " (" + entries.size() + " entries)"));
+        }
+        o.flush();
+        return ExitCodes.SUCCESS;
+      }
     }
   }
 }

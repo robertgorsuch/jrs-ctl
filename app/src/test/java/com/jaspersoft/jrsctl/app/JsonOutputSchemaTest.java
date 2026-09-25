@@ -1192,6 +1192,37 @@ class JsonOutputSchemaTest {
             dir -> run("runs", "show", "r-nope", "--json", "--home", emptyHome(dir).toString())));
     s.add(
         of(
+            "runs support-bundle",
+            "runs support-bundle",
+            0,
+            dir -> {
+              Path home = emptyHome(dir);
+              seedFinishedRun(home, fakeHotfix(), bundle(dir));
+              return run(
+                  "runs",
+                  "support-bundle",
+                  "r-1",
+                  "--out",
+                  dir.resolve("b.zip").toString(),
+                  "--json",
+                  "--home",
+                  home.toString());
+            }));
+    s.add(
+        of(
+            "runs support-bundle unknown",
+            "runs support-bundle",
+            2,
+            dir ->
+                run(
+                    "runs",
+                    "support-bundle",
+                    "r-nope",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
             "runs recover --resume",
             "runs recover",
             0,
