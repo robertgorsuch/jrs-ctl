@@ -160,6 +160,47 @@ class EximStepIdempotencyTest {
     }
   }
 
+  /** ADR-0040: the --no-snapshot anchor writes nothing however often it executes. */
+  @Test
+  void should_not_mutate_when_remove_import_additions_executes_twice() throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Step step = new RemoveImportAdditions("import", List.of("/public"));
+      Context ctx = fx.context(EximFixture.RUN);
+      Map<String, String> before = files(tmp);
+
+      Idempotency.executeOk(step, ctx);
+      Idempotency.executeOk(step, ctx);
+
+      assertThat(step.mutating()).as("the Runner compensates mutating steps only").isTrue();
+      assertThat(files(tmp)).isEqualTo(before);
+      assertThat(adapter.deleted).isEmpty();
+      assertThat(adapter.imports).isEmpty();
+    }
+  }
+
+  @Test
+  void should_delete_the_additions_once_when_remove_import_additions_compensates_twice()
+      throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.trees.add(List.of("/public/kept"));
+    adapter.trees.add(List.of("/public/kept", "/public/new", "/public/new/r"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Context ctx = fx.context(EximFixture.RUN);
+      Idempotency.executeOk(new RecordRepositoryListing(List.of("/public")), ctx);
+      Step step = new RemoveImportAdditions("import", List.of("/public"));
+      Idempotency.executeOk(step, ctx);
+
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+
+      assertThat(adapter.deleted)
+          .as("deepest first, and the second compensation finds nothing new")
+          .containsExactly("/public/new/r", "/public/new");
+      assertThat(adapter.imports).as("no snapshot to re-import").isEmpty();
+    }
+  }
+
   @Test
   void should_reimport_the_snapshot_once_when_restore_from_pre_import_snapshot_compensates_twice()
       throws IOException {

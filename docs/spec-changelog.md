@@ -4,9 +4,14 @@
 
 - §5.1: a home holding a `home.redirect` file is replaced by the directory it names, one hop only, whichever source chose the home; `jrsctl home show|set|reset` read, write and remove it. Space failures in hotfix, snapshot and upgrade checks name the home and say how to make room or move it, and converted official hotfix packages under `runs/` are pruned by age.
 
+## Draft 1.2 amendment — 2026-09-25 (field test 3, one outage per vendor import)
+
+- §9.2, §9.4, §9.5: the pre-import snapshot runs with the server up (`stopService=false`), so a vendor import stops the service once, around `js-import`; ADR-0021 §4's snapshot bullet is superseded (ADR-0040). Stored import arguments gain `snapshotStopsService` (missing = true, which rebuilds the old stop/start around the snapshot for `runs recover`) and `noSnapshot` (missing = false). New `import --no-snapshot` leaves out the snapshot and its re-import: the listing and a new anchor `import.additions-rollback` still delete what a failed import created, `import.new-content-rollback` stays, the plan carries `NO_SNAPSHOT_WARNING` in place of the rollback sentence and the override is audited; the guided restore flow asks for it with Enter keeping the snapshot. A plan that forces `--strategy vendor` on a server whose `IMPORT_ASYNC` probe passes, with no `--source-keystore` and an archive within the REST limit, warns that REST needs no outage at all.
+
 ## Draft 1.2 amendment — 2026-09-25 (issue #160, the run's log lines)
 
 - §12.4: the bundle's `logs/<name>` is the run's own lines (by the `runId` the runner now puts on every line it writes during a run, or by the run's time window for lines without one), at most 2,000, and `logs/tail-<name>` holds the last 200 lines of the log. The JSON log gains one INFO line per invocation and per run start, step transition and run end, each written after the journal.
+
 ## Draft 1.2 amendment — 2026-09-25 (issue #161, support bundle details)
 
 - §12.4: `plan.json` is dropped, since `run.json` already carries the identical stored plan; the plan's `{runId}` placeholders are filled in with the run's id; the buildomatic script log is the newest one last written while the run executed, never one from before it or from a later run; without `--out`, a bundle made from inside the unpacked distribution goes to the jrsctl home.
@@ -22,6 +27,7 @@
 ## Draft 1.1 amendment — 2026-09-22 (issue #144, export's skip-dependent/favorite-resources)
 
 - §9.1: `ExportRequest` gains `skipDependentResources` and `skipFavoriteResources`, both defaulting `false` so every existing caller is unaffected. They map to the REST export body fields `skip-dependent-resources`/`skip-favorite-resources` and the vendor flags `--skip-dependent-resources`/`--skip-favorite-resources` on `js-export`; there is no import-side equivalent. Exposed on the CLI as `export --skip-dependent-resources`/`--skip-favorite-resources`, in `PlanRegistry`'s stored plan arguments (older stored arguments default both to `false`), and in the console's export form. Found by the vendor doc review, §4.2.
+
 ## Draft 1.1 amendment — 2026-09-22 (field test 2, G2/G4: path completion in the guided menu)
 
 - §13.3: JLine 3 (`jline-terminal`, `jline-terminal-jni`, `jline-native`, `jline-reader`) approved for `Prompter.path` only (ADR-0037, ADR-0023 option B spike, issue #102): a JNI console provider with no JNA, BSD-3-Clause, and no change to ADR-0008's jlink module list (`jdeps` already reports only `java.base`/`java.logging` for it). `Prompter.path` tab-completes filesystem entries and supports normal line editing for the guided menu's path prompts (installation directory, hotfix package, export/import archive); every other prompt is unchanged, `--ascii` and redaction are unaffected, and `Prompter.override` (the test seam) is unaffected. Full interactive proof (arrow keys and completion in `cmd.exe`, PowerShell, Windows Terminal and over SSH) needs a human at a real terminal, recorded once in `docs/BUILD_STATUS.md` rather than by a test, since no automation environment used here has a real console to test against. #75 (a full-screen dashboard) is unchanged and stays open.
@@ -33,6 +39,7 @@
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §4.3, import size and theme guards)
 
 - §9.3: `import` measures the archive. Above 2 GB it does not use REST when the strategy was left to the rules: the vendor tools when the machine has an installation, else a refusal at planning (exit 2). `--strategy rest` is respected and warns (ADR-0033). When the sidecar's source major differs from the target's, themes are skipped by default and the plan says so; new `--themes` turns that off; `--themes` with `--skip-themes` is a usage error (exit 1). `ImportOptions` gains `keepThemes` and the stored plan arguments `keepThemes`.
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §5.1–5.2, customizations scanner)
 
 - §10.3: `customizations scan` treats `WEB-INF/classes/hibernate.properties` (the path since 8.2) as installer-written like the pre-8.2 one; new `--tomcat` lists `bin/setenv.*`, `conf/server.xml`, `conf/Catalina/localhost/*.xml` and `lib/*.jar` names Tomcat does not ship, as a list of what to carry over with no comparison (ADR-0034); the `--json` document gains an optional `tomcat` array. A file under `scripts/` earns a note in the scan and a warning from `register`, which still registers it: since 8.0 `scripts/` is the rebuilt `jasperserver-ui` overlay and a per-file comparison always conflicts.
@@ -68,9 +75,11 @@
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §2.6, no 10.1 catalog into an older server)
 
 - §9.4, §9.5: an import whose sidecar records a source version of 10.1.0 or later is refused at plan time (exit 2, nothing snapshotted or imported) when this server is below 10.1.0, naming both versions and the remedies ("Resources exported from version 10.1.0 cannot be imported into older versions", release notes 10.1 p.6). `import --force-version` attempts it anyway with a plan warning and an audit row; the option survives the stored plan arguments. Without a sidecar, or with a version that does not parse, nothing is judged (issue #107).
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §2.3, events after a newdb upgrade)
 
 - §10.2 step 10-events, §10.4: `upgrade --include-events` adds `import-events` after `run-vendor-upgrade` in newdb mode: the new version's `js-import --input-zip <point-B export> --include-access-events --include-audit-events --include-monitoring-events`, while the server is still down, once per run, irreversible (the newdb rollback rebuilds the database from the same export). Without the flag a newdb plan's summary says the events are left behind and names the flag and the vendor command; samedb is unaffected. The guided menu asks the question for a newdb upgrade, off by default (upgrade guide 10.1 p.80, installation guide p.256; issue #106).
+
 ## Draft 1.1 amendment — 2026-09-19 (vendor review §1.5, keystore lookup order)
 
 - §9.3: the keystore is found through the running server's own `WEB-INF/classes/keystore.init.properties` first, then buildomatic's copy, then the run-as user's home, and the reason names which one settled it. `doctor keystore` WARNs when `.jrsks` or `.jrsksp` is readable beyond its owner (any "others" bit on Linux, an ACL beyond owner, SYSTEM and Administrators on Windows), with the vendor's 600/640 in the remediation; its FAIL remediation names the server's own file before `server.runAsUser` (issue #105).

@@ -235,7 +235,7 @@ class GuidedModeTest {
       throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "", "q");
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "", "", "q");
 
     assertThat(text.toString())
         .contains(
@@ -255,6 +255,7 @@ class GuidedModeTest {
         "4",
         archive.toString(),
         "y",
+        "",
         "y",
         "skip",
         "vendor",
@@ -285,12 +286,36 @@ class GuidedModeTest {
     assertThat(text.toString()).contains("Key alias the archive was encrypted with");
   }
 
+  /** ADR-0040: leaving out the rollback copy takes an explicit "n"; Enter keeps it. */
+  @Test
+  void should_pass_no_snapshot_only_when_the_rollback_copy_is_declined() throws Exception {
+    Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
+
+    guided(List.of(), List.of(), "4", archive.toString(), "y", "n", "", "", "", "", "", "q");
+
+    assertThat(text.toString()).contains("cannot put back what it overwrote");
+    assertThat(ran)
+        .containsExactly(List.of("import", archive.toString(), "--update", "--no-snapshot"));
+  }
+
   @Test
   void should_reask_an_answer_that_is_not_one_of_the_choices() throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
     guided(
-        List.of(), List.of(), "4", archive.toString(), "", "", "maybe", "include", "", "", "", "q");
+        List.of(),
+        List.of(),
+        "4",
+        archive.toString(),
+        "",
+        "",
+        "",
+        "maybe",
+        "include",
+        "",
+        "",
+        "",
+        "q");
 
     assertThat(text.toString()).contains("please answer fail, include, skip");
     assertThat(ran)
@@ -308,6 +333,7 @@ class GuidedModeTest {
         tmp.resolve("missing.zip").toString(),
         archive.toString(),
         "n",
+        "",
         "n",
         "",
         "",

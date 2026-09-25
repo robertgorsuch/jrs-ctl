@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.PlanSummary;
 import com.jaspersoft.jrsctl.core.engine.Step;
+import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
@@ -42,12 +43,17 @@ import org.semver4j.Semver;
  * recorded in the archive's sidecar, else the whole repository; a full-server export when {@code
  * --update} targets the root); and {@code import}, whose first step is the {@link
  * RestoreFromPreImportSnapshot} anchor followed by the strategy's mutating import steps, so a
- * failure anywhere in the phase re-imports the snapshot. Invariants: planning never mutates and
- * needs the server only to read its identity and capabilities; the snapshot lives under {@code
- * snapshots/pre-import/} with a name derived from the archive's hash, so {@code runs recover}
- * rebuilds an identical plan from the stored options; the summary always carries {@link
- * #ROLLBACK_WARNING}; the fingerprint covers the server identity, the archive or output path (and
- * the archive's SHA-256), the request flags and the resolved configuration.
+ * failure anywhere in the phase re-imports the snapshot. The snapshot is taken with the server
+ * running, so a vendor import stops the service once, around {@code js-import} (ADR-0040); only a
+ * plan rebuilt from arguments an earlier jrsctl stored stops it around the snapshot too. With
+ * {@code --no-snapshot} the backup phase is the listing alone and the import phase's anchor is
+ * {@link RemoveImportAdditions}. Invariants: planning never mutates (beyond the audit row of an
+ * override) and needs the server only to read its identity and capabilities; the snapshot lives
+ * under {@code snapshots/pre-import/} with a name derived from the archive's hash, so {@code runs
+ * recover} rebuilds an identical plan from the stored options; the summary always carries {@link
+ * #ROLLBACK_WARNING}, or {@link #NO_SNAPSHOT_WARNING} without a snapshot; the fingerprint covers
+ * the server identity, the archive or output path (and the archive's SHA-256), the request flags
+ * and the resolved configuration.
  */
 public final class DefaultExportImportOperations implements ExportImportOperations {
 
@@ -78,6 +84,13 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           + " (judged against a listing taken just before the import; anything anyone else creates"
           + " there in between is deleted with them) and re-imports the pre-import snapshot, which"
           + " puts back what the import overwrote.";
+
+  /** ADR-0040: in place of {@link #ROLLBACK_WARNING} in a plan made with {@code --no-snapshot}. */
+  public static final String NO_SNAPSHOT_WARNING =
+      "--no-snapshot: no pre-import snapshot is taken, so a failed import cannot put back what it"
+          + " overwrote. Rollback only deletes the resources the failed import created under the"
+          + " archive's folders (judged against a listing taken just before the import; anything"
+          + " anyone else creates there in between is deleted with them).";
 
   /**
    * REST reference 10.1 p.118: "Jaspersoft does not recommend uploading files greater than 2 GB".
@@ -238,14 +251,24 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               + ", and a theme from another major version may not fit; pass --themes to import"
               + " them anyway");
     }
-    Optional<ExportRequest> snapshot =
+    // the folders a snapshot would cover; with --no-snapshot they are still listed, so the rollback
+    // deletes what the failed import created there (ADR-0040)
+    Optional<ExportRequest> covered =
         snapshotRequest(
             sidecar,
             options.update(),
             snapshotPath(archive, archiveHash),
             adapter,
             warnings,
-            options.organization());
+            options.organization(),
+            options.snapshotStopsService());
+    Optional<ExportRequest> snapshot = options.noSnapshot() ? Optional.empty() : covered;
+    if (options.noSnapshot()) {
+      warnings.remove(ROLLBACK_WARNING);
+      warnings.add(0, NO_SNAPSHOT_WARNING);
+      auditNoSnapshot(archive, covered, warnings);
+    }
+    offerRest(selection, options, request, adapter, archive, warnings);
     List<String> newContentUris = newContentUris(sidecar, options.organization());
     Set<String> newRoots =
         newContentUris.isEmpty() ? Set.of() : RemoveNewContent.newRoots(adapter, newContentUris);
@@ -272,9 +295,17 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
                     Optional.empty(),
                     Optional.empty()));
     if (strategy.requiresServiceStop()) {
-      warnings.add(
-          "the service will be stopped for the vendor snapshot and import and started again"
-              + " afterwards");
+      if (snapshot.isPresent() && snapshot.get().stopService()) {
+        warnings.add(
+            "the service will be stopped for the vendor snapshot and import and started again"
+                + " afterwards");
+      } else {
+        warnings.add(
+            "the service will be stopped for the vendor import and started again afterwards"
+                + (snapshot.isPresent()
+                    ? "; the pre-import snapshot is taken first, with the server running"
+                    : ""));
+      }
     }
     if (options.update()) {
       warnings.add(
@@ -298,13 +329,19 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     if (snapshot.isPresent()) {
       List<Step> backup = new ArrayList<>(PreImportSnapshot.steps(strategy, snapshot.get()));
       // issue #100: the listing goes right after the announcement, while the server is up and
-      // before a vendor snapshot stops it, so the rollback knows what the import added
+      // before a vendor snapshot (as an earlier jrsctl planned it) stops it, so the rollback knows
+      // what the import added
       List<String> roots = RecordRepositoryListing.rootsOf(snapshot.get());
       backup.add(1, new RecordRepositoryListing(roots));
       steps.addAll(backup);
       steps.add(
           new RestoreFromPreImportSnapshot(
               importPhase, strategy, snapshot.get().output(), restore.get(), roots));
+    } else if (covered.isPresent()) {
+      // ADR-0040, --no-snapshot: nothing to re-import, but what the import adds is still deleted
+      List<String> roots = RecordRepositoryListing.rootsOf(covered.get());
+      steps.add(new RecordRepositoryListing(roots));
+      steps.add(new RemoveImportAdditions(importPhase, roots));
     }
     if (!newContentUris.isEmpty()) {
       // issue #139: present whenever the sidecar names folders, so a plan rebuilt after the import
@@ -326,6 +363,13 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       rollback.put(
           importPhase,
           "delete what the import created, then re-import the pre-import snapshot with update"
+              + (removable.isEmpty() ? "" : "; also " + removeNew));
+    } else if (covered.isPresent()) {
+      rollback.put(
+          importPhase,
+          "delete what the import created under "
+              + PreImportSnapshot.describe(covered.get())
+              + "; what it overwrote is not put back (--no-snapshot)"
               + (removable.isEmpty() ? "" : "; also " + removeNew));
     } else if (!removable.isEmpty()) {
       rollback.put(importPhase, removeNew);
@@ -360,7 +404,66 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     inputs.put("request", describe(request));
     inputs.put("strategy", options.strategy().map(Enum::name).orElse("auto"));
     inputs.put("config", configHash());
+    // ADR-0040: only a choice that differs from before says so, so a plan rebuilt from arguments
+    // an earlier jrsctl stored keeps the fingerprint it was journaled with
+    if (options.noSnapshot()) {
+      inputs.put("snapshot", "none");
+    } else if (!options.snapshotStopsService()) {
+      inputs.put("snapshot", "live");
+    }
     return new Plan(planId(IMPORT_OPERATION), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  /**
+   * ADR-0040: {@code --no-snapshot} is an override like {@code --force-version}, so it is written
+   * to the audit table; a failure to write it is a warning, not a refusal.
+   */
+  private void auditNoSnapshot(
+      Path archive, Optional<ExportRequest> covered, List<String> warnings) {
+    String what =
+        "import of "
+            + archive
+            + " without a pre-import snapshot"
+            + covered.map(c -> " of " + PreImportSnapshot.describe(c)).orElse("")
+            + ": a failed import cannot put back what it overwrote";
+    try {
+      services.stateStore().get().audit("operator", "--no-snapshot", what);
+    } catch (RuntimeException e) {
+      warnings.add("cannot write the audit row for --no-snapshot: " + e.getMessage());
+    }
+  }
+
+  /**
+   * ADR-0040: a vendor import stops the service; when the operator forced the vendor tools on a
+   * server that takes REST imports, and nothing else (a source keystore, an archive above the REST
+   * limit) needs them, the plan says that the REST route needs no outage at all. The capability
+   * probe is read-only; a probe that fails says nothing.
+   */
+  private void offerRest(
+      Strategies.Selection selection,
+      ImportOptions options,
+      ImportRequest request,
+      JrsAdapter adapter,
+      Path archive,
+      List<String> warnings) {
+    if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI
+        || options.strategy().isEmpty()
+        || options.strategy().get() != ExportImportStrategy.Kind.VENDOR_CLI
+        || request.sourceKeystore().isPresent()) {
+      return;
+    }
+    try {
+      if (Files.size(archive) > restUploadLimit
+          || !adapter.capabilities().contains(Capability.IMPORT_ASYNC)) {
+        return;
+      }
+    } catch (IOException | RuntimeException e) {
+      return;
+    }
+    warnings.add(
+        "--strategy vendor stops the service for the import; this server takes REST imports"
+            + " (IMPORT_ASYNC probe passed), which need no outage at all: leave out --strategy"
+            + " vendor to import over REST with the server running");
   }
 
   /** Where the pre-import snapshot of {@code archive} goes; stable for the same archive bytes. */
@@ -414,12 +517,15 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       Path output,
       JrsAdapter adapter,
       List<String> warnings) {
-    return snapshotRequest(sidecar, update, output, adapter, warnings, Optional.empty());
+    return snapshotRequest(sidecar, update, output, adapter, warnings, Optional.empty(), false);
   }
 
   /**
    * As above; an import into {@code organization} that would otherwise snapshot the root is scoped
-   * to that organisation's folder, never to {@code /} (field test 2, E5 and I4).
+   * to that organisation's folder, never to {@code /} (field test 2, E5 and I4). {@code
+   * stopService} is false for every new plan (ADR-0040: {@code js-export} reads the repository with
+   * the server up, so a vendor import has one outage) and true only for a plan rebuilt from
+   * arguments an earlier jrsctl stored.
    */
   static Optional<ExportRequest> snapshotRequest(
       Optional<Sidecar> sidecar,
@@ -427,7 +533,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       Path output,
       JrsAdapter adapter,
       List<String> warnings,
-      Optional<String> organization) {
+      Optional<String> organization,
+      boolean stopService) {
     Set<String> uris = new TreeSet<>();
     boolean usersRoles = true;
     boolean access = false;
@@ -484,7 +591,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             monitoring,
             settings,
             fullServer,
-            output));
+            output,
+            stopService));
   }
 
   /**

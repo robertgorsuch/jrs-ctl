@@ -252,6 +252,20 @@ final class GuidedMode {
     if (Prompter.yes(out, "Replace resources that already exist on this server? [y/N] ", false)) {
       args.add("--update");
     }
+    // ADR-0040: the rollback copy is the default; only an explicit "n" leaves it out, and the end
+    // of input stops here rather than choosing for the operator
+    Optional<String> copy =
+        Prompter.line(
+            out,
+            "Take the rollback copy first (without it a failed import cannot put back what it"
+                + " overwrote)? [Y/n] ");
+    if (copy.isEmpty()) {
+      return;
+    }
+    String no = copy.get().trim().toLowerCase(Locale.ROOT);
+    if (no.equals("n") || no.equals("no")) {
+      args.add("--no-snapshot");
+    }
     if (Prompter.yes(out, "Skip themes? [y/N] ", false)) {
       args.add("--skip-themes");
     }
