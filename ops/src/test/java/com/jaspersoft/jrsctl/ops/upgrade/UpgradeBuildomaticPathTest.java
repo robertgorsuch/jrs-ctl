@@ -81,7 +81,6 @@ class UpgradeBuildomaticPathTest {
         d.database(),
         d.vendor(),
         d.network(),
-        d.console(),
         d.backups(),
         d.smoke());
   }

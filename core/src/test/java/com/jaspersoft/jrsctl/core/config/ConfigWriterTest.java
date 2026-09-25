@@ -74,7 +74,6 @@ class ConfigWriterTest {
             base.database(),
             base.vendor(),
             base.network(),
-            base.console(),
             base.backups(),
             base.smoke());
     JrsctlHome home = new JrsctlHome(tmp.resolve("home"));
@@ -128,15 +127,6 @@ class ConfigWriterTest {
                 Optional.of(new SecretRef.File(Path.of("/run/secrets/proxy")))),
             new Config.TrustStore(
                 Optional.of(Path.of("/etc/ssl/ts.p12")), Optional.of(new SecretRef.Env("TS")))),
-        new Config.Console(
-            "0.0.0.0",
-            8443,
-            new Config.Tls(
-                true,
-                Optional.of(Path.of("/etc/ssl/c.pem")),
-                Optional.of(Path.of("/etc/ssl/k.pem"))),
-            new Config.ConsoleAuth(
-                Config.ConsoleAuthMode.LOCAL, Optional.of(new SecretRef.Env("CONSOLE_PW")))),
         new Config.Backups(7, 3),
         new Config.Smoke(Optional.of("/public/Samples/Reports/AllAccounts")));
   }

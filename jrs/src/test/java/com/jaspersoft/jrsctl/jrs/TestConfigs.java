@@ -31,8 +31,7 @@ public final class TestConfigs {
                 mode, Optional.of("jasperadmin"), Optional.of(new SecretRef.Env(PASSWORD_ENV))));
     Config.Network net =
         new Config.Network(network, Config.Proxy.empty(), Config.TrustStore.empty());
-    return new Config(
-        server, d.service(), d.database(), d.vendor(), net, d.console(), d.backups(), d.smoke());
+    return new Config(server, d.service(), d.database(), d.vendor(), net, d.backups(), d.smoke());
   }
 
   /** A server block with no credentials at all. */
@@ -54,7 +53,6 @@ public final class TestConfigs {
         base.database(),
         base.vendor(),
         base.network(),
-        base.console(),
         base.backups(),
         base.smoke());
   }

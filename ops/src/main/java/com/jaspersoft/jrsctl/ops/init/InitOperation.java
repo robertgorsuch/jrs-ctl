@@ -123,7 +123,6 @@ public final class InitOperation {
               defaults.database(),
               defaults.vendor(),
               defaults.network(),
-              defaults.console(),
               defaults.backups(),
               new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
       return new InitReport(config, values);
@@ -201,7 +200,6 @@ public final class InitOperation {
             database,
             new Config.Vendor(javaHome),
             defaults.network(),
-            defaults.console(),
             defaults.backups(),
             new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
     return new InitReport(config, values);
@@ -263,7 +261,6 @@ public final class InitOperation {
             defaults.database(),
             defaults.vendor(),
             defaults.network(),
-            defaults.console(),
             defaults.backups(),
             new Config.Smoke(Optional.of(DEFAULT_SMOKE_REPORT)));
     return new InitReport(config, values);
@@ -660,7 +657,6 @@ public final class InitOperation {
             defaults.database(),
             defaults.vendor(),
             defaults.network(),
-            defaults.console(),
             defaults.backups(),
             defaults.smoke());
     return switch (new BuildomaticLocator(services.platform()).resolve(probe)) {

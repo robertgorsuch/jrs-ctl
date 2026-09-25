@@ -36,8 +36,6 @@ class PropertiesConfigTest {
         server.installDir=C:\\Jaspersoft\\jasperreports-server-10.0.0
         server.auth.username: superuser
         server.auth.passwordRef=enc:JRS_PASSWORD
-        console.port=7500
-        console.tls.enabled=false
         network.mode=public
         network.proxy.noProxy=.corp.example, localhost
         """,
@@ -51,7 +49,6 @@ class PropertiesConfigTest {
         .as("a backslash is taken literally, not as an escape")
         .contains(Path.of("C:\\Jaspersoft\\jasperreports-server-10.0.0"));
     assertThat(c.server().auth().username()).contains("superuser");
-    assertThat(c.console().port()).isEqualTo(7500);
     assertThat(c.network().proxy().noProxy()).containsExactly(".corp.example", "localhost");
   }
 

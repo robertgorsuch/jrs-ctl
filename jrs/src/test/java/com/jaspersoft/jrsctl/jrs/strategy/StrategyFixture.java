@@ -97,7 +97,6 @@ final class StrategyFixture implements AutoCloseable {
         base.database(),
         new Config.Vendor(javaHome),
         base.network(),
-        base.console(),
         base.backups(),
         base.smoke());
   }

@@ -196,7 +196,7 @@ class ConfigCommandTest {
 
   @Test
   void should_list_every_key_with_its_value_source_and_description() {
-    Env.override(Map.of("JRSCTL_CONSOLE_PORT", "7500"));
+    Env.override(Map.of("JRSCTL_BACKUPS_RETENTION_DAYS", "45"));
 
     InitCommandTest.Run run = jrsctl("config", "keys");
 
@@ -205,8 +205,8 @@ class ConfigCommandTest {
       assertThat(run.out()).contains(key);
     }
     assertThat(run.out())
-        .contains("JRSCTL_CONSOLE_PORT")
-        .contains("7500")
+        .contains("JRSCTL_BACKUPS_RETENTION_DAYS")
+        .contains("45")
         .contains(ConfigKeys.description("server.baseUrl"));
   }
 
@@ -290,13 +290,13 @@ class ConfigCommandTest {
 
   @Test
   void should_note_overridden_values_when_showing_the_configuration() {
-    Env.override(Map.of("JRSCTL_CONSOLE_PORT", "7500"));
+    Env.override(Map.of("JRSCTL_BACKUPS_RETENTION_DAYS", "45"));
 
     InitCommandTest.Run run = jrsctl("config", "show", "--set", "server.runAsUser=jrs");
 
     assertThat(run.code()).as(run.out() + run.err()).isZero();
     assertThat(run.out())
-        .contains("# console.port: overridden by JRSCTL_CONSOLE_PORT")
+        .contains("# backups.retentionDays: overridden by JRSCTL_BACKUPS_RETENTION_DAYS")
         .contains("# server.runAsUser: overridden by --set");
   }
 }

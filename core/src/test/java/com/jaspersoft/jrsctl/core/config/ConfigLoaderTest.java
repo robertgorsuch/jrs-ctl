@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,9 +32,6 @@ class ConfigLoaderTest {
     assertThat(c.server().baseUrl()).isEmpty();
     assertThat(c.server().auth().mode()).isEqualTo(Config.AuthMode.BASIC);
     assertThat(c.network().mode()).isEqualTo(Config.NetworkMode.ISOLATED);
-    assertThat(c.console().bind()).isEqualTo("127.0.0.1");
-    assertThat(c.console().port()).isEqualTo(7420);
-    assertThat(c.console().auth().mode()).isEqualTo(Config.ConsoleAuthMode.TOKEN);
     assertThat(c.backups().retentionDays()).isEqualTo(30);
     assertThat(c.backups().maxSnapshots()).isEqualTo(20);
     assertThat(c.service().stopTimeoutSeconds()).isEqualTo(180);
@@ -50,12 +49,13 @@ class ConfigLoaderTest {
     Map<String, ConfigLoader.Source> sources =
         loader.sources(
             file,
-            Map.of("JRSCTL_CONSOLE_PORT", "7500"),
+            Map.of("JRSCTL_NETWORK_PROXY_PORT", "7500"),
             Map.of("server.auth.username", "superuser"));
 
     assertThat(sources.get("server.baseUrl").origin()).isEqualTo(ConfigLoader.Origin.FILE);
-    assertThat(sources.get("console.port").origin()).isEqualTo(ConfigLoader.Origin.ENVIRONMENT);
-    assertThat(sources.get("console.port").detail()).isEqualTo("JRSCTL_CONSOLE_PORT");
+    assertThat(sources.get("network.proxy.port").origin())
+        .isEqualTo(ConfigLoader.Origin.ENVIRONMENT);
+    assertThat(sources.get("network.proxy.port").detail()).isEqualTo("JRSCTL_NETWORK_PROXY_PORT");
     assertThat(sources.get("server.auth.username").origin()).isEqualTo(ConfigLoader.Origin.FLAG);
     assertThat(sources.get("backups.retentionDays").origin())
         .isEqualTo(ConfigLoader.Origin.DEFAULT);
@@ -130,9 +130,9 @@ class ConfigLoaderTest {
         .hasMessageContaining("server.baseUlr")
         .satisfies(
             t -> assertThat(((ConfigException) t).remediation()).contains("jrsctl config keys"));
-    assertThatThrownBy(() -> loader.fileWith(file, "console.port", "seventy"))
+    assertThatThrownBy(() -> loader.fileWith(file, "network.proxy.port", "seventy"))
         .isInstanceOf(ConfigException.class)
-        .hasMessageContaining("console.port");
+        .hasMessageContaining("network.proxy.port");
   }
 
   /** Issue #63: init applies the operator's edits the way --set applies an override. */
@@ -144,21 +144,21 @@ class ConfigLoaderTest {
             Map.of(
                 "server.baseUrl", "https://jrs.example.com:8443/jasperserver-pro",
                 "server.auth.passwordRef", "enc:JRS_PASSWORD",
-                "console.port", "7500"));
+                "network.proxy.port", "7500"));
 
     assertThat(c.server().baseUrl())
         .contains(URI.create("https://jrs.example.com:8443/jasperserver-pro"));
     assertThat(c.server().auth().passwordRef().map(SecretRef::render)).contains("enc:JRS_PASSWORD");
-    assertThat(c.console().port()).isEqualTo(7500);
-    assertThat(c.network()).isEqualTo(Config.defaults().network());
+    assertThat(c.network().proxy().port()).contains(7500);
   }
 
   @Test
   void should_refuse_an_override_naming_the_key_when_the_value_is_invalid() {
     assertThatThrownBy(
-            () -> loader.withOverrides(Config.defaults(), Map.of("console.port", "not-a-port")))
+            () ->
+                loader.withOverrides(Config.defaults(), Map.of("network.proxy.port", "not-a-port")))
         .isInstanceOf(ConfigException.class)
-        .hasMessageContaining("console.port");
+        .hasMessageContaining("network.proxy.port");
   }
 
   /** Issue #47: every env: reference in the configuration, by variable name. */
@@ -238,11 +238,6 @@ class ConfigLoaderTest {
           mode: public
           proxy: { host: proxy.local, port: 3128, username: u, passwordRef: file:/run/secrets/p }
           trustStore: { path: /etc/ssl/ts.p12, passwordRef: env:TS }
-        console:
-          bind: 0.0.0.0
-          port: 8443
-          tls: { enabled: true, certPath: /etc/ssl/c.pem, keyPath: /etc/ssl/k.pem }
-          auth: { mode: local, passwordRef: env:CONSOLE_PW }
         backups:
           retentionDays: 7
           maxSnapshots: 3
@@ -269,26 +264,26 @@ class ConfigLoaderTest {
     assertThat(c.network().proxy().passwordRef())
         .contains(new SecretRef.File(Path.of("/run/secrets/p")));
     assertThat(c.network().trustStore().path()).contains(Path.of("/etc/ssl/ts.p12"));
-    assertThat(c.console().tls().enabled()).isTrue();
-    assertThat(c.console().auth().mode()).isEqualTo(Config.ConsoleAuthMode.LOCAL);
     assertThat(c.backups()).isEqualTo(new Config.Backups(7, 3));
     assertThat(c.smoke().reportUri()).contains("/public/Samples/Reports/AllAccounts");
   }
 
   @Test
   void should_prefer_flag_over_env_over_file_when_all_three_set_the_same_key() throws IOException {
-    write("server:\n  baseUrl: http://file:8080/jasperserver\nconsole:\n  port: 1000\n");
+    write(
+        "server:\n  baseUrl: http://file:8080/jasperserver\nnetwork:\n  proxy:\n    port:"
+            + " 1000\n");
     Map<String, String> env =
         Map.of(
             "JRSCTL_SERVER_BASE_URL", "http://env:8080/jasperserver",
-            "JRSCTL_CONSOLE_PORT", "2000",
+            "JRSCTL_NETWORK_PROXY_PORT", "2000",
             "JRSCTL_BACKUPS_RETENTION_DAYS", "5");
     Map<String, String> flags = Map.of("server.baseUrl", "http://flag:8080/jasperserver");
 
     Config c = loader.load(new JrsctlHome(tmp), env, flags);
 
     assertThat(c.server().baseUrl()).contains(URI.create("http://flag:8080/jasperserver"));
-    assertThat(c.console().port()).isEqualTo(2000);
+    assertThat(c.network().proxy().port()).contains(2000);
     assertThat(c.backups().retentionDays()).isEqualTo(5);
     assertThat(c.backups().maxSnapshots()).isEqualTo(20);
   }
@@ -323,7 +318,7 @@ class ConfigLoaderTest {
         .isEqualTo("JRSCTL_NETWORK_TRUST_STORE_PATH");
     assertThat(ConfigLoader.envKey("service.stopTimeoutSeconds"))
         .isEqualTo("JRSCTL_SERVICE_STOP_TIMEOUT_SECONDS");
-    assertThat(loader.knownKeys()).contains("server.baseUrl", "console.tls.enabled");
+    assertThat(loader.knownKeys()).contains("server.baseUrl", "network.trustStore.path");
   }
 
   @Test
@@ -332,12 +327,12 @@ class ConfigLoaderTest {
         Map.of(
             "JRSCTL_HOME", tmp.toString(),
             "JRSCTL_PASSPHRASE", "not-a-config-key",
-            "JRSCTL_CONSOLE_TLS_ENABLED", "true",
+            "JRSCTL_BACKUPS_RETENTION_DAYS", "5",
             "JRSCTL_SERVER_BASE_URL", "http://h/jasperserver");
 
     Config c = loader.load(new JrsctlHome(tmp), env, Map.of());
 
-    assertThat(c.console().tls().enabled()).isTrue();
+    assertThat(c.backups().retentionDays()).isEqualTo(5);
     assertThat(c.server().baseUrl()).contains(URI.create("http://h/jasperserver"));
   }
 
@@ -349,8 +344,8 @@ class ConfigLoaderTest {
           baseUrl: 42
           auth:
             mode: magic
-        console:
-          port: 99999
+        backups:
+          retentionDays: -5
         bogus: 1
         """);
 
@@ -362,9 +357,11 @@ class ConfigLoaderTest {
               assertThat(e.violations()).hasSizeGreaterThanOrEqualTo(4);
               assertThat(e.violations()).anyMatch(v -> v.startsWith("server.baseUrl: "));
               assertThat(e.violations()).anyMatch(v -> v.startsWith("server.auth.mode: "));
-              assertThat(e.violations()).anyMatch(v -> v.startsWith("console.port: "));
+              assertThat(e.violations()).anyMatch(v -> v.startsWith("backups.retentionDays: "));
               assertThat(e.violations()).anyMatch(v -> v.contains("bogus"));
-              assertThat(e.getMessage()).contains("console.port: ").contains(e.remediation());
+              assertThat(e.getMessage())
+                  .contains("backups.retentionDays: ")
+                  .contains(e.remediation());
             });
   }
 
@@ -382,10 +379,10 @@ class ConfigLoaderTest {
             () ->
                 loader.load(
                     new JrsctlHome(tmp),
-                    Map.of("JRSCTL_CONSOLE_PORT", "eighty"),
+                    Map.of("JRSCTL_BACKUPS_RETENTION_DAYS", "eighty"),
                     Map.of("server.baseUrl", "http://h/jasperserver")))
         .isInstanceOf(ConfigException.class)
-        .hasMessageContaining("console.port: ");
+        .hasMessageContaining("backups.retentionDays: ");
   }
 
   @Test
@@ -532,6 +529,66 @@ class ConfigLoaderTest {
 
     assertThatThrownBy(() -> loader.load(new JrsctlHome(tmp), Map.of(), Map.of()))
         .isInstanceOf(ConfigException.class);
+  }
+
+  /** ADR-0038: a 1.x file may still carry {@code console:}; it loads with one warning. */
+  @Test
+  void should_drop_a_console_block_with_one_warning_when_a_1x_file_still_has_one()
+      throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+        console:
+          port: 7421
+          auth: { mode: local }
+        """);
+    List<String> warnings = new ArrayList<>();
+
+    Config config = new ConfigLoader(warnings::add).load(file, Map.of(), Map.of());
+
+    assertThat(config.server().baseUrl()).isPresent();
+    assertThat(warnings)
+        .singleElement()
+        .asString()
+        .contains("console:")
+        .contains(file.toString())
+        .contains("ADR-0038");
+  }
+
+  @Test
+  void should_ignore_a_console_environment_variable_when_loading() throws IOException {
+    Config config =
+        new ConfigLoader()
+            .load(tmp.resolve("missing.yaml"), Map.of("JRSCTL_CONSOLE_PORT", "1"), Map.of());
+
+    assertThat(config)
+        .isEqualTo(new ConfigLoader().load(tmp.resolve("missing.yaml"), Map.of(), Map.of()));
+  }
+
+  @Test
+  void should_refuse_a_console_key_naming_the_adr_when_setting() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(file, "server:\n  baseUrl: http://localhost:8080/jasperserver-pro\n");
+
+    assertThatThrownBy(() -> new ConfigLoader().fileWith(file, "console.port", "7421"))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console.port is no longer used (ADR-0038)");
+  }
+
+  @Test
+  void should_skip_a_console_key_in_a_properties_file_with_one_warning() throws IOException {
+    Path file = tmp.resolve("config.properties");
+    Files.writeString(
+        file, "server.baseUrl=http://localhost:8080/jasperserver-pro\nconsole.port=7421\n");
+    List<String> warnings = new ArrayList<>();
+
+    Config config = new ConfigLoader(warnings::add).load(file, Map.of(), Map.of());
+
+    assertThat(config.server().baseUrl()).isPresent();
+    assertThat(warnings).singleElement().asString().contains("console.port").contains("line 2");
   }
 
   private void write(String yaml) throws IOException {

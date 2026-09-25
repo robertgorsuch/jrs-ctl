@@ -165,7 +165,6 @@ class KeystoreInspectorTest {
             withInstall.database(),
             withInstall.vendor(),
             withInstall.network(),
-            withInstall.console(),
             withInstall.backups(),
             withInstall.smoke());
 
@@ -263,7 +262,6 @@ class KeystoreInspectorTest {
         base.database(),
         base.vendor(),
         base.network(),
-        base.console(),
         base.backups(),
         base.smoke());
   }
@@ -283,7 +281,6 @@ class KeystoreInspectorTest {
         base.database(),
         base.vendor(),
         base.network(),
-        base.console(),
         base.backups(),
         base.smoke());
   }

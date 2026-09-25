@@ -147,7 +147,6 @@ final class LocalChecks {
         .trustStore()
         .passwordRef()
         .ifPresent(r -> refs.put("network.trustStore.passwordRef", r));
-    c.console().auth().passwordRef().ifPresent(r -> refs.put("console.auth.passwordRef", r));
     return refs;
   }
 

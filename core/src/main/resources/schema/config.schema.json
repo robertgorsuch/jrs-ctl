@@ -83,31 +83,6 @@
         }
       }
     },
-    "console": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "bind": { "type": "string", "default": "127.0.0.1" },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 7420 },
-        "tls": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "certPath": { "type": "string" },
-            "keyPath": { "type": "string" }
-          }
-        },
-        "auth": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "mode": { "type": "string", "enum": ["token", "local"], "default": "token" },
-            "passwordRef": { "$ref": "#/$defs/secretRef" }
-          }
-        }
-      }
-    },
     "backups": {
       "type": "object",
       "additionalProperties": false,

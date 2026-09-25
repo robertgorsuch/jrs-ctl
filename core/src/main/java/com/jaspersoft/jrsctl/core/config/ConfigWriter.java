@@ -152,17 +152,6 @@ public final class ConfigWriter {
     path(c.network().trustStore().path(), trust, "path");
     ref(c.network().trustStore().passwordRef(), trust);
 
-    ObjectNode console = root.putObject("console");
-    console.put("bind", c.console().bind());
-    console.put("port", c.console().port());
-    ObjectNode tls = console.putObject("tls");
-    tls.put("enabled", c.console().tls().enabled());
-    path(c.console().tls().certPath(), tls, "certPath");
-    path(c.console().tls().keyPath(), tls, "keyPath");
-    ObjectNode consoleAuth = console.putObject("auth");
-    consoleAuth.put("mode", c.console().auth().mode().yamlValue());
-    ref(c.console().auth().passwordRef(), consoleAuth);
-
     ObjectNode backups = root.putObject("backups");
     backups.put("retentionDays", c.backups().retentionDays());
     backups.put("maxSnapshots", c.backups().maxSnapshots());
