@@ -16,7 +16,6 @@
   <dependencies>
     <dependency><groupId>com.jaspersoft.jrsctl</groupId><artifactId>jrsctl-ops</artifactId></dependency>
     <dependency><groupId>info.picocli</groupId><artifactId>picocli</artifactId></dependency>
-    <dependency><groupId>io.javalin</groupId><artifactId>javalin</artifactId></dependency>
     <!-- ADR-0037: Prompter.path line editing and filesystem completion, issue #102 -->
     <dependency><groupId>org.jline</groupId><artifactId>jline-terminal</artifactId></dependency>
     <dependency><groupId>org.jline</groupId><artifactId>jline-terminal-jni</artifactId></dependency>

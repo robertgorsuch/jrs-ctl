@@ -13,9 +13,6 @@ the upstream project ships them, and at the URLs below.
 Library                          Version                       Licence
 -------------------------------- ----------------------------- ----------------------------------------
 picocli                          ${picocli.version}            Apache License 2.0
-Javalin                          ${javalin.version}            Apache License 2.0
-  Eclipse Jetty (via Javalin)                                  Apache License 2.0 (dual with EPL 2.0)
-  Kotlin stdlib (via Javalin)                                  Apache License 2.0
 Jackson (databind, dataformat-yaml,
   datatype-jsr310, datatype-jdk8) ${jackson.version}            Apache License 2.0
   SnakeYAML (via jackson-dataformat-yaml)                      Apache License 2.0
