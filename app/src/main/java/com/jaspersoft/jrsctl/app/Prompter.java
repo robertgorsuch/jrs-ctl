@@ -35,6 +35,7 @@ final class Prompter {
   private static volatile Optional<BufferedReader> stdin = Optional.empty();
   private static volatile boolean jlineUnavailable = false;
   private static volatile Optional<LineReader> jlineReader = Optional.empty();
+  private static volatile Optional<org.jline.terminal.Terminal> jlineTerminal = Optional.empty();
 
   /**
    * A parser that treats the whole line as one word: these are single-path prompts, not commands.
@@ -153,6 +154,7 @@ final class Prompter {
                     }
                   },
                   "jrsctl-jline-close"));
+      jlineTerminal = Optional.of(terminal);
       jlineReader =
           Optional.of(
               LineReaderBuilder.builder()
@@ -167,8 +169,58 @@ final class Prompter {
     return jlineReader;
   }
 
-  /** One line, stripped; empty at end of input. */
+  /**
+   * A reader on the same JLine terminal as {@link #path}, completing {@code completions} instead of
+   * paths (field test 3: every prompt gets line editing, not only path prompts). Empty when there
+   * is no JLine terminal, under test or when piped.
+   */
+  private static Optional<LineReader> plainReader(java.util.Collection<String> completions) {
+    if (override.isPresent() || jlineReader().isEmpty() || jlineTerminal.isEmpty()) {
+      return Optional.empty();
+    }
+    LineReaderBuilder builder =
+        LineReaderBuilder.builder().terminal(jlineTerminal.get()).parser(WHOLE_LINE_PARSER);
+    if (!completions.isEmpty()) {
+      builder.completer(new org.jline.reader.impl.completer.StringsCompleter(completions));
+    }
+    return Optional.of(builder.build());
+  }
+
+  /**
+   * A line with {@code initial} already typed, so the operator edits a value instead of retyping
+   * it, and Tab completes {@code completions} (field test 3). Returns what was on the line, which
+   * may be empty; empty Optional at end of input. Without a JLine terminal the initial value is
+   * shown in brackets and an empty answer keeps it.
+   */
+  static Optional<String> edit(
+      PrintWriter out, String prompt, String initial, java.util.Collection<String> completions) {
+    Optional<LineReader> reader = plainReader(completions);
+    if (reader.isPresent()) {
+      out.flush();
+      try {
+        return Optional.of(reader.get().readLine(prompt, null, initial).strip());
+      } catch (EndOfFileException | UserInterruptException e) {
+        return Optional.empty();
+      }
+    }
+    String shown = initial.isEmpty() ? prompt : prompt + "[" + initial + "] ";
+    return line(out, shown).map(answer -> answer.isEmpty() ? initial : answer);
+  }
+
+  /**
+   * One line, stripped; empty at end of input. On a real terminal it is read through JLine, so the
+   * arrow keys move the cursor (field test 3); under test and when piped it is the plain reader.
+   */
   static Optional<String> line(PrintWriter out, String prompt) {
+    Optional<LineReader> reader = plainReader(List.of());
+    if (reader.isPresent()) {
+      out.flush();
+      try {
+        return Optional.of(reader.get().readLine(prompt).strip());
+      } catch (EndOfFileException | UserInterruptException e) {
+        return Optional.empty();
+      }
+    }
     Optional<Console> console = console();
     if (console.isPresent()) {
       out.flush();

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,12 @@ class GuidedModeTest {
   }
 
   private int guided(List<String> base, List<String> pending, String... answers) {
+    return guided(Map.of(), base, pending, answers);
+  }
+
+  /** {@code settings} is what the configuration holds; empty means there is none yet. */
+  private int guided(
+      Map<String, String> settings, List<String> base, List<String> pending, String... answers) {
     Prompter.override(new StringReader(String.join("\n", answers) + "\n"));
     GuidedMode mode =
         new GuidedMode(
@@ -42,16 +49,17 @@ class GuidedModeTest {
               return 0;
             },
             () -> pending,
-            () -> Optional.of(tmp.resolve("home").resolve("snapshots")));
+            () -> Optional.of(tmp.resolve("home").resolve("snapshots")),
+            () -> settings);
     return mode.run();
   }
 
-  private static int count(String haystack, String needle) {
-    int n = 0;
-    for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
-      n++;
-    }
-    return n;
+  private static Map<String, String> someSettings() {
+    Map<String, String> m = new java.util.LinkedHashMap<>();
+    m.put("server.baseUrl", "http://old:8080/jasperserver-pro");
+    m.put("server.auth.passwordRef", "env:JRS_PASSWORD");
+    m.put("vendor.javaHome", "/old/jdk");
+    return m;
   }
 
   // ---- the menu itself --------------------------------------------------------------------------
@@ -106,49 +114,85 @@ class GuidedModeTest {
 
   // ---- settings ---------------------------------------------------------------------------------
 
+  /** Field test 3: the settings are listed, numbered, before anything is asked. */
   @Test
-  void should_change_settings_until_enter_without_reprinting_the_table() {
+  void should_show_the_settings_numbered_when_the_settings_entry_opens() {
+    guided(someSettings(), List.of(), List.of(), "1", "", "q");
+
+    assertThat(text.toString())
+        .contains("1) server.baseUrl = http://old:8080/jasperserver-pro")
+        .contains("3) vendor.javaHome = /old/jdk")
+        .contains("1) Change a setting");
+    assertThat(ran).isEmpty();
+  }
+
+  /** Field test 3: a setting is picked by name or by number, the old value offered for editing. */
+  @Test
+  void should_change_a_setting_when_it_is_picked_by_name_or_by_number() {
     guided(
+        someSettings(),
         List.of(),
         List.of(),
         "1",
-        "2",
+        "1",
         "server.baseUrl",
         "http://x",
-        "vendor.javaHome",
+        "3",
         "/jdk",
         "",
         "q");
 
     assertThat(ran)
         .containsExactly(
-            List.of("config", "keys"),
             List.of("config", "set", "server.baseUrl", "http://x"),
             List.of("config", "set", "vendor.javaHome", "/jdk"));
-    assertThat(count(text.toString(), "Change one with:")).isEqualTo(1);
+    assertThat(text.toString()).contains("vendor.javaHome: [/old/jdk]");
+  }
+
+  @Test
+  void should_keep_the_value_when_enter_accepts_the_one_shown() {
+    guided(someSettings(), List.of(), List.of(), "1", "1", "3", "", "", "q");
+
+    assertThat(text.toString()).contains("unchanged");
+    assertThat(ran).isEmpty();
+  }
+
+  @Test
+  void should_ask_for_a_password_hidden_when_a_secret_setting_is_picked() {
+    guided(someSettings(), List.of(), List.of(), "1", "1", "2", "", "q");
+
+    assertThat(ran).containsExactly(List.of("config", "set", "server.auth.passwordRef"));
   }
 
   @Test
   void should_reask_an_unknown_setting_instead_of_sending_it() {
-    guided(List.of(), List.of(), "1", "2", "nope.key", "server.baseUrl", "http://x", "", "q");
+    guided(
+        someSettings(), List.of(), List.of(), "1", "1", "nope.key", "99", "1", "http://x", "", "q");
 
-    assertThat(text.toString()).contains("unknown setting nope.key");
-    assertThat(ran)
-        .containsExactly(
-            List.of("config", "keys"), List.of("config", "set", "server.baseUrl", "http://x"));
+    assertThat(text.toString()).contains("no setting nope.key").contains("no setting 99");
+    assertThat(ran).containsExactly(List.of("config", "set", "server.baseUrl", "http://x"));
+  }
+
+  @Test
+  void should_detect_again_when_settings_exist_and_the_operator_asks() {
+    guided(someSettings(), List.of(), List.of(), "1", "2", "", "q");
+
+    assertThat(ran).containsExactly(List.of("init"));
   }
 
   @Test
   void should_reask_when_the_installation_directory_does_not_exist() {
-    guided(List.of(), List.of(), "1", "1", "/zugzug/whatever", "", "q");
+    guided(List.of(), List.of(), "1", "/zugzug/whatever", "", "q");
 
-    assertThat(text.toString()).contains("no such directory: /zugzug/whatever");
+    assertThat(text.toString())
+        .contains("There are no settings yet")
+        .contains("no such directory: /zugzug/whatever");
     assertThat(ran).isEmpty();
   }
 
   @Test
   void should_search_for_the_installation_when_enter_is_the_first_answer() {
-    guided(List.of(), List.of(), "1", "1", "", "q");
+    guided(List.of(), List.of(), "1", "", "q");
 
     assertThat(ran).containsExactly(List.of("init"));
   }
@@ -158,23 +202,24 @@ class GuidedModeTest {
   @Test
   void should_run_a_whole_repository_export_over_rest_with_the_file_the_operator_names() {
     int code =
-        guided(List.of(), List.of(), "3", "1", "/backups/repo.zip", "n", "n", "n", "n", "", "q");
+        guided(
+            List.of(), List.of(), "3", "1", "n", "/backups/repo.zip", "n", "n", "n", "n", "", "q");
 
     assertThat(code).isZero();
     assertThat(ran)
         .containsExactly(List.of("export", "--strategy", "rest", "--out", "/backups/repo.zip"));
     assertThat(text.toString())
         .contains("Back up content")
-        .contains(
-            "1) Everything in the repository, over REST (no vendor tools; the server keeps"
-                + " running)")
-        .contains("3) Everything including users, roles and settings, with the vendor js-export")
+        .contains("1) Everything")
+        .contains("2) One folder")
+        .doesNotContain("3) Everything")
+        .contains("Include scheduled report jobs and calendars?")
         .contains("jrsctl export --strategy rest --out /backups/repo.zip");
   }
 
   @Test
   void should_ask_the_export_options_for_a_whole_repository_export() {
-    guided(List.of(), List.of(), "3", "1", "/tmp/repo.zip", "y", "y", "y", "y", "org1", "q");
+    guided(List.of(), List.of(), "3", "1", "n", "/tmp/repo.zip", "y", "y", "y", "y", "org1", "q");
 
     assertThat(ran)
         .containsExactly(
@@ -192,15 +237,15 @@ class GuidedModeTest {
                 "org1",
                 "--out",
                 "/tmp/repo.zip"));
-    assertThat(text.toString()).contains("Portable (decryptable on another server)?");
+    assertThat(text.toString())
+        .contains("Encrypt with the legacy import/export key (deprecatedImportExportEncSecret)");
   }
 
   @Test
   void should_ask_about_stopping_for_the_vendor_export_and_skip_the_scope_questions() {
-    guided(List.of(), List.of(), "3", "3", "y", "/tmp/all.zip", "n", "", "q");
+    guided(List.of(), List.of(), "3", "1", "y", "y", "/tmp/all.zip", "n", "", "q");
 
-    assertThat(text.toString())
-        .contains("Stop the server while js-export runs (consistent copy, short outage)?");
+    assertThat(text.toString()).contains("Stop the server while js-export runs");
     assertThat(ran)
         .containsExactly(
             List.of("export", "--full-server", "--stop-service", "--out", "/tmp/all.zip"));
@@ -283,7 +328,54 @@ class GuidedModeTest {
     assertThat(text.toString())
         .contains("Import into organisation")
         .contains("Merge when the archive's organisation id differs");
-    assertThat(text.toString()).contains("Key alias the archive was encrypted with");
+    assertThat(text.toString())
+        .contains("No .jrsctl.json beside the archive")
+        .contains("legacy import/export key (deprecatedImportExportEncSecret");
+  }
+
+  /** Field test 3: with a sidecar the key alias is known, so nothing is asked about it. */
+  @Test
+  void should_take_the_key_alias_from_the_sidecar_without_asking_when_there_is_one()
+      throws Exception {
+    Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
+    com.jaspersoft.jrsctl.jrs.strategy.Sidecar.write(
+        com.jaspersoft.jrsctl.jrs.strategy.Sidecar.pathFor(archive),
+        new com.jaspersoft.jrsctl.jrs.strategy.Sidecar(
+            java.time.Instant.parse("2026-09-25T10:00:00Z"),
+            "http://src",
+            "10.0.0",
+            Optional.empty(),
+            new com.jaspersoft.jrsctl.jrs.strategy.Sidecar.Flags(
+                com.jaspersoft.jrsctl.jrs.api.ExportRequest.Scope.EVERYTHING,
+                List.of("/"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.of("deprecatedImportExportEncSecret")),
+            "abc",
+            com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.REST));
+
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "q");
+
+    assertThat(text.toString())
+        .contains("says it was encrypted with the key alias deprecatedImportExportEncSecret")
+        .doesNotContain("Was it exported with the legacy");
+    assertThat(ran).containsExactly(List.of("import", archive.toString()));
+  }
+
+  @Test
+  void should_pass_the_legacy_key_alias_when_the_operator_answers_yes() throws Exception {
+    Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
+
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "yes", "", "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of(
+                "import", archive.toString(), "--key-alias", "deprecatedImportExportEncSecret"));
   }
 
   /** ADR-0040: leaving out the rollback copy takes an explicit "n"; Enter keeps it. */

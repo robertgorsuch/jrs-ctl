@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.Version;
+import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -79,7 +80,12 @@ public final class JrsctlCommand implements Callable<Integer> {
     if (!global.nonInteractive() && Terminal.present()) {
       // #71: an operator at a terminal gets the guided menu instead of a usage error
       return new GuidedMode(
-              cmd.getOut(), passOn(global), this::runCommand, this::pendingRuns, this::snapshotsDir)
+              cmd.getOut(),
+              passOn(global),
+              this::runCommand,
+              this::pendingRuns,
+              this::snapshotsDir,
+              this::settings)
           .run();
     }
     cmd.usage(cmd.getErr());
@@ -111,6 +117,26 @@ public final class JrsctlCommand implements Callable<Integer> {
       return Optional.of(boot.services().home().snapshots());
     } catch (RuntimeException e) {
       return Optional.empty();
+    }
+  }
+
+  /**
+   * Every setting's current value in schema order, secrets as references, for the menu's settings
+   * entry (field test 3); empty when there is no configuration file yet or it cannot be read.
+   */
+  private Map<String, String> settings() {
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+      Path file = boot.services().home().configFile();
+      if (!java.nio.file.Files.isRegularFile(file)) {
+        return Map.of();
+      }
+      Map<String, String> values = new java.util.LinkedHashMap<>();
+      for (String key : new ConfigLoader().sources(file, Env.vars(), global.set()).keySet()) {
+        values.put(key, ConfigKeys.value(boot.services().config(), key));
+      }
+      return values;
+    } catch (RuntimeException e) {
+      return Map.of();
     }
   }
 
