@@ -535,7 +535,7 @@ class PlanRegistryTest {
 
   /** Arguments stored by 2.0.0 and earlier carry only the boolean. */
   @Test
-  void should_read_the_boolean_of_older_stored_arguments_as_allow_unsigned() {
+  void should_read_allow_unsigned_when_older_stored_arguments_carry_only_the_boolean() {
     String older =
         "{\"bundle\":\""
             + Path.of("hf-1.zip").toAbsolutePath().toString().replace("\\", "\\\\")

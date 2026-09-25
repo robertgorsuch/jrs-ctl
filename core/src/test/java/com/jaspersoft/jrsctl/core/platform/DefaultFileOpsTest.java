@@ -81,8 +81,8 @@ class DefaultFileOpsTest {
    * the file and its owner exactly as they were.
    */
   @Test
-  void should_restore_the_owner_of_a_file_this_account_owns_and_change_nothing(@TempDir Path dir)
-      throws IOException {
+  void should_report_the_owner_restorable_and_change_nothing_when_this_account_owns_the_file(
+      @TempDir Path dir) throws IOException {
     Path target = dir.resolve("app.jar");
     Files.writeString(target, "old", StandardCharsets.UTF_8);
     UserPrincipal ownerBefore = Files.getOwner(target);

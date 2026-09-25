@@ -33,7 +33,7 @@ class SupportBundleLogTest {
           Optional.of(0));
 
   @Test
-  void should_keep_the_runs_lines_and_those_without_a_run_id_inside_its_window()
+  void should_keep_a_line_when_it_carries_the_run_id_or_falls_inside_the_runs_window()
       throws IOException {
     Path log = tmp.resolve("jrsctl.log");
     Files.write(
@@ -55,7 +55,7 @@ class SupportBundleLogTest {
   }
 
   @Test
-  void should_cap_the_runs_lines_and_say_so() throws IOException {
+  void should_cap_and_say_so_when_the_run_has_more_lines_than_the_limit() throws IOException {
     Path log = tmp.resolve("jrsctl.log");
     Files.write(
         log,

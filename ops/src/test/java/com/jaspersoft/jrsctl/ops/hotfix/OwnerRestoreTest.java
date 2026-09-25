@@ -57,7 +57,7 @@ class OwnerRestoreTest {
   }
 
   @Test
-  void should_refuse_a_rollback_whose_files_owner_cannot_be_restored() throws IOException {
+  void should_refuse_a_rollback_when_its_files_owner_cannot_be_restored() throws IOException {
     try (HotfixFixture f = HotfixFixture.create(tmp)) {
       RunOutcome applied =
           f.run(f.ops().planApply(f.buildWebInf(), new ApplyOptions(false)), "r-owner-apply");

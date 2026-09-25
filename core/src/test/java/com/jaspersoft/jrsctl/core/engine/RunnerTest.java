@@ -50,7 +50,7 @@ class RunnerTest {
    * the run (MDC {@code runId}) and there is one line for the start, each transition and the end.
    */
   @Test
-  void should_log_the_start_each_transition_and_the_end_with_the_run_id() {
+  void should_log_the_start_each_transition_and_the_end_with_the_run_id_when_a_run_executes() {
     ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
         new ch.qos.logback.core.read.ListAppender<>();
     appender.start();
