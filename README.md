@@ -216,7 +216,7 @@ jrsctl finishes every job by saying what happened and what to do next. The numbe
 | **4** | A step failed, and jrsctl could not put everything back | Follow the "next action" in the message. `jrsctl docs recovery-runbook` walks you through it |
 | **5** | You cancelled it, and jrsctl put everything back | Nothing |
 | **6** | This server version, or this upgrade step, isn't supported | Nothing changed. Check the supported versions under [Before you start](#before-you-start) |
-| **7** | The hotfix isn't signed by a publisher jrsctl trusts, or the file was altered | Don't install it. Get a genuine copy from Actian Jaspersoft |
+| **7** | The hotfix isn't signed by a publisher jrsctl trusts, or the file was altered | Don't install it. Get a genuine copy from Jaspersoft |
 | **8** | An earlier job was interrupted (a crash or power cut) | Run the `jrsctl runs recover …` command it prints, to finish or undo that job |
 | **9** | Another jrsctl job is already running | Wait for it to finish |
 

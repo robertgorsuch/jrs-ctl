@@ -5,7 +5,7 @@ jrsctl ships under the **Actian Jaspersoft** name. Branding is applied in two pl
 ## Naming
 
 - Product: `jrsctl` (lowercase, monospace where the medium allows).
-- Vendor line: "Actian Jaspersoft". Used in `--version` and document footers.
+- Vendor line: "Jaspersoft" in `--help` and `--version` (changed from "Actian Jaspersoft" after field test 3, at the maintainer's request); the guided menu names no company. Document footers are unchanged.
 - Server product name in copy: "JasperReports Server" on first mention, "JRS" afterwards.
 - Never "TIBCO Jaspersoft" in new copy.
 

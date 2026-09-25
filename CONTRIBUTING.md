@@ -1,6 +1,6 @@
 # Contributing to jrsctl
 
-jrsctl is the JasperReports Server lifecycle tool from Actian Jaspersoft. It stops services,
+jrsctl is the JasperReports Server lifecycle tool from Jaspersoft. It stops services,
 swaps files under `WEB-INF`, runs vendor upgrade scripts and re-imports repositories, so the
 project puts execution safety, idempotent steps, honest rollback and credential hygiene ahead of
 everything else. This guide says how to build, test and submit a change that keeps those

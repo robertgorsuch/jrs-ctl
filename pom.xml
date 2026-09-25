@@ -10,7 +10,7 @@
   <packaging>pom</packaging>
 
   <name>jrsctl</name>
-  <description>JasperReports Server lifecycle tool (Actian Jaspersoft)</description>
+  <description>JasperReports Server lifecycle tool (Jaspersoft)</description>
   <licenses>
     <!-- ADR-0010: one licence, named the same way everywhere; the CycloneDX SBOM copies this onto
          the root component and Phase0SkeletonTest checks the identifier. Text: LICENSE at the root. -->

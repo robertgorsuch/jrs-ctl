@@ -17,7 +17,21 @@ class MainTest {
     cmd.setOut(new java.io.PrintWriter(out));
     int code = cmd.execute("--version");
     assertThat(code).isZero();
-    assertThat(out.toString()).contains("jrsctl").contains("Actian Jaspersoft");
+    assertThat(out.toString()).contains("jrsctl").contains("Jaspersoft").doesNotContain("Actian");
+  }
+
+  @Test
+  void should_name_jaspersoft_without_actian_when_help_is_printed() {
+    StringWriter out = new StringWriter();
+    CommandLine cmd = new CommandLine(new JrsctlCommand());
+    cmd.setOut(new java.io.PrintWriter(out));
+
+    int code = cmd.execute("--help");
+
+    assertThat(code).isZero();
+    assertThat(out.toString())
+        .contains("JasperReports Server lifecycle tool (Jaspersoft)")
+        .doesNotContain("Actian");
   }
 
   @Test

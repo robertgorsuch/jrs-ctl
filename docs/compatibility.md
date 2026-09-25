@@ -63,7 +63,7 @@ the "Tomcat" column certifies, and refuses with exit 6 when either is not.
 
 jrsctl itself runs on Windows and Linux, x86-64 only (ADR-0002), as a Windows service, a systemd
 unit, a `ctlscript`, a bare `catalina` script or a manually managed process (`service.kind`). The
-server's own platform support is Actian Jaspersoft's; this matrix only says what jrsctl has been
+server's own platform support is Jaspersoft's; this matrix only says what jrsctl has been
 built to drive.
 
 ## Keeping this page honest
