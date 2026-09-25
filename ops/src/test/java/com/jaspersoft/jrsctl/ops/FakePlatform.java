@@ -61,6 +61,9 @@ public final class FakePlatform implements Platform {
    */
   public Optional<Path> failReplaceOf = Optional.empty();
 
+  /** When false, no file's owner can be given back after a swap (#157). */
+  public boolean ownerRestorable = true;
+
   /** When set, lock detection reports itself blind (review 3.3). */
   public Optional<String> lockInspectionLimit = Optional.empty();
 
@@ -213,6 +216,11 @@ public final class FakePlatform implements Platform {
       @Override
       public boolean isOwnerOnly(Path file) {
         return ownerOnly;
+      }
+
+      @Override
+      public boolean canRestoreOwner(Path file) {
+        return ownerRestorable;
       }
     };
   }

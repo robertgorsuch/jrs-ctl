@@ -54,6 +54,15 @@ public interface FileOps {
 
   boolean isWritable(Path dir);
 
+  /**
+   * Whether a file written over {@code file} by this process can be given back {@code file}'s
+   * current owner (#157). True when a new file in that directory already gets that owner, or when
+   * this account may assign it; false when the owner would be lost. Changes nothing on disk.
+   */
+  default boolean canRestoreOwner(Path file) {
+    return true;
+  }
+
   /** Owner-only check for secret files (0600 on Linux; owner + Administrators only on Windows). */
   boolean isOwnerOnly(Path file) throws IOException;
 

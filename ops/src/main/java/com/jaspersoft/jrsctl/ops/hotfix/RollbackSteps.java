@@ -157,10 +157,13 @@ final class RollbackSteps {
           problems.add(p + " is locked" + files.lockHolder(p).map(h -> " by " + h).orElse(""));
         }
       }
+      // #157: the restore writes every file anew, so its owner must be assignable back
+      OwnerRestore.problem(files, in.touched()).ifPresent(problems::add);
       if (!problems.isEmpty()) {
         return CheckResult.fail(
             String.join("; ", problems),
-            "restore the snapshot from a backup or end the process holding the files");
+            "restore the snapshot from a backup, end the process holding the files, or run"
+                + " jrsctl as an account that may restore their owners");
       }
       // review 3.3: a blind scan is a warning, not a pass
       return files
