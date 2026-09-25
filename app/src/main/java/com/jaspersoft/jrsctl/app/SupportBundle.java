@@ -109,10 +109,6 @@ public final class SupportBundle {
     return m;
   }
 
-  public void write(RunRecord run, OutputStream target) throws IOException {
-    write(prepare(run), target);
-  }
-
   public void write(Prepared prepared, OutputStream target) throws IOException {
     RunRecord run = prepared.run();
     StateStore store = services.stateStore().get();

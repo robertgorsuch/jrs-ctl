@@ -18,6 +18,7 @@ import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,13 +45,15 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 
 /**
- * {@code jrsctl runs list|show|recover|prune} (spec §5.5, §5.6, §6.6). Invariants: {@code list} and
- * {@code show} read the journal only; {@code recover} rebuilds the pending run's plan from its
- * stored arguments through {@link PlanRegistry} (never from the serialised plan, which cannot carry
- * step code) and then resumes or rolls back through {@link PlanExecutor}, so it holds the run lock
- * and journals every transition; a run that is not pending, has no stored plan, or whose plan
- * cannot be rebuilt exits 2 without touching anything; {@code prune} holds the run lock while it
- * removes snapshots (exit 9 when a run holds it) and {@code --dry-run} changes nothing.
+ * {@code jrsctl runs list|show|recover|prune|support-bundle} (spec §5.5, §5.6, §6.6, §12.4).
+ * Invariants: {@code list} and {@code show} read the journal only; {@code recover} rebuilds the
+ * pending run's plan from its stored arguments through {@link PlanRegistry} (never from the
+ * serialised plan, which cannot carry step code) and then resumes or rolls back through {@link
+ * PlanExecutor}, so it holds the run lock and journals every transition; a run that is not pending,
+ * has no stored plan, or whose plan cannot be rebuilt exits 2 without touching anything; {@code
+ * prune} holds the run lock while it removes snapshots (exit 9 when a run holds it) and {@code
+ * --dry-run} changes nothing; {@code support-bundle} refuses a bad {@code --out} before touching
+ * the state store and never leaves a partial zip behind.
  */
 @Command(
     name = "runs",
@@ -514,6 +517,17 @@ final class RunsCommand implements Runnable {
       PrintWriter err = spec.commandLine().getErr();
       Redactor redactor = Redactor.global();
       Path target = (out == null ? Path.of(runId + "-support-bundle.zip") : out).toAbsolutePath();
+      // every refusal below must happen before Bootstrap.open: a typo in --out must not pay for a
+      // doctor run, and must not touch the state store (review finding 2)
+      if (Files.isDirectory(target)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            target + " is a directory",
+            Optional.of("name a file"));
+      }
       if (Files.exists(target)) {
         return ExitCodes.fail(
             o,
@@ -522,6 +536,16 @@ final class RunsCommand implements Runnable {
             ExitCodes.PRECHECK_FAILED,
             target + " already exists",
             Optional.of("choose another --out or move the old bundle"));
+      }
+      Path parent = target.getParent();
+      if (parent != null && !Files.isDirectory(parent)) {
+        return ExitCodes.fail(
+            o,
+            err,
+            global.json(),
+            ExitCodes.PRECHECK_FAILED,
+            parent + " is not a directory",
+            Optional.of("create it or choose another --out"));
       }
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Services services = boot.services();
@@ -550,6 +574,14 @@ final class RunsCommand implements Runnable {
               ExitCodes.PRECHECK_FAILED,
               target + " already exists",
               Optional.of("choose another --out or move the old bundle"));
+        } catch (AccessDeniedException denied) {
+          Files.deleteIfExists(target);
+          return ExitCodes.fail(
+              o,
+              err,
+              global.json(),
+              ExitCodes.PRECHECK_FAILED,
+              "cannot write " + target + ": permission denied");
         } catch (IOException | RuntimeException failed) {
           // a bundle that fails partway must not leave a truncated or zero-byte zip behind
           Files.deleteIfExists(target);

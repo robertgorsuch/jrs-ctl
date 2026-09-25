@@ -80,18 +80,26 @@ Copy the token from the terminal only into a browser on the same machine. If it 
 
 ## What the support bundle contains
 
-`GET /api/runs/{id}/support-bundle` streams a zip meant to be attached to a support ticket:
+`jrsctl runs support-bundle <id> [--out <zip>]` writes a zip meant to be attached to a support
+ticket (also served by the console at `GET /api/runs/{id}/support-bundle` until ADR-0038 lands):
 
 | Entry | Content |
 |---|---|
-| `run.json` | The run document of `GET /api/runs/{id}` (steps, statuses, durations, failure block) |
+| `run.json` | The `runs show --json` document (steps, statuses, durations, failure block) |
 | `plan.json` | The stored plan: summary, fingerprint inputs, steps |
 | `transitions.jsonl` | Every `step_transitions` row of the run, one JSON object per line |
 | `events.jsonl` | Every event the console saw for the run (only for runs started from this console) |
-| `server.json` | The `GET /api/server` document at bundle time |
-| `doctor.json` | The `doctor` report (cached for 60 s) |
+| `server.json` | `{baseUrl, reachable, identity}`, or `{baseUrl, reachable: false, error}` when the server cannot be probed |
+| `doctor.json` | A fresh `doctor` run (not cached) |
 | `config-redacted.yaml` | The effective configuration with secret references, never values |
 | `logs/jrsctl.log` | The last 2000 lines of the JSON log |
+| `vendor/buildomatic/js-*.log` | The newest buildomatic script log |
+| `vendor/jasperserver.log` | The webapp's own log |
+| `vendor/catalina.out` (or `catalina.<date>.log`) | Tomcat's own log |
+| `vendor/installation.log` | The installer's log |
+| `vendor/default_master.properties` | The buildomatic properties, password keys blanked |
+
+Each `vendor/` file is tail-capped at 5 MB before it reaches the redactor.
 
 Every entry passes through the redactor as it is written, so configured secrets, the console token,
 session cookies and bearer tokens appear as `[redacted]` in any encoding the redactor knows. The

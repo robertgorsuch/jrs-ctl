@@ -21,7 +21,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -52,6 +55,7 @@ class RunsCommandTest {
   @AfterEach
   void tearDown() {
     HotfixOps.factory = HotfixOps.DEFAULT_FACTORY;
+    TestAdapterFactory.unreachable = false;
   }
 
   private StateStore open() {
@@ -271,6 +275,26 @@ class RunsCommandTest {
         home.resolve("logs").resolve("jrsctl.log"),
         "{\"message\":\"login password=" + secret + "\"}\n",
         StandardCharsets.UTF_8);
+    // review §3.4 (issue #111): the vendor's own files, each carrying the secret, come along too
+    Path tomcat = tmp.resolve("apache-tomcat");
+    Files.createDirectories(tomcat.resolve("logs"));
+    Files.writeString(tomcat.resolve("logs").resolve("catalina.out"), "start " + secret + "\n");
+    Path webInf = tomcat.resolve("webapps").resolve("jasperserver-pro").resolve("WEB-INF");
+    Files.createDirectories(webInf.resolve("logs"));
+    Files.writeString(webInf.resolve("logs").resolve("jasperserver.log"), "js " + secret + "\n");
+    Files.writeString(tmp.resolve("installation.log"), "installer " + secret + "\n");
+    Files.writeString(
+        home.resolve("config.yaml"),
+        """
+        server:
+          baseUrl: http://localhost:8089/jasperserver-pro
+          webappName: jasperserver-pro
+          installDir: %s
+          tomcatDir: %s/apache-tomcat
+        """
+            .formatted(tmp.toString().replace("\\", "/"), tmp.toString().replace("\\", "/")),
+        StandardCharsets.UTF_8);
+    TestAdapterFactory.unreachable = true; // no real server in this fixture
     Path out = tmp.resolve("r-1.zip");
 
     InitCommandTest.Run r =
@@ -290,26 +314,35 @@ class RunsCommandTest {
     assertThat(Path.of(doc.get("path").asText())).isEqualTo(out.toAbsolutePath());
     assertThat(doc.get("bytes").asLong()).isEqualTo(Files.size(out));
     List<String> entries = new ArrayList<>();
-    StringBuilder everything = new StringBuilder();
+    Map<String, String> contents = new LinkedHashMap<>();
     try (ZipInputStream in =
         new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(out)))) {
       ZipEntry e;
       while ((e = in.getNextEntry()) != null) {
         entries.add(e.getName());
-        everything.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        contents.put(e.getName(), new String(in.readAllBytes(), StandardCharsets.UTF_8));
       }
     }
     assertThat(entries)
         .contains(
             "run.json",
+            "plan.json",
             "transitions.jsonl",
             "server.json",
             "doctor.json",
             "config-redacted.yaml",
-            "logs/jrsctl.log");
+            "logs/jrsctl.log",
+            "vendor/catalina.out",
+            "vendor/jasperserver.log",
+            "vendor/installation.log");
     assertThat(doc.get("entries")).extracting(JsonNode::asText).containsExactlyElementsOf(entries);
+    String everything = String.join("", contents.values());
+    assertThat(everything).contains("[redacted]");
     assertThat(everything).doesNotContain(secret);
-    assertThat(everything).contains("\"reachable\" : false"); // no server in this fixture
+    assertThat(everything)
+        .doesNotContain(
+            Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+    assertThat(contents.get("server.json")).contains("\"baseUrl\"").contains("\"reachable\"");
   }
 
   @Test
@@ -346,6 +379,35 @@ class RunsCommandTest {
     assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
     assertThat(Files.readString(out)).isEqualTo("old");
     assertThat(r.err()).contains("already exists");
+  }
+
+  @Test
+  void should_refuse_with_exit_2_before_opening_bootstrap_when_the_out_parent_is_missing() {
+    Path parent = tmp.resolve("nope");
+    Path out = parent.resolve("b.zip");
+
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs", "support-bundle", "r-1", "--out", out.toString(), "--home", home.toString());
+
+    assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(r.err()).contains(parent.toString());
+    assertThat(Files.exists(out)).isFalse();
+    // no Bootstrap side effect: the run lookup, and the state store it needs, never happened
+    assertThat(Files.exists(home.resolve("state.db"))).isFalse();
+  }
+
+  @Test
+  void should_refuse_with_exit_2_when_the_out_path_names_an_existing_directory() throws Exception {
+    Path dir = Files.createDirectory(tmp.resolve("adir"));
+
+    InitCommandTest.Run r =
+        InitCommandTest.run(
+            "runs", "support-bundle", "r-1", "--out", dir.toString(), "--home", home.toString());
+
+    assertThat(r.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(r.err()).contains(dir.toString()).contains("is a directory");
+    assertThat(Files.isDirectory(dir)).isTrue();
   }
 
   @Test

@@ -2,7 +2,7 @@
 
 ## Draft 1.1 amendment — 2026-09-24 (issue #150, support bundle on the CLI)
 
-- §8, §13.1: `runs support-bundle <id> [--out <zip>]` writes the bundle the console served at `GET /api/runs/{id}/support-bundle`; same entries, same redaction, `server.json` degrades to `reachable:false` instead of failing. First step of ADR-0038. `SupportBundle` and `VendorLogs` move from `app.console` to `app`; the console delegates to them.
+- §12.4, §13.1, §6.6: `runs support-bundle <id> [--out <zip>]` writes the bundle the console served at `GET /api/runs/{id}/support-bundle`; same entries, same redaction, `server.json` degrades to `reachable:false` instead of failing. First step of ADR-0038. `SupportBundle` and `VendorLogs` move from `app.console` to `app`; the console delegates to them.
 
 ## Draft 1.1 amendment — 2026-09-22 (issue #144, export's skip-dependent/favorite-resources)
 

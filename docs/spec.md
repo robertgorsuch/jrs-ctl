@@ -355,7 +355,7 @@ Rules:
 ### 6.6 Resume and recovery
 
 - `jrsctl runs recover <runId> --resume|--rollback`.
-- `jrsctl runs support-bundle <id> [--out <zip>]` — zip of plan, transitions (JSONL), logs, server info, doctor report, redacted config, vendor logs.
+- `jrsctl runs support-bundle <id> [--out <zip>]` — the full contract is §12.4.
 - Resume re-runs the precheck of the interrupted Step and then re-executes it (idempotency guarantees convergence). If the precheck fails, only rollback is offered.
 - Rollback compensates every succeeded Step of the run in reverse, after first compensating a mutating Step the journal left `RUNNING` or `FAILED` (the process died before that Step's own compensation ran). A compensation must therefore converge from any partial state, including one where `execute` never started.
 
@@ -677,6 +677,18 @@ Non-mutating by default: login; serverInfo; list `/` repository; run `smoke.repo
 
 Verifies every jar in the runtime image against a build-time manifest of hashes, runtime version, config schema, key ring, SQLite schema version, the host operating system and architecture against ADR-0002, and the directory the SQLite native library is unpacked into (a `noexec` mount fails the item). A failing platform item exits 6, not 2.
 
+### 12.4 `runs support-bundle`
+
+`jrsctl runs support-bundle <id> [--out <zip>] [--json]` (§6.6) writes one run's support bundle as a zip, meant to be attached to a support ticket; the same zip is served at `GET /api/runs/{id}/support-bundle` until ADR-0038 removes the console (§13.1).
+
+- Entries: `run.json` (the `runs show --json` document: steps, statuses, durations, failure block); `plan.json` (the stored plan, present when the run has one); `transitions.jsonl` (every `step_transitions` row of the run, one JSON object per line); `events.jsonl` (present only when the run kept one); `server.json` (server identity, or `reachable: false` with the probe's error when the server cannot be reached — a bundle is wanted most when the server is broken, so this entry never causes a failure); `doctor.json` (a fresh `doctor` run, never a cached one); `config-redacted.yaml` (the effective configuration with secret references, never values); `logs/<name>` (the last 2,000 lines of the log file named by the `jrsctl.log.file` system property, the log this process is actually writing); and, under `vendor/`, the newest buildomatic script log, `jasperserver.log`, the Tomcat `catalina` log, `installation.log` and `default_master.properties` (with password keys blanked before the redactor sees the line), each tail-capped at 5 MB.
+- Every byte written passes the redactor on its way into the archive, so a registered secret cannot appear in the bundle in any encoding the redactor knows.
+- Everything that can fail — the live doctor run and the server probe behind it, and every document read from the state store — runs before the archive file is created, so a failure is a clean refusal and never a truncated or zero-byte zip.
+- A missing optional input (no stored plan, no `events.jsonl`, no vendor file at a given location) yields no entry rather than an error.
+- A write that fails partway through the archive leaves no file behind: the target is opened `CREATE_NEW`, and any exception while writing deletes the partial file before it propagates.
+- `--out` defaults to `<id>-support-bundle.zip` in the current directory.
+- Exit 2, before anything is read from the state store: the run id is unknown; `--out` already exists; `--out` names a directory; or `--out`'s parent directory does not exist.
+
 ---
 
 ## 13. Console (in `app`)
@@ -696,7 +708,7 @@ All endpoints require the bearer token (§11.2).
 | GET | `/api/runs/{id}/events` | SSE stream (replays `step_transitions`, then live) |
 | POST | `/api/runs/{id}/cancel` | cancel |
 | POST | `/api/runs/{id}/rollback` | rollback where available |
-| GET | `/api/runs/{id}/support-bundle` | as `runs support-bundle` |
+| GET | `/api/runs/{id}/support-bundle` | as `runs support-bundle` (§12.4) |
 | GET | `/api/doctor` | run doctor, return report |
 | POST | `/api/auth/launch` | exchange a single-use launch code for the bearer token (§11.2) |
 | POST | `/api/runs/{id}/resume` | resume a pending run from its interrupted step |
