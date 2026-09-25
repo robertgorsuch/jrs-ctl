@@ -255,8 +255,8 @@ final class HotfixVerifySteps {
 
     @Override
     public String detail() {
-      return "free space per volume for staging, snapshot and landing, write access, locks,"
-          + " service state"
+      return "free space per volume for staging, snapshot and landing, write access, file owners,"
+          + " locks, service state"
           + (in.hasSql() ? ", database connectivity" : "");
     }
 
@@ -320,6 +320,7 @@ final class HotfixVerifySteps {
           problems.add(dir + " is not writable");
         }
       }
+      OwnerRestore.problem(files, in.snapshotPaths()).ifPresent(problems::add);
       boolean needsStop = in.manifest().touchesWebInf();
       if (needsStop && !in.restartRequired()) {
         problems.add(

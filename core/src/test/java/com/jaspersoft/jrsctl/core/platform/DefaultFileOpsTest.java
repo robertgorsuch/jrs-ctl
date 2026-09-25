@@ -76,6 +76,27 @@ class DefaultFileOpsTest {
     assertThat(source).doesNotExist();
   }
 
+  /**
+   * #157: a file this account created needs no owner restore, and the probe leaves the directory,
+   * the file and its owner exactly as they were.
+   */
+  @Test
+  void should_restore_the_owner_of_a_file_this_account_owns_and_change_nothing(@TempDir Path dir)
+      throws IOException {
+    Path target = dir.resolve("app.jar");
+    Files.writeString(target, "old", StandardCharsets.UTF_8);
+    UserPrincipal ownerBefore = Files.getOwner(target);
+
+    boolean restorable = files.canRestoreOwner(target);
+
+    assertThat(restorable).isTrue();
+    assertThat(Files.getOwner(target)).isEqualTo(ownerBefore);
+    assertThat(Files.readString(target, StandardCharsets.UTF_8)).isEqualTo("old");
+    try (var entries = Files.list(dir)) {
+      assertThat(entries).containsExactly(target);
+    }
+  }
+
   @Test
   @EnabledOnOs(OS.WINDOWS)
   void should_keep_target_owner_when_atomically_replacing(@TempDir Path dir) throws IOException {

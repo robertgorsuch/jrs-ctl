@@ -182,6 +182,49 @@ public class DefaultFileOps implements FileOps {
     return false;
   }
 
+  /**
+   * Two probes, neither of which changes anything (#157). A file written over {@code file} is
+   * created by this process, so if a new file in the same directory already gets {@code file}'s
+   * owner there is nothing to restore; the probe file is removed again, like {@link #isWritable}'s.
+   * Otherwise {@code file} is given the owner it already has, which needs exactly the right a later
+   * restore of that owner needs: on Windows an elevated token for {@code BUILTIN\Administrators},
+   * on Linux root for another user.
+   */
+  @Override
+  public boolean canRestoreOwner(Path file) {
+    UserPrincipal owner;
+    try {
+      owner = Files.getOwner(file);
+    } catch (UnsupportedOperationException e) {
+      return true;
+    } catch (IOException e) {
+      LOG.debug("cannot read the owner of {}", file, e);
+      return true;
+    }
+    Path dir = file.toAbsolutePath().getParent();
+    if (dir != null) {
+      try {
+        Path probe = Files.createTempFile(dir, ".jrsctl-owner", ".tmp");
+        try {
+          if (Files.getOwner(probe).equals(owner)) {
+            return true;
+          }
+        } finally {
+          Files.deleteIfExists(probe);
+        }
+      } catch (IOException | SecurityException e) {
+        LOG.debug("cannot probe the default owner in {}", dir, e);
+      }
+    }
+    try {
+      Files.setOwner(file, owner);
+      return true;
+    } catch (IOException | SecurityException e) {
+      LOG.debug("cannot assign owner {} on {}", owner.getName(), file, e);
+      return false;
+    }
+  }
+
   /** Owner name, or empty string when the file system cannot report one. */
   protected static String ownerName(Path path) throws IOException {
     try {
