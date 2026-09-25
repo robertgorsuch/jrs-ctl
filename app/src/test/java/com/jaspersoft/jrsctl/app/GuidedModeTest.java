@@ -225,7 +225,7 @@ class GuidedModeTest {
             com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.REST));
     Env.override(java.util.Map.of("HOME", home.toString(), "USERPROFILE", home.toString()));
     try {
-      guided(List.of(), List.of(), "4", "~/in.zip", "", "", "", "", "", "q");
+      guided(List.of(), List.of(), "4", "~/in.zip", "", "", "", "", "", "", "q");
     } finally {
       Env.reset();
     }
@@ -413,7 +413,7 @@ class GuidedModeTest {
             "abc",
             com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.REST));
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "q");
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "", "q");
 
     assertThat(text.toString())
         .contains("says it was encrypted with the key alias deprecatedImportExportEncSecret")
@@ -425,7 +425,7 @@ class GuidedModeTest {
   void should_pass_the_legacy_key_alias_when_the_operator_answers_yes() throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "yes", "", "q");
+    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "", "", "yes", "", "q");
 
     assertThat(ran)
         .containsExactly(
@@ -703,7 +703,8 @@ class GuidedModeTest {
   void should_say_buildomatic_and_name_no_company_when_the_menu_is_shown() throws Exception {
     Path archive = Files.writeString(tmp.resolve("in.zip"), "zip");
 
-    guided(List.of(), List.of(), "4", archive.toString(), "", "", "", "buildomatic", "", "", "q");
+    guided(
+        List.of(), List.of(), "4", archive.toString(), "", "", "", "", "buildomatic", "", "", "q");
 
     assertThat(text.toString())
         .contains("Strategy: auto, rest or buildomatic")
