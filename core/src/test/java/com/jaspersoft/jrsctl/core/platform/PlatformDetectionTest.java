@@ -78,6 +78,62 @@ class PlatformDetectionTest {
     assertThat(platform.detectTomcat(install.resolve("missing"))).isEmpty();
   }
 
+  /** Field test 3: "-9.0.0" sorted before "-10.0.0" as text, so a JRS 9 was proposed first. */
+  @Test
+  void should_list_the_highest_version_first_when_globbing_install_dirs(@TempDir Path parent)
+      throws IOException {
+    for (String name :
+        List.of(
+            "jasperreports-server-9.0.0",
+            "jasperreports-server-10.0.0",
+            "jasperreports-server-8.2.0")) {
+      Files.createDirectories(parent.resolve(name));
+    }
+
+    assertThat(AbstractPlatform.glob(parent, "jasperreports-server*"))
+        .extracting(p -> p.getFileName().toString())
+        .containsExactly(
+            "jasperreports-server-10.0.0",
+            "jasperreports-server-9.0.0",
+            "jasperreports-server-8.2.0");
+  }
+
+  @Test
+  void should_pick_the_highest_tomcat_with_a_webapp_when_an_install_holds_several(
+      @TempDir Path install) throws IOException {
+    fakeInstall(install, "apache-tomcat-9.0.85", "jasperserver-pro", SERVER_XML);
+    Path ten = fakeInstall(install, "apache-tomcat-10.1.18", "jasperserver-pro", SERVER_XML);
+    Files.createDirectories(install.resolve("apache-tomcat-11.0.0").resolve("webapps"));
+
+    assertThat(platform.detectTomcat(install).map(TomcatLayout::tomcatDir)).contains(ten);
+  }
+
+  @Test
+  void should_mark_running_installs_and_name_the_blind_spot_when_a_jvm_cannot_be_read(
+      @TempDir Path install) throws IOException {
+    fakeInstall(install, "apache-tomcat", "jasperserver-pro", SERVER_XML);
+    TomcatProcessFinder.TomcatProcess opaque =
+        new TomcatProcessFinder.TomcatProcess(
+            77, "", Optional.empty(), Optional.empty(), Optional.empty());
+    Platform windows =
+        new WindowsPlatform(
+            Platform.Arch.X86_64,
+            new FakeProcessRunner(),
+            new DefaultFileOps(),
+            OperatorPrompt.nonInteractive(),
+            new FakeTomcatProcessFinder(
+                List.of(List.of(FakeTomcatProcessFinder.tomcatUnder(install), opaque))));
+
+    InstallScan scan = windows.scanInstallDirs();
+
+    Path tomcat = install.resolve("apache-tomcat").toAbsolutePath().normalize();
+    assertThat(scan.candidates()).first().isEqualTo(tomcat);
+    assertThat(scan.isRunning(tomcat)).isTrue();
+    assertThat(scan.processScanLimit())
+        .hasValueSatisfying(l -> assertThat(l).contains("1 Java process").contains("elevated"));
+    assertThat(windows.candidateInstallDirs()).isEqualTo(scan.candidates());
+  }
+
   @Test
   void should_list_existing_unique_dirs_when_scanning_candidates() {
     List<Path> candidates = platform.candidateInstallDirs();

@@ -46,14 +46,14 @@ public final class LinuxPlatform extends AbstractPlatform {
   }
 
   @Override
-  public List<Path> candidateInstallDirs() {
-    List<Path> candidates = new ArrayList<>(installDirsFromProcesses());
+  List<Path> wellKnownInstallDirs() {
+    List<Path> candidates = new ArrayList<>();
     candidates.addAll(glob(Path.of("/opt"), "jasperreports-server*"));
     candidates.addAll(glob(Path.of("/opt/jaspersoft"), "*"));
     candidates.addAll(glob(Path.of("/usr/local"), "jasperreports-server*"));
     for (Path home : glob(Path.of("/home"), "*")) {
       candidates.addAll(glob(home, "jasperreports-server*"));
     }
-    return existingUnique(candidates);
+    return candidates;
   }
 }
