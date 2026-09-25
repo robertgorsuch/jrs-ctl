@@ -129,7 +129,10 @@ class Phase7DistributionTest {
 
     Launch r = runPowershellLauncher(image.resolve("bin/jrsctl.ps1"), tmp, "--version");
     assertThat(r.exit()).as("--version\n%s\n%s", r.stdout(), r.stderr()).isZero();
-    assertThat(r.stdout()).contains("jrsctl " + VERSION).contains("Actian Jaspersoft");
+    assertThat(r.stdout())
+        .contains("jrsctl " + VERSION)
+        .contains("(Jaspersoft)")
+        .doesNotContain("Actian");
 
     r = runPowershellLauncher(image.resolve("bin/jrsctl.ps1"), tmp, "selfcheck");
     assertThat(r.exit()).as("selfcheck\n%s\n%s", r.stdout(), r.stderr()).isZero();
@@ -182,7 +185,10 @@ class Phase7DistributionTest {
     assumeImageBuilt();
     Launch r = launch(image, tmp, "--version");
     assertThat(r.exit()).as("--version\n%s\n%s", r.stdout(), r.stderr()).isZero();
-    assertThat(r.stdout()).contains("jrsctl " + VERSION).contains("Actian Jaspersoft");
+    assertThat(r.stdout())
+        .contains("jrsctl " + VERSION)
+        .contains("(Jaspersoft)")
+        .doesNotContain("Actian");
 
     r = launch(image, tmp, "selfcheck");
     assertThat(r.exit()).as("selfcheck\n%s\n%s", r.stdout(), r.stderr()).isZero();
@@ -222,7 +228,10 @@ class Phase7DistributionTest {
 
     Launch r = launch(root, tmp.resolve("home2"), "--version");
     assertThat(r.exit()).as("--version from archive\n%s\n%s", r.stdout(), r.stderr()).isZero();
-    assertThat(r.stdout()).contains("jrsctl " + VERSION).contains("Actian Jaspersoft");
+    assertThat(r.stdout())
+        .contains("jrsctl " + VERSION)
+        .contains("(Jaspersoft)")
+        .doesNotContain("Actian");
   }
 
   record Launch(int exit, String stdout, String stderr) {}

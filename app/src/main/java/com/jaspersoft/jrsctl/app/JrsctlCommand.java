@@ -24,7 +24,7 @@ import picocli.CommandLine.Spec;
     name = "jrsctl",
     mixinStandardHelpOptions = true,
     versionProvider = JrsctlCommand.VersionProvider.class,
-    header = "jrsctl - JasperReports Server lifecycle tool (Actian Jaspersoft)",
+    header = "jrsctl - JasperReports Server lifecycle tool (Jaspersoft)",
     exitCodeOnInvalidInput = ExitCodes.USAGE,
     exitCodeOnExecutionException = ExitCodes.FAILED_ROLLBACK_INCOMPLETE,
     description =

@@ -53,4 +53,4 @@ Java 21; records + sealed interfaces; pattern-matching `switch` with no `default
 
 ## Branding
 
-Product name `jrsctl`, vendor line "Actian Jaspersoft". Colour and type tokens live in `docs/branding.md`; values are provisional until the official brand guide is supplied.
+Product name `jrsctl`, vendor line "Jaspersoft" in `--help` and `--version`; the guided menu names no company (field test 3, at the maintainer's request). Colour and type tokens live in `docs/branding.md`; values are provisional until the official brand guide is supplied.

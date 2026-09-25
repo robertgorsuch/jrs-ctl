@@ -26,7 +26,7 @@ class Phase0SkeletonTest {
   void version_prints_product_and_vendor() throws Exception {
     Cli.Result r = cli.run("--version").assertExit(0);
     assertThat(r.stdout()).contains("jrsctl " + System.getProperty("jrsctl.version"));
-    assertThat(r.stdout()).contains("Actian Jaspersoft");
+    assertThat(r.stdout()).contains("Jaspersoft").doesNotContain("Actian");
   }
 
   @Test

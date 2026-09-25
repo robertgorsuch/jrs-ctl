@@ -59,6 +59,6 @@ public final class Version {
       v = "0.0.0-dev";
     }
     return new Version(
-        v, p.getProperty("product", "jrsctl"), p.getProperty("vendor", "Actian Jaspersoft"));
+        v, p.getProperty("product", "jrsctl"), p.getProperty("vendor", "Jaspersoft"));
   }
 }
