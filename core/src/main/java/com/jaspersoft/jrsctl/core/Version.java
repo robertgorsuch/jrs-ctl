@@ -40,7 +40,7 @@ public final class Version {
     return vendor;
   }
 
-  /** One-line banner used by {@code --version} and the console health endpoint. */
+  /** One-line banner used by {@code --version}. */
   public String banner() {
     return product + " " + version + " (" + vendor + ")";
   }

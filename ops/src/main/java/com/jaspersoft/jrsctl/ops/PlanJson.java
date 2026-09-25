@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The JSON form of a plan: what {@code --json} prints, what the console returns and what the {@code
- * plans} table stores. Invariant: one document for all three, so a plan shown on the terminal, a
- * plan the console renders and a plan replayed from the store cannot disagree about what the run
- * was going to do. It lives in ops rather than in the CLI because the store and the console need it
- * as much as the terminal does (roadmap item 17).
+ * The JSON form of a plan: what {@code --json} prints and what the {@code plans} table stores.
+ * Invariant: one document for both, so a plan shown on the terminal and a plan replayed from the
+ * store cannot disagree about what the run was going to do. It lives in ops rather than in the CLI
+ * because the store and {@code runs recover} need it as much as the terminal does (roadmap item
+ * 17).
  */
 public final class PlanJson {
 

@@ -14,6 +14,7 @@ references, and the ability to start a mutating run. The threats the design answ
 |---|---|---|
 | Secrets in output | Logs, `--json`, support bundles, error messages | One `Redactor` masks every configured secret (raw, Base64, URL-encoded, JSON-string-escaped) and the well-known patterns (`password=`, `Authorization:`, `JSESSIONID`, `Bearer`) on every stream that leaves the process |
 | Replaying a stale plan | `runs recover` on a plan built against an earlier server state | Plans expire after 30 minutes, execute at most once, and are refused (exit 2) when their fingerprint no longer matches |
+| Another local user on the host | reads the home or starts a run | the home jrsctl creates is owner-only, secrets.enc, keys and file: secrets are written owner-only before content, and a second process exits 9 on the run lock |
 
 Out of scope: an attacker with the operator's own account (they can read the config), and
 kernel- or hypervisor-level access to the host.

@@ -110,9 +110,9 @@ public final class StateStore implements Journal, AutoCloseable {
   /**
    * Pragmas, integrity check and migrations, retried while another process is doing the same
    * (review 5.4). Switching a fresh database to WAL takes an exclusive lock, and two jrsctl
-   * processes opening one home at the same moment - the console and a {@code runs list}, say - used
-   * to leave one of them with SQLITE_BUSY and no store at all. Every statement here is idempotent,
-   * so the whole sequence can simply be run again.
+   * processes opening one home at the same moment - two commands, {@code runs list} and a run, say
+   * - used to leave one of them with SQLITE_BUSY and no store at all. Every statement here is
+   * idempotent, so the whole sequence can simply be run again.
    */
   private static void initialise(Connection c, Clock clock, Path abs) throws SQLException {
     SQLException lastBusy = null;

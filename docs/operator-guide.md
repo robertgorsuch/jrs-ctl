@@ -219,6 +219,10 @@ Every setting the configuration accepts, in schema order, with its current value
 - **Exit codes:** 0; **2** when `config.yaml` is malformed.
 - **Flags:** `--json` — an array of `{key, value, source, description}`.
 
+### Upgrading from 1.x
+
+ADR-0038 removed the web console; a `config.yaml` from jrsctl 1.x that still has a `console:` block keeps loading in 2.0.0, with one warning naming ADR-0038, and jrsctl 2.1 will refuse it. `jrsctl config set` and `jrsctl config unset` rewrite such a file without the block the next time either runs, keeping the original as `config.yaml.bak`. A `console.*` line in `jrsctl.properties` is skipped the same way, with one warning per line. `jrsctl config set console.<key> <value>` and `--set console.<key>=<value>` are refused outright, naming ADR-0038, since there is nothing left to set. Any `JRSCTL_CONSOLE_*` environment variable and `JRS_CONSOLE_PASSWORD` are ignored. Under `--json` the warning goes only to `logs/jrsctl.log`; standard error stays silent by design (spec §18). `$JRSCTL_HOME/console.token`, left over from a 1.x console, is unused now and safe to delete.
+
 ### Applying a hotfix from Jaspersoft support
 
 This is the whole procedure for a cumulative hotfix as support publishes it (`hotfix_JRSPro<version>_cumulative_<date>_<time>.zip`):
@@ -491,7 +495,7 @@ One run: the plan summary it was started from (operation, target, files, service
 
 ### `jrsctl runs support-bundle <id> [--out <zip>] [--json]`
 
-Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, `catalina.out` and the installer log, each tail-capped at 5 MB with passwords blanked. Every byte passes the redactor.
+Writes one run's support bundle as a zip: `run.json` (the `runs show --json` document), `plan.json`, `transitions.jsonl`, `server.json` (identity, or `reachable: false` when the server cannot be probed), `doctor.json` (a fresh `doctor` run), `config-redacted.yaml`, the last 2,000 lines of `logs/jrsctl.log`, and under `vendor/` the newest buildomatic log, `jasperserver.log`, the Tomcat `catalina` log (`catalina.out`, or the newest `catalina.<date>.log` on Windows), the installer log and `default_master.properties`, each tail-capped at 5 MB with `default_master.properties`'s password keys blanked. Every byte passes the redactor.
 
 - **Mutates:** only the zip it writes; refuses to overwrite an existing file.
 - **Rollback:** not applicable.

@@ -3,10 +3,9 @@ package com.jaspersoft.jrsctl.core.engine;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Single cancellation token shared by Ctrl-C, the console cancel endpoint and timeouts (spec §6.4).
- * Invariant: once cancelled it stays cancelled and records the first reason; steps poll {@link
- * #isCancelled()} between units of work and finish or compensate the unit in flight, never abandon
- * a partial write.
+ * Single cancellation token shared by Ctrl-C and timeouts (spec §6.4). Invariant: once cancelled it
+ * stays cancelled and records the first reason; steps poll {@link #isCancelled()} between units of
+ * work and finish or compensate the unit in flight, never abandon a partial write.
  */
 public final class CancellationToken {
 

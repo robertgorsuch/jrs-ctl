@@ -77,7 +77,7 @@ final class Bootstrap implements AutoCloseable {
             .home()
             .map(h -> new JrsctlHome(h.toAbsolutePath().normalize()))
             .orElseGet(() -> JrsctlHomeResolver.resolve(env, detected));
-    // review 4.1: the home holds secrets.enc, console.token, state.db and the snapshots, so a
+    // review 4.1: the home holds secrets.enc, a 1.x console.token, state.db and the snapshots, so a
     // home jrsctl creates is private to its owner from the start. An existing home is left as the
     // operator set it up; it is only read, never re-permissioned.
     createHome(detected, home);

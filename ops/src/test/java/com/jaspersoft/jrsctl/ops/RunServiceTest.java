@@ -19,8 +19,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The glue both front ends share: storing a plan with its time to live, claiming it once, and
- * building the context and runner a run executes in. It lives in ops rather than in the CLI so the
- * console cannot drift from the command line (roadmap item 17).
+ * building the context and runner a run executes in. It lives in ops rather than in the CLI so
+ * {@code runs recover} cannot drift from the command line (roadmap item 17).
  */
 class RunServiceTest {
 

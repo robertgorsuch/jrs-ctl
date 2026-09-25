@@ -4,8 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * How a run ended, as the Runner reports it to the CLI and console (spec §6.3, §18). Invariant:
- * {@link #exitCode()} is the process exit code for the outcome: 0 success, 3 rolled back cleanly, 4
+ * How a run ended, as the Runner reports it to the CLI (spec §6.3, §18). Invariant: {@link
+ * #exitCode()} is the process exit code for the outcome: 0 success, 3 rolled back cleanly, 4
  * rollback incomplete, 2 when nothing was mutated (precheck failure, fingerprint mismatch, or a
  * fatal failure before any mutation), 5 cancelled. Lists are immutable copies.
  */

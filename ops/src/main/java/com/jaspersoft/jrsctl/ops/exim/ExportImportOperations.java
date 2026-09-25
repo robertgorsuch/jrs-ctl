@@ -12,9 +12,9 @@ import java.util.Set;
 /**
  * Entry points of the export/import subsystem (spec §9). Planning never mutates anything: it
  * connects to the server, chooses the strategy, and returns a {@link Plan} whose execution is the
- * {@code Runner}'s job. Invariants: an option record is exactly what the CLI flags and the console
- * arguments carry, so a plan can be rebuilt from them for {@code runs recover}; an empty {@code
- * strategy} means "select by the rules of spec §9.2", a present one forces that kind.
+ * {@code Runner}'s job. Invariants: an option record is exactly what the CLI flags carry, so a plan
+ * can be rebuilt from them for {@code runs recover}; an empty {@code strategy} means "select by the
+ * rules of spec §9.2", a present one forces that kind.
  */
 public interface ExportImportOperations {
 
