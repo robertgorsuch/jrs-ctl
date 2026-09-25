@@ -578,6 +578,47 @@ class ConfigLoaderTest {
         .hasMessageContaining("console.port is no longer used (ADR-0038)");
   }
 
+  /**
+   * The gap ADR-0038's promise depends on: an operator's first move on a 1.x file is often {@code
+   * config set}, which must not be refused just because a stale {@code console:} block is still
+   * there (#151).
+   */
+  @Test
+  void should_change_another_key_when_a_1x_file_still_has_a_console_block() throws IOException {
+    Path file = tmp.resolve("config.yaml");
+    Files.writeString(
+        file,
+        """
+        server:
+          baseUrl: http://localhost:8080/jasperserver-pro
+        console:
+          port: 7421
+        """);
+    List<String> warnings = new ArrayList<>();
+
+    Config updated = new ConfigLoader(warnings::add).fileWith(file, "backups.retentionDays", "10");
+    ConfigWriter.write(updated, file);
+
+    assertThat(updated.backups().retentionDays()).isEqualTo(10);
+    assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
+    assertThat(warnings).singleElement().asString().contains("ADR-0038");
+  }
+
+  /** As above, for {@code jrsctl.properties}, whose tolerance already lives in the line parser. */
+  @Test
+  void should_change_another_key_when_a_1x_properties_file_still_has_a_console_line()
+      throws IOException {
+    Path file = tmp.resolve("config.properties");
+    Files.writeString(
+        file, "server.baseUrl=http://localhost:8080/jasperserver-pro\nconsole.port=7421\n");
+    List<String> warnings = new ArrayList<>();
+
+    Config updated = new ConfigLoader(warnings::add).fileWith(file, "backups.retentionDays", "10");
+
+    assertThat(updated.backups().retentionDays()).isEqualTo(10);
+    assertThat(warnings).singleElement().asString().contains("console.port");
+  }
+
   @Test
   void should_skip_a_console_key_in_a_properties_file_with_one_warning() throws IOException {
     Path file = tmp.resolve("config.properties");

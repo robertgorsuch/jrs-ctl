@@ -73,8 +73,4 @@ public record JrsctlHome(Path root) {
   public Path secretsFile() {
     return root.resolve("secrets.enc");
   }
-
-  public Path consoleToken() {
-    return root.resolve("console.token");
-  }
 }

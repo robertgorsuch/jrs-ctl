@@ -99,8 +99,7 @@ public final class ConfigLoader {
     Objects.requireNonNull(file, "file");
     Objects.requireNonNull(env, "env");
     Objects.requireNonNull(flags, "flags");
-    ObjectNode tree = readFile(file);
-    dropConsoleBlock(tree, file);
+    ObjectNode tree = readTree(file);
     for (Map.Entry<String, SchemaKeys.Type> key : leafKeys.entrySet()) {
       String value = env.get(envKey(key.getKey()));
       if (value != null) {
@@ -135,7 +134,7 @@ public final class ConfigLoader {
     Objects.requireNonNull(file, "file");
     Objects.requireNonNull(env, "env");
     Objects.requireNonNull(flags, "flags");
-    ObjectNode tree = readFile(file);
+    ObjectNode tree = readTree(file);
     Map<String, Source> out = new LinkedHashMap<>();
     for (String key : leafKeys.keySet()) {
       String variable = envKey(key);
@@ -159,7 +158,7 @@ public final class ConfigLoader {
   public Config fileWith(Path file, String key, String raw) {
     Objects.requireNonNull(raw, "raw");
     requireKnown(key);
-    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    ObjectNode tree = readTree(Objects.requireNonNull(file, "file"));
     put(tree, key, coerce(raw, leafKeys.get(key)));
     validate(tree);
     return toConfig(tree, Map.of());
@@ -168,7 +167,7 @@ public final class ConfigLoader {
   /** As {@link #fileWith} with {@code key} removed, so its default (or nothing) applies. */
   public Config fileWithout(Path file, String key) {
     requireKnown(key);
-    ObjectNode tree = readFile(Objects.requireNonNull(file, "file"));
+    ObjectNode tree = readTree(Objects.requireNonNull(file, "file"));
     String[] segments = key.split("\\.", -1);
     JsonNode parent = tree.at("/" + String.join("/", Arrays.copyOf(segments, segments.length - 1)));
     if (parent instanceof ObjectNode obj) {
@@ -272,6 +271,18 @@ public final class ConfigLoader {
   }
 
   // ---- tree assembly ----------------------------------------------------------------------------
+
+  /**
+   * {@code file} parsed and with a stale {@code console:} block dropped (ADR-0038); the single
+   * point every file-reading entry point ({@link #load(Path, Map, Map)}, {@link #sources}, {@link
+   * #fileWith} and {@link #fileWithout}) goes through, so the one-release tolerance and its one
+   * warning per parse apply everywhere a file is read, not only when loading the effective config.
+   */
+  private ObjectNode readTree(Path file) {
+    ObjectNode tree = readFile(file);
+    dropConsoleBlock(tree, file);
+    return tree;
+  }
 
   private ObjectNode readFile(Path file) {
     if (!Files.isRegularFile(file)) {
