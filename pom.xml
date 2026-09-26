@@ -88,12 +88,12 @@
     <repository>
       <id>github</id>
       <name>GitHub Packages</name>
-      <url>https://maven.pkg.github.com/robertgorsuch/jrs-ctl</url>
+      <url>https://maven.pkg.github.com/robertgorsuch/jrsctl</url>
     </repository>
     <snapshotRepository>
       <id>github</id>
       <name>GitHub Packages Snapshots</name>
-      <url>https://maven.pkg.github.com/robertgorsuch/jrs-ctl</url>
+      <url>https://maven.pkg.github.com/robertgorsuch/jrsctl</url>
     </snapshotRepository>
   </distributionManagement>
 

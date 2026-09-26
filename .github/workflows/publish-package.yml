@@ -48,6 +48,11 @@ jobs:
           ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${TAG#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
 
       - name: "Publish to GitHub Packages (release profile: never a SNAPSHOT)"
-        run: ./mvnw -B -DskipTests -Prelease deploy
+        # the repository this workflow runs in, not the one the tag's pom names: after the repository
+        # was renamed (jrs-ctl -> jrsctl), v2.1.0's pom still named the old package endpoint, which
+        # GitHub Packages does not redirect
+        run: >-
+          ./mvnw -B -DskipTests -Prelease deploy
+          -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
