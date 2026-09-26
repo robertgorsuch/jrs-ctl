@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-09-26 (issue #147, installs without a registered service)
+
+- §5.1, §12.0: a WAR + buildomatic install uses the existing `catalina` kind (or `manual`); no `script` kind is added (ADR-0042). `init` says why it proposes `catalina` or `manual`.
+- §12.1: new doctor item `running-tomcat` reports a Tomcat running under the installation from the process list whatever `service.kind` says, and warns when the configured service disagrees. `Platform.runningTomcats(dir)` is the new platform call behind it.
+
 ## Draft 1.2 amendment — 2026-09-26 (issue #154, 2.1 refuses the 1.x console block)
 
 - §5.1: a 1.x `console:` block or `console.*` properties line is refused on every read (exit 2), naming ADR-0038 and `jrsctl config unset console`, which alone reads past it to remove it. The 2.0 tolerance and its warning are gone.
