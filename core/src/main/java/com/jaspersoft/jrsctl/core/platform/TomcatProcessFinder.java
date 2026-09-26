@@ -24,6 +24,18 @@ interface TomcatProcessFinder {
   List<TomcatProcess> find();
 
   /**
+   * As {@link #find()}, plus service wrappers ({@code tomcatN.exe}) whose command line this account
+   * cannot read, returned {@link TomcatProcess#opaque() opaque} with their listening ports. Only
+   * reports use it (issue #147); the service steps keep {@link #find()}, where such wrappers are
+   * left out (ADR-0014). The default adds nothing, since only Windows hides them.
+   *
+   * @throws TomcatScanException when the process list cannot be obtained
+   */
+  default List<TomcatProcess> findWithServiceWrappers() {
+    return find();
+  }
+
+  /**
    * A Tomcat JVM with the install locations that could be read from its command line, and the TCP
    * ports it listens on where the scan can tell (empty when it cannot or there are none).
    */

@@ -191,6 +191,31 @@ class WindowsTomcatProcessesTest {
     assertThat(found.get(1).catalinaHome()).contains(tomcat);
   }
 
+  /**
+   * The installer's service runs Tomcat inside {@code tomcat10.exe} as LocalSystem, unreadable
+   * without elevation: reports keep it as opaque so doctor sees it, the service steps do not (issue
+   * #147, found live against the 10.0.0 install).
+   */
+  @Test
+  void should_keep_an_unreadable_service_wrapper_only_when_asked_for_service_wrappers() {
+    List<String> lines =
+        List.of(
+            row(11, "java.exe", null, null, "8080"),
+            row(13, "tomcat10.exe", null, null, "8081"),
+            WindowsTomcatProcesses.END);
+
+    List<TomcatProcessFinder.TomcatProcess> forSteps = WindowsTomcatProcesses.parse(lines, 1);
+    List<TomcatProcessFinder.TomcatProcess> forReports =
+        WindowsTomcatProcesses.parse(lines, 1, true);
+
+    assertThat(forSteps).extracting(TomcatProcessFinder.TomcatProcess::pid).containsExactly(11L);
+    assertThat(forReports)
+        .extracting(TomcatProcessFinder.TomcatProcess::pid)
+        .containsExactly(11L, 13L);
+    assertThat(forReports.get(1).opaque()).isTrue();
+    assertThat(forReports.get(1).listeningPorts()).containsExactly(8081);
+  }
+
   @Test
   void should_decode_paths_outside_the_console_code_page() {
     String commandLine =

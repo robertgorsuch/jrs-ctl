@@ -31,8 +31,9 @@ import java.util.regex.Pattern;
  * command line this account cannot read (another account's process, without elevation) is returned
  * as {@link TomcatProcess#opaque()} with the ports it listens on, which are readable without
  * elevation, so {@link TomcatState} can tell an unrelated Java service from a Tomcat on the watched
- * ports; an unreadable {@code tomcatN.exe} is left out, because service wrappers belong to the
- * service kinds, which do not use this scan; Tomcat recognition is {@link
+ * ports; an unreadable {@code tomcatN.exe} is left out of {@link #find()}, because service wrappers
+ * belong to the service kinds, which do not use this scan, and kept as opaque only by {@link
+ * #findWithServiceWrappers()}, for reports (issue #147); Tomcat recognition is {@link
  * TomcatProcesses#describe}; this JVM is never listed.
  */
 final class WindowsTomcatProcesses implements TomcatProcessFinder {
@@ -65,6 +66,7 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
   private static final Set<String> FOREIGN_ANY = Set.of("0.0.0.0:0", "[::]:0", "*:0");
   private static final Pattern COMMA = Pattern.compile(",");
   private static final Pattern JVM = Pattern.compile("(?i)javaw?\\.exe");
+  private static final Pattern SERVICE_WRAPPER = Pattern.compile("(?i)tomcat\\d*w?\\.exe");
 
   private final ProcessRunner runner;
   private final List<String> command;
@@ -109,6 +111,15 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
 
   @Override
   public List<TomcatProcess> find() {
+    return scan(false);
+  }
+
+  @Override
+  public List<TomcatProcess> findWithServiceWrappers() {
+    return scan(true);
+  }
+
+  private List<TomcatProcess> scan(boolean withServiceWrappers) {
     Map<Long, Set<Integer>> listeners = listeners();
     List<String> stdout = new ArrayList<>();
     List<String> stderr = new ArrayList<>();
@@ -138,7 +149,7 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
               + ")"
               + (stderr.isEmpty() ? "" : ": " + String.join(" ", stderr).strip()));
     }
-    return parse(stdout, ProcessHandle.current().pid()).stream()
+    return parse(stdout, ProcessHandle.current().pid(), withServiceWrappers).stream()
         .map(t -> t.withListeningPorts(listeners.getOrDefault(t.pid(), Set.of())))
         .toList();
   }
@@ -199,6 +210,14 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
 
   /** The processes in the scan's output, excluding {@code self}. */
   static List<TomcatProcess> parse(List<String> lines, long self) {
+    return parse(lines, self, false);
+  }
+
+  /**
+   * The rows of one scan; with {@code withServiceWrappers} an unreadable {@code tomcatN.exe} is
+   * kept as an opaque process instead of left out (issue #147).
+   */
+  static List<TomcatProcess> parse(List<String> lines, long self, boolean withServiceWrappers) {
     List<TomcatProcess> found = new ArrayList<>();
     for (String raw : lines) {
       String line = raw.strip();
@@ -230,7 +249,8 @@ final class WindowsTomcatProcesses implements TomcatProcessFinder {
         TomcatProcesses.describe(pid, "", exe.get())
             .map(t -> t.withListeningPorts(ports))
             .ifPresent(found::add);
-      } else if (JVM.matcher(name).matches()) {
+      } else if (JVM.matcher(name).matches()
+          || (withServiceWrappers && SERVICE_WRAPPER.matcher(name).matches())) {
         found.add(
             new TomcatProcess(
                 pid, "", Optional.empty(), Optional.empty(), Optional.<Path>empty(), ports));

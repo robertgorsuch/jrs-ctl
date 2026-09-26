@@ -84,6 +84,11 @@ abstract class AbstractPlatform implements Platform {
   }
 
   @Override
+  public final RunningTomcats runningTomcats(Path dir) {
+    return RunningTomcats.scan(tomcats, requireNonNull(dir, "dir").toAbsolutePath().normalize());
+  }
+
+  @Override
   public final ServiceController services(ServiceConfig cfg) {
     requireNonNull(cfg, "cfg");
     return switch (cfg.kind()) {

@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.platform.FileOps;
 import com.jaspersoft.jrsctl.core.platform.InstallScan;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
+import com.jaspersoft.jrsctl.core.platform.RunningTomcats;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
@@ -64,5 +65,10 @@ abstract class DelegatingPlatform implements Platform {
   @Override
   public InstallScan scanInstallDirs() {
     return delegate.scanInstallDirs();
+  }
+
+  @Override
+  public RunningTomcats runningTomcats(Path dir) {
+    return delegate.runningTomcats(dir);
   }
 }
