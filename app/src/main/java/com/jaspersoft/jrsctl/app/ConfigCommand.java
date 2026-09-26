@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.app;
 
+import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
@@ -10,6 +11,7 @@ import com.jaspersoft.jrsctl.core.secrets.EncryptedSecretStore;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.state.AuditActor;
+import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -326,11 +328,14 @@ final class ConfigCommand implements Runnable {
       PrintWriter out = spec.commandLine().getOut();
       PrintWriter err = spec.commandLine().getErr();
       ConfigLoader loader = new ConfigLoader();
+      if (key.equals("console") || key.startsWith("console.")) {
+        // #154: every other command refuses a file with a console block, Bootstrap included, so
+        // the way out finds the file without it
+        Path home = LogFile.home(JrsctlCommand.passOn(global).toArray(String[]::new), Env.vars());
+        return unsetConsole(new JrsctlHome(home), loader, out, err);
+      }
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         Path file = boot.services().home().configFile();
-        if (key.equals("console") || key.startsWith("console.")) {
-          return unsetConsole(boot, loader, file, out, err);
-        }
         Config updated;
         String old;
         try {
@@ -360,9 +365,9 @@ final class ConfigCommand implements Runnable {
      * ADR-0038: the 1.x {@code console:} block has no keys left to unset one by one, so {@code
      * console} or any {@code console.*} key removes all of it; a file without one is left as is.
      */
-    private int unsetConsole(
-        Bootstrap boot, ConfigLoader loader, Path file, PrintWriter out, PrintWriter err)
+    private int unsetConsole(JrsctlHome home, ConfigLoader loader, PrintWriter out, PrintWriter err)
         throws IOException {
+      Path file = home.configFile();
       Optional<Config> updated;
       try {
         updated = loader.fileWithoutConsole(file);
@@ -385,7 +390,11 @@ final class ConfigCommand implements Runnable {
         return ExitCodes.SUCCESS;
       }
       Optional<Path> backup = write(updated.get(), file);
-      boot.services().stateStore().get().audit(AuditActor.current(), "config.unset", "console");
+      if (Files.isRegularFile(home.stateDb())) {
+        try (StateStore store = StateStore.open(home, Clock.systemUTC())) {
+          store.audit(AuditActor.current(), "config.unset", "console");
+        }
+      }
       if (!global.json()) {
         out.println("removed the console block (ADR-0038: jrsctl has no web console)");
       }

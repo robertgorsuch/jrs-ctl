@@ -55,15 +55,8 @@ public final class ConfigLoader {
   private final JsonSchema schema;
   private final Map<String, SchemaKeys.Type> leafKeys;
   private final YAMLMapper yaml = new YAMLMapper();
-  private final Consumer<String> warnings;
 
   public ConfigLoader() {
-    this(w -> {});
-  }
-
-  /** {@code warnings} receives each tolerated-but-obsolete key (ADR-0038) once per load. */
-  public ConfigLoader(Consumer<String> warnings) {
-    this.warnings = Objects.requireNonNull(warnings, "warnings");
     JsonNode schemaNode;
     try (InputStream in = ConfigLoader.class.getResourceAsStream(SCHEMA_RESOURCE)) {
       if (in == null) {
@@ -211,15 +204,21 @@ public final class ConfigLoader {
     }
   }
 
-  /** ADR-0038: a 1.x file may still carry {@code console:}; drop it with one warning. */
-  private static void dropConsoleBlock(ObjectNode tree, Path file, Consumer<String> dropped) {
+  /**
+   * ADR-0038, #154: a 1.x file may still carry {@code console:}; it is reported to {@code found},
+   * which refuses it on every read except the one {@code config unset console} makes to remove it.
+   */
+  private static void dropConsoleBlock(ObjectNode tree, Path file, Consumer<String> found) {
     if (tree.remove("console") != null) {
-      dropped.accept(
-          "console: in "
-              + file
-              + " is no longer used (ADR-0038): remove it with: jrsctl config unset console;"
-              + " jrsctl 2.1 will refuse it");
+      found.accept("console: in " + file);
     }
+  }
+
+  /** The refusal every ordinary read makes of a 1.x console entry (#154). */
+  private static void refuseConsole(String what) {
+    throw new ConfigException(
+        what + " is a jrsctl 1.x web console setting, which jrsctl 2.1 no longer reads (ADR-0038)",
+        "remove it with: jrsctl config unset console");
   }
 
   /**
@@ -295,16 +294,16 @@ public final class ConfigLoader {
   // ---- tree assembly ----------------------------------------------------------------------------
 
   /**
-   * {@code file} parsed and with a stale {@code console:} block dropped (ADR-0038); the single
-   * point every file-reading entry point ({@link #load(Path, Map, Map)}, {@link #sources}, {@link
-   * #fileWith} and {@link #fileWithout}) goes through, so the one-release tolerance and its one
-   * warning per parse apply everywhere a file is read, not only when loading the effective config.
+   * {@code file} parsed; the single point every file-reading entry point ({@link #load(Path, Map,
+   * Map)}, {@link #sources}, {@link #fileWith} and {@link #fileWithout}) goes through, so a 1.x
+   * {@code console:} block or {@code console.*} line is refused wherever a file is read (ADR-0038,
+   * #154). Only {@link #fileWithoutConsole} reads past it, to remove it.
    */
   private ObjectNode readTree(Path file) {
-    return readTree(file, warnings);
+    return readTree(file, ConfigLoader::refuseConsole);
   }
 
-  /** As {@link #readTree(Path)}, with each dropped console entry reported to {@code dropped}. */
+  /** As {@link #readTree(Path)}, with each console entry reported to {@code dropped}. */
   private ObjectNode readTree(Path file, Consumer<String> dropped) {
     ObjectNode tree = readFile(file, dropped);
     dropConsoleBlock(tree, file, dropped);
@@ -371,11 +370,7 @@ public final class ConfigLoader {
       }
       String where = file + " line " + (i + 1);
       if (key.startsWith("console.")) {
-        dropped.accept(
-            key
-                + " at "
-                + where
-                + " is no longer used (ADR-0038): remove it with: jrsctl config unset console");
+        dropped.accept(key + " at " + where);
         continue;
       }
       if (!leafKeys.containsKey(key)) {

@@ -346,30 +346,31 @@ class ConfigCommandTest {
   }
 
   /**
-   * ADR-0038, PR2 finding I: a 1.x {@code console:} block is tolerated with one warning, and that
-   * warning must reach the operator's terminal in text mode and stay off standard error under
-   * {@code --json} (spec §18). {@link InitCommandTest#run} does not rebind logback's console
-   * appender to the stream it captures, so this test does that itself, the way {@link
-   * LogFileTest#reloadLogback()} does for the logging-threshold tests.
+   * #154, ADR-0038: 2.0 tolerated a 1.x {@code console:} block with a warning; 2.1 refuses it,
+   * naming the ADR and the command that removes it.
    */
   @Test
-  void should_warn_about_a_1x_console_block_on_stderr_exactly_once_when_showing_in_text_mode()
-      throws IOException {
+  void should_refuse_a_1x_console_block_and_name_the_way_out_when_showing() throws IOException {
     writeOneXConfigWithConsoleBlock();
 
-    String stderr = runCapturingRealStderr("config", "show", "--home", home.toString());
+    InitCommandTest.Run run = jrsctl("config", "show");
 
-    assertThat(stderr.split("ADR-0038", -1).length - 1).isEqualTo(1);
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("ADR-0038").contains("jrsctl config unset console");
   }
 
+  /** #154: the way out works although every other command refuses the file. */
   @Test
-  void should_keep_stderr_empty_under_json_when_a_1x_console_block_is_tolerated()
+  void should_repair_a_1x_file_with_config_unset_console_when_everything_else_refuses_it()
       throws IOException {
     writeOneXConfigWithConsoleBlock();
 
-    String stderr = runCapturingRealStderr("config", "show", "--json", "--home", home.toString());
+    InitCommandTest.Run unset = jrsctl("config", "unset", "console");
+    InitCommandTest.Run show = jrsctl("config", "show");
 
-    assertThat(stderr).isEmpty();
+    assertThat(unset.code()).as(unset.out() + unset.err()).isZero();
+    assertThat(show.code()).as(show.out() + show.err()).isZero();
+    assertThat(home.resolve("config.yaml")).content().doesNotContain("console");
   }
 
   private void writeOneXConfigWithConsoleBlock() throws IOException {
@@ -382,31 +383,5 @@ class ConfigCommandTest {
           port: 7421
         """,
         StandardCharsets.UTF_8);
-  }
-
-  /**
-   * Runs the real command tree with logback's console appender rebound to the captured stream
-   * (mirroring {@link LogFile#configure}'s threshold choice), so a warning the loggers emit is
-   * observed exactly as an operator's terminal would see it.
-   */
-  private static String runCapturingRealStderr(String... args) {
-    String savedLevel = System.getProperty(LogFile.CONSOLE_LEVEL_PROPERTY);
-    java.io.PrintStream savedErr = System.err;
-    java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
-    try {
-      System.setProperty(LogFile.CONSOLE_LEVEL_PROPERTY, LogFile.consoleLevel(args));
-      System.setErr(new java.io.PrintStream(buffer, true, StandardCharsets.UTF_8));
-      LogFileTest.reloadLogback();
-      Main.commandLine().execute(args);
-    } finally {
-      System.setErr(savedErr);
-      if (savedLevel == null) {
-        System.clearProperty(LogFile.CONSOLE_LEVEL_PROPERTY);
-      } else {
-        System.setProperty(LogFile.CONSOLE_LEVEL_PROPERTY, savedLevel);
-      }
-      LogFileTest.reloadLogback();
-    }
-    return buffer.toString(StandardCharsets.UTF_8);
   }
 }

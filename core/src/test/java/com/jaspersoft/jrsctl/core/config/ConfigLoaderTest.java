@@ -12,8 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -532,10 +530,12 @@ class ConfigLoaderTest {
         .isInstanceOf(ConfigException.class);
   }
 
-  /** ADR-0038: a 1.x file may still carry {@code console:}; it loads with one warning. */
+  /**
+   * #154, ADR-0038: 2.0 tolerated a 1.x {@code console:} block with a warning; 2.1 refuses it on
+   * every read, naming the ADR and the command that removes it.
+   */
   @Test
-  void should_drop_a_console_block_with_one_warning_when_a_1x_file_still_has_one()
-      throws IOException {
+  void should_refuse_a_console_block_naming_the_way_out_when_loading() throws IOException {
     Path file = tmp.resolve("config.yaml");
     Files.writeString(
         file,
@@ -544,19 +544,13 @@ class ConfigLoaderTest {
           baseUrl: http://localhost:8080/jasperserver-pro
         console:
           port: 7421
-          auth: { mode: local }
         """);
-    List<String> warnings = new ArrayList<>();
 
-    Config config = new ConfigLoader(warnings::add).load(file, Map.of(), Map.of());
-
-    assertThat(config.server().baseUrl()).isPresent();
-    assertThat(warnings)
-        .singleElement()
-        .asString()
-        .contains("console:")
-        .contains(file.toString())
-        .contains("ADR-0038");
+    assertThatThrownBy(() -> new ConfigLoader().load(file, Map.of(), Map.of()))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console: in " + file)
+        .hasMessageContaining("ADR-0038")
+        .hasFieldOrPropertyWithValue("remediation", "remove it with: jrsctl config unset console");
   }
 
   @Test
@@ -589,13 +583,10 @@ class ConfigLoaderTest {
         .hasMessageContaining("console.port is no longer used (ADR-0038)");
   }
 
-  /**
-   * The gap ADR-0038's promise depends on: an operator's first move on a 1.x file is often {@code
-   * config set}, which must not be refused just because a stale {@code console:} block is still
-   * there (#151).
-   */
+  /** #154: changing another key is refused too, until the console block is removed. */
   @Test
-  void should_change_another_key_when_a_1x_file_still_has_a_console_block() throws IOException {
+  void should_refuse_to_change_another_key_when_a_1x_file_still_has_a_console_block()
+      throws IOException {
     Path file = tmp.resolve("config.yaml");
     Files.writeString(
         file,
@@ -605,14 +596,10 @@ class ConfigLoaderTest {
         console:
           port: 7421
         """);
-    List<String> warnings = new ArrayList<>();
 
-    Config updated = new ConfigLoader(warnings::add).fileWith(file, "backups.retentionDays", "10");
-    ConfigWriter.write(updated, file);
-
-    assertThat(updated.backups().retentionDays()).isEqualTo(10);
-    assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
-    assertThat(warnings).singleElement().asString().contains("ADR-0038");
+    assertThatThrownBy(() -> new ConfigLoader().fileWith(file, "backups.retentionDays", "10"))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("ADR-0038");
   }
 
   /** {@code config unset console} (ADR-0038): the block goes, everything else stays, silently. */
@@ -627,15 +614,12 @@ class ConfigLoaderTest {
         console:
           port: 7421
         """);
-    List<String> warnings = new ArrayList<>();
-
-    Optional<Config> updated = new ConfigLoader(warnings::add).fileWithoutConsole(file);
+    Optional<Config> updated = new ConfigLoader().fileWithoutConsole(file);
 
     assertThat(updated).isPresent();
     assertThat(updated.get().server().baseUrl()).isPresent();
     ConfigWriter.write(updated.get(), file);
     assertThat(Files.readString(file, StandardCharsets.UTF_8)).doesNotContain("console");
-    assertThat(warnings).isEmpty();
   }
 
   @Test
@@ -660,32 +644,20 @@ class ConfigLoaderTest {
     assertThat(new ConfigLoader().fileWithoutConsole(tmp.resolve("missing.yaml"))).isEmpty();
   }
 
-  /** As above, for {@code jrsctl.properties}, whose tolerance already lives in the line parser. */
+  /** #154: a {@code console.*} line in {@code jrsctl.properties} is refused, naming its line. */
   @Test
-  void should_change_another_key_when_a_1x_properties_file_still_has_a_console_line()
+  void should_refuse_a_console_line_naming_it_when_a_properties_file_still_has_one()
       throws IOException {
     Path file = tmp.resolve("config.properties");
     Files.writeString(
         file, "server.baseUrl=http://localhost:8080/jasperserver-pro\nconsole.port=7421\n");
-    List<String> warnings = new ArrayList<>();
 
-    Config updated = new ConfigLoader(warnings::add).fileWith(file, "backups.retentionDays", "10");
-
-    assertThat(updated.backups().retentionDays()).isEqualTo(10);
-    assertThat(warnings).singleElement().asString().contains("console.port");
-  }
-
-  @Test
-  void should_skip_a_console_key_in_a_properties_file_with_one_warning() throws IOException {
-    Path file = tmp.resolve("config.properties");
-    Files.writeString(
-        file, "server.baseUrl=http://localhost:8080/jasperserver-pro\nconsole.port=7421\n");
-    List<String> warnings = new ArrayList<>();
-
-    Config config = new ConfigLoader(warnings::add).load(file, Map.of(), Map.of());
-
-    assertThat(config.server().baseUrl()).isPresent();
-    assertThat(warnings).singleElement().asString().contains("console.port").contains("line 2");
+    assertThatThrownBy(() -> new ConfigLoader().load(file, Map.of(), Map.of()))
+        .isInstanceOf(ConfigException.class)
+        .hasMessageContaining("console.port at " + file + " line 2")
+        .hasMessageContaining("ADR-0038");
+    assertThatThrownBy(() -> new ConfigLoader().fileWith(file, "backups.retentionDays", "10"))
+        .isInstanceOf(ConfigException.class);
   }
 
   private void write(String yaml) throws IOException {
