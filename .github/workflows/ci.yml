@@ -50,7 +50,7 @@ jobs:
       - name: Use the tag as the release version (tag builds only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
+        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.22.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
       - name: Build, unit tests, acceptance (all phases, needs-jrs/needs-docker excluded)
         shell: bash
         run: ./mvnw -B verify ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}
@@ -165,7 +165,7 @@ jobs:
       - name: Use the tag as the release version (tag builds only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
+        run: ./mvnw -B -q org.codehaus.mojo:versions-maven-plugin:2.22.0:set -DnewVersion="${GITHUB_REF_NAME#v}" -DprocessAllModules=true -DgenerateBackupPoms=false -DupdateBuildOutputTimestamp=false
       - name: Build image, archive, checksum, SBOM (ADR-0003, ADR-0008)
         shell: bash
         run: ./mvnw -B -Pdist -DskipTests package ${{ startsWith(github.ref, 'refs/tags/v') && '-Prelease' || '' }}

@@ -37,7 +37,7 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 ## Environment facts
 
-- Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.9.9. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.
+- Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.9.16 through the wrapper. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.
 - Code signing and the Jaspersoft publisher key are CI-only (spec §0 rule 11); local artifacts are unsigned.
 
 ## Stubbed or deferred components
