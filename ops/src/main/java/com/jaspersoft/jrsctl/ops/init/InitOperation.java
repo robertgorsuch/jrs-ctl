@@ -557,7 +557,8 @@ public final class InitOperation {
         new InitReport.Detected(
             "service.kind",
             Config.Service.kindToYaml(ServiceConfig.Kind.MANUAL),
-            "no service, ctlscript or catalina script found"));
+            "no registered service, ctlscript or catalina script found: jrsctl will ask you to"
+                + " stop and start Tomcat and wait for it"));
     return new Config.Service(
         Optional.of(ServiceConfig.Kind.MANUAL),
         Optional.empty(),
@@ -586,9 +587,21 @@ public final class InitOperation {
 
   private static Config.Service scriptService(
       ServiceConfig.Kind kind, Path script, List<InitReport.Detected> values) {
-    values.add(
-        new InitReport.Detected(
-            "service.kind", Config.Service.kindToYaml(kind), "detected " + script.getFileName()));
+    String source =
+        switch (kind) {
+          case CATALINA ->
+              "no registered service found (usual for a WAR + buildomatic install); jrsctl runs "
+                  + script.getFileName()
+                  + " to stop and start Tomcat, whether it was started by that script, by"
+                  + " startup or by hand; choose manual if a supervisor or your own tooling"
+                  + " starts it";
+          case CTLSCRIPT ->
+              "no registered service found; jrsctl runs "
+                  + script.getFileName()
+                  + " to stop and start Tomcat";
+          case WINDOWS_SERVICE, SYSTEMD, MANUAL -> throw new IllegalArgumentException(kind.name());
+        };
+    values.add(new InitReport.Detected("service.kind", Config.Service.kindToYaml(kind), source));
     values.add(new InitReport.Detected("service.scriptPath", script.toString(), "detected"));
     return new Config.Service(
         Optional.of(kind),

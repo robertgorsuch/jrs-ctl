@@ -34,6 +34,7 @@ public final class DoctorOperation {
           "cluster",
           "layout",
           "service",
+          LocalChecks.RUNNING_TOMCAT,
           LocalChecks.SERVICE_MANAGER,
           LocalChecks.DATABASE_SERVICE,
           LocalChecks.PID_FILE,
@@ -96,6 +97,10 @@ public final class DoctorOperation {
     Optional<TomcatLayout> layout = LocalChecks.layout(services);
     items.add(local ? guard("layout", s -> LocalChecks.layout(s, layout)) : remote("layout"));
     items.add(local ? guard("service", LocalChecks::service) : remote("service"));
+    items.add(
+        local
+            ? guard(LocalChecks.RUNNING_TOMCAT, s -> LocalChecks.runningTomcat(s, layout))
+            : remote(LocalChecks.RUNNING_TOMCAT));
     items.add(
         local
             ? guard(LocalChecks.SERVICE_MANAGER, LocalChecks::serviceManager)

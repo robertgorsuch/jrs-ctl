@@ -59,6 +59,14 @@ public interface Platform {
     return this;
   }
 
+  /**
+   * The Tomcat JVMs running under {@code dir} now, whatever {@code service.kind} says (issue #147).
+   * The default does not scan processes and says so, which is what test fakes need.
+   */
+  default RunningTomcats runningTomcats(Path dir) {
+    return new RunningTomcats.Unavailable("this platform does not scan processes");
+  }
+
   enum OsFamily {
     WINDOWS,
     LINUX

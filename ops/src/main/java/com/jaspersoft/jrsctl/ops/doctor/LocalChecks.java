@@ -9,6 +9,7 @@ import com.jaspersoft.jrsctl.core.platform.LinuxInit;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.platform.ProcessRunner;
+import com.jaspersoft.jrsctl.core.platform.RunningTomcats;
 import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.platform.StalePidFile;
@@ -274,6 +275,103 @@ final class LocalChecks {
           "cannot query the service: " + e.getMessage(),
           "check service.kind, service.name and service.scriptPath in config.yaml");
     }
+  }
+
+  /** Report name of the running-Tomcat check (issue #147). */
+  static final String RUNNING_TOMCAT = "running-tomcat";
+
+  /**
+   * Whether a Tomcat under the installation runs, from the process list rather than from the
+   * configured service (issue #147), so a Tomcat that a customer-named service or a bare {@code
+   * startup} script started is seen even when {@code service.kind} cannot stop it.
+   */
+  static ReportItem runningTomcat(Services s, Optional<TomcatLayout> layout) {
+    if (layout.isEmpty()) {
+      return ReportItem.skip(RUNNING_TOMCAT, "no install layout", "fix the layout check first");
+    }
+    Path tomcatDir = layout.get().tomcatDir();
+    Optional<ServiceConfig.Kind> kind = s.config().service().kind();
+    Optional<ServiceController.State> state = Optional.empty();
+    if (kind.isPresent() && kind.get() != ServiceConfig.Kind.MANUAL) {
+      try {
+        state = Optional.of(s.platform().services(s.config().toServiceConfig()).state());
+      } catch (RuntimeException e) {
+        // the service item reports why the controller cannot be queried
+      }
+    }
+    return runningTomcatItem(tomcatDir, s.platform().runningTomcats(tomcatDir), kind, state);
+  }
+
+  static ReportItem runningTomcatItem(
+      Path tomcatDir,
+      RunningTomcats scan,
+      Optional<ServiceConfig.Kind> kind,
+      Optional<ServiceController.State> serviceState) {
+    return switch (scan) {
+      case RunningTomcats.Unavailable u ->
+          ReportItem.skip(
+              RUNNING_TOMCAT,
+              u.reason(),
+              "run jrsctl as the account that runs Tomcat, or elevated");
+      case RunningTomcats.Scanned found when !found.pids().isEmpty() -> {
+        String running = "Tomcat under " + tomcatDir + " is running (" + pids(found.pids()) + ")";
+        if (serviceState.filter(st -> st == ServiceController.State.STOPPED).isPresent()) {
+          yield ReportItem.warn(
+              RUNNING_TOMCAT,
+              running + " but service." + kindName(kind) + " reports STOPPED",
+              "the configured service does not run this Tomcat, so a stop through it would leave"
+                  + " the server running: set service.name to the service that does, or, when"
+                  + " Tomcat is started by hand with startup, set service.kind to catalina with"
+                  + " service.scriptPath at its bin/catalina script, or to manual");
+        }
+        yield ReportItem.pass(RUNNING_TOMCAT, running);
+      }
+      case RunningTomcats.Scanned found when !found.unreadable().isEmpty() -> {
+        int count = found.unreadable().size();
+        String unreadable =
+            (count == 1 ? "1 process" : count + " processes")
+                + " ("
+                + pids(found.unreadable())
+                + ") whose command line this account cannot read";
+        if (serviceState.filter(st -> st == ServiceController.State.RUNNING).isPresent()) {
+          // the installer's LocalSystem service seen without elevation: consistent, not a conflict
+          yield ReportItem.pass(
+              RUNNING_TOMCAT,
+              "service."
+                  + kindName(kind)
+                  + " reports RUNNING; "
+                  + unreadable
+                  + " may be its Tomcat");
+        }
+        yield ReportItem.warn(
+            RUNNING_TOMCAT,
+            "no readable Tomcat under "
+                + tomcatDir
+                + " is running, but "
+                + unreadable
+                + " may be it",
+            "run jrsctl as the account that runs Tomcat, or elevated, to see it");
+      }
+      case RunningTomcats.Scanned found -> {
+        String none = "no Tomcat under " + tomcatDir + " is running";
+        if (serviceState.filter(st -> st == ServiceController.State.RUNNING).isPresent()) {
+          yield ReportItem.warn(
+              RUNNING_TOMCAT,
+              "service." + kindName(kind) + " reports RUNNING but " + none,
+              "the configured service may run another Tomcat: check that service.name names"
+                  + " the service of this installation");
+        }
+        yield ReportItem.pass(RUNNING_TOMCAT, none);
+      }
+    };
+  }
+
+  private static String pids(List<Long> pids) {
+    return pids.stream().map(p -> "pid " + p).collect(Collectors.joining(", "));
+  }
+
+  private static String kindName(Optional<ServiceConfig.Kind> kind) {
+    return "kind " + kind.map(Config.Service::kindToYaml).orElse("(not configured)");
   }
 
   /** Report name of the service-manager check (review 3.2). */
