@@ -191,7 +191,7 @@ smoke:
   reportUri: /public/Samples/Reports/AllAccounts   # WARN if absent
 ```
 
-A `console:` block from a 1.x file is ignored with one warning in 2.0 and refused from 2.1 (ADR-0038).
+A `console:` block from a 1.x file (or a `console.*` line in `jrsctl.properties`) was ignored with a warning in 2.0 and is refused from 2.1 on every read, naming ADR-0038 and `jrsctl config unset console`, the one command that reads past it to remove it (#154).
 
 Rules:
 - `network.mode: isolated` is enforced in the HTTP client: an allowlist containing only the `server.baseUrl` host. Any request to another host is refused, logged as `FAIL`, and audited. This makes isolated mode testable with WireMock.
