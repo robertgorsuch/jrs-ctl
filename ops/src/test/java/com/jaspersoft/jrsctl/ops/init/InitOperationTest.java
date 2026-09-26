@@ -257,13 +257,47 @@ class InitOperationTest {
     try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
       InitOperation init = new InitOperation(fake.build(), Optional::empty);
 
-      Config config = init.detect(Optional.of(install)).config();
+      InitReport report = init.detect(Optional.of(install));
+      Config config = report.config();
 
       assertThat(config.service().kind()).contains(ServiceConfig.Kind.MANUAL);
+      assertThat(report.values())
+          .filteredOn(v -> v.key().equals("service.kind"))
+          .singleElement()
+          .satisfies(v -> assertThat(v.source()).contains("ask you to stop and start"));
       assertThat(config.server().webappName()).contains(Config.WebappName.JASPERSERVER);
       assertThat(config.database().type()).isEmpty();
       assertThat(config.server().baseUrl())
           .contains(URI.create("http://localhost:8080/jasperserver"));
+    }
+  }
+
+  /**
+   * A WAR + buildomatic install has no vendor-registered service; its Tomcat's own catalina script
+   * is what jrsctl runs, and the report says so in words an operator recognises (issue #147).
+   */
+  @Test
+  void should_propose_the_catalina_script_when_a_war_install_has_no_service() throws Exception {
+    Path install = tmp.resolve("war");
+    Path tomcat = install.resolve("tomcat");
+    Files.createDirectories(tomcat.resolve("webapps").resolve("jasperserver-pro"));
+    Files.createDirectories(tomcat.resolve("bin"));
+    Files.writeString(tomcat.resolve("bin").resolve("catalina.sh"), "#!/bin/sh\n");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      InitOperation init = new InitOperation(fake.build(), Optional::empty);
+
+      InitReport report = init.detect(Optional.of(install));
+
+      assertThat(report.config().service().kind()).contains(ServiceConfig.Kind.CATALINA);
+      assertThat(report.values())
+          .filteredOn(v -> v.key().equals("service.kind"))
+          .singleElement()
+          .satisfies(
+              v ->
+                  assertThat(v.source())
+                      .contains("no registered service")
+                      .contains("WAR")
+                      .contains("jrsctl runs catalina.sh"));
     }
   }
 
