@@ -2,12 +2,17 @@ package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
+import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
+import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
+import com.jaspersoft.jrsctl.ops.StrategyFlag;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +39,23 @@ final class GuidedMode {
   private final Function<String[], Integer> runner;
   private final Supplier<List<String>> pendingRuns;
   private final Supplier<Optional<Path>> snapshotsDir;
+  private final Supplier<SettingsView> settings;
+
+  /**
+   * What the settings entry shows (review of #172): whether a configuration file exists, why it
+   * could not be read when it exists but is broken, and every setting's value, already redacted, in
+   * schema order.
+   */
+  record SettingsView(boolean exists, Optional<String> problem, Map<String, String> values) {
+    SettingsView {
+      Objects.requireNonNull(problem, "problem");
+      values = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(values));
+    }
+
+    static SettingsView none() {
+      return new SettingsView(false, Optional.empty(), Map.of());
+    }
+  }
 
   GuidedMode(
       PrintWriter out,
@@ -49,16 +71,31 @@ final class GuidedMode {
       Function<String[], Integer> runner,
       Supplier<List<String>> pendingRuns,
       Supplier<Optional<Path>> snapshotsDir) {
+    this(out, globalArgs, runner, pendingRuns, snapshotsDir, SettingsView::none);
+  }
+
+  /**
+   * {@code settings} gives the current value of every setting in schema order, empty when there is
+   * no configuration file yet (field test 3: the settings are shown before anything is asked).
+   */
+  GuidedMode(
+      PrintWriter out,
+      List<String> globalArgs,
+      Function<String[], Integer> runner,
+      Supplier<List<String>> pendingRuns,
+      Supplier<Optional<Path>> snapshotsDir,
+      Supplier<SettingsView> settings) {
     this.out = Objects.requireNonNull(out, "out");
     this.globalArgs = List.copyOf(globalArgs);
     this.runner = Objects.requireNonNull(runner, "runner");
     this.pendingRuns = Objects.requireNonNull(pendingRuns, "pendingRuns");
     this.snapshotsDir = Objects.requireNonNull(snapshotsDir, "snapshotsDir");
+    this.settings = Objects.requireNonNull(settings, "settings");
   }
 
   /** Shows the menu until the operator quits or input ends; returns 0. */
   int run() {
-    out.println("jrsctl - JasperReports Server lifecycle tool (Actian Jaspersoft)");
+    out.println("jrsctl - JasperReports Server lifecycle tool");
     List<String> pending = pendingRuns.get();
     if (!pending.isEmpty()) {
       out.println();
@@ -103,14 +140,45 @@ final class GuidedMode {
 
   // ---- jobs -------------------------------------------------------------------------------------
 
+  /**
+   * Field test 3: the current settings come first, numbered, so the operator sees them without
+   * choosing an option and can pick one by number; with no configuration yet, detection runs.
+   */
   private void settings() {
+    SettingsView view = settings.get();
+    if (!view.exists()) {
+      out.println();
+      out.println("There are no settings yet; jrsctl detects the installation first.");
+      detect();
+      return;
+    }
+    if (view.problem().isPresent()) {
+      // review of #172: a file that exists but cannot be read needs --force to be replaced
+      out.println();
+      out.println("The settings file cannot be read: " + view.problem().get());
+      if (Prompter.yes(
+          out, "Detect the installation again and replace the settings file? [y/N] ", false)) {
+        detect(true);
+      }
+      return;
+    }
+    Map<String, String> current = view.values();
+    printSettings(current);
     out.println();
-    out.println("  1) Detect the installation and write the settings");
-    out.println("  2) Show and change settings");
+    out.println("  1) Change a setting");
+    out.println("  2) Detect the installation again and rewrite the settings");
     out.println("  3) Where jrsctl keeps its state and backups (free space, move it)");
     switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
-      case "1" -> detect();
-      case "2" -> changeSettings();
+      case "1" -> changeSettings(current);
+      case "2" -> {
+        // review of #172: init refuses to overwrite config.yaml without --force
+        if (Prompter.yes(
+            out,
+            "This replaces the current settings file with what is detected now. Go on? [y/N] ",
+            false)) {
+          detect(true);
+        }
+      }
       case "3" -> home();
       default -> {
         // back to the menu
@@ -131,8 +199,32 @@ final class GuidedMode {
     }
   }
 
+  private void printSettings(Map<String, String> current) {
+    out.println();
+    out.println("Current settings (secrets are shown as references):");
+    int width = String.valueOf(current.size()).length();
+    int n = 1;
+    for (Map.Entry<String, String> e : current.entrySet()) {
+      String number = String.format(java.util.Locale.ROOT, "%" + width + "d", n++);
+      out.println(
+          "  "
+              + number
+              + ") "
+              + e.getKey()
+              + " = "
+              + (e.getValue().isEmpty() ? "(not set)" : e.getValue()));
+    }
+    out.flush();
+  }
+
   /** Enter means "search for it"; a directory that does not exist is asked for again. */
   private void detect() {
+    detect(false);
+  }
+
+  /** {@code replace}: a configuration exists and the operator agreed to overwrite it. */
+  private void detect(boolean replace) {
+    List<String> force = replace ? List.of("--force") : List.of();
     boolean asked = false;
     while (true) {
       Optional<String> dir =
@@ -142,12 +234,12 @@ final class GuidedMode {
       }
       if (dir.get().isEmpty()) {
         if (!asked) {
-          execute("init");
+          execute(concat(List.of("init"), force));
         }
         return;
       }
       if (Files.isDirectory(local(dir.get()))) {
-        execute("init", "--install-dir", dir.get());
+        execute(concat(List.of("init", "--install-dir", dir.get()), force));
         return;
       }
       out.println("  no such directory: " + dir.get() + " (press Enter to go back)");
@@ -155,54 +247,117 @@ final class GuidedMode {
     }
   }
 
-  /** The table once, then key and value until Enter; an unknown key is re-asked, not sent. */
-  private void changeSettings() {
-    execute("config", "keys");
-    out.println("Change one with: jrsctl config set <key> <value>, or here, one at a time.");
+  /**
+   * Field test 3: a setting is picked by its number or its name (Tab completes names), and its
+   * current value is already on the line to edit; clearing it offers to remove the setting. A
+   * password is never edited in the clear: {@code config set} asks for it hidden.
+   */
+  private void changeSettings(Map<String, String> initial) {
+    Map<String, String> current = initial;
     Set<String> known = new ConfigLoader().knownKeys();
     while (true) {
-      Optional<String> key = text("Setting to change (Enter to finish)");
-      if (key.isEmpty()) {
+      List<String> keys = new ArrayList<>(current.keySet());
+      Optional<String> pick =
+          Prompter.edit(
+              out,
+              "Setting to change (number or name, Tab completes; Enter to finish): ",
+              "",
+              keys);
+      if (pick.isEmpty() || pick.get().isBlank()) {
         return;
       }
-      if (!known.contains(key.get())) {
-        out.println("  unknown setting " + key.get() + " (the table above lists them)");
+      Optional<String> key = settingByNumberOrName(pick.get().strip(), keys, known);
+      if (key.isEmpty()) {
+        out.println(
+            "  no setting " + pick.get().strip() + "; type its number or name from the list");
         continue;
       }
-      Optional<String> value = text("New value for " + key.get() + " (Enter to skip)");
-      if (value.isEmpty()) {
-        continue;
+      if (ConfigKeys.isSecret(key.get())) {
+        execute("config", "set", key.get());
+      } else {
+        String old = current.getOrDefault(key.get(), "");
+        // review of #172: a value the redactor masked part of is not put on the line to edit, or
+        // its mask would be saved back; Enter keeps the real value
+        boolean hidden = old.contains(Redactor.MASK);
+        Optional<String> value =
+            Prompter.edit(
+                out,
+                key.get()
+                    + (hidden
+                        ? " (current value hidden; Enter keeps it, - removes it): "
+                        : " (- removes it): "),
+                hidden ? "" : old,
+                List.of());
+        if (value.isEmpty()) {
+          return;
+        }
+        if (value.get().equals(old) || (hidden && value.get().isEmpty())) {
+          out.println("  unchanged");
+          continue;
+        }
+        // review of #172: "-" works where the value cannot be cleared (the plain fallback maps
+        // an empty answer back to the old value), and clearing it works on a JLine terminal
+        if (value.get().isEmpty() || value.get().equals("-")) {
+          if (Prompter.yes(out, "Remove " + key.get() + " so its default applies? [y/N] ", false)) {
+            execute("config", "unset", key.get());
+          }
+        } else {
+          execute("config", "set", key.get(), value.get());
+        }
       }
-      execute("config", "set", key.get(), value.get());
+      SettingsView refreshed = settings.get();
+      current = refreshed.values().isEmpty() ? current : refreshed.values();
     }
+  }
+
+  /** A setting from its 1-based number in {@code keys}, or its exact name. */
+  static Optional<String> settingByNumberOrName(
+      String typed, List<String> keys, Set<String> known) {
+    if (typed.chars().allMatch(Character::isDigit)) {
+      try {
+        int n = Integer.parseInt(typed);
+        return n >= 1 && n <= keys.size() ? Optional.of(keys.get(n - 1)) : Optional.empty();
+      } catch (NumberFormatException e) {
+        return Optional.empty();
+      }
+    }
+    return known.contains(typed) ? Optional.of(typed) : Optional.empty();
   }
 
   private void backup() {
     out.println();
-    out.println(
-        "  1) Everything in the repository, over REST (no vendor tools; the server keeps running)");
+    out.println("  1) Everything");
     out.println("  2) One folder");
-    out.println("  3) Everything including users, roles and settings, with the vendor js-export");
     List<String> args = new ArrayList<>(List.of("export"));
     boolean fullServer = false;
-    switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
-      case "1" -> args.addAll(List.of("--strategy", "rest"));
+    switch (Prompter.line(out, "Choose [1-2]: ").orElse("")) {
+      case "1" -> {
+        // field test 3: one "everything"; the only content REST leaves out is report jobs and
+        // calendars, so that is the question, and it decides the tool
+        if (Prompter.yes(
+            out,
+            "Include scheduled report jobs and calendars? They need buildomatic's js-export;"
+                + " without them the server's REST export is used [y/N] ",
+            false)) {
+          args.add("--full-server");
+          fullServer = true;
+          if (Prompter.yes(
+              out,
+              "Stop the server while js-export runs (a copy with nothing changing, short outage)?"
+                  + " [y/N] ",
+              false)) {
+            args.add("--stop-service");
+          }
+        } else {
+          args.addAll(List.of("--strategy", "rest"));
+        }
+      }
       case "2" -> {
         Optional<String> uri = text("Folder, e.g. /public/Samples");
         if (uri.isEmpty()) {
           return;
         }
         args.addAll(List.of("--uri", uri.get()));
-      }
-      case "3" -> {
-        args.add("--full-server");
-        fullServer = true;
-        if (Prompter.yes(
-            out,
-            "Stop the server while js-export runs (consistent copy, short outage)? [y/N] ",
-            false)) {
-          args.add("--stop-service");
-        }
       }
       default -> {
         return;
@@ -213,19 +368,26 @@ final class GuidedMode {
       return;
     }
     if (!fullServer) {
-      // a full-server export already carries users, roles, events and settings
+      // a full-server export already carries users, roles and settings
       if (Prompter.yes(out, "Include users and roles? [y/N] ", false)) {
         args.add("--users-roles");
-      }
-      if (Prompter.yes(out, "Include access, audit and monitoring events? [y/N] ", false)) {
-        args.addAll(List.of("--access-events", "--audit-events", "--monitoring"));
       }
       if (Prompter.yes(out, "Include server settings? [y/N] ", false)) {
         args.add("--settings");
       }
     }
-    if (Prompter.yes(out, "Portable (decryptable on another server)? [y/N] ", false)) {
-      args.add("--portable");
+    // review of #172: js-export --everything leaves the events out (administrator guide p.266), so
+    // they are asked about for every export, the full-server one included
+    if (Prompter.yes(out, "Include access, audit and monitoring events? [y/N] ", false)) {
+      args.addAll(List.of("--access-events", "--audit-events", "--monitoring"));
+    }
+    if (Prompter.yes(
+        out,
+        "Encrypt with the Legacy key ("
+            + ExportRequest.PORTABLE_KEY_ALIAS
+            + ") so another server can import it? [y/N] ",
+        false)) {
+      args.add("--legacy-key");
     }
     Optional<String> organization = Prompter.line(out, "Organisation (Enter for all): ");
     if (organization.isEmpty()) {
@@ -281,22 +443,21 @@ final class GuidedMode {
       args.addAll(List.of("--broken-dependencies", broken.get()));
     }
     Optional<String> strategy =
-        choice("Strategy: auto, rest or vendor [auto]", "auto", Set.of("auto", "rest", "vendor"));
+        choice(
+            "Strategy: auto, rest or buildomatic [auto]",
+            "auto",
+            Set.of("auto", "rest", StrategyFlag.BUILDOMATIC));
     if (strategy.isEmpty()) {
       return;
     }
     if (!strategy.get().equals("auto")) {
       args.addAll(List.of("--strategy", strategy.get()));
     }
-    Optional<String> alias =
-        Prompter.line(
-            out, "Key alias the archive was encrypted with (Enter for this server's key): ");
-    if (alias.isEmpty()) {
+    Optional<List<String>> key = keyAlias(local(archive.get()));
+    if (key.isEmpty()) {
       return;
     }
-    if (!alias.get().isEmpty()) {
-      args.addAll(List.of("--key-alias", alias.get()));
-    }
+    args.addAll(key.get());
     Optional<String> organization =
         Prompter.line(out, "Import into organisation (Enter for the archive's own): ");
     if (organization.isEmpty()) {
@@ -310,6 +471,53 @@ final class GuidedMode {
       }
     }
     execute(args.toArray(String[]::new));
+  }
+
+  /**
+   * Field test 3: the archive's {@code .jrsctl.json} says which key encrypted it, so there is
+   * nothing to ask when it is there; without it the question is whether the Legacy key key was
+   * used, not the alias's name. Empty when input ended.
+   */
+  private Optional<List<String>> keyAlias(Path archive) {
+    Optional<Sidecar> sidecar;
+    try {
+      sidecar = Sidecar.read(Sidecar.pathFor(archive));
+    } catch (java.io.IOException | RuntimeException e) {
+      sidecar = Optional.empty();
+    }
+    if (sidecar.isPresent()) {
+      Optional<String> alias = sidecar.get().flags().keyAlias();
+      out.println(
+          alias
+              .map(
+                  a ->
+                      "The archive's "
+                          + Sidecar.pathFor(archive).getFileName()
+                          + " says it was encrypted with the key alias "
+                          + a
+                          + "; jrsctl uses it.")
+              .orElse(
+                  "The archive's "
+                      + Sidecar.pathFor(archive).getFileName()
+                      + " says it was encrypted with its server's own key."));
+      return Optional.of(List.of());
+    }
+    // read as typed, not through choice(): a key alias is case-sensitive
+    Optional<String> answer =
+        Prompter.line(
+            out,
+            "No .jrsctl.json beside the archive. Was it exported with the Legacy key ("
+                + ExportRequest.PORTABLE_KEY_ALIAS
+                + ", jrsctl export --legacy-key)? yes, no, or type another key alias [no]: ");
+    if (answer.isEmpty()) {
+      return Optional.empty();
+    }
+    String a = answer.get().strip();
+    return switch (a.toLowerCase(Locale.ROOT)) {
+      case "", "no", "n" -> Optional.of(List.of());
+      case "yes", "y" -> Optional.of(List.of("--key-alias", ExportRequest.PORTABLE_KEY_ALIAS));
+      default -> Optional.of(List.of("--key-alias", a));
+    };
   }
 
   private void hotfix() {
@@ -391,14 +599,14 @@ final class GuidedMode {
       // upgrade guide 10.1 p.80: the newdb script leaves the events behind (issue #106)
       if (Prompter.yes(
           out,
-          "Import the access, audit and monitoring events after the vendor run"
+          "Import the access, audit and monitoring events after buildomatic's upgrade"
               + " (js-upgrade-newdb leaves them behind)? [y/N] ",
           false)) {
         args.add("--include-events");
       }
     }
     if (Prompter.yes(
-        out, "Rehearse with the vendor's validation first (changes nothing)? [Y/n] ", true)) {
+        out, "Rehearse with buildomatic's own validation first (changes nothing)? [Y/n] ", true)) {
       List<String> rehearsal = new ArrayList<>(args);
       rehearsal.add("--test");
       if (execute(rehearsal.toArray(String[]::new)) != ExitCodes.SUCCESS) {
@@ -524,6 +732,12 @@ final class GuidedMode {
   }
 
   /** The path as the command will read it: a leading {@code ~} is the operator's home. */
+  private static String[] concat(List<String> a, List<String> b) {
+    List<String> all = new ArrayList<>(a);
+    all.addAll(b);
+    return all.toArray(String[]::new);
+  }
+
   private static Path local(String typed) {
     return Path.of(UserPaths.expand(typed, Env.vars()));
   }

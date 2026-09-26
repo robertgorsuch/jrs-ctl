@@ -124,7 +124,7 @@ final class UpgradeCommand implements Callable<Integer> {
       names = "--key-alias",
       paramLabel = "<alias>",
       description =
-          "Alias the export was encrypted with (jrsctl export --portable uses"
+          "Alias the export was encrypted with (the Legacy key, jrsctl export --legacy-key, is"
               + " deprecatedImportExportEncSecret); written to the target buildomatic's properties"
               + " for the import. Needs --export.")
   String keyAlias;

@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.app;
 
 import com.jaspersoft.jrsctl.core.Version;
+import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -79,7 +80,12 @@ public final class JrsctlCommand implements Callable<Integer> {
     if (!global.nonInteractive() && Terminal.present()) {
       // #71: an operator at a terminal gets the guided menu instead of a usage error
       return new GuidedMode(
-              cmd.getOut(), passOn(global), this::runCommand, this::pendingRuns, this::snapshotsDir)
+              cmd.getOut(),
+              passOn(global),
+              this::runCommand,
+              this::pendingRuns,
+              this::snapshotsDir,
+              this::settings)
           .run();
     }
     cmd.usage(cmd.getErr());
@@ -111,6 +117,36 @@ public final class JrsctlCommand implements Callable<Integer> {
       return Optional.of(boot.services().home().snapshots());
     } catch (RuntimeException e) {
       return Optional.empty();
+    }
+  }
+
+  /**
+   * Every setting's current value in schema order, secrets as references, for the menu's settings
+   * entry (field test 3); empty when there is no configuration file yet or it cannot be read.
+   */
+  GuidedMode.SettingsView settings() {
+    // review of #172: find the file without Bootstrap, which throws on a broken one, so a file that
+    // exists but cannot be read is reported as such rather than as "no settings yet"
+    Path home = LogFile.home(passOn(global).toArray(String[]::new), Env.vars());
+    Path file = new com.jaspersoft.jrsctl.core.JrsctlHome(home).configFile();
+    if (!java.nio.file.Files.isRegularFile(file)) {
+      return GuidedMode.SettingsView.none();
+    }
+    try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+      Map<String, String> values = new java.util.LinkedHashMap<>();
+      com.jaspersoft.jrsctl.core.redact.Redactor redactor =
+          com.jaspersoft.jrsctl.core.redact.Redactor.global();
+      for (String key : new ConfigLoader().sources(file, Env.vars(), global.set()).keySet()) {
+        // every output stream passes the redaction filter, as config show's does
+        values.put(key, redactor.redact(ConfigKeys.value(boot.services().config(), key)));
+      }
+      return new GuidedMode.SettingsView(true, Optional.empty(), values);
+    } catch (com.jaspersoft.jrsctl.core.config.ConfigException e) {
+      return new GuidedMode.SettingsView(
+          true, Optional.of(e.getMessage() + " (" + e.remediation() + ")"), Map.of());
+    } catch (RuntimeException e) {
+      return new GuidedMode.SettingsView(
+          true, Optional.of(String.valueOf(e.getMessage())), Map.of());
     }
   }
 

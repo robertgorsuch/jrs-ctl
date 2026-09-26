@@ -244,7 +244,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 + " beside "
                 + export
                 + ": where it was exported from cannot be checked; an export from another server"
-                + " needs --key-alias when it was made portable");
+                + " needs --key-alias when it was encrypted with the Legacy key");
       } else if (identity.isPresent()
           && (!sidecar.get().serverIdentity().equals(identity.get().fingerprintInput())
               || !sidecar.get().serverVersion().equals(identity.get().version()))) {
@@ -258,8 +258,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 + identity.get().fingerprintInput()
                 + " (version "
                 + identity.get().version()
-                + "): pass --key-alias when the export was made portable, since the vendor"
-                + " import otherwise decrypts it with this server's keystore");
+                + "): pass --key-alias when the export was encrypted with the Legacy key, since"
+                + " the import otherwise decrypts it with this server's keystore");
       }
     } catch (IOException | IllegalArgumentException e) {
       out.add("sidecar beside " + export + " is unreadable (" + e.getMessage() + ")");

@@ -5,14 +5,19 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * The {@code --strategy rest|vendor} flag shared by {@code export} and {@code import}. Invariant:
- * the two spellings accepted here are the ones the operator guide documents; anything else is a
- * usage error (exit 1) raised before any bootstrap happens.
+ * The {@code --strategy rest|buildomatic|vendor} flag shared by {@code export} and {@code import}.
+ * Invariants: {@code buildomatic} and {@code vendor} name the same strategy, the buildomatic tools
+ * {@code js-export} and {@code js-import} (field test 3: the guided menu says buildomatic); a
+ * stored or rendered strategy is still spelled {@code vendor}, so arguments stored by earlier
+ * builds rebuild unchanged; anything else is a usage error (exit 1) raised before any bootstrap.
  */
 public final class StrategyFlag {
 
   public static final String REST = "rest";
   public static final String VENDOR = "vendor";
+
+  /** The name the guided menu uses for {@link #VENDOR}. */
+  public static final String BUILDOMATIC = "buildomatic";
 
   private StrategyFlag() {}
 
@@ -23,10 +28,18 @@ public final class StrategyFlag {
     }
     return switch (value.strip().toLowerCase(Locale.ROOT)) {
       case REST -> Optional.of(ExportImportStrategy.Kind.REST);
-      case VENDOR -> Optional.of(ExportImportStrategy.Kind.VENDOR_CLI);
+      case VENDOR, BUILDOMATIC -> Optional.of(ExportImportStrategy.Kind.VENDOR_CLI);
       default ->
           throw new IllegalArgumentException(
-              "--strategy must be '" + REST + "' or '" + VENDOR + "', not '" + value + "'");
+              "--strategy must be '"
+                  + REST
+                  + "' or '"
+                  + BUILDOMATIC
+                  + "' (also spelled '"
+                  + VENDOR
+                  + "'), not '"
+                  + value
+                  + "'");
     };
   }
 

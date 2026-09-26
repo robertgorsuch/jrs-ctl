@@ -97,13 +97,13 @@ final class ExportCommand implements Callable<Integer> {
   String keyAlias;
 
   @Option(
-      names = "--portable",
+      names = {"--legacy-key", "--portable"},
       description =
-          "Encrypt with the alias every keystore since 7.5 holds ("
+          "Encrypt with the Legacy key ("
               + ExportRequest.PORTABLE_KEY_ALIAS
-              + "), so another server can import the archive with --key-alias "
-              + ExportRequest.PORTABLE_KEY_ALIAS
-              + " (the sidecar records it, so jrsctl's import needs no flag).")
+              + "), which every keystore since 7.5 holds, so another server can import the"
+              + " archive; Jaspersoft's import calls it the Legacy key (the sidecar records it, so"
+              + " jrsctl's import needs no flag). --portable is the older name.")
   boolean portable;
 
   @Option(
@@ -153,7 +153,9 @@ final class ExportCommand implements Callable<Integer> {
           err,
           global.json(),
           ExitCodes.USAGE,
-          "--portable is --key-alias " + ExportRequest.PORTABLE_KEY_ALIAS + "; give one of them");
+          "--legacy-key (--portable) is --key-alias "
+              + ExportRequest.PORTABLE_KEY_ALIAS
+              + "; give one of them");
     }
     ExportImportOperations.ExportOptions options =
         new ExportImportOperations.ExportOptions(

@@ -26,4 +26,23 @@ class PrompterTest {
     assertThat(line.rawWordLength()).isEqualTo(typed.length());
     assertThat(line.escape(typed, true)).hasToString(typed);
   }
+
+  /**
+   * Field test 3: without a JLine terminal an edited value is shown in brackets; Enter keeps it.
+   */
+  @Test
+  void should_keep_the_shown_value_when_enter_is_the_answer_to_an_edit() {
+    java.io.StringWriter text = new java.io.StringWriter();
+    java.io.PrintWriter out = new java.io.PrintWriter(text, true);
+    try {
+      Prompter.override(new java.io.StringReader("\nnew\n"));
+
+      assertThat(Prompter.edit(out, "key: ", "old", java.util.List.of())).contains("old");
+      assertThat(Prompter.edit(out, "key: ", "old", java.util.List.of())).contains("new");
+      assertThat(Prompter.edit(out, "key: ", "old", java.util.List.of())).isEmpty();
+      assertThat(text.toString()).contains("key: [old]");
+    } finally {
+      Prompter.reset();
+    }
+  }
 }

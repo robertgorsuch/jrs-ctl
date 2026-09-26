@@ -113,7 +113,7 @@ final class ImportCommand implements Callable<Integer> {
       paramLabel = "<alias>",
       description =
           "Decrypt the archive with this key of this server's keystore (the alias it was exported"
-              + " with, e.g. deprecatedImportExportEncSecret for a portable export) instead of the"
+              + " with, e.g. deprecatedImportExportEncSecret, the Legacy key) instead of the"
               + " server's own import/export key. Read from the sidecar when it records one.")
   String keyAlias;
 
