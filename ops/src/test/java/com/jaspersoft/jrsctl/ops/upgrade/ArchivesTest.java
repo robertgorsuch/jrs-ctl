@@ -8,9 +8,12 @@ import com.jaspersoft.jrsctl.core.platform.Platform;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.function.Consumer;
@@ -325,5 +328,33 @@ class ArchivesTest {
     }
     assertThat(webapp.resolve("v.txt")).hasContent("old");
     assertThat(tmp.resolve("tomcat").resolve(".jrsctl-restore-jasperserver-pro")).doesNotExist();
+  }
+
+  /**
+   * Field bundles r-20261012-194157-4a57 and r-20261012-202802-6c66: a running server held a
+   * byte-range lock on one file under the webapp, Windows refused the read with "another process
+   * has locked a portion of the file", and the failure named no file, so the operator could not
+   * tell which one. The read error from the channel carries only the Windows text; the archive has
+   * to add the path. Windows only: a Linux lock is advisory and never refuses a read.
+   */
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_name_the_file_when_another_handle_holds_a_lock_on_it() throws Exception {
+    Path source = Files.createDirectories(tmp.resolve("src"));
+    Files.writeString(source.resolve("a.txt"), "alpha", StandardCharsets.UTF_8);
+    Path locked = source.resolve("held.db");
+    Files.writeString(locked, "0123456789", StandardCharsets.UTF_8);
+    Path archive = tmp.resolve("out").resolve("webapp.zip");
+
+    try (FileChannel channel =
+            FileChannel.open(locked, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        FileLock lock = channel.lock()) {
+      assertThatThrownBy(
+              () ->
+                  Archives.create(
+                      Platform.OsFamily.WINDOWS, source, archive, new CancellationToken()))
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining(locked.toString());
+    }
   }
 }

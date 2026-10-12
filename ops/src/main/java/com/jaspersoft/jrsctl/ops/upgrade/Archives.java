@@ -182,11 +182,25 @@ final class Archives {
     return false;
   }
 
+  /**
+   * Streams {@code file} into {@code out}. A read that fails after the open succeeded (on Windows,
+   * a byte-range lock another process holds: "another process has locked a portion of the file")
+   * carries only the operating system's text, so the path is added here; an open failure already
+   * names the file.
+   */
   static void copy(Path file, OutputStream out) throws IOException {
     byte[] buffer = new byte[BUFFER];
     try (InputStream in = Files.newInputStream(file)) {
       int read;
-      while ((read = in.read(buffer)) != -1) {
+      while (true) {
+        try {
+          read = in.read(buffer);
+        } catch (IOException e) {
+          throw new IOException("cannot read " + file + ": " + e.getMessage(), e);
+        }
+        if (read == -1) {
+          break;
+        }
         out.write(buffer, 0, read);
       }
     }
