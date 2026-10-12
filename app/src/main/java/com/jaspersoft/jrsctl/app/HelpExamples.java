@@ -281,7 +281,12 @@ final class HelpExamples {
             new Example(
                 "Migrate the schema in place instead; back up the database yourself first",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
-                    + " --mode samedb --db-backup-confirmed")));
+                    + " --mode samedb --db-backup-confirmed"),
+            new Example(
+                "Leave a file the running server holds a lock on out of the webapp backup, and"
+                    + " record it",
+                "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
+                    + " --skip-locked-files")));
     m.put(
         "upgrade rollback",
         List.of(
