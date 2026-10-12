@@ -3,7 +3,7 @@
 ## Draft 1.2 amendment — 2026-10-12 (field test, the webapp backup and locked files; ADR-0044)
 
 - §10.2 step 6: `BackupWebapp` names a file it can open but not read (on Windows, a byte-range lock the running server holds), with a remediation that says who to look for; with the new `upgrade --skip-locked-files` such a file is left out of the archive with no partial entry, named in the step output and listed in `<archive>.skipped`, the plan warns before the run, and the choice is in the stored arguments and the fingerprint. Never the default: an incomplete backup is worse than a stopped run for an in-place upgrade.
-- §10.3: the `upgrade` command line gains `[--skip-locked-files]`.
+- §10.4: the `upgrade` command line gains `[--skip-locked-files]`.
 
 ## Draft 1.2 amendment — 2026-09-27 (issue #199, word secrets are masked as whole words)
 

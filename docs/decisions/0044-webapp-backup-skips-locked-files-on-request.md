@@ -1,6 +1,6 @@
 # ADR-0044: the webapp backup names a file it cannot read, and leaves it out only when asked
 
-Status: accepted · Date: 2026-10-12 · Spec: §10.2 step 6, §10.3 · Field bundles r-20261012-194157-4a57, r-20261012-202802-6c66
+Status: accepted · Date: 2026-10-12 · Spec: §10.2 step 6, §10.4 · Field bundles r-20261012-194157-4a57, r-20261012-202802-6c66
 
 ## Context
 
