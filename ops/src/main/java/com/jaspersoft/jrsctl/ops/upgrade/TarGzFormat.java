@@ -45,7 +45,9 @@ final class TarGzFormat implements ArchiveFormat {
   }
 
   @Override
-  public long write(Path root, OutputStream raw, CancellationToken cancel) throws IOException {
+  public long write(
+      Path root, OutputStream raw, CancellationToken cancel, Archives.LockedFiles locked)
+      throws IOException {
     long[] count = {0};
     try (TarArchiveOutputStream tar =
         new TarArchiveOutputStream(new GZIPOutputStream(raw), Archives.BUFFER)) {
@@ -59,14 +61,26 @@ final class TarGzFormat implements ArchiveFormat {
               Archives.checkLinkTarget(root, file, Files.readSymbolicLink(file).toString());
             }
             TarArchiveEntry entry = tarEntry(file, rel, attrs);
-            tar.putArchiveEntry(entry);
             // Content follows only for a real file. TarArchiveEntry.isFile() is true for a
             // symbolic link too, since it only asks whether the name ends in "/", and
             // copying then writes the link target's bytes into a zero-length header.
-            if (attrs.isRegularFile()) {
-              Archives.copy(file, tar);
+            if (!attrs.isRegularFile()) {
+              tar.putArchiveEntry(entry);
+              tar.closeArchiveEntry();
+              count[0]++;
+              return;
             }
-            tar.closeArchiveEntry();
+            // the file is opened and its first chunk read before the entry header goes out, so a
+            // file that cannot be read leaves no partial entry behind
+            Optional<Archives.Reader> reader = locked.open(file);
+            if (reader.isEmpty()) {
+              return;
+            }
+            try (Archives.Reader in = reader.get()) {
+              tar.putArchiveEntry(entry);
+              in.copyTo(tar);
+              tar.closeArchiveEntry();
+            }
             count[0]++;
           });
     }

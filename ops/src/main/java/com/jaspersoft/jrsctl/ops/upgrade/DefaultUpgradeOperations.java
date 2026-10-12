@@ -118,6 +118,17 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " the full export; run js-ant migrate-passwords by hand afterwards if the new version's"
           + " js.password-storage-config.properties asks for the modern format.";
 
+  /**
+   * ADR-0044: the operator chose a backup that may lack files, so the plan says so before the run;
+   * the step names each file it left out and records them next to the archive.
+   */
+  public static final String SKIP_LOCKED_FILES_WARNING =
+      "--skip-locked-files: a file under the webapp or the installed buildomatic that opens but"
+          + " cannot be read (one another process holds a lock on) is left out of the webapp backup"
+          + " instead of failing it. Each such file is named in the step's output and listed in a"
+          + " .skipped file next to the archive, and a restore of that backup will not put it"
+          + " back.";
+
   /** The home of the user running jrsctl (HOME, USERPROFILE, else user.home), for the licence. */
   static Path defaultUserHome() {
     return Path.of(UserPaths.expand("~", System.getenv())).toAbsolutePath().normalize();
@@ -449,6 +460,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         warnings.add(MIGRATE_PASSWORDS_NEWDB_WARNING);
       }
     }
+    if (options.skipLockedFiles()) {
+      warnings.add(SKIP_LOCKED_FILES_WARNING);
+    }
     warnings.add(options.mode() == Mode.SAMEDB ? FILES_ONLY_WARNING : NEWDB_ROLLBACK_WARNING);
     warnings.add(PASSWORD_WARNING);
 
@@ -584,6 +598,10 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     inputs.put("mode", options.mode().name());
     inputs.put("reapplyHotfixes", Boolean.toString(options.reapplyHotfixes()));
     inputs.put("includeEvents", Boolean.toString(options.includeEvents()));
+    // only when set, so the fingerprint of an unchanged plan stays what an earlier jrsctl computed
+    if (options.skipLockedFiles()) {
+      inputs.put("skipLockedFiles", "true");
+    }
     return new Plan(
         "upgrade-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
   }

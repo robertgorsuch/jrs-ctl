@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Phase B of spec §10.2, rollback point B: full vendor export, keystore, webapp and buildomatic
@@ -514,6 +515,17 @@ final class BackupSteps {
           Logs.warn(rt, ctx, out, this, "no installed buildomatic directory to archive");
         }
         return StepResult.ok();
+      } catch (Archives.LockedFileException e) {
+        // field bundle r-20261012-202802-6c66: a running server held a byte-range lock on one
+        // file; no permission or elevation reads past it, so the remediation is about the holder
+        return Failures.recoverable(
+            "cannot archive: " + e.getMessage(),
+            "another process holds "
+                + e.file()
+                + " (Resource Monitor or handle.exe names it); close it, or run again with"
+                + " --skip-locked-files to leave that file out of the backup",
+            List.of(),
+            List.of(set.dir()));
       } catch (IOException e) {
         return Failures.recoverable(
             "cannot archive: " + e.getMessage(),
@@ -529,10 +541,48 @@ final class BackupSteps {
         Logs.info(rt, ctx, out, this, archive + " already present and verified; reusing it");
         return;
       }
-      long entries = Archives.create(rt.services().platform().os(), source, archive, ctx.cancel());
+      Archives.Created created =
+          Archives.create(
+              rt.services().platform().os(),
+              source,
+              archive,
+              ctx.cancel(),
+              in.options().skipLockedFiles());
       PointB.writeSha(archive, rt.files().sha256(archive));
+      // the record is written after the archive is complete and hashed, so a .skipped file always
+      // describes a finished archive; a re-execution reuses the archive and keeps the record
+      if (!created.skipped().isEmpty()) {
+        Files.writeString(
+            SnapshotSet.skippedFileFor(archive),
+            created.skipped().stream()
+                .map(Path::toString)
+                .collect(Collectors.joining(System.lineSeparator(), "", System.lineSeparator())),
+            StandardCharsets.UTF_8);
+        for (Path skipped : created.skipped()) {
+          Logs.warn(
+              rt,
+              ctx,
+              out,
+              this,
+              skipped
+                  + " left out of "
+                  + archive
+                  + ": another process holds it (--skip-locked-files)");
+        }
+      }
       Logs.info(
-          rt, ctx, out, this, entries + " entries from " + source + " archived to " + archive);
+          rt,
+          ctx,
+          out,
+          this,
+          created.entries()
+              + " entries from "
+              + source
+              + " archived to "
+              + archive
+              + (created.skipped().isEmpty()
+                  ? ""
+                  : ", " + created.skipped().size() + " locked file(s) left out"));
     }
 
     @Override

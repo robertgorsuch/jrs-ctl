@@ -26,6 +26,7 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
   static final String BUILDOMATIC_ARCHIVE = "buildomatic";
   static final String MANIFEST = "upgrade.json";
   static final String SHA_SUFFIX = ".sha256";
+  static final String SKIPPED_SUFFIX = ".skipped";
   static final String EXTERNAL_RECORD = "full-export.external";
   static final String VENDOR_STARTED = "vendor-upgrade.started";
 
@@ -116,5 +117,13 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
 
   static Path shaFileFor(Path archive) {
     return archive.resolveSibling(archive.getFileName() + SHA_SUFFIX);
+  }
+
+  /**
+   * The record of the files an archive left out (ADR-0044): one absolute path per line, present
+   * only when {@code --skip-locked-files} left something out.
+   */
+  static Path skippedFileFor(Path archive) {
+    return archive.resolveSibling(archive.getFileName() + SKIPPED_SUFFIX);
   }
 }

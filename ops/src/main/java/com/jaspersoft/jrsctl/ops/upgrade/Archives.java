@@ -4,6 +4,7 @@ import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -13,8 +14,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 
 /**
@@ -53,6 +56,22 @@ final class Archives {
    */
   static long create(Platform.OsFamily os, Path sourceDir, Path archive, CancellationToken cancel)
       throws IOException {
+    return create(os, sourceDir, archive, cancel, false).entries();
+  }
+
+  /**
+   * {@link #create(Platform.OsFamily, Path, Path, CancellationToken)} with a choice for a file that
+   * opens but cannot be read, which on Windows is one another process holds a byte-range lock on
+   * (ADR-0044): with {@code skipLockedFiles} it is left out of the archive and named in the result,
+   * else it fails the archive with its path in the message.
+   */
+  static Created create(
+      Platform.OsFamily os,
+      Path sourceDir,
+      Path archive,
+      CancellationToken cancel,
+      boolean skipLockedFiles)
+      throws IOException {
     Objects.requireNonNull(sourceDir, "sourceDir");
     Objects.requireNonNull(archive, "archive");
     Path root = sourceDir.toAbsolutePath().normalize();
@@ -62,12 +81,108 @@ final class Archives {
     Files.createDirectories(archive.toAbsolutePath().getParent());
     Path part = archive.resolveSibling(archive.getFileName() + ".part");
     Files.deleteIfExists(part);
+    LockedFiles locked = new LockedFiles(skipLockedFiles);
     long count;
     try (OutputStream raw = new BufferedOutputStream(Files.newOutputStream(part), BUFFER)) {
-      count = ArchiveFormat.of(os).write(root, raw, cancel);
+      count = ArchiveFormat.of(os).write(root, raw, cancel, locked);
     }
     Files.move(part, archive, StandardCopyOption.REPLACE_EXISTING);
-    return count;
+    return new Created(count, locked.skipped());
+  }
+
+  /** What {@link #create} wrote: the entry count and the files it left out, in walk order. */
+  record Created(long entries, List<Path> skipped) {
+    Created {
+      skipped = List.copyOf(skipped);
+    }
+  }
+
+  /**
+   * A file the archive opened but could not read. The open proves the path exists and is readable
+   * by this account, so a failed read is the file system refusing the bytes: on Windows a
+   * byte-range lock another process holds (error 33, "another process has locked a portion of the
+   * file"), which no permission or elevation gets past.
+   */
+  static final class LockedFileException extends IOException {
+    private final transient Path file;
+
+    LockedFileException(Path file, IOException cause) {
+      super("cannot read " + file + ": " + cause.getMessage(), cause);
+      this.file = file;
+    }
+
+    Path file() {
+      return file;
+    }
+  }
+
+  /**
+   * The archive's policy for a file that opens but cannot be read, and the record of the files it
+   * skipped. Invariant: a skipped file leaves no entry at all, because {@link #open} reads the
+   * first chunk before the caller writes an entry header; a file whose later chunk fails is still
+   * an error naming the path, since an entry already begun cannot be taken back.
+   */
+  static final class LockedFiles {
+    private final boolean skip;
+    private final List<Path> skipped = new ArrayList<>();
+
+    LockedFiles(boolean skip) {
+      this.skip = skip;
+    }
+
+    /** Opens {@code file} with its first chunk read; empty when the file is skipped. */
+    Optional<Reader> open(Path file) throws IOException {
+      InputStream in = Files.newInputStream(file);
+      byte[] buffer = new byte[BUFFER];
+      int first;
+      try {
+        first = in.read(buffer);
+      } catch (IOException e) {
+        in.close();
+        if (skip) {
+          skipped.add(file);
+          return Optional.empty();
+        }
+        throw new LockedFileException(file, e);
+      }
+      return Optional.of(new Reader(file, in, buffer, first));
+    }
+
+    List<Path> skipped() {
+      return List.copyOf(skipped);
+    }
+  }
+
+  /** An opened file whose first chunk is already in hand; streams the rest on demand. */
+  static final class Reader implements Closeable {
+    private final Path file;
+    private final InputStream in;
+    private final byte[] buffer;
+    private final int first;
+
+    private Reader(Path file, InputStream in, byte[] buffer, int first) {
+      this.file = file;
+      this.in = in;
+      this.buffer = buffer;
+      this.first = first;
+    }
+
+    void copyTo(OutputStream out) throws IOException {
+      int read = first;
+      while (read != -1) {
+        out.write(buffer, 0, read);
+        try {
+          read = in.read(buffer);
+        } catch (IOException e) {
+          throw new IOException("cannot read " + file + ": " + e.getMessage(), e);
+        }
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      in.close();
+    }
   }
 
   /** Extracts {@code archive} into {@code targetDir}, which is created if missing. */
@@ -180,30 +295,6 @@ final class Archives {
       from = to + 1;
     }
     return false;
-  }
-
-  /**
-   * Streams {@code file} into {@code out}. A read that fails after the open succeeded (on Windows,
-   * a byte-range lock another process holds: "another process has locked a portion of the file")
-   * carries only the operating system's text, so the path is added here; an open failure already
-   * names the file.
-   */
-  static void copy(Path file, OutputStream out) throws IOException {
-    byte[] buffer = new byte[BUFFER];
-    try (InputStream in = Files.newInputStream(file)) {
-      int read;
-      while (true) {
-        try {
-          read = in.read(buffer);
-        } catch (IOException e) {
-          throw new IOException("cannot read " + file + ": " + e.getMessage(), e);
-        }
-        if (read == -1) {
-          break;
-        }
-        out.write(buffer, 0, read);
-      }
-    }
   }
 
   static void write(InputStream in, Path target) throws IOException {

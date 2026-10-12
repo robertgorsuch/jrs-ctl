@@ -357,4 +357,35 @@ class ArchivesTest {
           .hasMessageContaining(locked.toString());
     }
   }
+
+  /**
+   * The operator's way past a file the running server holds (ADR-0044): with skipping on, a file
+   * that opens but cannot be read is left out of the archive, written nowhere (no partial entry),
+   * and reported by path, so the backup says what it lacks. Every other file is still archived.
+   */
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_leave_a_locked_file_out_and_list_it_when_told_to_skip_locked_files()
+      throws Exception {
+    Path source = Files.createDirectories(tmp.resolve("src"));
+    Files.writeString(source.resolve("a.txt"), "alpha", StandardCharsets.UTF_8);
+    Path locked = source.resolve("held.db");
+    Files.writeString(locked, "0123456789", StandardCharsets.UTF_8);
+    Files.writeString(source.resolve("z.txt"), "zulu", StandardCharsets.UTF_8);
+    Path archive = tmp.resolve("out").resolve("webapp.zip");
+
+    Archives.Created created;
+    try (FileChannel channel =
+            FileChannel.open(locked, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        FileLock lock = channel.lock()) {
+      created =
+          Archives.create(
+              Platform.OsFamily.WINDOWS, source, archive, new CancellationToken(), true);
+    }
+
+    assertThat(created.skipped()).containsExactly(locked);
+    assertThat(created.entries()).isEqualTo(2);
+    assertThat(Archives.entries(Platform.OsFamily.WINDOWS, archive))
+        .containsExactly("a.txt", "z.txt");
+  }
 }

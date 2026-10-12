@@ -85,6 +85,29 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * ADR-0044: leaving locked files out of the webapp backup is the operator's choice, so the plan
+   * says so before the run, the fingerprint changes with it, and a plan without the option says
+   * nothing about it.
+   */
+  @Test
+  void should_warn_that_locked_files_are_left_out_when_skip_locked_files_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plain = f.ops().planUpgrade(newdb(f));
+      Plan skipping = f.ops().planUpgrade(newdb(f).withSkipLockedFiles(true));
+
+      assertThat(skipping.summary().warnings())
+          .contains(DefaultUpgradeOperations.SKIP_LOCKED_FILES_WARNING);
+      assertThat(DefaultUpgradeOperations.SKIP_LOCKED_FILES_WARNING)
+          .contains("--skip-locked-files");
+      assertThat(plain.summary().warnings())
+          .doesNotContain(DefaultUpgradeOperations.SKIP_LOCKED_FILES_WARNING);
+      assertThat(skipping.fingerprint().inputs()).containsEntry("skipLockedFiles", "true");
+      assertThat(skipping.fingerprint().value()).isNotEqualTo(plain.fingerprint().value());
+    }
+  }
+
   @Test
   void should_list_five_phases_and_step_ids_when_mode_newdb() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
