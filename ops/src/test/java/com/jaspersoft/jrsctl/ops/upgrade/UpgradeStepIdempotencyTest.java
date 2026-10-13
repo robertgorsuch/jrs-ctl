@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
@@ -24,9 +25,12 @@ import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +41,8 @@ import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -396,6 +402,68 @@ class UpgradeStepIdempotencyTest {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       assertReexecutionConverges(f, f.ops().planUpgrade(newdb(f)), "r-bw", "backup-webapp");
       assertThat(f.logs()).anyMatch(m -> m.contains("already present and verified"));
+    }
+  }
+
+  /**
+   * Field bundle r-20261012-202802-6c66: a running server held a byte-range lock on one file under
+   * the webapp and the step failed without naming it, with a remediation about disk space. The
+   * failure must name the file and point at {@code --skip-locked-files}. Windows only: a Linux lock
+   * is advisory.
+   */
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_name_the_locked_file_and_the_option_when_backup_webapp_cannot_read_it()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path locked = f.webappDir.resolve("WEB-INF").resolve("held.lock");
+      UpgradeFixture.write(locked, "held");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-bw-locked");
+      Idempotency.runUpTo(plan, ctx, "backup-keystore", f.events::add);
+      Step step = Idempotency.step(plan, "backup-webapp");
+
+      StepResult result;
+      try (FileChannel channel =
+              FileChannel.open(locked, StandardOpenOption.READ, StandardOpenOption.WRITE);
+          FileLock lock = channel.lock()) {
+        result = step.execute(ctx, f.events::add);
+      }
+
+      assertThat(result).isInstanceOf(StepResult.Failed.class);
+      assertThat(result.toString()).contains(locked.toString()).contains("--skip-locked-files");
+    }
+  }
+
+  /**
+   * ADR-0044: with {@code --skip-locked-files} the locked file is left out, the archive is written
+   * and verified, and the omission is recorded next to the archive and in the step's output, so the
+   * backup says what it lacks.
+   */
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void should_record_the_locked_file_it_left_out_when_backup_webapp_skips_locked_files()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path locked = f.webappDir.resolve("WEB-INF").resolve("held.lock");
+      UpgradeFixture.write(locked, "held");
+      Plan plan = f.ops().planUpgrade(newdb(f).withSkipLockedFiles(true));
+      Context ctx = start(f, plan, "r-bw-skip");
+      Idempotency.runUpTo(plan, ctx, "backup-keystore", f.events::add);
+      Step step = Idempotency.step(plan, "backup-webapp");
+
+      try (FileChannel channel =
+              FileChannel.open(locked, StandardOpenOption.READ, StandardOpenOption.WRITE);
+          FileLock lock = channel.lock()) {
+        Idempotency.executeOk(step, ctx, f.events::add);
+      }
+
+      SnapshotSet set = SnapshotSet.of(f.fake.home, "r-bw-skip", Platform.OsFamily.WINDOWS);
+      assertThat(Archives.entries(Platform.OsFamily.WINDOWS, set.webappArchive()))
+          .doesNotContain("WEB-INF/held.lock");
+      assertThat(SnapshotSet.skippedFileFor(set.webappArchive()))
+          .hasContent(locked.toString() + System.lineSeparator());
+      assertThat(f.logs()).anyMatch(m -> m.contains("held.lock") && m.contains("left out"));
     }
   }
 

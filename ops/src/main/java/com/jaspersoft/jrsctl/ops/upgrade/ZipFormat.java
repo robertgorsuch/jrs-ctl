@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
@@ -27,7 +28,9 @@ final class ZipFormat implements ArchiveFormat {
   }
 
   @Override
-  public long write(Path root, OutputStream raw, CancellationToken cancel) throws IOException {
+  public long write(
+      Path root, OutputStream raw, CancellationToken cancel, Archives.LockedFiles locked)
+      throws IOException {
     long[] count = {0};
     try (ZipArchiveOutputStream zip = new ZipArchiveOutputStream(raw)) {
       Archives.walk(
@@ -43,11 +46,23 @@ final class ZipFormat implements ArchiveFormat {
             }
             ZipArchiveEntry entry = new ZipArchiveEntry(rel + (attrs.isDirectory() ? "/" : ""));
             entry.setTime(attrs.lastModifiedTime().toMillis());
-            zip.putArchiveEntry(entry);
-            if (!attrs.isDirectory()) {
-              Archives.copy(file, zip);
+            if (attrs.isDirectory()) {
+              zip.putArchiveEntry(entry);
+              zip.closeArchiveEntry();
+              count[0]++;
+              return;
             }
-            zip.closeArchiveEntry();
+            // the file is opened and its first chunk read before the entry header goes out, so a
+            // file that cannot be read leaves no partial entry behind
+            Optional<Archives.Reader> reader = locked.open(file);
+            if (reader.isEmpty()) {
+              return;
+            }
+            try (Archives.Reader in = reader.get()) {
+              zip.putArchiveEntry(entry);
+              in.copyTo(zip);
+              zip.closeArchiveEntry();
+            }
             count[0]++;
           });
     }

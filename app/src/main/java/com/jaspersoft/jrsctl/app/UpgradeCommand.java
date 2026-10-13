@@ -103,6 +103,15 @@ final class UpgradeCommand implements Callable<Integer> {
   boolean migratePasswords;
 
   @Option(
+      names = "--skip-locked-files",
+      description =
+          "Leave a file the webapp backup can open but not read (one another process holds a lock"
+              + " on, typically the running server) out of the archive instead of failing the"
+              + " run. Each file left out is named in the step output and listed in a .skipped"
+              + " file next to the archive; a restore of that backup will not put it back.")
+  boolean skipLockedFiles;
+
+  @Option(
       names = "--tomcat-dir",
       paramLabel = "<dir>",
       description =
@@ -199,7 +208,8 @@ final class UpgradeCommand implements Callable<Integer> {
               Optional.ofNullable(keyAlias),
               keyPassword,
               includeEvents,
-              migratePasswords);
+              migratePasswords,
+              skipLockedFiles);
       Plan planned;
       try {
         DefaultUpgradeOperations ops = new DefaultUpgradeOperations(services);

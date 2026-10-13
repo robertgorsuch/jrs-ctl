@@ -73,7 +73,9 @@ public interface UpgradeOperations {
    * vendor script leaves behind (issue #106), and means nothing for samedb; {@code
    * migratePasswords} asks a samedb upgrade to 10.1 or later to run the vendor's password migration
    * after the vendor run (issue #108), is refused for an older target and ignored with a warning
-   * for newdb.
+   * for newdb; {@code skipLockedFiles} lets the webapp backup leave out a file that opens but
+   * cannot be read, one another process holds a lock on, recording what it left out (ADR-0044).
+   * Every {@code with} method keeps the other fields as they are.
    */
   record UpgradeOptions(
       String toVersion,
@@ -86,7 +88,8 @@ public interface UpgradeOperations {
       Optional<String> keyAlias,
       Optional<SecretRef> keyPassword,
       boolean includeEvents,
-      boolean migratePasswords) {
+      boolean migratePasswords,
+      boolean skipLockedFiles) {
     public UpgradeOptions {
       Objects.requireNonNull(toVersion, "toVersion");
       Objects.requireNonNull(packageDir, "packageDir");
@@ -100,6 +103,34 @@ public interface UpgradeOperations {
       }
       packageDir = packageDir.toAbsolutePath().normalize();
       existingExport = existingExport.map(p -> p.toAbsolutePath().normalize());
+    }
+
+    /** The options with every locked file failing the webapp backup, as before ADR-0044. */
+    public UpgradeOptions(
+        String toVersion,
+        Path packageDir,
+        Mode mode,
+        boolean dbBackupConfirmed,
+        boolean reapplyHotfixes,
+        Optional<Path> tomcatDir,
+        Optional<Path> existingExport,
+        Optional<String> keyAlias,
+        Optional<SecretRef> keyPassword,
+        boolean includeEvents,
+        boolean migratePasswords) {
+      this(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          includeEvents,
+          migratePasswords,
+          false);
     }
 
     /** The options with the events and the passwords left where the vendor script leaves them. */
@@ -125,7 +156,24 @@ public interface UpgradeOperations {
           keyAlias,
           keyPassword,
           includeEvents,
+          false,
           false);
+    }
+
+    public UpgradeOptions withSkipLockedFiles(boolean skip) {
+      return new UpgradeOptions(
+          toVersion,
+          packageDir,
+          mode,
+          dbBackupConfirmed,
+          reapplyHotfixes,
+          tomcatDir,
+          existingExport,
+          keyAlias,
+          keyPassword,
+          includeEvents,
+          migratePasswords,
+          skip);
     }
 
     /** The options with the events left where the vendor script leaves them. */
@@ -165,7 +213,8 @@ public interface UpgradeOperations {
           keyAlias,
           keyPassword,
           includeEvents,
-          migrate);
+          migrate,
+          skipLockedFiles);
     }
 
     /** The options with this run's own export and the server's own key. */
@@ -200,7 +249,8 @@ public interface UpgradeOperations {
           keyAlias,
           keyPassword,
           include,
-          migratePasswords);
+          migratePasswords,
+          skipLockedFiles);
     }
 
     /** The options with the webapp staying in the Tomcat the server runs in now. */
@@ -225,7 +275,8 @@ public interface UpgradeOperations {
           keyAlias,
           keyPassword,
           includeEvents,
-          migratePasswords);
+          migratePasswords,
+          skipLockedFiles);
     }
 
     public UpgradeOptions withKeyAlias(String alias) {
@@ -240,7 +291,8 @@ public interface UpgradeOperations {
           Optional.of(alias),
           keyPassword,
           includeEvents,
-          migratePasswords);
+          migratePasswords,
+          skipLockedFiles);
     }
 
     public UpgradeOptions withKeyPassword(SecretRef ref) {
@@ -254,7 +306,9 @@ public interface UpgradeOperations {
           existingExport,
           keyAlias,
           Optional.of(ref),
-          includeEvents);
+          includeEvents,
+          migratePasswords,
+          skipLockedFiles);
     }
 
     public static UpgradeOptions newdb(String toVersion, Path packageDir) {

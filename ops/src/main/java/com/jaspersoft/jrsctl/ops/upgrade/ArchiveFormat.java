@@ -21,8 +21,13 @@ sealed interface ArchiveFormat permits TarGzFormat, ZipFormat {
   /** The suffix an archive of this format carries, {@code .tar.gz} or {@code .zip}. */
   String extension();
 
-  /** Writes every file under {@code root} and answers how many entries it wrote. */
-  long write(Path root, OutputStream raw, CancellationToken cancel) throws IOException;
+  /**
+   * Writes every file under {@code root} and answers how many entries it wrote. A regular file is
+   * opened through {@code locked}, which decides whether one that cannot be read is skipped (no
+   * entry at all, never a partial one) or fails the archive.
+   */
+  long write(Path root, OutputStream raw, CancellationToken cancel, Archives.LockedFiles locked)
+      throws IOException;
 
   /** Reads {@code raw} into {@code root} and answers how many entries it read. */
   long read(InputStream raw, Path root, CancellationToken cancel) throws IOException;

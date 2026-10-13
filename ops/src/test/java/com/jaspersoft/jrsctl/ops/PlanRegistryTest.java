@@ -204,6 +204,30 @@ class PlanRegistryTest {
         .isFalse();
   }
 
+  /**
+   * ADR-0044: a recovered run must archive the way the operator asked, so the choice to leave
+   * locked files out survives the stored arguments; arguments written before the option mean no.
+   */
+  @Test
+  void should_round_trip_skip_locked_files_of_an_upgrade() throws IOException {
+    UpgradeOperations.UpgradeOptions options =
+        UpgradeOperations.UpgradeOptions.newdb("10.0.0", Path.of("pkg"))
+            .withIncludeEvents(true)
+            .withSkipLockedFiles(true);
+
+    JsonNode args = tree(PlanRegistry.upgradeArgs(options));
+
+    assertThat(args.get("skipLockedFiles").asBoolean()).isTrue();
+    UpgradeOperations.UpgradeOptions back = PlanRegistry.upgradeOptions(args);
+    assertThat(back.skipLockedFiles()).isTrue();
+    assertThat(back.includeEvents()).as("chaining keeps the other flag").isTrue();
+    assertThat(
+            PlanRegistry.upgradeOptions(
+                    tree("{\"to\":\"10.0.0\",\"package\":\"p\",\"mode\":\"NEWDB\"}"))
+                .skipLockedFiles())
+        .isFalse();
+  }
+
   /** Issue #107: the version override survives the stored arguments; older arguments mean no. */
   @Test
   void should_round_trip_force_version_of_an_import() throws IOException {
