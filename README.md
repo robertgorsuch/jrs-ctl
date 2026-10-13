@@ -2,10 +2,10 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **No longer maintained.** 2.3.0 is the final release. No further fixes, security patches or new JasperReports Server versions will be added.
+> **No longer maintained.** 2.4.0 is the final release. No further fixes, security patches or new JasperReports Server versions will be added.
 >
 > - What works stays as shipped: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
-> - The bundled Java runtime will not be updated. It is the Java 21 update the 2.3.0 build used; `jrsctl selfcheck` shows it.
+> - The bundled Java runtime will not be updated. It is the Java 21 update the 2.4.0 build used; `jrsctl selfcheck` shows it.
 > - [SECURITY.md](SECURITY.md) says how to check a download. To carry the project on, fork it (GPL-3.0-only).
 
 jrsctl checks your server's health, installs hotfixes, backs up and moves report content between servers, and upgrades the server to a new version. Before it changes anything it shows you exactly what it will do and asks you to confirm. If something fails partway, it puts things back the way they were.
@@ -50,14 +50,14 @@ Unpack it on the server, then open a terminal in the unpacked folder:
 
 ```bash
 :: Windows (Command Prompt, run as administrator)
-tar -xf jrsctl-2.3.0-windows-x64.zip -C C:\Jaspersoft
-cd C:\Jaspersoft\jrsctl-2.3.0
+tar -xf jrsctl-2.4.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-2.4.0
 ```
 
 ```bash
 # Linux
-tar -xzf jrsctl-2.3.0-linux-x64.tar.gz -C /opt
-cd /opt/jrsctl-2.3.0
+tar -xzf jrsctl-2.4.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-2.4.0
 ```
 
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
@@ -289,8 +289,8 @@ The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (back
 
 Each release file has a `.sha256` checksum beside it:
 
-- Windows: `certutil -hashfile jrsctl-2.3.0-windows-x64.zip SHA256`
-- Linux: `sha256sum -c jrsctl-2.3.0-linux-x64.tar.gz.sha256`
+- Windows: `certutil -hashfile jrsctl-2.4.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-2.4.0-linux-x64.tar.gz.sha256`
 
 Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
 
