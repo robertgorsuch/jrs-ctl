@@ -241,6 +241,13 @@ final class PreflightSteps {
       if (space.isPresent()) {
         return space.get();
       }
+      // field report 2026-10-27: judged here, not only in backup-config, so a layout the config
+      // snapshot cannot hold is refused before the webapp backup spends its minutes
+      if (BackupSteps.configBase(in).isEmpty()) {
+        return CheckResult.fail(
+            BackupSteps.CONFIG_BASE_PROBLEM + ": " + in.configFiles(),
+            BackupSteps.CONFIG_BASE_REMEDIATION);
+      }
       // review §1.3: what write-master-properties will stage must keep the installation type
       // (upgrade guide 10.1 p.14) and, for Oracle from 10.1 on, name dbVersion (p.43)
       Map<String, String> targetMaster = in.targetMasterProperties(rt.locator());

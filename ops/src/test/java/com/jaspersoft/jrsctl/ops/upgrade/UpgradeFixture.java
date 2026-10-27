@@ -85,6 +85,12 @@ public final class UpgradeFixture implements AutoCloseable {
 
   private UpgradeFixture(Path root, boolean withDatabase, boolean manualService)
       throws IOException {
+    this(root, withDatabase, manualService, false);
+  }
+
+  private UpgradeFixture(
+      Path root, boolean withDatabase, boolean manualService, boolean buildomaticBeside)
+      throws IOException {
     this.root = root;
     this.os = Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow();
     this.installDir = Files.createDirectories(root.resolve("jrs"));
@@ -126,7 +132,7 @@ public final class UpgradeFixture implements AutoCloseable {
           webappName: jasperserver-pro
           installDir: %s
           tomcatDir: %s
-          auth:
+        %s  auth:
             mode: basic
             username: jasperadmin
             passwordRef: env:JRS_PASSWORD
@@ -140,8 +146,11 @@ public final class UpgradeFixture implements AutoCloseable {
           mode: public
         """
                 .formatted(
-                    slashes(installDir),
+                    slashes(buildomaticBeside ? tomcatDir : installDir),
                     slashes(tomcatDir),
+                    buildomaticBeside
+                        ? "  buildomaticDir: " + slashes(installDir.resolve("buildomatic")) + "\n"
+                        : "",
                     manualService ? "manual" : "systemd",
                     slashes(javaHome))
             + (withDatabase ? databaseYaml(root) : ""));
@@ -153,6 +162,15 @@ public final class UpgradeFixture implements AutoCloseable {
 
   public static UpgradeFixture create(Path root) throws IOException {
     return new UpgradeFixture(root, false, false);
+  }
+
+  /**
+   * As {@link #create}, laid out as the WAR-file install of the field report of 2026-10-27: {@code
+   * server.installDir} is the Tomcat directory and {@code server.buildomaticDir} lies beside it,
+   * outside both.
+   */
+  public static UpgradeFixture createWithBuildomaticBeside(Path root) throws IOException {
+    return new UpgradeFixture(root, false, false, true);
   }
 
   /**
