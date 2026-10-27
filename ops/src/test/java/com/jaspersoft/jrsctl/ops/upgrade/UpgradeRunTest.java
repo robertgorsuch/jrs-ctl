@@ -88,6 +88,29 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Field report 2026-10-27: inside a run the doctor sees the run's own pending row and lock as
+   * FAIL. Those lines must say they are about this run, not that the target re-judges them.
+   */
+  @Test
+  void should_label_the_doctor_findings_about_this_run_as_such_when_the_run_logs_them()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-self", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      List<String> selfLines =
+          f.logs().stream()
+              .filter(m -> m.startsWith("FAIL runs:") || m.startsWith("FAIL lock:"))
+              .filter(m -> m.contains("r-self"))
+              .toList();
+      assertThat(selfLines)
+          .isNotEmpty()
+          .allMatch(m -> m.endsWith("(this run itself; not a problem with the host)"))
+          .noneMatch(m -> m.contains("judged against the target"));
+    }
+  }
+
   @Test
   void should_fail_the_rehearsal_with_the_vendor_lines_and_leave_the_package_as_it_was()
       throws Exception {

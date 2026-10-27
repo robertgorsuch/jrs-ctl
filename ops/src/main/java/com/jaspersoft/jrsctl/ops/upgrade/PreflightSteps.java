@@ -175,10 +175,14 @@ final class PreflightSteps {
               case WARN -> Event.Log.Level.WARN;
               case FAIL -> Event.Log.Level.WARN;
             };
-        String suffix =
-            item.status() == ReportItem.Status.FAIL
-                ? " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")"
-                : "";
+        // precheck let only two kinds of FAIL through; each says why it does not stop the run
+        String suffix = "";
+        if (item.status() == ReportItem.Status.FAIL) {
+          suffix =
+              aboutThisRun(item, ctx)
+                  ? " (this run itself; not a problem with the host)"
+                  : " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")";
+        }
         Logs.emit(
             rt,
             ctx,
