@@ -102,14 +102,24 @@ final class UpgradeCommand implements Callable<Integer> {
               + " with a warning for newdb.")
   boolean migratePasswords;
 
+  // ADR-0045: skipping is the default; the flag stays so 2.4.0 command lines keep working
   @Option(
       names = "--skip-locked-files",
       description =
-          "Leave a file the webapp backup can open but not read (one another process holds a lock"
-              + " on, typically the running server) out of the archive instead of failing the"
-              + " run. Each file left out is named in the step output and listed in a .skipped"
-              + " file next to the archive; a restore of that backup will not put it back.")
+          "The default since 2.5.0 (ADR-0045): leave a file the webapp backup can open but not"
+              + " read (one another process holds a lock on, typically the running server) out"
+              + " of the archive instead of failing the run. Each file left out is named in the"
+              + " step output and listed in a .skipped file next to the archive; a restore of"
+              + " that backup will not put it back.")
   boolean skipLockedFiles;
+
+  @Option(
+      names = "--no-skip-locked-files",
+      description =
+          "Fail the webapp backup on a file it cannot read instead of leaving it out, so the"
+              + " backup is complete or the run stops. Use it for an in-place upgrade, where the"
+              + " backup is the only copy of the old webapp.")
+  boolean noSkipLockedFiles;
 
   @Option(
       names = "--tomcat-dir",
@@ -183,6 +193,14 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.USAGE, "--mode must be newdb or samedb");
     }
+    if (skipLockedFiles && noSkipLockedFiles) {
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--skip-locked-files and --no-skip-locked-files cannot be given together");
+    }
     if (parsed == UpgradeOperations.Mode.SAMEDB && !dbBackupConfirmed && !test) {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
@@ -209,7 +227,7 @@ final class UpgradeCommand implements Callable<Integer> {
               keyPassword,
               includeEvents,
               migratePasswords,
-              skipLockedFiles);
+              !noSkipLockedFiles);
       Plan planned;
       try {
         DefaultUpgradeOperations ops = new DefaultUpgradeOperations(services);

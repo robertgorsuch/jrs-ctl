@@ -578,8 +578,8 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 **Phase B — backup** (rollback point B)
 4. `FullExport` (vendor strategy; includes service stop/start) — **samedb only**. In `newdb` mode the export moves to Phase C, after the stop (ADR-0025): the database is rebuilt from it, so nothing may change in the repository between the export and the vendor run, and the service is not restarted in between.
 5. `BackupKeystore`.
-6. `BackupWebapp` — archive of `tomcatDir/webapps/<webappName>` and installed `buildomatic/`, taken while the server runs. A file that opens but cannot be read (on Windows, a byte-range lock the running server holds) fails the step naming the file; with `--skip-locked-files` (ADR-0044) it is left out with no partial entry, named in the step output and listed in `<archive>.skipped` next to the archive, and the plan warns. The choice is in the stored arguments and the fingerprint.
-7. `BackupConfig` — `default_master.properties`, JNDI, context files.
+6. `BackupWebapp` — archive of `tomcatDir/webapps/<webappName>` and installed `buildomatic/`, taken while the server runs. A file that opens but cannot be read (on Windows, a byte-range lock the running server holds) is left out by default (ADR-0045; `--no-skip-locked-files` fails the step naming the file instead, ADR-0044): it is left out with no partial entry, named in the step output and listed in `<archive>.skipped` next to the archive, and the plan warns. The choice is in the stored arguments and the fingerprint.
+7. `BackupConfig` — `default_master.properties`, JNDI, context files, snapshotted relative to the deepest directory holding the installation, Tomcat and every one of them (a WAR-file install keeps `server.buildomaticDir` beside the installation); `verify-target-package` refuses a layout whose files share no root.
 
 **Phase C — vendor upgrade** (rollback point C = restore B)
 8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file.
@@ -611,7 +611,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files] [--test] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 

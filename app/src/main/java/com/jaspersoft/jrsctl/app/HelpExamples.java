@@ -283,10 +283,10 @@ final class HelpExamples {
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
                     + " --mode samedb --db-backup-confirmed"),
             new Example(
-                "Leave a file the running server holds a lock on out of the webapp backup, and"
-                    + " record it",
+                "Upgrade in place with a complete webapp backup: fail on a file the running"
+                    + " server holds a lock on instead of leaving it out",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
-                    + " --skip-locked-files")));
+                    + " --no-skip-locked-files")));
     m.put(
         "upgrade rollback",
         List.of(
