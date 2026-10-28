@@ -611,6 +611,28 @@ class Phase5UpgradeTest {
 
   @Test
   @Order(2)
+  void newdb_in_a_new_tomcat_without_db_rebuild_confirmed_exits_2_naming_the_flag()
+      throws Exception {
+    // ADR-0047: newdb rebuilds the installed server's database even when the old Tomcat stays
+    Path newTomcat = Files.createDirectories(tmp.resolve("gate-tomcat-10.1"));
+    Cli.Result refused =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--tomcat-dir",
+                newTomcat.toString(),
+                "--plan")
+            .assertExit(2);
+
+    assertThat(refused.stderr()).contains("--db-rebuild-confirmed").contains("installed server");
+    assertThat(webapp.resolve(MARKER)).doesNotExist();
+  }
+
+  @Test
+  @Order(2)
   void upgrade_test_rehearses_with_the_vendor_validation_and_changes_nothing() throws Exception {
     // spec §10.2 "Rehearsal": js-upgrade-newdb test, no stop, no backup, package left as found
     Cli.Result plan =

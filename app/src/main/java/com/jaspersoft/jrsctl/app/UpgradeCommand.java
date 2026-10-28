@@ -29,8 +29,10 @@ import picocli.CommandLine.Spec;
  * --db-backup-confirmed} exits 2 before anything is planned and prints the spec §10.1 gate
  * (ADR-0012, ADR-0029: samedb migrates the schema in place, which no export undoes, while newdb's
  * own full export is what {@code upgrade rollback --restore-database} rebuilds the database from);
- * the plan is always shown and confirmed through {@link PlanExecutor} like every mutating command;
- * an unsupported upgrade path exits 6.
+ * newdb with {@code --tomcat-dir} and without {@code --db-rebuild-confirmed} exits 2 the same way,
+ * because the old server's database is rebuilt even though its Tomcat stays (ADR-0047); the plan is
+ * always shown and confirmed through {@link PlanExecutor} like every mutating command; an
+ * unsupported upgrade path exits 6.
  */
 @Command(
     name = "upgrade",
@@ -78,6 +80,15 @@ final class UpgradeCommand implements Callable<Integer> {
           "samedb only: confirm that the repository database has been backed up (audited)."
               + " newdb needs no confirmation; its own full export is the backup.")
   boolean dbBackupConfirmed;
+
+  @Option(
+      names = "--db-rebuild-confirmed",
+      description =
+          "newdb with --tomcat-dir only: confirm that the vendor script drops and rebuilds the"
+              + " repository database the installed server uses, so the old server cannot run"
+              + " against it after the upgrade (ADR-0047). A separate target database is not"
+              + " supported.")
+  boolean dbRebuildConfirmed;
 
   @Option(
       names = "--reapply-hotfixes",
@@ -205,6 +216,13 @@ final class UpgradeCommand implements Callable<Integer> {
       return ExitCodes.fail(
           out, err, global.json(), ExitCodes.PRECHECK_FAILED, gateMessage(parsed));
     }
+    if (parsed == UpgradeOperations.Mode.NEWDB
+        && tomcatDir != null
+        && !dbRebuildConfirmed
+        && !test) {
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.PRECHECK_FAILED, REBUILD_GATE_MESSAGE);
+    }
     Optional<SecretRef> keyPassword;
     try {
       keyPassword = Optional.ofNullable(keyPasswordRef).map(SecretRef::parse);
@@ -258,6 +276,13 @@ final class UpgradeCommand implements Callable<Integer> {
       return code;
     }
   }
+
+  /** ADR-0047: the old Tomcat stays, but its repository database does not. */
+  static final String REBUILD_GATE_MESSAGE =
+      "--mode newdb with --tomcat-dir still drops and rebuilds the repository database the"
+          + " installed server uses (js.dbName in its default_master.properties), so the old server"
+          + " cannot run against it after the upgrade; a separate target database is not"
+          + " supported. Pass --db-rebuild-confirmed to go ahead, or --test to rehearse";
 
   static String gateMessage(UpgradeOperations.Mode mode) {
     String change =

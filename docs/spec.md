@@ -611,7 +611,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--db-rebuild-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 

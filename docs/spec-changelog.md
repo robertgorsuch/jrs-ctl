@@ -1,7 +1,8 @@
 # jrsctl spec changelog
 
-## Draft 1.2 amendment — 2026-10-28 (field test, the vendor's consent question and the failure excerpt; ADR-0046)
+## Draft 1.2 amendment — 2026-10-28 (field test, the vendor's consent question, the failure excerpt and the newdb database gate; ADR-0046, ADR-0047)
 
+- §10.4: `upgrade --mode newdb --tomcat-dir` exits 2 before planning unless `--db-rebuild-confirmed` is given: the vendor script still drops and rebuilds the database the installed `default_master.properties` names, so the old server keeps its Tomcat but loses its repository. Every newdb plan names that database (`js.dbName`, `dbHost`, `dbPort`) in a warning. The guided menu asks before passing the flag (ADR-0047).
 - §10.2 step 8: `WriteMasterProperties` stages `SKIP_UPGRADE_CONSENT=true`, so the 10.0 buildomatic does not ask on stdin to confirm a Compact installation (it did in every upgrade but `test`, and jrsctl gives it no stdin).
 - §7.4: once a vendor run reports a failed build, the lines a failure message quotes start at `BUILD FAILED` and leave out stack frames, instead of being the last 20 lines (which were stack frames in both field failures).
 

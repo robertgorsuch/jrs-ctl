@@ -283,6 +283,11 @@ final class HelpExamples {
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
                     + " --mode samedb --db-backup-confirmed"),
             new Example(
+                "Run the upgraded server in a new Tomcat; the old server's database is still"
+                    + " rebuilt, so confirm that",
+                "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
+                    + " --tomcat-dir /opt/tomcat-10.1 --db-rebuild-confirmed"),
+            new Example(
                 "Upgrade in place with a complete webapp backup: fail on a file the running"
                     + " server holds a lock on instead of leaving it out",
                 "jrsctl upgrade --to 10.0.0 --package /opt/dist/jasperreports-server-pro-10.0.0-bin"
