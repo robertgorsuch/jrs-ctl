@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-10-28 (field test, the vendor's consent question and the failure excerpt; ADR-0046)
+
+- §10.2 step 8: `WriteMasterProperties` stages `SKIP_UPGRADE_CONSENT=true`, so the 10.0 buildomatic does not ask on stdin to confirm a Compact installation (it did in every upgrade but `test`, and jrsctl gives it no stdin).
+- §7.4: once a vendor run reports a failed build, the lines a failure message quotes start at `BUILD FAILED` and leave out stack frames, instead of being the last 20 lines (which were stack frames in both field failures).
+
 ## Draft 1.2 amendment — 2026-10-27 (field test, locked files by default and buildomatic beside the installation; ADR-0045)
 
 - §10.2 step 6: `BackupWebapp` leaves a file it can open but not read out of the archive by default; `--no-skip-locked-files` restores the 2.4.0 behaviour (fail naming the file). `--skip-locked-files` is still accepted and changes nothing; both together exit 1. The field case is the Bitronix journal `WEB-INF/logs/transactionBtm*.tlog` of a server that has used a Virtual Data Source.

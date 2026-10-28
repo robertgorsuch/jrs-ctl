@@ -345,6 +345,11 @@ class Phase5UpgradeTest {
         "@echo off\r\n"
             + "echo js-ant fake target=%1 JAVA_HOME=%JAVA_HOME%\r\n"
             + "if \"%1\"==\"pre-upgrade-test-pro\" (echo BUILD SUCCESSFUL & exit /b 0)\r\n"
+            // 10.0's setup.xml asks for consent on stdin unless SKIP_UPGRADE_CONSENT=true
+            // (ADR-0046)
+            + "if \"%1\"==\"upgrade-minimal-pro\" findstr /B /C:\"SKIP_UPGRADE_CONSENT=true\""
+            + " \"%~dp0default_master.properties\" >nul 2>&1 || (echo BUILD FAILED & echo"
+            + " setup.xml:1403: unexpected end of stream while reading input & exit /b 0)\r\n"
             + "xcopy /E /Y /I /Q \""
             + webappNew.get()
             + "\" \""
@@ -357,6 +362,11 @@ class Phase5UpgradeTest {
         "#!/bin/sh\n"
             + "echo \"js-ant fake target=$1 JAVA_HOME=$JAVA_HOME\"\n"
             + "if [ \"$1\" = \"pre-upgrade-test-pro\" ]; then echo BUILD SUCCESSFUL; exit 0; fi\n"
+            + "if [ \"$1\" = \"upgrade-minimal-pro\" ] && ! grep -q '^SKIP_UPGRADE_CONSENT=true'"
+            + " \"$(dirname \"$0\")/default_master.properties\" 2>/dev/null; then\n"
+            + "  echo BUILD FAILED; echo 'setup.xml:1403: unexpected end of stream while reading"
+            + " input'; exit 0\n"
+            + "fi\n"
             + "cp -R \""
             + webappNew.get()
             + "/.\" \""
