@@ -175,10 +175,14 @@ final class PreflightSteps {
               case WARN -> Event.Log.Level.WARN;
               case FAIL -> Event.Log.Level.WARN;
             };
-        String suffix =
-            item.status() == ReportItem.Status.FAIL
-                ? " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")"
-                : "";
+        // precheck let only two kinds of FAIL through; each says why it does not stop the run
+        String suffix = "";
+        if (item.status() == ReportItem.Status.FAIL) {
+          suffix =
+              aboutThisRun(item, ctx)
+                  ? " (this run itself; not a problem with the host)"
+                  : " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")";
+        }
         Logs.emit(
             rt,
             ctx,
@@ -236,6 +240,13 @@ final class PreflightSteps {
       Optional<CheckResult> space = spaceProblem();
       if (space.isPresent()) {
         return space.get();
+      }
+      // field report 2026-10-27: judged here, not only in backup-config, so a layout the config
+      // snapshot cannot hold is refused before the webapp backup spends its minutes
+      if (BackupSteps.configBase(in).isEmpty()) {
+        return CheckResult.fail(
+            BackupSteps.CONFIG_BASE_PROBLEM + ": " + in.configFiles(),
+            BackupSteps.CONFIG_BASE_REMEDIATION);
       }
       // review §1.3: what write-master-properties will stage must keep the installation type
       // (upgrade guide 10.1 p.14) and, for Oracle from 10.1 on, name dbVersion (p.43)

@@ -88,6 +88,55 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Field report 2026-10-27: inside a run the doctor sees the run's own pending row and lock as
+   * FAIL. Those lines must say they are about this run, not that the target re-judges them.
+   */
+  @Test
+  void should_label_the_doctor_findings_about_this_run_as_such_when_the_run_logs_them()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-self", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      List<String> selfLines =
+          f.logs().stream()
+              .filter(m -> m.startsWith("FAIL runs:") || m.startsWith("FAIL lock:"))
+              .filter(m -> m.contains("r-self"))
+              .toList();
+      assertThat(selfLines)
+          .isNotEmpty()
+          .allMatch(m -> m.endsWith("(this run itself; not a problem with the host)"))
+          .noneMatch(m -> m.contains("judged against the target"));
+    }
+  }
+
+  /**
+   * Field report 2026-10-27: a WAR-file install keeps buildomatic beside the Tomcat directory, and
+   * backup-config refused its default_master.properties as outside the hotfix base. The snapshot
+   * now holds it, and a rollback to point B puts it back where it was.
+   */
+  @Test
+  void should_snapshot_and_restore_the_buildomatic_config_when_buildomatic_lies_beside_tomcat()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithBuildomaticBeside(tmp)) {
+      Path master = f.installDir.resolve("buildomatic").resolve("default_master.properties");
+      String before = UpgradeFixture.read(master);
+
+      RunOutcome up = f.run(f.ops().planUpgrade(newdb(f)), "r-beside", RunOptions.DEFAULT);
+
+      assertThat(up).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      Files.writeString(master, "changed after the upgrade\n");
+
+      RunOutcome back =
+          f.run(
+              f.ops().planRollback("r-beside", RollbackPoint.B), "r-beside-rb", RunOptions.DEFAULT);
+
+      assertThat(back).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(UpgradeFixture.read(master)).isEqualTo(before);
+    }
+  }
+
   @Test
   void should_fail_the_rehearsal_with_the_vendor_lines_and_leave_the_package_as_it_was()
       throws Exception {

@@ -528,8 +528,38 @@ class Phase5UpgradeTest {
         .doesNotContain("Rollback restores files only")
         .contains("nothing has changed");
     assertThat(plan.stdout()).doesNotContain("complete file and connection restore");
+    // ADR-0045: leaving locked files out of the webapp backup is the default, and the plan says so
+    assertThat(plan.stdout()).contains("--skip-locked-files (the default");
     assertThat(webapp.resolve(MARKER)).doesNotExist();
     assertThat(webapp.resolve("version.txt")).hasContent("8.2.0");
+  }
+
+  @Test
+  @Order(1)
+  void upgrade_plan_drops_the_locked_files_warning_when_no_skip_locked_files_is_given()
+      throws Exception {
+    Cli.Result strict =
+        jrsctl(
+                "upgrade",
+                "--to",
+                targetVersion,
+                "--package",
+                pkg.toString(),
+                "--no-skip-locked-files",
+                "--plan")
+            .assertExit(0);
+    assertThat(strict.stdout()).doesNotContain("--skip-locked-files (the default");
+
+    jrsctl(
+            "upgrade",
+            "--to",
+            targetVersion,
+            "--package",
+            pkg.toString(),
+            "--skip-locked-files",
+            "--no-skip-locked-files",
+            "--plan")
+        .assertExit(1);
   }
 
   @Test

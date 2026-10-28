@@ -119,15 +119,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " js.password-storage-config.properties asks for the modern format.";
 
   /**
-   * ADR-0044: the operator chose a backup that may lack files, so the plan says so before the run;
-   * the step names each file it left out and records them next to the archive.
+   * ADR-0044, ADR-0045: the backup may lack files (the command line's default since 2.5.0), so the
+   * plan says so before the run; the step names each file it left out and records them next to the
+   * archive.
    */
   public static final String SKIP_LOCKED_FILES_WARNING =
-      "--skip-locked-files: a file under the webapp or the installed buildomatic that opens but"
-          + " cannot be read (one another process holds a lock on) is left out of the webapp backup"
-          + " instead of failing it. Each such file is named in the step's output and listed in a"
-          + " .skipped file next to the archive, and a restore of that backup will not put it"
-          + " back.";
+      "--skip-locked-files (the default; --no-skip-locked-files refuses instead): a file under the"
+          + " webapp or the installed buildomatic that opens but cannot be read (one another"
+          + " process holds a lock on) is left out of the webapp backup instead of failing it."
+          + " Each such file is named in the step's output and listed in a .skipped file next to"
+          + " the archive, and a restore of that backup will not put it back.";
 
   /** The home of the user running jrsctl (HOME, USERPROFILE, else user.home), for the licence. */
   static Path defaultUserHome() {

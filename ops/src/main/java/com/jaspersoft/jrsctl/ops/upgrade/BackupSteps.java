@@ -16,6 +16,7 @@ import com.jaspersoft.jrsctl.jrs.strategy.ExportArchives;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
+import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -595,6 +596,25 @@ final class BackupSteps {
   }
 
   /** Step 7: default_master.properties, Tomcat context files, JNDI/JDBC properties. */
+  static final String CONFIG_BASE_PROBLEM = "the configuration files share no common root";
+
+  static final String CONFIG_BASE_REMEDIATION =
+      "keep server.buildomaticDir on the same volume as the installation and Tomcat";
+
+  /**
+   * The directory the configuration snapshot is taken relative to: the deepest one holding the
+   * install directory, the Tomcat directory and every configuration file. A WAR-file install keeps
+   * buildomatic beside the installation, not under it (field report 2026-10-27), so the hotfix base
+   * alone is too narrow; the restore reads the base back from the manifest. Empty when they share
+   * no root, as on two Windows volumes.
+   */
+  static Optional<Path> configBase(UpgradeInput in) {
+    List<Path> roots = new ArrayList<>();
+    roots.add(in.paths().commonBase());
+    roots.addAll(in.configFiles());
+    return HotfixPaths.commonAncestor(roots);
+  }
+
   static final class BackupConfig extends Additive {
 
     BackupConfig(UpgradeRuntime rt, UpgradeInput in) {
@@ -627,10 +647,15 @@ final class BackupSteps {
         Logs.warn(rt, ctx, out, this, "no configuration files found to snapshot");
         return StepResult.ok();
       }
+      Optional<Path> base = configBase(in);
+      if (base.isEmpty()) {
+        return Failures.recoverable(
+            "cannot snapshot configuration: " + CONFIG_BASE_PROBLEM + ": " + files,
+            CONFIG_BASE_REMEDIATION);
+      }
       try {
         Snapshot snapshot =
-            rt.snapshots()
-                .create(ctx.runId(), SnapshotSet.CONFIG_STEP, files, in.paths().commonBase());
+            rt.snapshots().create(ctx.runId(), SnapshotSet.CONFIG_STEP, files, base.get());
         record(ctx, SnapshotSet.CONFIG_STEP, snapshot);
         Logs.info(rt, ctx, out, this, files.size() + " file(s) saved to " + snapshot.dir());
         return StepResult.ok();

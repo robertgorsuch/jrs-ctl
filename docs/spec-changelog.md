@@ -1,5 +1,12 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-10-27 (field test, locked files by default and buildomatic beside the installation; ADR-0045)
+
+- §10.2 step 6: `BackupWebapp` leaves a file it can open but not read out of the archive by default; `--no-skip-locked-files` restores the 2.4.0 behaviour (fail naming the file). `--skip-locked-files` is still accepted and changes nothing; both together exit 1. The field case is the Bitronix journal `WEB-INF/logs/transactionBtm*.tlog` of a server that has used a Virtual Data Source.
+- §10.2 step 7: `BackupConfig` snapshots relative to the deepest directory holding the installation, Tomcat and every configuration file, so a `server.buildomaticDir` beside the installation (a WAR-file install) no longer fails with "is outside"; `verify-target-package` refuses a layout whose files share no root (two Windows volumes) before the backups start.
+- §10.2 step 1: the doctor lines about the run's own pending row and lock say "this run itself" instead of "judged against the target".
+- §10.4: the `upgrade` command line gains `--no-skip-locked-files`.
+
 ## Draft 1.2 amendment — 2026-10-12 (field test, the webapp backup and locked files; ADR-0044)
 
 - §10.2 step 6: `BackupWebapp` names a file it can open but not read (on Windows, a byte-range lock the running server holds), with a remediation that says who to look for; with the new `upgrade --skip-locked-files` such a file is left out of the archive with no partial entry, named in the step output and listed in `<archive>.skipped`, the plan warns before the run, and the choice is in the stored arguments and the fingerprint. Never the default: an incomplete backup is worse than a stopped run for an in-place upgrade.
