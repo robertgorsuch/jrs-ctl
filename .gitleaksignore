@@ -1,0 +1,3 @@
+# gitleaks findings that are not secrets. One fingerprint per line (commit:path:rule:line).
+# The HF_KEY value in this test is base64 for "not a key": the fixture for the non-Ed25519 refusal.
+f31f9eacf54c41d2209a3265b824d3d050b7cd29:ops/src/test/java/com/jaspersoft/jrsctl/ops/hotfix/HotfixBuildVerifyTest.java:generic-api-key:159
