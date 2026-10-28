@@ -4,12 +4,13 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Outcome of one vendor-tool invocation (spec §7.4). Invariant: {@code tail} holds the last few
- * already-redacted output lines so a failure message can quote the tool without re-reading a log;
- * {@link NotStarted} means the process was never launched (missing script, missing {@code
- * vendor.javaHome}) and therefore nothing on disk changed; {@link Completed#reported} carries what
- * Ant said and {@link Completed#processing} what the export/import command said, because a
- * buildomatic wrapper's exit code cannot be trusted on its own.
+ * Outcome of one vendor-tool invocation (spec §7.4). Invariant: {@code tail} holds a few
+ * already-redacted output lines so a failure message can quote the tool without re-reading a log:
+ * the last ones, or, when the tool reported a failed build, the ones from that banner on with stack
+ * frames left out; {@link NotStarted} means the process was never launched (missing script, missing
+ * {@code vendor.javaHome}) and therefore nothing on disk changed; {@link Completed#reported}
+ * carries what Ant said and {@link Completed#processing} what the export/import command said,
+ * because a buildomatic wrapper's exit code cannot be trusted on its own.
  */
 public sealed interface VendorRun
     permits VendorRun.Completed, VendorRun.TimedOut, VendorRun.NotStarted {

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -524,6 +525,66 @@ class VendorToolsTest {
     assertThat(c.exitCode()).isZero();
     assertThat(c.reported()).isEqualTo(VendorRun.Reported.FAILED);
     assertThat(c.ok()).isFalse();
+  }
+
+  @Test
+  void should_quote_the_cause_after_build_failed_when_a_stack_trace_follows_it() {
+    // field log 2026-10-27: the cause sits right after BUILD FAILED and is followed by 140 stack
+    // frames, so the last lines alone held nothing but frames
+    List<String> lines = new ArrayList<>();
+    lines.add("[advanced-sql] Failed to execute:  create database \"jasperserver9\"");
+    lines.add("BUILD FAILED");
+    lines.add("C:\\b\\bin\\db-common.xml:1736: The following error occurred while executing:");
+    lines.add("C:\\b\\bin\\app-server.xml:65: database \"jasperserver9\" already exists");
+    for (int i = 0; i < 40; i++) {
+      lines.add("\tat org.apache.tools.ant.Task.perform(Task.java:" + i + ")");
+    }
+    lines.add("\t... 12 more");
+    lines.add("");
+    lines.add("Total time: 23 seconds");
+    lines.add("Checking Ant return code: OK");
+    runner.exit(0, lines.toArray(String[]::new));
+
+    VendorRun.Completed c =
+        (VendorRun.Completed)
+            tools()
+                .ant(
+                    buildomatic,
+                    "upgrade-minimal-pro",
+                    List.of(),
+                    Optional.of(javaHome),
+                    sink,
+                    scope);
+
+    assertThat(c.reported()).isEqualTo(VendorRun.Reported.FAILED);
+    assertThat(c.tail()).first().isEqualTo("BUILD FAILED");
+    assertThat(c.tail())
+        .contains("C:\\b\\bin\\app-server.xml:65: database \"jasperserver9\" already exists")
+        .noneMatch(l -> l.strip().startsWith("at ") || l.strip().startsWith("..."))
+        .hasSizeLessThanOrEqualTo(VendorTools.TAIL_LINES);
+  }
+
+  @Test
+  void should_keep_the_last_lines_when_the_tool_reports_no_failed_build() {
+    List<String> lines = new ArrayList<>();
+    for (int i = 0; i < VendorTools.TAIL_LINES + 5; i++) {
+      lines.add("line " + i);
+    }
+    lines.add("BUILD SUCCESSFUL");
+    runner.exit(0, lines.toArray(String[]::new));
+
+    VendorRun.Completed c =
+        (VendorRun.Completed)
+            tools()
+                .ant(
+                    buildomatic,
+                    "validate-keystore",
+                    List.of(),
+                    Optional.of(javaHome),
+                    sink,
+                    scope);
+
+    assertThat(c.tail()).hasSize(VendorTools.TAIL_LINES).last().isEqualTo("BUILD SUCCESSFUL");
   }
 
   @Test
