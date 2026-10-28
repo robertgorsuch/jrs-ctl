@@ -735,6 +735,59 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * ADR-0048, field run r-20261027-230841-272f: with --tomcat-dir the vendor script never touches
+   * the old webapp or the installed buildomatic, so point B leaves them where they are instead of
+   * moving trees the old server may still hold open (both renames failed on the field box).
+   */
+  @Test
+  void should_leave_the_old_trees_alone_when_run_vendor_upgrade_compensates_with_tomcat_dir()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      Context ctx = start(f, plan, "r-vu-sbs");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-upgrade");
+      Path sentinel = f.webappDir.resolve("written-after-point-b.txt");
+      Files.writeString(sentinel, "the old server's own file");
+      Step step = Idempotency.step(plan, "run-vendor-upgrade");
+
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      Map<String, String> once = state(f, "r-vu-sbs");
+      Idempotency.compensateOk(step, ctx, f.events::add);
+
+      assertThat(state(f, "r-vu-sbs")).isEqualTo(once);
+      assertThat(sentinel).as("the old webapp was not replaced").exists();
+      assertThat(f.fake.home.runDir("r-vu-sbs").resolve(PointB.ASIDE_DIR)).doesNotExist();
+      assertThat(f.logs()).anyMatch(m -> m.contains("as they are (not touched by it)"));
+      assertThat(f.logs()).noneMatch(m -> m.contains("webapp restored from"));
+    }
+  }
+
+  /**
+   * Field run r-20261027-211006-91a5: a Windows rename refused with access denied carries no
+   * reason, so the message was only "source -> target"; the failure names the exception type.
+   */
+  @Test
+  void should_name_the_exception_type_when_the_point_b_webapp_restore_fails() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-vu-fail");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-upgrade");
+      // a file where the aside directory goes: moving the webapp aside cannot even start
+      Path runDir = f.fake.home.runDir("r-vu-fail");
+      Files.createDirectories(runDir);
+      Files.writeString(runDir.resolve(PointB.ASIDE_DIR), "in the way");
+      Step step = Idempotency.step(plan, "run-vendor-upgrade");
+
+      StepResult result = step.compensate(ctx, f.events::add);
+
+      assertThat(result).isInstanceOf(StepResult.Failed.class);
+      assertThat(result.toString())
+          .contains("point B restore incomplete")
+          .contains("webapp: FileAlreadyExistsException");
+    }
+  }
+
   @Test
   void should_stop_once_when_stop_service_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
