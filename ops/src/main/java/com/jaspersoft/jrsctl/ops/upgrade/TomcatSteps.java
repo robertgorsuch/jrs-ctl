@@ -19,10 +19,10 @@ import java.util.stream.Stream;
  * The vendor's step for a new Tomcat generation (upgrade guide 10.1 p.50, 10.0 pp.28-52; review
  * §2.1): "Copy ../webapps/jasperserver-pro directory from Tomcat 9.0 to Tomcat 11.0.x folder"
  * before running {@code js-upgrade-*}, whose {@code appServerDir} then names the new Tomcat.
- * Invariants: the old Tomcat's webapp is never touched (point B restores it); the copy exists only
- * while this run owns it, recorded by a marker in the run directory, so a re-execution replaces a
- * partial copy and compensation removes the whole of it; a webapp already under the new Tomcat that
- * this run did not put there is refused rather than overwritten.
+ * Invariants: the old Tomcat's webapp is never touched (ADR-0048: point B leaves it); the copy
+ * exists only while this run owns it, recorded by a marker in the run directory, so a re-execution
+ * replaces a partial copy and compensation removes the whole of it; a webapp already under the new
+ * Tomcat that this run did not put there is refused rather than overwritten.
  */
 final class TomcatSteps {
 

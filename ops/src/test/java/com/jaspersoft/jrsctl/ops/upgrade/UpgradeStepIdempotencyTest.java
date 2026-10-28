@@ -736,6 +736,34 @@ class UpgradeStepIdempotencyTest {
   }
 
   /**
+   * ADR-0048, field run r-20261027-230841-272f: with --tomcat-dir the vendor script never touches
+   * the old webapp or the installed buildomatic, so point B leaves them where they are instead of
+   * moving trees the old server may still hold open (both renames failed on the field box).
+   */
+  @Test
+  void should_leave_the_old_trees_alone_when_run_vendor_upgrade_compensates_with_tomcat_dir()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      Context ctx = start(f, plan, "r-vu-sbs");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-upgrade");
+      Path sentinel = f.webappDir.resolve("written-after-point-b.txt");
+      Files.writeString(sentinel, "the old server's own file");
+      Step step = Idempotency.step(plan, "run-vendor-upgrade");
+
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      Map<String, String> once = state(f, "r-vu-sbs");
+      Idempotency.compensateOk(step, ctx, f.events::add);
+
+      assertThat(state(f, "r-vu-sbs")).isEqualTo(once);
+      assertThat(sentinel).as("the old webapp was not replaced").exists();
+      assertThat(f.fake.home.runDir("r-vu-sbs").resolve(PointB.ASIDE_DIR)).doesNotExist();
+      assertThat(f.logs()).anyMatch(m -> m.contains("as they are (not touched by it)"));
+      assertThat(f.logs()).noneMatch(m -> m.contains("webapp restored from"));
+    }
+  }
+
+  /**
    * Field run r-20261027-211006-91a5: a Windows rename refused with access denied carries no
    * reason, so the message was only "source -> target"; the failure names the exception type.
    */

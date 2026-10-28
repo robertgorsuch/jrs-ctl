@@ -781,39 +781,31 @@ final class VendorSteps {
           List.of(in.snapshots(ctx).dir()));
     }
 
+    /**
+     * ADR-0048: with {@code --tomcat-dir} the vendor script runs from the target package against
+     * the new Tomcat ({@code appServerDir}), so the old webapp and the installed buildomatic are
+     * exactly as point B archived them; {@code copy-webapp-to-tomcat}'s compensation removes the
+     * new copy. Restoring them would only move trees the old server may still hold open.
+     */
     @Override
     public StepResult compensate(Context ctx, EventSink out) {
       SnapshotSet set = in.snapshots(ctx);
-      Path aside = ctx.home().runDir(ctx.runId()).resolve(PointB.ASIDE_DIR);
       List<String> problems = new ArrayList<>();
-      try {
-        if (Files.isRegularFile(set.webappArchive())) {
-          PointB.verifyArchive(set.webappArchive(), rt.files().sha256(set.webappArchive()));
-          PointB.restoreDir(
-              set.os(), set.webappArchive(), in.webappDir(), aside.resolve("webapp"), ctx.cancel());
-          Logs.info(rt, ctx, out, this, "webapp restored from " + set.webappArchive());
-        } else {
-          problems.add("no webapp archive at " + set.webappArchive());
-        }
-      } catch (IOException e) {
-        // Failures.describe keeps the exception type: on Windows an AccessDeniedException from a
-        // rename carries no reason, so its message is only "<source> -> <target>"
-        problems.add("webapp: " + Failures.describe(e));
-      }
-      try {
-        if (Files.isRegularFile(set.buildomaticArchive())) {
-          PointB.verifyArchive(
-              set.buildomaticArchive(), rt.files().sha256(set.buildomaticArchive()));
-          PointB.restoreDir(
-              set.os(),
-              set.buildomaticArchive(),
-              in.installedBuildomatic(),
-              aside.resolve("buildomatic"),
-              ctx.cancel());
-          Logs.info(rt, ctx, out, this, "buildomatic restored from " + set.buildomaticArchive());
-        }
-      } catch (IOException e) {
-        problems.add("buildomatic: " + Failures.describe(e));
+      if (in.options().tomcatDir().isPresent()) {
+        Logs.info(
+            rt,
+            ctx,
+            out,
+            this,
+            "the vendor script ran against "
+                + in.hostTomcatDir()
+                + "; leaving "
+                + in.webappDir()
+                + " and "
+                + in.installedBuildomatic()
+                + " as they are (not touched by it)");
+      } else {
+        restoreTrees(ctx, out, set, problems);
       }
       for (String stepId : List.of(SnapshotSet.CONFIG_STEP, SnapshotSet.KEYSTORE_STEP)) {
         try {
@@ -845,6 +837,40 @@ final class VendorSteps {
             List.of(set.dir()));
       }
       return StepResult.ok();
+    }
+
+    /** The in-place half of point B: the webapp and buildomatic trees from their archives. */
+    private void restoreTrees(Context ctx, EventSink out, SnapshotSet set, List<String> problems) {
+      Path aside = ctx.home().runDir(ctx.runId()).resolve(PointB.ASIDE_DIR);
+      try {
+        if (Files.isRegularFile(set.webappArchive())) {
+          PointB.verifyArchive(set.webappArchive(), rt.files().sha256(set.webappArchive()));
+          PointB.restoreDir(
+              set.os(), set.webappArchive(), in.webappDir(), aside.resolve("webapp"), ctx.cancel());
+          Logs.info(rt, ctx, out, this, "webapp restored from " + set.webappArchive());
+        } else {
+          problems.add("no webapp archive at " + set.webappArchive());
+        }
+      } catch (IOException e) {
+        // Failures.describe keeps the exception type: on Windows an AccessDeniedException from a
+        // rename carries no reason, so its message is only "<source> -> <target>"
+        problems.add("webapp: " + Failures.describe(e));
+      }
+      try {
+        if (Files.isRegularFile(set.buildomaticArchive())) {
+          PointB.verifyArchive(
+              set.buildomaticArchive(), rt.files().sha256(set.buildomaticArchive()));
+          PointB.restoreDir(
+              set.os(),
+              set.buildomaticArchive(),
+              in.installedBuildomatic(),
+              aside.resolve("buildomatic"),
+              ctx.cancel());
+          Logs.info(rt, ctx, out, this, "buildomatic restored from " + set.buildomaticArchive());
+        }
+      } catch (IOException e) {
+        problems.add("buildomatic: " + Failures.describe(e));
+      }
     }
   }
 }

@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-10-28 (field test, point B after a side-by-side vendor failure; ADR-0048)
+
+- §10.1: with `--tomcat-dir`, the compensation of a failed `RunVendorUpgrade` no longer restores the old webapp and the installed buildomatic, which the vendor script did not touch; it restores the configuration and keystore as before. Both field runs on 2026-10-27 ended "rollback incomplete" (exit 4) only because those renames were refused. In-place upgrades and `upgrade rollback --to-point B` are unchanged.
+- §10.1: a point-B tree restore that fails names the exception type (a refused Windows rename said only `<source> -> <target>`).
+
 ## Draft 1.2 amendment — 2026-10-28 (field test, the vendor's consent question, the failure excerpt and the newdb database gate; ADR-0046, ADR-0047)
 
 - §10.4: `upgrade --mode newdb --tomcat-dir` exits 2 before planning unless `--db-rebuild-confirmed` is given: the vendor script still drops and rebuilds the database the installed `default_master.properties` names, so the old server keeps its Tomcat but loses its repository. Every newdb plan names that database (`js.dbName`, `dbHost`, `dbPort`) in a warning. The guided menu asks before passing the flag (ADR-0047).
