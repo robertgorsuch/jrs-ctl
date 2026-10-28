@@ -796,7 +796,9 @@ final class VendorSteps {
           problems.add("no webapp archive at " + set.webappArchive());
         }
       } catch (IOException e) {
-        problems.add("webapp: " + e.getMessage());
+        // Failures.describe keeps the exception type: on Windows an AccessDeniedException from a
+        // rename carries no reason, so its message is only "<source> -> <target>"
+        problems.add("webapp: " + Failures.describe(e));
       }
       try {
         if (Files.isRegularFile(set.buildomaticArchive())) {
@@ -811,7 +813,7 @@ final class VendorSteps {
           Logs.info(rt, ctx, out, this, "buildomatic restored from " + set.buildomaticArchive());
         }
       } catch (IOException e) {
-        problems.add("buildomatic: " + e.getMessage());
+        problems.add("buildomatic: " + Failures.describe(e));
       }
       for (String stepId : List.of(SnapshotSet.CONFIG_STEP, SnapshotSet.KEYSTORE_STEP)) {
         try {

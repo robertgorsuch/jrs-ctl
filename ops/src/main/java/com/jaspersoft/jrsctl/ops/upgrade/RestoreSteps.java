@@ -142,7 +142,7 @@ final class RestoreSteps {
         return StepResult.ok();
       } catch (IOException e) {
         return Failures.recoverable(
-            "cannot restore " + target() + ": " + e.getMessage(),
+            "cannot restore " + target() + ": " + Failures.describe(e),
             "restore by hand from " + archive() + "; the previous tree is under " + aside(ctx),
             List.of(target()),
             List.of(archive(), aside(ctx)));
@@ -165,7 +165,7 @@ final class RestoreSteps {
         return StepResult.ok();
       } catch (IOException e) {
         return Failures.recoverable(
-            "cannot put " + aside(ctx) + " back: " + e.getMessage(),
+            "cannot put " + aside(ctx) + " back: " + Failures.describe(e),
             "move it back to " + target() + " by hand",
             List.of(target()),
             List.of(aside(ctx)));

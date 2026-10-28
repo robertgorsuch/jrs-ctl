@@ -735,6 +735,31 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * Field run r-20261027-211006-91a5: a Windows rename refused with access denied carries no
+   * reason, so the message was only "source -> target"; the failure names the exception type.
+   */
+  @Test
+  void should_name_the_exception_type_when_the_point_b_webapp_restore_fails() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-vu-fail");
+      Idempotency.runUpTo(plan, ctx, "run-vendor-upgrade");
+      // a file where the aside directory goes: moving the webapp aside cannot even start
+      Path runDir = f.fake.home.runDir("r-vu-fail");
+      Files.createDirectories(runDir);
+      Files.writeString(runDir.resolve(PointB.ASIDE_DIR), "in the way");
+      Step step = Idempotency.step(plan, "run-vendor-upgrade");
+
+      StepResult result = step.compensate(ctx, f.events::add);
+
+      assertThat(result).isInstanceOf(StepResult.Failed.class);
+      assertThat(result.toString())
+          .contains("point B restore incomplete")
+          .contains("webapp: FileAlreadyExistsException");
+    }
+  }
+
   @Test
   void should_stop_once_when_stop_service_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
