@@ -582,7 +582,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 7. `BackupConfig` — `default_master.properties`, JNDI, context files, snapshotted relative to the deepest directory holding the installation, Tomcat and every one of them (a WAR-file install keeps `server.buildomaticDir` beside the installation); `verify-target-package` refuses a layout whose files share no root.
 
 **Phase C — vendor upgrade** (rollback point C = restore B)
-8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file.
+8. `WriteMasterProperties` — into the target package's buildomatic dir (§7.4), snapshotting any existing file, with `SKIP_UPGRADE_CONSENT=true` so the vendor's stdin question about a Compact installation (10.0 `setup.xml` line 1403) does not fail the run; the installation type is already judged in step 2 (ADR-0046).
 8a. `StageKeystoreInit` — writes `keystore.init.properties` (`ks`, `ksp`) into the target buildomatic: a verbatim copy of the installation's own when it has one, else the directories where the adapter found `.jrsks` and `.jrsksp`. Without it the vendor script, which jrsctl runs as its own account, finds no keystore and `setup.xml`'s `create-ks` makes a new one (silently unless `BUILDOMATIC_MODE=interactive`), after which no password in the repository can be decrypted. The precheck refuses when no location is known; a pre-existing file is snapshotted and restored by compensation (security guide 10.1 pp.11-13; review §1.4).
 9. `StopService`.
 9a. `FullExport` — `newdb` only (ADR-0025); with the service stopped, into the same snapshot set as the other point-B artefacts. With `--export <file>` the step is `AdoptFullExport` instead (ADR-0028): the file must exist and be an export archive (root `index.xml`); its SHA-256 and path are recorded in `snapshots/<runId>/full-export.external`, nothing is copied, and the record is what `RunVendorUpgrade` passes to the script after re-verifying the hash. A sidecar naming another server or version is a plan warning, never a refusal (field test 2: an upgrade is not always linear); the plan always warns that every repository change made after that export is discarded. `--export` with `samedb`, or `--key-alias`/`--key-password-ref` without `--export`, is a usage error (exit 1).
@@ -611,7 +611,7 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 
 ### 10.4 Commands
 
-- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes]`
+- `jrsctl upgrade --to <version> --package <path> [--mode newdb|samedb] [--db-backup-confirmed] [--db-rebuild-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes]`
 - `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 

@@ -52,6 +52,13 @@ public final class UpgradeFixture implements AutoCloseable {
 
   static final String CREATE_KEYSTORE = "create-keystore";
 
+  /**
+   * What 10.0's setup.xml (line 1403) prints when a real upgrade (not {@code test}) runs without
+   * {@code SKIP_UPGRADE_CONSENT=true}: it asks on stdin, finds none, and the wrapper still exits 0.
+   */
+  static final String CONSENT_FAILURE =
+      "setup.xml:1403: unexpected end of stream while reading input";
+
   /** What buildomatic's setup.xml prints before create-ks when it found no keystore. */
   public static final String KEYSTORE_WARNING =
       "WARNING: A new encryption key and a new keystore are about to be created.";
@@ -415,6 +422,11 @@ public final class UpgradeFixture implements AutoCloseable {
         "@echo off\r\n"
             + "echo js-ant fake target=%1 JAVA_HOME=%JAVA_HOME%\r\n"
             + "if \"%1\"==\"pre-upgrade-test-pro\" goto :validate\r\n"
+            + "if \"%1\"==\"upgrade-minimal-pro\" findstr /B /C:\"SKIP_UPGRADE_CONSENT=true\""
+            + " \"%~dp0default_master.properties\" >nul 2>&1 || (echo [input] Enter 'y' to"
+            + " confirm or 'n' to exit & echo BUILD FAILED & echo "
+            + CONSENT_FAILURE
+            + " & echo Checking Ant return code: OK & exit /b 0)\r\n"
             + "xcopy /E /Y /I /Q \"%~dp0..\\webapp-new\" \""
             + target
             + "\" >nul\r\n"
@@ -444,6 +456,13 @@ public final class UpgradeFixture implements AutoCloseable {
             + FAIL_TEST
             + "\" ]; then echo \"BUILD FAILED: cannot connect\"; exit 1; fi\n"
             + "  echo BUILD SUCCESSFUL; exit 0\n"
+            + "fi\n"
+            + "if [ \"$1\" = \"upgrade-minimal-pro\" ] && ! grep -q '^SKIP_UPGRADE_CONSENT=true'"
+            + " \"$(dirname \"$0\")/default_master.properties\" 2>/dev/null; then\n"
+            + "  echo \"[input] Enter 'y' to confirm or 'n' to exit\"; echo BUILD FAILED\n"
+            + "  echo \""
+            + CONSENT_FAILURE
+            + "\"; exit 0\n"
             + "fi\n"
             + "cp -R \"$(dirname \"$0\")/../webapp-new/.\" \""
             + target

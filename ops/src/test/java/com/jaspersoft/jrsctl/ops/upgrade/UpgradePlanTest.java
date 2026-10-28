@@ -108,6 +108,54 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * ADR-0047: newdb drops the database the installed default_master.properties names (its keys win
+   * over the target's), so the plan names that database before the run.
+   */
+  @Test
+  void should_name_the_database_it_drops_when_planning_a_newdb_upgrade() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(
+              w ->
+                  w.contains("js.dbName=jasperserver")
+                      && w.contains("dbHost=localhost")
+                      && w.contains("dbPort=5432")
+                      && w.contains("installed server"));
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("cannot run against it"));
+    }
+  }
+
+  @Test
+  void should_say_the_old_server_loses_its_database_when_newdb_runs_in_a_new_tomcat()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(withNewTomcat(f));
+
+      assertThat(plan.summary().warnings())
+          .anyMatch(
+              w ->
+                  w.contains("js.dbName=jasperserver")
+                      && w.contains("cannot run against it")
+                      && w.contains(f.tomcatDir.toString()));
+    }
+  }
+
+  @Test
+  void should_not_name_a_dropped_database_when_planning_a_samedb_upgrade() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  new UpgradeOptions(
+                      UpgradeFixture.NEW_VERSION, f.packageDir, Mode.SAMEDB, true, false));
+
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("js.dbName="));
+    }
+  }
+
   @Test
   void should_list_five_phases_and_step_ids_when_mode_newdb() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

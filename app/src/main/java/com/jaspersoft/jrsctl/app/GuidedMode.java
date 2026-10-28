@@ -635,6 +635,20 @@ final class GuidedMode {
       out.println(
           "jrsctl takes a full export of the repository first; upgrade rollback --restore-database"
               + " can rebuild the database from it.");
+      // ADR-0047: the old Tomcat stays, but the database it runs against is rebuilt
+      if (tomcat.get().isPresent()) {
+        if (!Prompter.yes(
+            out,
+            "buildomatic drops and rebuilds the database the installed server uses; the old"
+                + " server cannot run against it afterwards. Go ahead? [y/N] ",
+            false)) {
+          out.println(
+              "Nothing was changed. A separate target database is not supported; upgrade into"
+                  + " the new Tomcat only once the old server may lose its repository.");
+          return;
+        }
+        args.add("--db-rebuild-confirmed");
+      }
     }
     execute(args.toArray(String[]::new));
   }

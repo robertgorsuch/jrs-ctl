@@ -97,6 +97,15 @@ final class VendorSteps {
   /** Its password, when the alias has one; the one password key jrsctl writes itself (ADR-0028). */
   static final String KEY_PASS_PROPERTY = "deprecatedImportExportEncSecret.keypass";
 
+  /**
+   * ADR-0046: 10.0's setup.xml (line 1403) asks on stdin, in every upgrade but {@code test}, to
+   * confirm a Compact installation stays Compact; jrsctl gives the script no stdin, so Ant fails
+   * with "unexpected end of stream". The vendor skips the question when this Ant property is {@code
+   * true}. Not in the upgrade guides; jrsctl answers it because {@code verify-target-package}
+   * already refuses an installType change ({@link MasterInvariants}).
+   */
+  static final String SKIP_UPGRADE_CONSENT_PROPERTY = "SKIP_UPGRADE_CONSENT";
+
   static Map<String, String> masterOverrides(
       Map<String, String> installed, Path tomcatDir, Optional<String> keyAlias) {
     Map<String, String> overrides = new LinkedHashMap<>();
@@ -373,7 +382,9 @@ final class VendorSteps {
       return buildomaticDir().resolve(Buildomatic.MASTER_PROPERTIES)
           + " ("
           + in.masterOverrides().size()
-          + " keys, no passwords; existing file snapshotted)";
+          + " keys, no passwords, "
+          + SKIP_UPGRADE_CONSENT_PROPERTY
+          + "=true; existing file snapshotted)";
     }
 
     @Override
@@ -395,6 +406,9 @@ final class VendorSteps {
     public StepResult execute(Context ctx, EventSink out) {
       Path runDir = ctx.home().runDir(ctx.runId());
       Map<String, String> overrides = new LinkedHashMap<>(in.masterOverrides());
+      // jrsctl's own key, like the key password below: masterOverrides holds the installed keys
+      // only
+      overrides.put(SKIP_UPGRADE_CONSENT_PROPERTY, "true");
       Optional<SecretRef> keyPassword = in.options().keyPassword();
       if (keyPassword.isPresent()) {
         // ADR-0028: the key's password is the one password key jrsctl writes itself, resolved

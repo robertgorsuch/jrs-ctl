@@ -428,6 +428,36 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     return new Prepared(in, target, identity, warnings);
   }
 
+  /**
+   * ADR-0047: the database js-upgrade-newdb drops is the one the installed
+   * default_master.properties names, because its keys win over the target package's; with
+   * --tomcat-dir the old Tomcat stays, but its server has no repository to run against afterwards.
+   */
+  static String droppedDatabaseWarning(UpgradeInput in) {
+    List<String> where = new ArrayList<>();
+    for (String key : List.of(JS_DB_NAME, DB_HOST, DB_PORT)) {
+      String value = in.masterOverrides().get(key);
+      where.add(key + "=" + (value == null || value.isBlank() ? "(not set)" : value.strip()));
+    }
+    String warning =
+        "js-upgrade-newdb drops "
+            + String.join(", ", where)
+            + ", the database the installed server uses (the installed default_master.properties"
+            + " wins over the target package's)";
+    if (in.options().tomcatDir().isEmpty()) {
+      return warning + ".";
+    }
+    return warning
+        + "; the old server in "
+        + in.paths().tomcatDir()
+        + " cannot run against it after the upgrade, and a separate target database is not"
+        + " supported (ADR-0047).";
+  }
+
+  static final String JS_DB_NAME = "js.dbName";
+  static final String DB_HOST = "dbHost";
+  static final String DB_PORT = "dbPort";
+
   @Override
   public Plan planUpgrade(UpgradeOptions options) {
     Prepared prepared = prepare(options);
@@ -441,6 +471,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           case NEWDB -> NEWDB_WARNING;
         });
     if (options.mode() == Mode.NEWDB) {
+      warnings.add(droppedDatabaseWarning(in));
       warnings.add(NEWDB_STAYS_STOPPED_WARNING);
       if (!options.includeEvents()) {
         warnings.add(EVENTS_LEFT_BEHIND_WARNING);

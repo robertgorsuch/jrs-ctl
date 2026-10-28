@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -49,8 +50,15 @@ public final class VendorTools {
   /** Default wall-clock limit for one vendor-tool run. */
   public static final Duration DEFAULT_TIMEOUT = Duration.ofHours(2);
 
-  /** How many trailing output lines a {@link VendorRun} keeps for failure messages. */
+  /**
+   * How many output lines a {@link VendorRun} keeps for failure messages: the last ones, or, once
+   * the tool reports a failed build, the ones from that banner on without stack frames.
+   */
   public static final int TAIL_LINES = 20;
+
+  /** A Java stack frame or its {@code ... 12 more} elision, as Ant prints them under a failure. */
+  private static final Pattern STACK_FRAME =
+      Pattern.compile("^\\s*(at \\S+\\(.*\\)|\\.\\.\\. \\d+ more)\\s*$");
 
   /**
    * Ant's own build banners, and the line the Windows wrappers print when they check Ant's return
@@ -460,6 +468,9 @@ public final class VendorTools {
     long startedAt = System.currentTimeMillis() - 1000L;
     log(sink, scope, Event.Log.Level.INFO, "running " + String.join(" ", command));
     Deque<String> tail = new ArrayDeque<>(TAIL_LINES);
+    // field logs 2026-10-09 and 2026-10-27: the cause is the few lines after BUILD FAILED, and the
+    // stack trace after it pushes them out of the tail, so they are kept from the banner on
+    List<String> failure = new ArrayList<>(TAIL_LINES);
     EnumSet<VendorRun.Reported> banners = EnumSet.noneOf(VendorRun.Reported.class);
     ProcessingMarkers markers = new ProcessingMarkers();
     ProcessRunner.Result result =
@@ -477,7 +488,15 @@ public final class VendorTools {
                   tail.removeFirst();
                 }
                 tail.addLast(text);
-                banner(text).ifPresent(banners::add);
+                Optional<VendorRun.Reported> said = banner(text);
+                said.ifPresent(banners::add);
+                boolean failedHere = said.filter(VendorRun.Reported.FAILED::equals).isPresent();
+                if ((failedHere || !failure.isEmpty())
+                    && failure.size() < TAIL_LINES
+                    && !text.isBlank()
+                    && !STACK_FRAME.matcher(text).matches()) {
+                  failure.add(text);
+                }
                 markers.accept(text);
               }
               Event.Log.Level level =
@@ -492,7 +511,7 @@ public final class VendorTools {
     VendorRun.Reported reported;
     VendorRun.Processing processing;
     synchronized (tail) {
-      lines = List.copyOf(tail);
+      lines = failure.isEmpty() ? List.copyOf(tail) : List.copyOf(failure);
       reported =
           banners.contains(VendorRun.Reported.CREATED_KEYSTORE)
               ? VendorRun.Reported.CREATED_KEYSTORE

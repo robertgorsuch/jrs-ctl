@@ -638,6 +638,64 @@ class GuidedModeTest {
     assertThat(text.toString()).contains("Back up the repository database first");
   }
 
+  /** ADR-0047: newdb in a new Tomcat still rebuilds the installed server's database. */
+  @Test
+  void should_ask_before_a_newdb_upgrade_in_a_new_tomcat_rebuilds_the_database() throws Exception {
+    Path pkg = Files.createDirectories(tmp.resolve("pkg"));
+    Path tomcat = Files.createDirectories(tmp.resolve("tomcat-10.1"));
+
+    guided(
+        List.of(),
+        List.of(),
+        "6",
+        "10.0.0",
+        pkg.toString(),
+        "",
+        tomcat.toString(),
+        "",
+        "",
+        "n",
+        "y",
+        "q");
+
+    assertThat(ran)
+        .containsExactly(
+            List.of(
+                "upgrade",
+                "--to",
+                "10.0.0",
+                "--package",
+                pkg.toString(),
+                "--tomcat-dir",
+                tomcat.toString(),
+                "--db-rebuild-confirmed"));
+    assertThat(text.toString()).contains("old server cannot run against it");
+  }
+
+  @Test
+  void should_not_start_a_newdb_upgrade_in_a_new_tomcat_when_the_rebuild_is_declined()
+      throws Exception {
+    Path pkg = Files.createDirectories(tmp.resolve("pkg"));
+    Path tomcat = Files.createDirectories(tmp.resolve("tomcat-10.1"));
+
+    guided(
+        List.of(),
+        List.of(),
+        "6",
+        "10.0.0",
+        pkg.toString(),
+        "",
+        tomcat.toString(),
+        "",
+        "",
+        "n",
+        "n",
+        "q");
+
+    assertThat(ran).isEmpty();
+    assertThat(text.toString()).contains("separate target database is not supported");
+  }
+
   /** ADR-0028: an export taken earlier, and the key it was encrypted with, from the menu. */
   @Test
   void should_ask_the_existing_export_and_its_key_alias_for_a_newdb_upgrade() throws Exception {
