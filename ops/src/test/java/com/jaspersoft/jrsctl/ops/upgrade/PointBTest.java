@@ -52,11 +52,40 @@ class PointBTest {
     }
   }
 
+  @Test
+  void should_move_the_whole_tree_and_leave_no_part_copy_when_a_cross_volume_copy_succeeds()
+      throws Exception {
+    Path zip = zip(tmp.resolve("other-volume.zip"));
+    Path aside = tmp.resolve("aside");
+    try (FileSystem other = FileSystems.newFileSystem(URI.create("jar:" + zip.toUri()), Map.of())) {
+      Path webapp = other.getPath("/webapp");
+
+      PointB.moveTree(webapp, aside);
+
+      assertThat(webapp).doesNotExist();
+      assertThat(Files.readString(aside.resolve(GOOD)))
+          .isEqualTo(("content of " + GOOD + "\n").repeat(64));
+      assertThat(aside.resolve(BROKEN)).exists();
+      assertThat(tmp.resolve("aside.part")).doesNotExist();
+    }
+  }
+
   /**
    * A zip holding {@code webapp/} with one good entry and one whose deflate stream starts with an
    * invalid block type, so reading it fails while the archive itself still opens.
    */
   private static Path zipWithACorruptEntry(Path zip) throws IOException {
+    zip(zip);
+    byte[] bytes = Files.readAllBytes(zip);
+    byte[] name = ("webapp/" + BROKEN).getBytes(StandardCharsets.UTF_8);
+    int at = indexOf(bytes, name); // the local header's copy comes before the central directory's
+    int extra = (bytes[at - 2] & 0xff) | (bytes[at - 1] & 0xff) << 8;
+    bytes[at + name.length + extra] = (byte) 0xff; // BFINAL=1, BTYPE=11: reserved, so invalid
+    Files.write(zip, bytes);
+    return zip;
+  }
+
+  private static Path zip(Path zip) throws IOException {
     try (OutputStream file = Files.newOutputStream(zip);
         ZipOutputStream out = new ZipOutputStream(file)) {
       for (String name : new String[] {GOOD, BROKEN}) {
@@ -65,12 +94,6 @@ class PointBTest {
         out.closeEntry();
       }
     }
-    byte[] bytes = Files.readAllBytes(zip);
-    byte[] name = ("webapp/" + BROKEN).getBytes(StandardCharsets.UTF_8);
-    int at = indexOf(bytes, name); // the local header's copy comes before the central directory's
-    int extra = (bytes[at - 2] & 0xff) | (bytes[at - 1] & 0xff) << 8;
-    bytes[at + name.length + extra] = (byte) 0xff; // BFINAL=1, BTYPE=11: reserved, so invalid
-    Files.write(zip, bytes);
     return zip;
   }
 

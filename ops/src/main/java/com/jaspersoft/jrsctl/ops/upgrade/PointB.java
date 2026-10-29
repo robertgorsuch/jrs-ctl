@@ -14,6 +14,7 @@ import java.nio.file.CopyOption;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -74,6 +75,8 @@ final class PointB {
   /** Pre-1.4.0 staging name, removed when a crash left one behind (issue #48). */
   private static final String LEGACY_STAGING_SUFFIX = ".jrsctl-restore";
 
+  private static final String PARTIAL_SUFFIX = ".part";
+
   /**
    * Where {@link #restoreDir} extracts {@code target}'s archive: beside the target's parent when
    * that parent is Tomcat's {@code webapps} (a directory there is deployable), else beside the
@@ -131,7 +134,11 @@ final class PointB {
     store.restore(snapshot);
   }
 
-  /** Renames a tree; falls back to a streaming copy plus delete across file stores. */
+  /**
+   * Renames a tree; falls back to a streaming copy plus delete across file stores. The copy goes to
+   * a {@code .part} sibling that is renamed into place only once complete, so a copy that fails
+   * half-way leaves nothing at {@code target}: an {@code aside} tree that exists is always whole.
+   */
   static void moveTree(Path source, Path target) throws IOException {
     try {
       moveRetrying(source, target, StandardCopyOption.ATOMIC_MOVE);
@@ -145,7 +152,15 @@ final class PointB {
     } catch (DirectoryNotEmptyException | UnsupportedOperationException e) {
       // cross-volume: copy then delete
     }
-    copyTree(source, target);
+    // a provider that refuses a move across stores may have created the target directory first;
+    // an empty one is that leftover (a non-empty one makes the delete, and so the move, fail)
+    if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+      Files.delete(target);
+    }
+    Path partial = target.resolveSibling(target.getFileName() + PARTIAL_SUFFIX);
+    Trees.deleteRecursively(partial);
+    copyTree(source, partial);
+    moveRetrying(partial, target);
     Trees.deleteRecursively(source);
   }
 
