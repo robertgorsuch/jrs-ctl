@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -19,6 +20,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFileAttributes;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -135,9 +140,10 @@ final class PointB {
   }
 
   /**
-   * Renames a tree; falls back to a streaming copy plus delete across file stores. The copy goes to
-   * a {@code .part} sibling that is renamed into place only once complete, so a copy that fails
-   * half-way leaves nothing at {@code target}: an {@code aside} tree that exists is always whole.
+   * Renames a tree; falls back to a streaming copy plus delete across file stores, which keeps
+   * links and POSIX attributes ({@link #copyTree}). The copy goes to a {@code .part} sibling that
+   * is renamed into place only once complete, so a copy that fails half-way leaves nothing at
+   * {@code target}: an {@code aside} tree that exists is always whole.
    */
   static void moveTree(Path source, Path target) throws IOException {
     try {
@@ -204,9 +210,20 @@ final class PointB {
     }
   }
 
+  /**
+   * Copies a tree as it is: a symbolic link becomes a link with the same target (never a copy of
+   * what it points at), and files and directories keep their POSIX permissions, owner and group
+   * where both file systems have them. An owner or group the process may not set (anyone but root)
+   * is left as the process's own.
+   */
   static void copyTree(Path source, Path target) throws IOException {
     Path from = source.toAbsolutePath().normalize();
     Path to = target.toAbsolutePath().normalize();
+    // links are made once the walk is done: on Windows a link to a directory is created as a
+    // directory link only when its target already exists; directory attributes come last, deepest
+    // first, so a directory without write permission can still receive its files and links
+    Map<Path, Path> links = new LinkedHashMap<>();
+    Map<Path, Path> dirs = new LinkedHashMap<>();
     Files.walkFileTree(
         from,
         new SimpleFileVisitor<>() {
@@ -221,6 +238,10 @@ final class PointB {
           public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
               throws IOException {
             Path copy = to.resolve(from.relativize(file).toString());
+            if (attrs.isSymbolicLink()) {
+              links.put(copy, Files.readSymbolicLink(file));
+              return FileVisitResult.CONTINUE;
+            }
             byte[] buffer = new byte[64 * 1024];
             try (InputStream in = Files.newInputStream(file);
                 OutputStream out = Files.newOutputStream(copy)) {
@@ -229,8 +250,48 @@ final class PointB {
                 out.write(buffer, 0, read);
               }
             }
+            copyPosixAttributes(file, copy);
+            return FileVisitResult.CONTINUE;
+          }
+
+          @Override
+          public FileVisitResult postVisitDirectory(Path dir, IOException failure)
+              throws IOException {
+            if (failure != null) {
+              throw failure;
+            }
+            dirs.put(dir, to.resolve(from.relativize(dir).toString()));
             return FileVisitResult.CONTINUE;
           }
         });
+    for (Map.Entry<Path, Path> link : links.entrySet()) {
+      Files.createSymbolicLink(link.getKey(), link.getValue());
+    }
+    for (Map.Entry<Path, Path> dir : dirs.entrySet()) {
+      copyPosixAttributes(dir.getKey(), dir.getValue());
+    }
+  }
+
+  private static void copyPosixAttributes(Path from, Path to) throws IOException {
+    PosixFileAttributeView source =
+        Files.getFileAttributeView(from, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+    PosixFileAttributeView target =
+        Files.getFileAttributeView(to, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+    if (source == null || target == null) {
+      return;
+    }
+    PosixFileAttributes attrs = source.readAttributes();
+    try {
+      target.setOwner(attrs.owner());
+    } catch (FileSystemException e) {
+      LOG.debug("cannot keep the owner of {}: {}", from, e.getMessage());
+    }
+    try {
+      // a user who is not root may still hand a file to a group it belongs to
+      target.setGroup(attrs.group());
+    } catch (FileSystemException e) {
+      LOG.debug("cannot keep the group of {}: {}", from, e.getMessage());
+    }
+    target.setPermissions(attrs.permissions());
   }
 }
