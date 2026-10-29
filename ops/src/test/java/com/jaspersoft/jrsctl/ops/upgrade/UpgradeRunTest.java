@@ -14,6 +14,8 @@ import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
+import com.jaspersoft.jrsctl.core.state.StoredPlan;
+import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
@@ -452,6 +454,59 @@ class UpgradeRunTest {
           .isDirectory();
       Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
       assertThat(after.server().tomcatDir()).contains(f.newTomcatDir.toAbsolutePath().normalize());
+    }
+  }
+
+  /**
+   * ADR-0049: after an upgrade into a new Tomcat, the old webapp and the installed buildomatic are
+   * as point B archived them, so the rollback leaves both trees alone; the configuration still
+   * points back at the old Tomcat. Without that, the rollback renamed the trees the old server
+   * holds open (field runs 2026-10-27) or extracted the old webapp into the new Tomcat.
+   */
+  @Test
+  void should_leave_both_tomcats_webapps_alone_when_rolling_back_a_side_by_side_upgrade()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      UpgradeOptions options = UpgradePlanTest.withNewTomcat(f);
+      Plan plan = f.ops().planUpgrade(options);
+      f.store()
+          .savePlan(
+              new StoredPlan(
+                  plan.planId(),
+                  PlanRegistry.UPGRADE,
+                  PlanRegistry.upgradeArgs(options),
+                  "{}",
+                  plan.fingerprint().value(),
+                  Instant.EPOCH,
+                  Instant.EPOCH,
+                  Optional.empty()));
+      assertThat(f.run(plan, "r-up-sbs", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Path oldMarker = f.webappDir.resolve("left-by-jrs9.txt");
+      Files.writeString(oldMarker, "old server state");
+      Path newWebapp = f.newTomcatDir.resolve("webapps").resolve("jasperserver-pro");
+      Path newMarker = newWebapp.resolve("left-by-jrs10.txt");
+      Files.writeString(newMarker, "new server state");
+
+      Plan back = f.ops().planRollback("r-up-sbs", RollbackPoint.B);
+
+      assertThat(UpgradeFixture.ids(back))
+          .doesNotContain(RestoreSteps.RESTORE_WEBAPP, RestoreSteps.RESTORE_BUILDOMATIC)
+          .contains(RestoreSteps.RESTORE_CONFIG, RestoreSteps.RESTORE_KEYSTORE);
+      assertThat(back.summary().warnings())
+          .anySatisfy(
+              w ->
+                  assertThat(w)
+                      .contains(f.newTomcatDir.toAbsolutePath().normalize().toString())
+                      .contains("left as they are"));
+      assertThat(f.run(back, "r-rb-sbs", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(oldMarker).hasContent("old server state");
+      assertThat(newMarker).hasContent("new server state");
+      Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(after.server().tomcatDir()).contains(f.tomcatDir.toAbsolutePath().normalize());
     }
   }
 
