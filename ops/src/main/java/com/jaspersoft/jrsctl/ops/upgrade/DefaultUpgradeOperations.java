@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.upgrade;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
@@ -17,6 +18,7 @@ import com.jaspersoft.jrsctl.core.platform.ServiceConfig;
 import com.jaspersoft.jrsctl.core.platform.TomcatLayout;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotStore;
+import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
@@ -141,6 +143,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " that Tomcat must listen on the same port as server.baseUrl, carry the JAVA_OPTS the"
           + " vendor requires for it (installation guide: --add-opens on Tomcat 11), and be"
           + " registered as the service afterwards. The old Tomcat is left as it was.";
+
+  /** ADR-0049: what a rollback of a run into a new Tomcat leaves out, and which Tomcat to start. */
+  static final String SIDE_BY_SIDE_ROLLBACK_WARNING =
+      "the upgrade ran in the new Tomcat %s: the old webapp and the installed buildomatic were not"
+          + " changed by it and are left as they are, as is the new Tomcat; when asked to start the"
+          + " server, start the old Tomcat, and move the service back to it if you had"
+          + " re-registered it";
 
   /** ADR-0026 amendment (issue #109): the service switch stays the operator's, with the steps. */
   static final String SERVICE_SWITCH_WARNING = "Service switch, after the upgrade: ";
@@ -816,10 +825,14 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     RestoreSteps.Input in =
         new RestoreSteps.Input(
             runId, point, set, paths, webappName(config, paths), installedBuildomatic);
+    Optional<Path> newTomcat = sideBySideTomcat(run);
     List<Step> steps = new ArrayList<>();
     steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
-    steps.add(new RestoreSteps.RestoreWebapp(rt, in));
-    steps.add(new RestoreSteps.RestoreBuildomatic(rt, in));
+    // ADR-0049: a run into a new Tomcat never changed the old webapp or the installed buildomatic
+    if (newTomcat.isEmpty()) {
+      steps.add(new RestoreSteps.RestoreWebapp(rt, in));
+      steps.add(new RestoreSteps.RestoreBuildomatic(rt, in));
+    }
     steps.add(new RestoreSteps.RestoreConfig(rt, in));
     steps.add(new RestoreSteps.RestoreKeystore(rt, in));
     steps.add(new JrsctlConfigSteps.RestoreJrsctlConfig(in));
@@ -838,6 +851,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     warnings.add(
         "point C restores the same point-B artefacts (spec §10.2: rollback point C = restore B)");
+    newTomcat.ifPresent(t -> warnings.add(SIDE_BY_SIDE_ROLLBACK_WARNING.formatted(t)));
     Optional<String> mode =
         readMode(set).or(() -> started.map(DefaultUpgradeOperations::modeOfScript));
     mode.ifPresent(
@@ -873,7 +887,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 + " to point "
                 + point
                 + (options.restoreDatabase() ? " with the database" : ""),
-            List.of(in.webappDir(), in.installedBuildomatic()),
+            newTomcat.isPresent() ? List.of() : List.of(in.webappDir(), in.installedBuildomatic()),
             List.of(),
             true,
             List.of(set.dir()),
@@ -893,6 +907,26 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     return new Plan(
         "upgrade-rollback-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  /**
+   * The new Tomcat an upgrade run went to, from the {@code tomcatDir} argument stored with its plan
+   * (ADR-0049); empty for an in-place run, and for a run whose stored plan is missing or
+   * unreadable, which then restores both trees as before.
+   */
+  private Optional<Path> sideBySideTomcat(RunRecord run) {
+    Optional<StoredPlan> stored = run.planId().flatMap(id -> rt.store().loadPlan(id));
+    if (stored.isEmpty()) {
+      return Optional.empty();
+    }
+    try {
+      JsonNode tomcatDir = Json.mapper().readTree(stored.get().argsJson()).path("tomcatDir");
+      return tomcatDir.isTextual() && !tomcatDir.asText().isBlank()
+          ? Optional.of(Path.of(tomcatDir.asText()))
+          : Optional.empty();
+    } catch (IOException | RuntimeException e) {
+      return Optional.empty();
+    }
   }
 
   private static Optional<String> vendorScriptStarted(SnapshotSet set) {

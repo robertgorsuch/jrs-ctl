@@ -19,6 +19,6 @@ On the field box both side-by-side runs failed this way. Run 1 could not move th
 ## Consequences
 
 - A failed side-by-side vendor run whose snapshots restore cleanly now rolls back with exit 3 instead of exit 4.
-- `upgrade rollback <runId> --to-point B` still restores all four. The operator chooses to run it, and it can follow later steps of a finished run. Whether it should also skip the old trees after a side-by-side run is left open.
+- `upgrade rollback <runId> --to-point B` still restored all four when this ADR was written; ADR-0049 makes it skip the old trees after a side-by-side run too.
 - The vendor run can leave files in the new Tomcat outside `webapps/<name>`. They were not part of point B before this ADR and are not now. The new Tomcat is the operator's to discard.
 - If a future vendor package writes into the installed buildomatic or into the old webapp in side-by-side mode, this ADR's premise no longer holds and the skip has to be revisited.

@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-10-28 (`upgrade rollback` after a side-by-side upgrade; ADR-0049)
+
+- §10.1: `upgrade rollback --to-point B|C` of a run made with `--tomcat-dir` no longer restores the old webapp and the installed buildomatic. It reads `tomcatDir` from the arguments stored with the run's plan, restores the configuration, keystore and `config.yaml` as before, and warns which Tomcat to start. Before this, the rollback renamed the trees the old server holds open (refused on Windows in both 2026-10-27 field runs). After a finished run it extracted the old webapp into the new Tomcat, because `config.yaml` already named it. This closes the question ADR-0048 left open.
+
 ## Draft 1.2 amendment — 2026-10-28 (field test, point B after a side-by-side vendor failure; ADR-0048)
 
 - §10.1: with `--tomcat-dir`, the compensation of a failed `RunVendorUpgrade` no longer restores the old webapp and the installed buildomatic, which the vendor script did not touch; it restores the configuration and keystore as before. Both field runs on 2026-10-27 ended "rollback incomplete" (exit 4) only because those renames were refused. In-place upgrades and `upgrade rollback --to-point B` are unchanged.
