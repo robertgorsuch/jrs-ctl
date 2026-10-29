@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
+
+- §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.
+
 ## Draft 1.2 amendment — 2026-10-28 (`upgrade rollback` after a side-by-side upgrade; ADR-0049)
 
 - §10.1: `upgrade rollback --to-point B|C` of a run made with `--tomcat-dir` no longer restores the old webapp and the installed buildomatic. It reads `tomcatDir` from the arguments stored with the run's plan, restores the configuration, keystore and `config.yaml` as before, and warns which Tomcat to start. Before this, the rollback renamed the trees the old server holds open (refused on Windows in both 2026-10-27 field runs). After a finished run it extracted the old webapp into the new Tomcat, because `config.yaml` already named it. This closes the question ADR-0048 left open.

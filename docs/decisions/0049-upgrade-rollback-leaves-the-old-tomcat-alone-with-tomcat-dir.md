@@ -17,7 +17,7 @@ The rollback plan has to know whether the run was side-by-side. The point-B mani
 
 - `planRollback` reads `tomcatDir` from the stored arguments of the upgrade run's plan. When it is set, the plan leaves out `restore-webapp` and `restore-buildomatic`, names no tree among its affected paths, and warns that both trees and the new Tomcat are left as they are, that the old Tomcat is the one to start, and that a service re-registered for the new Tomcat must be moved back.
 - Everything else is unchanged: `stop-service`, `restore-config`, `restore-keystore`, `restore-jrsctl-config` (which points `server.tomcatDir` back at the old Tomcat), `--restore-database` with the buildomatic the run recorded, `start-service`, `wait-for-server`, `record-rollback`.
-- If the stored plan is missing or cannot be read, the rollback restores both trees as before. That is the in-place behaviour every run had until now, not a new risk.
+- If the stored plan is missing or cannot be read, the rollback compares the webapp the point-B manifest records with the one `config.yaml` now gives. `point-config-at-target` moved `server.tomcatDir` to the new Tomcat right after `record-upgrade` wrote the manifest, so a difference means a side-by-side run, and the rollback leaves both trees alone as above. Amended 2026-10-29 (review finding 2): this consequence said the rollback then restored both trees as before, "not a new risk"; but the trees it restored were under the retargeted `server.tomcatDir`, so point B's old webapp was extracted over the new Tomcat's. With neither a stored plan nor a manifest (a run that never reached `record-upgrade`), the configuration was never retargeted and the in-place behaviour is right.
 
 ## Consequences
 

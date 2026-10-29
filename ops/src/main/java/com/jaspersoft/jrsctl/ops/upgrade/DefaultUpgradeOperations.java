@@ -825,7 +825,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     RestoreSteps.Input in =
         new RestoreSteps.Input(
             runId, point, set, paths, webappName(config, paths), installedBuildomatic);
-    Optional<Path> newTomcat = sideBySideTomcat(run);
+    Optional<Path> newTomcat = sideBySideTomcat(run).or(() -> retargetedTomcat(set, in));
     List<Step> steps = new ArrayList<>();
     steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
     // ADR-0049: a run into a new Tomcat never changed the old webapp or the installed buildomatic
@@ -912,7 +912,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
   /**
    * The new Tomcat an upgrade run went to, from the {@code tomcatDir} argument stored with its plan
    * (ADR-0049); empty for an in-place run, and for a run whose stored plan is missing or
-   * unreadable, which then restores both trees as before.
+   * unreadable, which {@link #retargetedTomcat} then covers.
    */
   private Optional<Path> sideBySideTomcat(RunRecord run) {
     Optional<StoredPlan> stored = run.planId().flatMap(id -> rt.store().loadPlan(id));
@@ -927,6 +927,20 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     } catch (IOException | RuntimeException e) {
       return Optional.empty();
     }
+  }
+
+  /**
+   * The new Tomcat of a side-by-side run whose stored plan cannot name it: point-config-at-target
+   * moved {@code server.tomcatDir} there right after record-upgrade wrote the old webapp into the
+   * manifest, so a recorded webapp that is not the one the configuration now gives means the
+   * configuration names the new Tomcat. Empty for an in-place run and a run without a manifest (one
+   * that never reached point-config-at-target either).
+   */
+  private static Optional<Path> retargetedTomcat(SnapshotSet set, RestoreSteps.Input in) {
+    return recordedWebapp(set)
+        .map(p -> p.toAbsolutePath().normalize())
+        .filter(recorded -> !recorded.equals(in.webappDir().toAbsolutePath().normalize()))
+        .map(recorded -> in.paths().tomcatDir());
   }
 
   private static Optional<String> vendorScriptStarted(SnapshotSet set) {
@@ -992,13 +1006,22 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
    * read.
    */
   static Optional<Path> recordedBuildomatic(SnapshotSet set) {
+    return recordedPath(set, "buildomatic");
+  }
+
+  /** The webapp directory the upgrade run backed up, from the point-B manifest likewise. */
+  static Optional<Path> recordedWebapp(SnapshotSet set) {
+    return recordedPath(set, "webapp");
+  }
+
+  private static Optional<Path> recordedPath(SnapshotSet set, String key) {
     if (!Files.isRegularFile(set.manifest())) {
       return Optional.empty();
     }
     try {
       Map<?, ?> manifest =
           Json.read(Files.readString(set.manifest(), StandardCharsets.UTF_8), Map.class);
-      if (manifest.get("buildomatic") instanceof String recorded && !recorded.isBlank()) {
+      if (manifest.get(key) instanceof String recorded && !recorded.isBlank()) {
         return Optional.of(Path.of(recorded));
       }
     } catch (IOException | RuntimeException e) {
