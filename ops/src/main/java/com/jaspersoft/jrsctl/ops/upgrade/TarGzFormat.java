@@ -114,6 +114,7 @@ final class TarGzFormat implements ArchiveFormat {
     for (TarArchiveEntry link : links) {
       Path at = Archives.resolve(root, link);
       Archives.checkLinkTarget(root, at, link.getLinkName());
+      Archives.checkLinkPlacement(root, at, link.getLinkName());
       createSymbolicLink(at, link.getLinkName());
     }
     reapply(metadata);

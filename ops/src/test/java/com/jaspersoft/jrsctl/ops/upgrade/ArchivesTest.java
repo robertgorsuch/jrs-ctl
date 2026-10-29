@@ -166,6 +166,30 @@ class ArchivesTest {
     assertThat(target.resolve("up")).as("a link at the root to its parent").doesNotExist();
   }
 
+  /**
+   * Review finding 9, the other order: {@code a -> sub/../x} reads as {@code x} under the root, but
+   * once {@code sub -> .} exists the {@code ..} climbs from the root itself. A {@code ..} after a
+   * name is refused whatever that name turns out to be.
+   */
+  @Test
+  void should_refuse_a_link_target_with_a_parent_segment_after_a_name() throws Exception {
+    Path archive = tmp.resolve("climb.tar.gz");
+    writeTar(
+        archive,
+        e -> {
+          e.link("a", "sub/../x");
+          e.link("sub", ".");
+        });
+    Path target = tmp.resolve("restored-climb");
+
+    assertThatThrownBy(
+            () ->
+                Archives.extract(Platform.OsFamily.LINUX, archive, target, new CancellationToken()))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("link target");
+    assertThat(target.resolve("a")).doesNotExist();
+  }
+
   @Test
   @EnabledOnOs({OS.LINUX, OS.MAC})
   void should_refuse_to_archive_a_link_whose_target_is_absolute_or_leaves_the_tree()
