@@ -384,6 +384,51 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * Review finding 3 (2026-10-29): the upgrade takes the edition from the server identity and falls
+   * back to the webapp name only when the identity is unknown; the rollback looked at the name
+   * alone, so a Pro server deployed as {@code jasperserver} had its database rebuilt with the CE
+   * schema before the Pro export was imported into it.
+   */
+  @Test
+  void should_rebuild_the_pro_schema_when_a_pro_webapp_is_not_named_pro() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithWebappName(tmp, "jasperserver")) {
+      Plan rollback = databaseRollback(f, "r-up-ed");
+
+      Step rebuild = Idempotency.step(rollback, "rebuild-database");
+
+      assertThat(rebuild.title()).contains("init-js-db-pro").doesNotContain("init-js-db-ce");
+    }
+  }
+
+  /**
+   * Review finding 6 (2026-10-29): before js-upgrade-newdb drops the repository database and
+   * rebuilds it from the point-B export, the precheck re-hashed only an adopted export; the export
+   * this run wrote under snapshots/ went unchecked, though the rollback does check it.
+   */
+  @Test
+  void should_fail_run_vendor_upgrade_precheck_when_the_run_s_own_export_changed()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-vu-sha");
+      for (Step s : plan.steps()) {
+        if (s.id().equals("run-vendor-upgrade")) {
+          break;
+        }
+        Idempotency.executeOk(s, ctx, f.events::add);
+      }
+      Path export = SnapshotSet.of(f.fake.home, "r-vu-sha", f.os).fullExport();
+      assertThat(export).isRegularFile();
+      Files.write(export, new byte[] {0x00}, StandardOpenOption.APPEND);
+
+      CheckResult result = Idempotency.step(plan, "run-vendor-upgrade").precheck(ctx);
+
+      assertThat(result).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) result).message()).contains(export.getFileName().toString());
+    }
+  }
+
   /** Issue #106: the events import runs the target's js-import once per run. */
   @Test
   void should_import_once_when_import_events_executes_twice() throws Exception {
