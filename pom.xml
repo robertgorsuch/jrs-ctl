@@ -132,7 +132,8 @@
       <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>${junit.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>${assertj.version}</version></dependency>
       <!-- Test-only transitives of WireMock 3.13.2, pinned to patched releases (Dependabot,
-           2026-09-14: GHSA-hjcp-jmpx-g3qm httpclient5, httpcore5 below 5.4.3). None of them ships
+           2026-09-14: GHSA-hjcp-jmpx-g3qm httpclient5, httpcore5 below 5.4.3; 2026-10-28: guava
+           below 33.7.2, CompactHashMap deserialization memory allocation). None of them ships
            in the image. Two advisories cannot be closed this way while WireMock is 3.x, and stay
            test-only: handlebars 4.5 removed helper.NumberHelper, which WireMock 3.13.2 loads, so
            handlebars stays at WireMock's 4.3.1; and the Jetty 11 fixes were never published to
@@ -140,6 +141,7 @@
       <dependency><groupId>org.apache.httpcomponents.client5</groupId><artifactId>httpclient5</artifactId><version>5.6.4</version></dependency>
       <dependency><groupId>org.apache.httpcomponents.core5</groupId><artifactId>httpcore5</artifactId><version>5.4.4</version></dependency>
       <dependency><groupId>org.apache.httpcomponents.core5</groupId><artifactId>httpcore5-h2</artifactId><version>5.4.3</version></dependency>
+      <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>33.7.2-jre</version></dependency>
       <dependency><groupId>org.wiremock</groupId><artifactId>wiremock</artifactId><version>${wiremock.version}</version></dependency>
       <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><version>${testcontainers.version}</version></dependency>
       <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>${testcontainers.version}</version></dependency>
