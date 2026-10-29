@@ -1,6 +1,6 @@
 # Contributing to jrsctl
 
-> **Not maintained after 2.4.0.** 2.4.0 is the final release. Issues and pull requests will not be
+> **Not maintained after 2.5.0.** 2.5.0 is the final release. Issues and pull requests will not be
 > acted on, and no further release will be cut. To continue the work, fork the repository
 > (GPL-3.0-only); the rest of this guide describes how the project was built and released, and
 > still applies to a fork.
@@ -174,7 +174,7 @@ hand. The only hand bump is the move to the next `-SNAPSHOT` after a tag (step 6
 
 ### After the final release
 
-2.4.0 is the final release. Once its tag run has published and its assets verify (checksums and
+2.5.0 is the final release. Once its tag run has published and its assets verify (checksums and
 signatures, `SECURITY.md`), skip step 6 and close the project down:
 
 1. Move or destroy the private signing key under Actian's key custody. It exists in two places:
@@ -212,7 +212,7 @@ each dual licence in use. `Phase0SkeletonTest` fails when any document names a d
   contains all of that.
 - Security vulnerabilities: do not open a public issue. Use GitHub's private vulnerability
   reporting for this repository (Security tab, "Report a vulnerability"), as described in
-  `docs/security.md`. After 2.4.0 reports are not acted on (`SECURITY.md`).
+  `docs/security.md`. After 2.5.0 reports are not acted on (`SECURITY.md`).
 
 ## Code of conduct
 
