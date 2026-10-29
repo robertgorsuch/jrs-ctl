@@ -332,6 +332,30 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * Review finding 8: ADR-0029 counts a run whose {@code upgrade.json} names the mode as started,
+   * and the plan accepts {@code --restore-database} for it even without {@code
+   * vendor-upgrade.started} (a run recorded by a jrsctl from before the marker). The step must
+   * apply the same rule, or the refusal comes after the stop and the file restores instead of
+   * before.
+   */
+  @Test
+  void should_pass_rebuild_database_precheck_when_the_plan_accepted_a_run_recorded_as_newdb()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planUpgrade(newdb(f)), "r-up-legacy", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Files.delete(SnapshotSet.of(f.fake.home, "r-up-legacy", f.os).vendorStarted());
+
+      Plan rollback =
+          f.ops().planRollback("r-up-legacy", new RollbackOptions(RollbackPoint.B, true));
+      Context ctx = start(f, rollback, "r-rb-legacy");
+
+      assertThat(Idempotency.step(rollback, "rebuild-database").precheck(ctx))
+          .isNotInstanceOf(CheckResult.Fail.class);
+    }
+  }
+
   /** ADR-0029: a resume never drops a database it already rebuilt. */
   @Test
   void should_run_init_once_when_rebuild_database_executes_twice() throws Exception {
