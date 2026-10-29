@@ -618,20 +618,25 @@ final class VendorSteps {
             "resume the run so the backup phase writes it, or start the upgrade again");
       }
       if (in.options().mode() == UpgradeOperations.Mode.NEWDB) {
-        // an adopted export (ADR-0028) sits outside the home: check it is still the file that
-        // was adopted before the vendor script drops the database and imports it
+        // the vendor script drops the database and imports this export: check it is still the
+        // file point B recorded, the adopted one (ADR-0028) against its adoption record and this
+        // run's own against its .sha256, as the rollback's rebuild does
         try {
           Optional<SnapshotSet.ExternalExport> external = in.snapshots(ctx).externalExport();
-          if (external.isPresent()
-              && !rt.files().sha256(external.get().path()).equals(external.get().sha256())) {
-            return CheckResult.fail(
-                external.get().path() + " changed since it was adopted",
-                "run the upgrade again so the export is adopted afresh");
+          if (external.isPresent()) {
+            if (!rt.files().sha256(external.get().path()).equals(external.get().sha256())) {
+              return CheckResult.fail(
+                  external.get().path() + " changed since it was adopted",
+                  "run the upgrade again so the export is adopted afresh");
+            }
+          } else {
+            PointB.verifyArchive(fullExport(ctx), rt.files().sha256(fullExport(ctx)));
           }
         } catch (IOException e) {
           return CheckResult.fail(
-              "cannot verify the adopted export: " + e.getMessage(),
-              "check read access to the export archive");
+              "cannot verify the point-B export: " + e.getMessage(),
+              "do not let the vendor script rebuild the database from it; start the upgrade"
+                  + " again so the backup phase takes a fresh export");
         }
       }
       return CheckResult.pass();
