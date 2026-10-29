@@ -355,6 +355,35 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * Review finding 7 (2026-10-29): the done marker is what keeps a resume from dropping the
+   * database again after the re-import, so a marker that cannot be written fails the step instead
+   * of reporting ok with a warning.
+   */
+  @Test
+  void should_fail_rebuild_database_when_the_done_marker_cannot_be_written() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan rollback = databaseRollback(f, "r-up-rdm");
+      Context ctx = start(f, rollback, "r-rb-rdm");
+      for (Step s : rollback.steps()) {
+        if (s.id().equals("rebuild-database")) {
+          break;
+        }
+        Idempotency.executeOk(s, ctx, f.events::add);
+      }
+      // a non-empty directory where the marker file goes: the write fails on every OS
+      Path marker = f.fake.home.runDir("r-rb-rdm").resolve("rebuild-database.done");
+      Files.createDirectories(marker);
+      Files.writeString(marker.resolve("in-the-way"), "x");
+      Step step = Idempotency.step(rollback, "rebuild-database");
+
+      StepResult result = step.execute(ctx, f.events::add);
+
+      assertThat(count(f.vendorLogText(), "init-js-db-pro")).isEqualTo(1);
+      assertThat(result).as(String.join("\n", f.logs())).isInstanceOf(StepResult.Failed.class);
+    }
+  }
+
   /** Issue #106: the events import runs the target's js-import once per run. */
   @Test
   void should_import_once_when_import_events_executes_twice() throws Exception {

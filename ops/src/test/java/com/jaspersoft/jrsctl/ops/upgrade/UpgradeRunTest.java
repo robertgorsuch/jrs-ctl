@@ -510,6 +510,44 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Review finding 2 (2026-10-29): with no stored plan to name the new Tomcat, the rollback fell
+   * back to restoring the webapp under {@code server.tomcatDir}, which point-config-at-target had
+   * already moved to the new Tomcat, so point B's old webapp was extracted over the new one. The
+   * point-B manifest records the webapp the run backed up; that, not the current configuration,
+   * says where point B belongs. The rollback is a separate jrsctl process, so the test reloads
+   * config.yaml before planning it, as that process would.
+   */
+  @Test
+  void should_not_restore_into_the_new_tomcat_when_the_side_by_side_plan_is_not_stored()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      assertThat(f.run(plan, "r-up-sbs-np", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Path oldMarker = f.webappDir.resolve("left-by-jrs9.txt");
+      Files.writeString(oldMarker, "old server state");
+      Path newTomcat = f.newTomcatDir.toAbsolutePath().normalize();
+      Path newMarker = newTomcat.resolve("webapps").resolve("jasperserver-pro").resolve("n.txt");
+      Files.writeString(newMarker, "new server state");
+      f.fake.config = new ConfigLoader().load(f.fake.home, f.fake.env, Map.of());
+      f.services = f.fake.build();
+      assertThat(f.services.config().server().tomcatDir()).contains(newTomcat);
+
+      Plan back = f.ops().planRollback("r-up-sbs-np", RollbackPoint.B);
+
+      assertThat(back.summary().filesTouched())
+          .as("point B belongs to the old Tomcat")
+          .noneMatch(p -> p.toAbsolutePath().normalize().startsWith(newTomcat));
+      assertThat(f.run(back, "r-rb-sbs-np", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(newMarker).hasContent("new server state");
+      assertThat(oldMarker).hasContent("old server state");
+    }
+  }
+
   /** Review finding 1.13: a service the operator had stopped is not this run's to start. */
   @Test
   void should_leave_a_service_the_operator_had_stopped_stopped_when_rolling_back()
