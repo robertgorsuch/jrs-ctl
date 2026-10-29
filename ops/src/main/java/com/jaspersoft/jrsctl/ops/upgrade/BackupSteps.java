@@ -34,8 +34,9 @@ import java.util.stream.Collectors;
  * archives, configuration files. Invariants: every step is additive under {@code
  * snapshots/<runId>/} and therefore reports {@code mutating() == false} like the hotfix snapshot
  * step (the server and the installation are untouched); every step converges on re-execution (an
- * artefact that already exists and verifies is reused); compensations keep the backups in place,
- * because a rolled-back run's backups are still the operator's safety net.
+ * artefact that already exists and verifies is reused, one with no hash record is taken again);
+ * compensations keep the backups in place, because a rolled-back run's backups are still the
+ * operator's safety net.
  */
 final class BackupSteps {
 
@@ -157,6 +158,30 @@ final class BackupSteps {
   static final String REFERENCED_BY = "upgrade";
 
   private BackupSteps() {}
+
+  /**
+   * Review finding 5: an artefact is moved into place before its {@code .sha256} is written, so a
+   * crash in between leaves one that nothing vouches for. It is never reused (it cannot be told
+   * from a file put there by hand) and never left to block every resume: it is deleted, with any
+   * record of files left out of it, and taken again. A record that disagrees still fails.
+   */
+  private static void discardUnrecorded(
+      UpgradeRuntime rt, Context ctx, EventSink out, Step step, Path artefact, String verb)
+      throws IOException {
+    Logs.warn(
+        rt,
+        ctx,
+        out,
+        step,
+        artefact
+            + " has no "
+            + SnapshotSet.SHA_SUFFIX
+            + " record (an earlier attempt stopped before writing it); "
+            + verb
+            + " again");
+    Files.delete(artefact);
+    Files.deleteIfExists(SnapshotSet.skippedFileFor(artefact));
+  }
 
   abstract static class Additive implements Step {
     final UpgradeRuntime rt;
@@ -301,10 +326,13 @@ final class BackupSteps {
       Path output = set.fullExport();
       try {
         if (Files.isRegularFile(output) && Files.size(output) > 0) {
-          String sha = rt.files().sha256(output);
-          PointB.verifyArchive(output, sha);
-          Logs.info(rt, ctx, out, this, "export already present at " + output + "; reusing it");
-          return StepResult.ok();
+          if (PointB.readSha(output).isPresent()) {
+            String sha = rt.files().sha256(output);
+            PointB.verifyArchive(output, sha);
+            Logs.info(rt, ctx, out, this, "export already present at " + output + "; reusing it");
+            return StepResult.ok();
+          }
+          discardUnrecorded(rt, ctx, out, this, output, "exporting");
         }
         Files.createDirectories(output.getParent());
       } catch (IOException e) {
@@ -538,9 +566,12 @@ final class BackupSteps {
 
     private void archive(Context ctx, EventSink out, Path source, Path archive) throws IOException {
       if (Files.isRegularFile(archive)) {
-        PointB.verifyArchive(archive, rt.files().sha256(archive));
-        Logs.info(rt, ctx, out, this, archive + " already present and verified; reusing it");
-        return;
+        if (PointB.readSha(archive).isPresent()) {
+          PointB.verifyArchive(archive, rt.files().sha256(archive));
+          Logs.info(rt, ctx, out, this, archive + " already present and verified; reusing it");
+          return;
+        }
+        discardUnrecorded(rt, ctx, out, this, archive, "archiving");
       }
       Archives.Created created =
           Archives.create(
