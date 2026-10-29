@@ -2,13 +2,11 @@
 
 ## Status
 
-jrsctl is not maintained after 2.5.0, its final release. Vulnerability reports will not be acted
-on and no fixed release will follow. This covers jrsctl's own code, its bundled libraries and its
-bundled Java 21 runtime, which stays at the update the 2.5.0 build used.
-
-If you depend on jrsctl, fork it (GPL-3.0-only) and take over its dependencies and runtime, or
-stop using it. `docs/security.md` describes the security model as built: secrets, redaction,
-least privilege, key management.
+jrsctl is actively maintained; the current release is 2.5.0. Report a vulnerability privately
+through GitHub's private vulnerability reporting for this repository (Security tab, "Report a
+vulnerability"), not as a public issue; `docs/security.md`, "Reporting a vulnerability", says what
+to include. `docs/security.md` also describes the security model: secrets, redaction, least
+privilege, key management.
 
 ## Verifying a release download
 

@@ -1,10 +1,5 @@
 # Contributing to jrsctl
 
-> **Not maintained after 2.5.0.** 2.5.0 is the final release. Issues and pull requests will not be
-> acted on, and no further release will be cut. To continue the work, fork the repository
-> (GPL-3.0-only); the rest of this guide describes how the project was built and released, and
-> still applies to a fork.
-
 jrsctl is the JasperReports Server lifecycle tool from Jaspersoft. It stops services,
 swaps files under `WEB-INF`, runs vendor upgrade scripts and re-imports repositories, so the
 project puts execution safety, idempotent steps, honest rollback and credential hygiene ahead of
@@ -172,10 +167,10 @@ hand. The only hand bump is the move to the next `-SNAPSHOT` after a tag (step 6
    commit. Otherwise every development build, its archive name and any support bundle claims a
    version older than the one just shipped.
 
-### After the final release
+### After a final release
 
-2.5.0 is the final release. Once its tag run has published and its assets verify (checksums and
-signatures, `SECURITY.md`), skip step 6 and close the project down:
+If a release is ever declared the final one, then once its tag run has published and its assets
+verify (checksums and signatures, `SECURITY.md`), skip step 6 and close the project down:
 
 1. Move or destroy the private signing key under Actian's key custody. It exists in two places:
    the `JRSCTL_SIGNING_KEY` repository secret and the owner-only file
@@ -212,7 +207,7 @@ each dual licence in use. `Phase0SkeletonTest` fails when any document names a d
   contains all of that.
 - Security vulnerabilities: do not open a public issue. Use GitHub's private vulnerability
   reporting for this repository (Security tab, "Report a vulnerability"), as described in
-  `docs/security.md`. After 2.5.0 reports are not acted on (`SECURITY.md`).
+  `docs/security.md`.
 
 ## Code of conduct
 
