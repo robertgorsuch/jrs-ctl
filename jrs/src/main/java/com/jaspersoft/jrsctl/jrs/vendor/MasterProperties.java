@@ -53,12 +53,34 @@ public final class MasterProperties {
    */
   public static Staged stage(Path buildomaticDir, Map<String, String> overrides, Path runDir)
       throws IOException {
+    return stage(buildomaticDir, overrides, Map.of(), runDir);
+  }
+
+  /**
+   * {@link #stage(Path, Map, Path)} plus {@code secrets}, written after the other overrides
+   * straight from their {@code char[]} with the escaping {@link Properties#store} applies, so no
+   * {@code String} copy of a secret is made (CLAUDE.md; review finding 10). The arrays are read,
+   * never kept or cleared: the caller owns them. {@link Staged#overrides()} names the plain
+   * overrides only.
+   */
+  public static Staged stage(
+      Path buildomaticDir, Map<String, String> overrides, Map<String, char[]> secrets, Path runDir)
+      throws IOException {
     Objects.requireNonNull(buildomaticDir, "buildomaticDir");
     Objects.requireNonNull(overrides, "overrides");
+    Objects.requireNonNull(secrets, "secrets");
     Objects.requireNonNull(runDir, "runDir");
     for (Map.Entry<String, String> e : overrides.entrySet()) {
       if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) {
         throw new IllegalArgumentException("override keys and values must be non-blank");
+      }
+    }
+    for (Map.Entry<String, char[]> e : secrets.entrySet()) {
+      if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) {
+        throw new IllegalArgumentException("secret keys and values must be non-blank");
+      }
+      if (overrides.containsKey(e.getKey())) {
+        throw new IllegalArgumentException(e.getKey() + " is both an override and a secret");
       }
     }
     Path file = buildomaticDir.resolve(Buildomatic.MASTER_PROPERTIES);
@@ -79,6 +101,13 @@ public final class MasterProperties {
       Properties p = new Properties();
       p.putAll(overrides);
       p.store(new NonClosing(out), OVERRIDE_HEADER);
+      byte[] newline = System.lineSeparator().getBytes(StandardCharsets.ISO_8859_1);
+      for (Map.Entry<String, char[]> e : secrets.entrySet()) {
+        writeEscaped(out, e.getKey().toCharArray(), true);
+        out.write('=');
+        writeEscaped(out, e.getValue(), false);
+        out.write(newline);
+      }
     }
     Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
     return new Staged(file, original, overrides);
@@ -117,6 +146,49 @@ public final class MasterProperties {
   /** True when {@code key} names something that must never be logged or invented by jrsctl. */
   public static boolean isPasswordKey(String key) {
     return key.toLowerCase(Locale.ROOT).contains("pass");
+  }
+
+  /**
+   * One key or value the way {@link Properties#store} escapes it: ISO 8859-1 output, a backslash-u
+   * escape with four hex digits for anything outside printable ASCII, a backslash before the
+   * characters the format gives a meaning to, and a leading space escaped in a value (every space
+   * in a key).
+   */
+  private static void writeEscaped(OutputStream out, char[] chars, boolean key) throws IOException {
+    for (int i = 0; i < chars.length; i++) {
+      char c = chars[i];
+      switch (c) {
+        case '\\' -> writeAscii(out, "\\\\");
+        case '\t' -> writeAscii(out, "\\t");
+        case '\n' -> writeAscii(out, "\\n");
+        case '\r' -> writeAscii(out, "\\r");
+        case '\f' -> writeAscii(out, "\\f");
+        case '=', ':', '#', '!' -> {
+          out.write('\\');
+          out.write(c);
+        }
+        case ' ' -> {
+          if (i == 0 || key) {
+            out.write('\\');
+          }
+          out.write(' ');
+        }
+        default -> {
+          if (c < 0x20 || c > 0x7e) {
+            writeAscii(out, "\\u");
+            for (int shift = 12; shift >= 0; shift -= 4) {
+              out.write(Character.toUpperCase(Character.forDigit((c >> shift) & 0xF, 16)));
+            }
+          } else {
+            out.write(c);
+          }
+        }
+      }
+    }
+  }
+
+  private static void writeAscii(OutputStream out, String text) throws IOException {
+    out.write(text.getBytes(StandardCharsets.ISO_8859_1));
   }
 
   private static final class NonClosing extends java.io.FilterOutputStream {

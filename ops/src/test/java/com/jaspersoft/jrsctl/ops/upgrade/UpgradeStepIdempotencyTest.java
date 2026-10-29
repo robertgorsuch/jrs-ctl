@@ -13,6 +13,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
@@ -25,6 +26,7 @@ import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -603,6 +605,37 @@ class UpgradeStepIdempotencyTest {
       Idempotency.compensateOk(step, ctx);
       assertThat(state(f, "r-wm-c")).isEqualTo(once);
       assertThat(target).hasContent("pristine=yes\n");
+    }
+  }
+
+  /**
+   * ADR-0028 with review finding 10: the key password of an adopted export reaches the staged
+   * properties as resolved, now that it is written from its char[] (MasterPropertiesTest covers the
+   * escaping of special characters).
+   */
+  @Test
+  void should_write_the_key_password_exactly_when_write_master_properties_runs() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      // set by FakeServices before the secret resolver is built
+      String password = f.fake.env.get("JRS_PASSWORD");
+      Path export = f.fakeExport("earlier.zip");
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  newdb(f)
+                      .withExistingExport(export)
+                      .withKeyAlias("deprecatedImportExportEncSecret")
+                      .withKeyPassword(SecretRef.parse("env:JRS_PASSWORD")));
+      Context ctx = start(f, plan, "r-wm-key");
+      Idempotency.runUpTo(plan, ctx, "write-master-properties", f.events::add);
+
+      Properties staged = new Properties();
+      try (InputStream in =
+          Files.newInputStream(
+              f.packageDir.resolve("buildomatic").resolve("default_master.properties"))) {
+        staged.load(in);
+      }
+      assertThat(staged.getProperty(VendorSteps.KEY_PASS_PROPERTY)).isEqualTo(password);
     }
   }
 

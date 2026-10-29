@@ -1,12 +1,15 @@
 package com.jaspersoft.jrsctl.jrs.vendor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Properties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -122,5 +125,42 @@ class MasterPropertiesTest {
     assertThat(withPass).contains("dbPassword=explicit");
     assertThat(MasterProperties.isPasswordKey("dbPassword")).isTrue();
     assertThat(MasterProperties.isPasswordKey("dbHost")).isFalse();
+  }
+
+  /**
+   * Review finding 10: a secret is written from its char[] with the escaping Properties applies, so
+   * the vendor scripts read back exactly what was resolved, and the result keeps no copy.
+   */
+  @Test
+  void should_write_a_secret_from_its_chars_so_that_properties_read_it_back_exactly()
+      throws IOException {
+    String value = " p=ss:w#rd!\\x\té中 ";
+    char[] secret = value.toCharArray();
+
+    MasterProperties.Staged staged =
+        MasterProperties.stage(
+            buildomatic, Map.of("dbHost", "h"), Map.of("key pass", secret), runDir);
+
+    Properties read = new Properties();
+    try (InputStream in = Files.newInputStream(file)) {
+      read.load(in);
+    }
+    assertThat(read.getProperty("key pass")).isEqualTo(value);
+    assertThat(read.getProperty("dbHost")).isEqualTo("h");
+    assertThat(staged.overrides()).containsOnlyKeys("dbHost");
+    assertThat(secret).as("the caller's array is left as it was").isEqualTo(value.toCharArray());
+  }
+
+  @Test
+  void should_refuse_a_key_that_is_both_an_override_and_a_secret() {
+    assertThatThrownBy(
+            () ->
+                MasterProperties.stage(
+                    buildomatic,
+                    Map.of("dbPassword", "plain"),
+                    Map.of("dbPassword", "secret".toCharArray()),
+                    runDir))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("dbPassword");
   }
 }
