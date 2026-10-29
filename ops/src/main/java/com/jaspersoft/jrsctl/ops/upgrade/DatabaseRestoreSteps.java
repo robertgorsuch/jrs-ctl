@@ -171,7 +171,13 @@ final class DatabaseRestoreSteps {
         Files.createDirectories(marker(ctx).getParent());
         Files.writeString(marker(ctx), "done", UTF_8);
       } catch (IOException e) {
-        Logs.warn(rt, ctx, out, this, "cannot write " + marker(ctx) + ": " + e.getMessage());
+        // the marker is what keeps a resume from running this step again (for rebuild-database,
+        // dropping the database after the re-import), so a marker that cannot be written fails
+        return Failures.recoverable(
+            "cannot write " + marker(ctx) + ": " + Failures.describe(e),
+            "free space in the run directory and resume; without this marker a resume would run "
+                + id()
+                + " again");
       }
       Logs.info(rt, ctx, out, this, message);
       return StepResult.ok();
