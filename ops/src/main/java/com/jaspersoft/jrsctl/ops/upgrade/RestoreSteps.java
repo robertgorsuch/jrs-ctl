@@ -40,7 +40,8 @@ final class RestoreSteps {
 
   /**
    * What a rollback plan was built from; {@code installedBuildomatic} is the tree the upgrade run
-   * recorded in its manifest when it has one, so the archive goes back where it came from.
+   * recorded in its manifest when it has one, so the archive goes back where it came from; {@code
+   * edition} ({@code pro} or {@code ce}) names the schema a database rebuild initialises.
    */
   record Input(
       String upgradeRunId,
@@ -48,13 +49,15 @@ final class RestoreSteps {
       SnapshotSet set,
       HotfixPaths paths,
       String webappName,
-      Path installedBuildomatic) {
+      Path installedBuildomatic,
+      String edition) {
     Input {
       Objects.requireNonNull(upgradeRunId, "upgradeRunId");
       Objects.requireNonNull(point, "point");
       Objects.requireNonNull(set, "set");
       Objects.requireNonNull(paths, "paths");
       Objects.requireNonNull(webappName, "webappName");
+      Objects.requireNonNull(edition, "edition");
       installedBuildomatic =
           Objects.requireNonNull(installedBuildomatic, "installedBuildomatic")
               .toAbsolutePath()

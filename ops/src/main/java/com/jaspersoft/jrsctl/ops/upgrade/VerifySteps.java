@@ -248,6 +248,7 @@ final class VerifySteps {
       m.put("from", in.currentVersion().orElse("unknown"));
       m.put("to", in.options().toVersion());
       m.put("mode", in.options().mode().name());
+      m.put("edition", VendorSteps.edition(in));
       m.put("webapp", in.webappDir().toString());
       m.put("buildomatic", in.installedBuildomatic().toString());
       Map<String, String> artefacts = new LinkedHashMap<>();

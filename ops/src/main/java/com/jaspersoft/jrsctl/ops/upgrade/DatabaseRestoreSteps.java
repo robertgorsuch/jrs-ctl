@@ -45,7 +45,7 @@ final class DatabaseRestoreSteps {
   private DatabaseRestoreSteps() {}
 
   static String edition(RestoreSteps.Input in) {
-    return in.webappName().endsWith("-pro") ? "pro" : "ce";
+    return in.edition();
   }
 
   abstract static class DatabaseStep implements Step {

@@ -822,9 +822,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     Path installedBuildomatic =
         recordedBuildomatic(set)
             .orElseGet(() -> UpgradeInput.resolveInstalledBuildomatic(rt.locator(), config, paths));
+    String webappName = webappName(config, paths);
     RestoreSteps.Input in =
         new RestoreSteps.Input(
-            runId, point, set, paths, webappName(config, paths), installedBuildomatic);
+            runId,
+            point,
+            set,
+            paths,
+            webappName,
+            installedBuildomatic,
+            rollbackEdition(set, webappName));
     Optional<Path> newTomcat = sideBySideTomcat(run).or(() -> retargetedTomcat(set, in));
     List<Step> steps = new ArrayList<>();
     steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
@@ -1064,6 +1071,45 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     } catch (JrsUnreachableException | RestException | ConfigException e) {
       return Optional.empty();
     }
+  }
+
+  /**
+   * The edition whose schema a database rebuild initialises: the one record-upgrade wrote into the
+   * point-B manifest, else the server's identity (an upgrade keeps the edition), else the webapp
+   * name, the fallback {@link VendorSteps#edition} uses too. The name alone sent a Pro server
+   * deployed as {@code jasperserver} to {@code init-js-db-ce} (review finding 3, 2026-10-29).
+   */
+  private String rollbackEdition(SnapshotSet set, String webappName) {
+    return recordedEdition(set)
+        .or(
+            () ->
+                identity()
+                    .flatMap(
+                        id ->
+                            switch (id.edition()) {
+                              case CE -> Optional.of("ce");
+                              case PRO -> Optional.of("pro");
+                              case UNKNOWN -> Optional.<String>empty();
+                            }))
+        .orElseGet(() -> webappName.endsWith("-pro") ? "pro" : "ce");
+  }
+
+  /** The {@code edition} record-upgrade wrote into the manifest; empty for older manifests. */
+  private static Optional<String> recordedEdition(SnapshotSet set) {
+    if (!Files.isRegularFile(set.manifest())) {
+      return Optional.empty();
+    }
+    try {
+      Map<?, ?> manifest =
+          Json.read(Files.readString(set.manifest(), StandardCharsets.UTF_8), Map.class);
+      if (manifest.get("edition") instanceof String recorded
+          && (recorded.equals("pro") || recorded.equals("ce"))) {
+        return Optional.of(recorded);
+      }
+    } catch (IOException | RuntimeException e) {
+      // an unreadable manifest falls back to the server's identity
+    }
+    return Optional.empty();
   }
 
   static String configHash(Config config) {
