@@ -1,7 +1,7 @@
 jrsctl ${project.version} (${dist.platform})
 JasperReports Server lifecycle tool - Jaspersoft
 
-NO LONGER MAINTAINED: 2.4.0 is the final release. There will be no further
+NO LONGER MAINTAINED: 2.5.0 is the final release. There will be no further
 fixes, security patches, Java runtime updates or new JasperReports Server
 versions.
 
