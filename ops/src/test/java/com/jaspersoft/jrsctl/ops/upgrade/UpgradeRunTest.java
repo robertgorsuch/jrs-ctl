@@ -532,6 +532,7 @@ class UpgradeRunTest {
       Path newMarker = newTomcat.resolve("webapps").resolve("jasperserver-pro").resolve("n.txt");
       Files.writeString(newMarker, "new server state");
       f.fake.config = new ConfigLoader().load(f.fake.home, f.fake.env, Map.of());
+      f.fake.close(); // build() opens a fresh state store; the old one would hold state.db open
       f.services = f.fake.build();
       assertThat(f.services.config().server().tomcatDir()).contains(newTomcat);
 
