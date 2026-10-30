@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.jaspersoft.jrsctl.core.engine.CancellationToken;
 import com.jaspersoft.jrsctl.core.platform.Platform;
@@ -133,6 +134,60 @@ class ArchivesTest {
           .hasMessageContaining("link target");
       assertThat(target.resolve("lib").resolve("evil")).doesNotExist();
     }
+  }
+
+  /**
+   * Review finding 9: each link passes the check on its own, but together they leave the tree.
+   * {@code sub -> .} makes {@code sub} the root itself, so {@code sub/up -> ..}, which reads as the
+   * root, is created at the root and points at its parent.
+   */
+  @Test
+  void should_refuse_a_chain_of_links_that_leaves_the_tree_when_extracting() throws Exception {
+    Path probe = tmp.resolve("probe");
+    try {
+      Files.createSymbolicLink(probe, Path.of("."));
+    } catch (UnsupportedOperationException | IOException e) {
+      assumeTrue(false, "cannot create a symbolic link here: " + e.getMessage());
+    }
+    Path archive = tmp.resolve("chain.tar.gz");
+    writeTar(
+        archive,
+        e -> {
+          e.link("sub", ".");
+          e.link("sub/up", "..");
+        });
+    Path target = tmp.resolve("restored-chain");
+
+    assertThatThrownBy(
+            () ->
+                Archives.extract(Platform.OsFamily.LINUX, archive, target, new CancellationToken()))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("link target");
+    assertThat(target.resolve("up")).as("a link at the root to its parent").doesNotExist();
+  }
+
+  /**
+   * Review finding 9, the other order: {@code a -> sub/../x} reads as {@code x} under the root, but
+   * once {@code sub -> .} exists the {@code ..} climbs from the root itself. A {@code ..} after a
+   * name is refused whatever that name turns out to be.
+   */
+  @Test
+  void should_refuse_a_link_target_with_a_parent_segment_after_a_name() throws Exception {
+    Path archive = tmp.resolve("climb.tar.gz");
+    writeTar(
+        archive,
+        e -> {
+          e.link("a", "sub/../x");
+          e.link("sub", ".");
+        });
+    Path target = tmp.resolve("restored-climb");
+
+    assertThatThrownBy(
+            () ->
+                Archives.extract(Platform.OsFamily.LINUX, archive, target, new CancellationToken()))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("link target");
+    assertThat(target.resolve("a")).doesNotExist();
   }
 
   @Test

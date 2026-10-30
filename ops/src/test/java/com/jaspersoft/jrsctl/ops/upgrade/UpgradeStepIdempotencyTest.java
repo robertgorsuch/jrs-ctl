@@ -13,6 +13,7 @@ import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
 import com.jaspersoft.jrsctl.core.platform.Platform;
 import com.jaspersoft.jrsctl.core.platform.ServiceController;
+import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.core.state.HotfixInstalled;
 import com.jaspersoft.jrsctl.core.state.HotfixState;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
@@ -25,6 +26,7 @@ import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackOptions;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.RollbackPoint;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations.UpgradeOptions;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -332,6 +334,30 @@ class UpgradeStepIdempotencyTest {
     }
   }
 
+  /**
+   * Review finding 8: ADR-0029 counts a run whose {@code upgrade.json} names the mode as started,
+   * and the plan accepts {@code --restore-database} for it even without {@code
+   * vendor-upgrade.started} (a run recorded by a jrsctl from before the marker). The step must
+   * apply the same rule, or the refusal comes after the stop and the file restores instead of
+   * before.
+   */
+  @Test
+  void should_pass_rebuild_database_precheck_when_the_plan_accepted_a_run_recorded_as_newdb()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      assertThat(f.run(f.ops().planUpgrade(newdb(f)), "r-up-legacy", RunOptions.DEFAULT))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Files.delete(SnapshotSet.of(f.fake.home, "r-up-legacy", f.os).vendorStarted());
+
+      Plan rollback =
+          f.ops().planRollback("r-up-legacy", new RollbackOptions(RollbackPoint.B, true));
+      Context ctx = start(f, rollback, "r-rb-legacy");
+
+      assertThat(Idempotency.step(rollback, "rebuild-database").precheck(ctx))
+          .isNotInstanceOf(CheckResult.Fail.class);
+    }
+  }
+
   /** ADR-0029: a resume never drops a database it already rebuilt. */
   @Test
   void should_run_init_once_when_rebuild_database_executes_twice() throws Exception {
@@ -616,6 +642,37 @@ class UpgradeStepIdempotencyTest {
       Idempotency.compensateOk(step, ctx);
       assertThat(state(f, "r-wm-c")).isEqualTo(once);
       assertThat(target).hasContent("pristine=yes\n");
+    }
+  }
+
+  /**
+   * ADR-0028 with review finding 10: the key password of an adopted export reaches the staged
+   * properties as resolved, now that it is written from its char[] (MasterPropertiesTest covers the
+   * escaping of special characters).
+   */
+  @Test
+  void should_write_the_key_password_exactly_when_write_master_properties_runs() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      // set by FakeServices before the secret resolver is built
+      String password = f.fake.env.get("JRS_PASSWORD");
+      Path export = f.fakeExport("earlier.zip");
+      Plan plan =
+          f.ops()
+              .planUpgrade(
+                  newdb(f)
+                      .withExistingExport(export)
+                      .withKeyAlias("deprecatedImportExportEncSecret")
+                      .withKeyPassword(SecretRef.parse("env:JRS_PASSWORD")));
+      Context ctx = start(f, plan, "r-wm-key");
+      Idempotency.runUpTo(plan, ctx, "write-master-properties", f.events::add);
+
+      Properties staged = new Properties();
+      try (InputStream in =
+          Files.newInputStream(
+              f.packageDir.resolve("buildomatic").resolve("default_master.properties"))) {
+        staged.load(in);
+      }
+      assertThat(staged.getProperty(VendorSteps.KEY_PASS_PROPERTY)).isEqualTo(password);
     }
   }
 

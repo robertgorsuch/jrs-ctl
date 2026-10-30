@@ -809,11 +809,7 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
               + " from a backup, or roll this installation back by hand;"
               + " a partial restore would leave the old webapp against the new database");
     }
-    Optional<String> started =
-        vendorScriptStarted(set)
-            .or(
-                () ->
-                    readMode(set).map(m -> VendorSteps.SCRIPT_PREFIX + m.toLowerCase(Locale.ROOT)));
+    Optional<String> started = vendorScriptStarted(set).or(() -> recordedScript(set));
     if (options.restoreDatabase()) {
       refuseDatabaseRestore(runId, started);
     }
@@ -956,6 +952,15 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     } catch (IOException e) {
       return Optional.empty();
     }
+  }
+
+  /**
+   * ADR-0029: a run recorded as successful counts as started even without {@code
+   * vendor-upgrade.started} (a jrsctl from before the marker); its {@code upgrade.json} names the
+   * mode, and so the script. The plan and the database steps' precheck both apply this rule.
+   */
+  static Optional<String> recordedScript(SnapshotSet set) {
+    return readMode(set).map(m -> VendorSteps.SCRIPT_PREFIX + m.toLowerCase(Locale.ROOT));
   }
 
   private static String modeOfScript(String script) {

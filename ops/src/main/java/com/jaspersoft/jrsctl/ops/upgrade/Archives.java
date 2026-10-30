@@ -260,18 +260,64 @@ final class Archives {
 
   /**
    * Where a link entry may point: never at an absolute path, never outside the tree once resolved
-   * from the link's own directory. Applied when archiving (the tree being backed up must not carry
-   * such a link) and when extracting (the archive must not either).
+   * from the link's own directory, and {@code ..} only at the start of the target. Applied when
+   * archiving (the tree being backed up must not carry such a link) and when extracting (the
+   * archive must not either). The textual check is exact only because of the last rule and {@link
+   * #checkLinkPlacement}: a {@code ..} after a segment that is itself a link would climb from
+   * wherever that link points (review finding 9).
    */
   static void checkLinkTarget(Path root, Path link, String linkTarget) throws IOException {
     if (linkTarget.isBlank() || isAbsoluteName(linkTarget)) {
       throw new IOException("refusing " + link + ": link target '" + linkTarget + "' is absolute");
+    }
+    boolean descended = false;
+    for (String segment : linkTarget.replace('\\', '/').split("/", -1)) {
+      if (segment.equals("..")) {
+        if (descended) {
+          throw new IOException(
+              "refusing "
+                  + link
+                  + ": link target '"
+                  + linkTarget
+                  + "' has a '..' after a name, which a link under that name would turn elsewhere");
+        }
+      } else if (!segment.isEmpty() && !segment.equals(".")) {
+        descended = true;
+      }
     }
     Path parent = link.toAbsolutePath().normalize().getParent();
     Path resolved = parent.resolve(linkTarget.replace('\\', '/')).normalize();
     if (!resolved.startsWith(root.toAbsolutePath().normalize())) {
       throw new IOException(
           "refusing " + link + ": link target '" + linkTarget + "' leaves " + root);
+    }
+  }
+
+  /**
+   * Review finding 9: a link is never created under another link. Every directory between {@code
+   * root} and the link must be a real directory on disk (or not exist yet), so the link lands where
+   * its name says and its target is resolved from there; an archive jrsctl wrote never has such an
+   * entry, since the walk that archives a tree does not follow links.
+   */
+  static void checkLinkPlacement(Path root, Path link, String linkTarget) throws IOException {
+    Path base = root.toAbsolutePath().normalize();
+    // Archives.resolve already keeps the link's own path under root, so its parent is too
+    Path parent = link.toAbsolutePath().normalize().getParent();
+    Path at = base;
+    for (Path segment : base.relativize(parent)) {
+      if (segment.toString().isEmpty()) {
+        continue;
+      }
+      at = at.resolve(segment);
+      if (Files.isSymbolicLink(at)) {
+        throw new IOException(
+            "refusing "
+                + link
+                + ": link target '"
+                + linkTarget
+                + "' would be created through the link "
+                + at);
+      }
     }
   }
 

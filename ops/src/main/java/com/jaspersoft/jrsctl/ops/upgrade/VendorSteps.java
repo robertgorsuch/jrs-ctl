@@ -410,26 +410,39 @@ final class VendorSteps {
       // only
       overrides.put(SKIP_UPGRADE_CONSENT_PROPERTY, "true");
       Optional<SecretRef> keyPassword = in.options().keyPassword();
-      if (keyPassword.isPresent()) {
-        // ADR-0028: the key's password is the one password key jrsctl writes itself, resolved
-        // here rather than at plan time, and registered with the redactor first
-        try (Secret secret = rt.services().secrets().resolve(keyPassword.get())) {
-          rt.services().redactor().register(secret);
-          char[] chars = secret.chars();
-          try {
-            overrides.put(KEY_PASS_PROPERTY, new String(chars));
-          } finally {
-            Arrays.fill(chars, '\0');
+      // the key password stays a char[] all the way into the file and is cleared once it is
+      // written (review finding 10)
+      Map<String, char[]> secrets = new LinkedHashMap<>();
+      try {
+        if (keyPassword.isPresent()) {
+          // ADR-0028: the key's password is the one password key jrsctl writes itself, resolved
+          // here rather than at plan time, and registered with the redactor first
+          try (Secret secret = rt.services().secrets().resolve(keyPassword.get())) {
+            rt.services().redactor().register(secret);
+            secrets.put(KEY_PASS_PROPERTY, secret.chars());
+          } catch (SecretException e) {
+            return Failures.recoverable(
+                "cannot resolve the key password: " + e.getMessage(),
+                "fix " + keyPassword.get().render());
           }
-        } catch (SecretException e) {
-          return Failures.recoverable(
-              "cannot resolve the key password: " + e.getMessage(),
-              "fix " + keyPassword.get().render());
+        }
+        return stage(ctx, out, overrides, secrets, runDir);
+      } finally {
+        for (char[] chars : secrets.values()) {
+          Arrays.fill(chars, '\0');
         }
       }
+    }
+
+    private StepResult stage(
+        Context ctx,
+        EventSink out,
+        Map<String, String> overrides,
+        Map<String, char[]> secrets,
+        Path runDir) {
       try {
         MasterProperties.Staged staged =
-            MasterProperties.stage(buildomaticDir(), overrides, runDir);
+            MasterProperties.stage(buildomaticDir(), overrides, secrets, runDir);
         Logs.info(
             rt,
             ctx,

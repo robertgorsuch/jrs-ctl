@@ -32,7 +32,8 @@ import java.util.Optional;
  * export is the only copy of the old data and the import that follows is what puts it back); each
  * runs its vendor command at most once per rollback run through a done marker, so a resume never
  * drops a database it already rebuilt; both refuse to plan unless the vendor script of the upgrade
- * run actually started ({@link SnapshotSet#vendorScriptStarted()}), since an untouched database
+ * run actually started ({@link SnapshotSet#vendorScriptStarted()}, or the run's {@code
+ * upgrade.json} records it as successful, the same rule as the plan), since an untouched database
  * must never be rebuilt; the export is hash-verified before the import;; the database named in the
  * configuration is asked once when jrsctl can, a warning when it cannot.
  */
@@ -82,7 +83,11 @@ final class DatabaseRestoreSteps {
     CheckResult common(Context ctx) {
       Optional<String> script;
       try {
-        script = in.set().vendorScriptStarted();
+        // the plan's rule (ADR-0029): a run recorded as successful counts as started
+        script =
+            in.set()
+                .vendorScriptStarted()
+                .or(() -> DefaultUpgradeOperations.recordedScript(in.set()));
       } catch (IOException e) {
         return CheckResult.fail(
             "cannot read " + in.set().vendorStarted() + ": " + e.getMessage(),
