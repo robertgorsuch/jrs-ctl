@@ -480,6 +480,43 @@ class UpgradeStepIdempotencyTest {
   }
 
   /**
+   * Review finding 5: a crash after the archive is in place but before its {@code .sha256} is
+   * written leaves an archive with no record. The resume must not refuse forever until someone
+   * deletes the archive by hand; it ends with an archive and a record that agree.
+   */
+  @Test
+  void should_resume_backup_webapp_when_a_crash_left_an_archive_without_its_hash()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-bw-nosha");
+      Idempotency.runUpTo(plan, ctx, "backup-webapp", f.events::add);
+      Path archive = SnapshotSet.of(f.fake.home, "r-bw-nosha", f.os).webappArchive();
+      Files.delete(SnapshotSet.shaFileFor(archive));
+
+      Idempotency.executeOk(Idempotency.step(plan, "backup-webapp"), ctx, f.events::add);
+
+      PointB.verifyArchive(archive, f.sha(archive));
+    }
+  }
+
+  /** Review finding 5, same window in full-export: the export is moved into place, then hashed. */
+  @Test
+  void should_resume_full_export_when_a_crash_left_an_export_without_its_hash() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+      Context ctx = start(f, plan, "r-fe-nosha");
+      Idempotency.runUpTo(plan, ctx, "full-export", f.events::add);
+      Path export = SnapshotSet.of(f.fake.home, "r-fe-nosha", f.os).fullExport();
+      Files.delete(SnapshotSet.shaFileFor(export));
+
+      Idempotency.executeOk(Idempotency.step(plan, "full-export"), ctx, f.events::add);
+
+      PointB.verifyArchive(export, f.sha(export));
+    }
+  }
+
+  /**
    * Field bundle r-20261012-202802-6c66: a running server held a byte-range lock on one file under
    * the webapp and the step failed without naming it, with a remediation about disk space. The
    * failure must name the file and point at {@code --skip-locked-files}. Windows only: a Linux lock
