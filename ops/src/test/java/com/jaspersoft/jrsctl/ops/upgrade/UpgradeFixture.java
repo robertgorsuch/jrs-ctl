@@ -68,6 +68,7 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Path root;
   public final Path installDir;
   public final Path tomcatDir;
+  public final String webappName;
   public final Path webappDir;
   public final Path packageDir;
 
@@ -98,11 +99,22 @@ public final class UpgradeFixture implements AutoCloseable {
   private UpgradeFixture(
       Path root, boolean withDatabase, boolean manualService, boolean buildomaticBeside)
       throws IOException {
+    this(root, withDatabase, manualService, buildomaticBeside, "jasperserver-pro");
+  }
+
+  private UpgradeFixture(
+      Path root,
+      boolean withDatabase,
+      boolean manualService,
+      boolean buildomaticBeside,
+      String webappName)
+      throws IOException {
     this.root = root;
     this.os = Platforms.osFamily(System.getProperty("os.name", "")).orElseThrow();
     this.installDir = Files.createDirectories(root.resolve("jrs"));
     this.tomcatDir = installDir.resolve("apache-tomcat");
-    this.webappDir = tomcatDir.resolve("webapps").resolve("jasperserver-pro");
+    this.webappName = webappName;
+    this.webappDir = tomcatDir.resolve("webapps").resolve(webappName);
     this.packageDir = Files.createDirectories(root.resolve("pkg-9.0.0"));
     this.userHome = Files.createDirectories(root.resolve("user-home"));
     this.javaHome = Files.createDirectories(root.resolve("jdk17"));
@@ -135,8 +147,8 @@ public final class UpgradeFixture implements AutoCloseable {
     fake.yaml(
         """
         server:
-          baseUrl: http://localhost:8080/jasperserver-pro
-          webappName: jasperserver-pro
+          baseUrl: http://localhost:8080/%s
+          webappName: %s
           installDir: %s
           tomcatDir: %s
         %s  auth:
@@ -153,6 +165,8 @@ public final class UpgradeFixture implements AutoCloseable {
           mode: public
         """
                 .formatted(
+                    webappName,
+                    webappName,
                     slashes(buildomaticBeside ? tomcatDir : installDir),
                     slashes(tomcatDir),
                     buildomaticBeside
@@ -186,6 +200,15 @@ public final class UpgradeFixture implements AutoCloseable {
    */
   public static UpgradeFixture createWithManualService(Path root) throws IOException {
     return new UpgradeFixture(root, false, true);
+  }
+
+  /**
+   * As {@link #create}, with the webapp deployed under {@code webappName}: a Pro server renamed
+   * away from {@code jasperserver-pro}, whose edition only the server identity tells.
+   */
+  public static UpgradeFixture createWithWebappName(Path root, String webappName)
+      throws IOException {
+    return new UpgradeFixture(root, false, false, false, webappName);
   }
 
   /** Writes the Tomcat {@code RELEASE-NOTES} line jrsctl reads the version from. */
@@ -327,8 +350,8 @@ public final class UpgradeFixture implements AutoCloseable {
             .resolve("conf")
             .resolve("Catalina")
             .resolve("localhost")
-            .resolve("jasperserver-pro.xml"),
-        "<Context docBase=\"jasperserver-pro\"/>");
+            .resolve(webappName + ".xml"),
+        "<Context docBase=\"" + webappName + "\"/>");
     Path buildomatic = Files.createDirectories(installDir.resolve("buildomatic"));
     write(
         buildomatic.resolve("default_master.properties"),
