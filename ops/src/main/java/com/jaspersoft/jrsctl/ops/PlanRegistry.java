@@ -179,6 +179,7 @@ public final class PlanRegistry {
     node.put("keepThemes", o.keepThemes());
     node.put("snapshotStopsService", o.snapshotStopsService());
     node.put("noSnapshot", o.noSnapshot());
+    node.put("pauseJobs", o.pauseJobs());
     return Json.write(node);
   }
 
@@ -244,7 +245,10 @@ public final class PlanRegistry {
         // stopped and started the service, so a journaled run rebuilds the steps it recorded
         args.path("snapshotStopsService").asBoolean(true),
         // and one that took the pre-import snapshot
-        args.path("noSnapshot").asBoolean(false));
+        args.path("noSnapshot").asBoolean(false),
+        // issue #264: arguments stored before the option existed describe an import that paused
+        // no jobs
+        args.path("pauseJobs").asBoolean(false));
   }
 
   private static void putStrategy(ObjectNode node, Optional<ExportImportStrategy.Kind> kind) {

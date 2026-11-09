@@ -387,6 +387,37 @@ class DefaultExportImportOperationsTest {
     assertThat(ids(plan)).doesNotContain("precheck.archive-checksum");
   }
 
+  /**
+   * Issue #264 (ADR-0050): with {@code --pause-jobs} the plan lists the jobs before the import and
+   * pauses the ones the import added in a last phase of its own, so a refused pause never rolls a
+   * finished import back; without the flag nothing about jobs is planned.
+   */
+  @Test
+  void should_list_jobs_before_and_pause_the_new_ones_after_when_pause_jobs_is_asked()
+      throws IOException {
+    sidecar(List.of("/public"), false);
+
+    Plan plan = fx.ops().planImport(importOf(archive, false).withPauseJobs(true));
+    Plan plain = fx.ops().planImport(importOf(archive, false));
+
+    assertThat(phases(plan)).containsExactly("precheck", "backup", "import", "jobs");
+    assertThat(ids(plan))
+        .containsSubsequence(
+            "backup.pre-import-listing",
+            "backup.jobs-listing",
+            "import.poll",
+            "jobs.pause-imported");
+    assertThat(plan.summary().rollbackPointsByPhase())
+        .containsKey("jobs")
+        .hasEntrySatisfying("jobs", r -> assertThat(r).contains("resume"));
+    assertThat(plan.summary().warnings())
+        .contains(DefaultExportImportOperations.PAUSE_JOBS_WARNING);
+    assertThat(plan.fingerprint()).isNotEqualTo(plain.fingerprint());
+    assertThat(ids(plain)).noneMatch(id -> id.contains("jobs"));
+    assertThat(plain.summary().warnings())
+        .doesNotContain(DefaultExportImportOperations.PAUSE_JOBS_WARNING);
+  }
+
   @Test
   void should_order_precheck_backup_then_import_when_planning_a_rest_import() throws IOException {
     sidecar(List.of("/public"), false);

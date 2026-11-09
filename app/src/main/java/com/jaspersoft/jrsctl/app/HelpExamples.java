@@ -260,6 +260,9 @@ final class HelpExamples {
                 "Skip the rollback copy; a failed import then cannot put back what it overwrote",
                 "jrsctl import /backups/samples.zip --update --no-snapshot"),
             new Example(
+                "Pause the report jobs the archive adds, so they do not fire beside the source's",
+                "jrsctl import /backups/full-server.zip --settings --pause-jobs"),
+            new Example(
                 "Archive from a server with another keystore",
                 "jrsctl import /backups/full-server.zip --source-keystore /tmp/source/.jrsks"
                     + " --source-keystore-password-ref enc:SOURCE_KEYSTORE_PASSWORD")));

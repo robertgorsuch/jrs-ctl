@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`import --pause-jobs`; ADR-0050, issue #264)
+
+- §9.4, §9.5: `import --pause-jobs` lists the server's report jobs before the import (`backup.jobs-listing`) and, in a `jobs` phase of its own after it, pauses the ids the import added (`jobs.pause-imported`), so a repository imported beside a running source does not fire every job twice. Best effort: a refused listing or pause is a warning naming the ids and the call to make by hand, never a rollback of the finished import. Compensation resumes exactly the recorded ids. `pauseJobs` joins the stored import arguments (absent means false) and the fingerprint only when set.
+- §7.2: the adapter gains `listJobIds`, `pauseJobs` and `resumeJobs` (`GET /rest_v2/jobs`, `POST /rest_v2/jobs/pause|resume` with a job-id list).
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.
