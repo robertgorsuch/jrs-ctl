@@ -164,6 +164,21 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public List<String> listUserIds() {
+    return List.of();
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    return List.of();
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    return true;
+  }
+
+  @Override
   public List<String> listJobIds() {
     return List.of();
   }

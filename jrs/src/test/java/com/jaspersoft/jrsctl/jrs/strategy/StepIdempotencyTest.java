@@ -608,6 +608,21 @@ class StepIdempotencyTest {
     }
 
     @Override
+    public java.util.List<String> listUserIds() {
+      return java.util.List.of();
+    }
+
+    @Override
+    public java.util.List<String> listRoleNames() {
+      return java.util.List.of();
+    }
+
+    @Override
+    public boolean organizationExists(String id) {
+      return true;
+    }
+
+    @Override
     public java.util.List<String> listJobIds() {
       return java.util.List.of();
     }

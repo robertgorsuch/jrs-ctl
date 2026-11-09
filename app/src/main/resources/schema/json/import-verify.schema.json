@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/import-verify.schema.json",
+  "title": "jrsctl import verify --json (spec §9.4, #262)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "counts", "exitCode", "archive", "archiveCounts", "missing"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": { "$ref": "https://jaspersoft.com/jrsctl/report-item.schema.json#/$defs/item" }
+    },
+    "counts": { "$ref": "https://jaspersoft.com/jrsctl/report-item.schema.json#/$defs/counts" },
+    "exitCode": { "type": "integer", "enum": [0, 2] },
+    "archive": { "type": "string" },
+    "archiveCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organizations", "users", "roles", "folders", "resources"],
+      "properties": {
+        "organizations": { "type": "integer", "minimum": 0 },
+        "users": { "type": "integer", "minimum": 0 },
+        "roles": { "type": "integer", "minimum": 0 },
+        "folders": { "type": "integer", "minimum": 0 },
+        "resources": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "missing": {
+      "type": "object",
+      "description": "What the archive holds and the server does not, by kind; every URI with --uris, else at most the first few per kind.",
+      "additionalProperties": false,
+      "required": ["organizations", "users", "roles", "resources"],
+      "properties": {
+        "organizations": { "type": "array", "items": { "type": "string" } },
+        "users": { "type": "array", "items": { "type": "string" } },
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "resources": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

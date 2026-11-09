@@ -186,6 +186,30 @@ final class EximFakeAdapter implements JrsAdapter {
     return true;
   }
 
+  /** The directory the server reports for {@code import verify} (issue #262). */
+  final List<String> users = new ArrayList<>();
+
+  final List<String> roles = new ArrayList<>();
+  final List<String> organizations = new ArrayList<>();
+
+  @Override
+  public List<String> listUserIds() {
+    requireUp("list users");
+    return List.copyOf(users);
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    requireUp("list roles");
+    return List.copyOf(roles);
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    requireUp("organization " + id);
+    return organizations.contains(id);
+  }
+
   /** The report job ids the server holds; a test adds to it to stand for an import's jobs. */
   final List<String> jobs = new ArrayList<>();
 

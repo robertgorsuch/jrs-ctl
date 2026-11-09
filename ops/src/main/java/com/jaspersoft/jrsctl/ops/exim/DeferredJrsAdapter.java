@@ -151,4 +151,19 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   public void resumeJobs(List<String> ids) {
     adapter().resumeJobs(ids);
   }
+
+  @Override
+  public List<String> listUserIds() {
+    return adapter().listUserIds();
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    return adapter().listRoleNames();
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    return adapter().organizationExists(id);
+  }
 }

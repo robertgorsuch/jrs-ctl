@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`import verify`; issue #262)
+
+- §9.4, §9.5: `jrsctl import verify <archive>` reports, read-only, whether every organisation, user, role, folder and resource the archive holds is on the server, from the archive's own layout and the server's REST directory and repository listings; one `doctor`-style item per kind, exit 2 when anything is missing or the server could not be asked. §7.2: the adapter gains the read-only `listUserIds`, `listRoleNames` and `organizationExists`.
 ## Draft 1.2 amendment — 2026-11-09 (`customizations scan` diffs for installer-written files; issue #267)
 
 - §10.3: a scan entry classified `INSTALLER` whose file the vendor copy also has carries the unified diff from the vendor copy to the installed file (`diff` in `--json`, printed under the table in text; a one-line notice for a binary or very large file), read from the unpacked copy or straight out of the war. `customizations register` accepts such a file with a warning that an upgrade will most likely report a `CONFLICT` for it. `--register` still skips `INSTALLER` files.

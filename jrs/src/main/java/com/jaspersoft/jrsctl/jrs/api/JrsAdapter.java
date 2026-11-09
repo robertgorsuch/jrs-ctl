@@ -126,6 +126,21 @@ public interface JrsAdapter extends AutoCloseable {
 
   void deleteResource(String uri);
 
+  // ---- directory listings used by import verify (issue #262); all read-only ----
+
+  /**
+   * Every user the server holds, {@code username} for the root organisation's and {@code
+   * username|org} for an organisation's ({@code GET /rest_v2/users}, which from the root covers
+   * every organisation; REST API reference 10.1 p.311). Empty when the server has none.
+   */
+  List<String> listUserIds();
+
+  /** Every role, {@code name} or {@code name|org} ({@code GET /rest_v2/roles}, p.321). */
+  List<String> listRoleNames();
+
+  /** True when {@code GET /rest_v2/organizations/<id>} answers 200; false on 404. */
+  boolean organizationExists(String id);
+
   // ---- report jobs (issue #264): the listing is read-only, pause and resume are Steps only ----
 
   /** Ids of every report job the server holds ({@code GET /rest_v2/jobs}); empty for none. */

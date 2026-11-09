@@ -54,6 +54,16 @@ final class Wire {
 
   record ResourceLookup(String uri, String label, String resourceType) {}
 
+  /** {@code GET /rest_v2/users} (issue #262); {@code tenantId} is absent for the root. */
+  record UserList(List<User> user) {}
+
+  record User(String username, String tenantId) {}
+
+  /** {@code GET /rest_v2/roles}. */
+  record RoleList(List<Role> role) {}
+
+  record Role(String name, String tenantId) {}
+
   /** {@code GET /rest_v2/jobs} (issue #264); only the id is read. */
   record JobSummaryList(List<JobSummary> jobsummary) {}
 

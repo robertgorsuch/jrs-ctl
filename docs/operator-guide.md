@@ -382,6 +382,17 @@ Remediation: import the archive into a 10.1 or later server, or export the data 
 
 `runs recover <id>` rebuilds export and import plans from their stored arguments (the archive must still be where it was; the snapshot path is derived from the archive's hash, so a resumed import finds the same snapshot).
 
+### `jrsctl import verify <archive> [--uris] [--json]`
+
+Answers, after an import, whether everything the archive holds is on the server (#262): the organisations, users and roles the archive carries, and every folder and resource. Each is read from the archive's own layout (`organizations/<id>.xml`, `users/[<org>/]<name>.xml`, `roles/[<org>/]<name>.xml`, `resources/<path>/.folder.xml` for a folder and `resources/<path>/<id>.xml` for a resource) and looked up on the server over REST: one request per organisation (`GET /rest_v2/organizations/<id>`), one listing each for users and roles (`GET /rest_v2/users`, `GET /rest_v2/roles`, which from the root account cover every organisation) and the recursive listing of the repository root that the import's own pre-import listing uses. The comparison is by id, never by content: it says what the import left out, not whether what arrived is identical. It is the check the vendor's import log cannot give you in one place, and the one an import into a new schema is judged by before anyone trusts it.
+
+The report has one item per kind, in the `doctor` layout: `archive` (what the archive holds), `organizations`, `users`, `roles`, `resources` (folders and resources together). An item is SKIP when the archive has nothing of that kind, PASS when every entry is on the server, FAIL naming the first few missing ids (every one of them in the JSON report with `--uris`, at most the first few without), or FAIL naming the server's error when it could not be asked. An archive that is not an export (no `index.xml`) is refused with exit 2 before anything is asked.
+
+- **Mutates:** nothing; read-only. Logs in with the configured account.
+- **Rollback:** not applicable.
+- **Exit codes:** 0 when every item passes or is skipped; **2** when any item fails, or when the archive does not exist or holds no `index.xml`.
+- **Flags:** `<archive>` — the export ZIP that was imported; `--uris` — list every missing id in the JSON report's `missing` map instead of the first few; `--json` — `{"items", "counts", "exitCode", "archive", "archiveCounts": {"organizations", "users", "roles", "folders", "resources"}, "missing": {"organizations": [...], "users": [...], "roles": [...], "resources": [...]}}`.
+
 ### `jrsctl upgrade --to <version> --package <dir> [--mode newdb|samedb] [--db-backup-confirmed] [--db-rebuild-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes] [--rollback-all] [--json]`
 
 Upgrades the server with the vendor's own scripts from an unpacked target distribution (`--package` must hold `buildomatic/` with `js-ant` for this operating system and the `jasperserver[-pro]` webapp or a `.war`). The plan cannot be edited (spec §0, §6.2: a plan is shown, confirmed and run as one unit, and a change to its inputs invalidates it); every variation the vendor guides need is a flag: `--mode`, `--tomcat-dir`, `--export` with `--key-alias`, `--reapply-hotfixes`, `--test` to rehearse, `--plan` to look first. The plan has the five phases of spec §10.2; every phase boundary is a rollback point:
