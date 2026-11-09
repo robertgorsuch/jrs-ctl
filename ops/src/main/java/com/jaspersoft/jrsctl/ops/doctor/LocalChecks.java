@@ -25,6 +25,7 @@ import com.jaspersoft.jrsctl.jrs.service.CompanionDatabase;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
+import com.jaspersoft.jrsctl.ops.AnalyticsJndi;
 import com.jaspersoft.jrsctl.ops.JsConfig;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -749,6 +750,7 @@ final class LocalChecks {
   static final String AUDIT = "audit";
   static final String DATABASE_SERVICE = "database-service";
   static final String PID_FILE = "pid-file";
+  static final String ANALYTICS_JNDI = "analytics-jndi";
 
   private static final String NO_JS_CONFIG_REMEDIATION =
       "nothing to do now; the switch arrives with a cumulative hotfix, so run doctor again after"
@@ -896,6 +898,44 @@ final class LocalChecks {
         "start it before Tomcat ("
             + CompanionDatabase.VENDOR_NOTE
             + "); jrsctl's start-service step starts it first");
+  }
+
+  /**
+   * Issue #268: the two analytics JNDI resources 9.0 introduced stay mandatory in 10.x (upgrade
+   * guide 10.1 p.93), so a {@code context.xml} rebased by hand is checked here too, not only in the
+   * upgrade's verify phase. Needs the server's version, hence a probe-dependent item.
+   */
+  static ReportItem analyticsJndi(String serverVersion, Optional<TomcatLayout> layout) {
+    if (layout.isEmpty()) {
+      return ReportItem.skip(ANALYTICS_JNDI, "no install layout", "fix the layout check first");
+    }
+    Path contextXml = layout.get().webappDir().resolve("META-INF").resolve("context.xml");
+    return analyticsJndiItem(serverVersion, contextXml);
+  }
+
+  static ReportItem analyticsJndiItem(String serverVersion, Path contextXml) {
+    if (!AnalyticsJndi.requiredFor(serverVersion)) {
+      return ReportItem.skip(
+          ANALYTICS_JNDI,
+          "JasperReports Server "
+              + serverVersion
+              + " does not need the analytics JNDI resources; they are mandatory from 9.0",
+          "nothing to do");
+    }
+    List<String> missing = AnalyticsJndi.missing(contextXml);
+    if (missing.isEmpty()) {
+      return ReportItem.pass(
+          ANALYTICS_JNDI, "both analytics JNDI resources are declared in " + contextXml);
+    }
+    return ReportItem.warn(
+        ANALYTICS_JNDI,
+        contextXml + " does not declare " + String.join(" or ", missing),
+        "add a Resource element for each ("
+            + String.join(", ", AnalyticsJndi.RESOURCES)
+            + ") and restart the server: JasperReports Server 9.0 and later want both even when"
+            + " the analytics feature is off ("
+            + AnalyticsJndi.GUIDE
+            + ")");
   }
 
   /**

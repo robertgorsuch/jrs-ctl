@@ -314,7 +314,11 @@ final class HelpExamples {
                 "jrsctl customizations scan --vendor /opt/dist/jasperreports-server-pro-10.0.0-bin"),
             new Example(
                 "Register everything found, without asking",
-                "jrsctl customizations scan --vendor /opt/dist/jasperserver-pro.war --register")));
+                "jrsctl customizations scan --vendor /opt/dist/jasperserver-pro.war --register"),
+            new Example(
+                "Inventory a webapp tree extracted from a container image, with no configuration",
+                "jrsctl customizations scan --vendor /opt/dist/jasperserver-pro.war"
+                    + " --installed /srv/extracted/tomcat --tomcat --json")));
     m.put(
         "customizations unregister",
         List.of(

@@ -26,6 +26,7 @@ import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
+import com.jaspersoft.jrsctl.ops.AnalyticsJndi;
 import com.jaspersoft.jrsctl.ops.ClusterNotice;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.TomcatJavaOpts;
@@ -585,10 +586,9 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       steps.add(ServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
       steps.add(ServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
     }
-    if (VendorPreconditions.atLeast(options.toVersion(), VendorPreconditions.ANALYTICS_JNDI_FROM)
-        && VendorPreconditions.below(
-            options.toVersion(), VendorPreconditions.ANALYTICS_JNDI_BELOW)) {
-      // release notes 9.0 p.15 (issue #108): the two analytics JNDI resources, a WARN when missing
+    if (AnalyticsJndi.requiredFor(options.toVersion())) {
+      // release notes 9.0 p.15 (issue #108) and upgrade guide 10.1 p.93 (issue #268): the two
+      // analytics JNDI resources, mandatory from 9.0 on, a WARN when missing
       steps.add(new AnalyticsJndiSteps.Check(rt, in));
     }
     steps.add(new VerifySteps.Smoke(rt, in));

@@ -331,4 +331,65 @@ class CustomizationScanTest {
         .hasMessageContaining("jasperserver-pro");
     assertThat(Optional.of(empty)).isPresent();
   }
+
+  // ------------------------------------------------------------ explicit tree (#266)
+
+  /** A Tomcat tree extracted from a container image: not the configured installation. */
+  private Path extractedTomcat() throws Exception {
+    Path tomcat = tmp.resolve("extracted");
+    Path image = tomcat.resolve("webapps").resolve("jasperserver-pro");
+    write(image.resolve("WEB-INF/classes/jasperserver.properties"), "theme=image\n");
+    write(image.resolve("WEB-INF/classes/site.properties"), "from the image\n");
+    write(tomcat.resolve("bin/setenv.sh"), "JAVA_OPTS=-Xmx2g\n");
+    return tomcat;
+  }
+
+  private static void write(Path file, String content) throws Exception {
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, content, StandardCharsets.UTF_8);
+  }
+
+  @Test
+  void should_scan_an_explicit_webapp_directory_instead_of_the_configured_one() throws Exception {
+    Path image = extractedTomcat().resolve("webapps").resolve("jasperserver-pro");
+
+    Scan scan = ops.scan(image, vendorDir().getParent());
+
+    assertThat(scan.installedWebapp()).isEqualTo(image);
+    Map<String, ScanEntry> entries = byPath(scan);
+    assertThat(entries.get("WEB-INF/classes/jasperserver.properties").change())
+        .isEqualTo(Change.CHANGED);
+    assertThat(entries.get("WEB-INF/classes/site.properties").change()).isEqualTo(Change.ADDED);
+    assertThat(entries).doesNotContainKey("scripts/extra.js");
+  }
+
+  @Test
+  void should_find_the_webapp_under_an_explicit_tomcat_tree() throws Exception {
+    Path tomcat = extractedTomcat();
+
+    Scan scan = ops.scan(tomcat, vendorWar());
+
+    assertThat(scan.installedWebapp()).isEqualTo(tomcat.resolve("webapps/jasperserver-pro"));
+    assertThat(byPath(scan).get("WEB-INF/classes/site.properties").change())
+        .isEqualTo(Change.ADDED);
+  }
+
+  @Test
+  void should_refuse_an_explicit_directory_that_holds_no_webapp() throws Exception {
+    Path empty = Files.createDirectories(tmp.resolve("nothing"));
+    Path vendor = vendorWar();
+
+    assertThatThrownBy(() -> ops.scan(empty, vendor))
+        .isInstanceOf(CustomizationException.class)
+        .hasMessageContaining("webapps");
+  }
+
+  @Test
+  void should_list_the_tomcat_side_files_of_an_explicit_tomcat_directory() throws Exception {
+    Path tomcat = extractedTomcat();
+
+    assertThat(ops.scanTomcat(tomcat))
+        .extracting(CustomizationOperations.TomcatEntry::relativePath)
+        .containsExactly("bin/setenv.sh");
+  }
 }
