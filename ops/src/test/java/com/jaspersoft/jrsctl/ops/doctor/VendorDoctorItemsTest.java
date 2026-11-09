@@ -83,6 +83,58 @@ class VendorDoctorItemsTest {
     assertThat(LocalChecks.auditItem(Optional.empty(), tmp).status()).isEqualTo(Status.SKIP);
   }
 
+  // ------------------------------------------------------------ analytics JNDI (#268)
+
+  private Path contextXml(String body) throws Exception {
+    Path metaInf = Files.createDirectories(tmp.resolve("webapps/jasperserver-pro/META-INF"));
+    Path file = metaInf.resolve("context.xml");
+    Files.writeString(file, "<Context>" + body + "</Context>", StandardCharsets.ISO_8859_1);
+    return file;
+  }
+
+  /**
+   * Upgrade guide 10.1 p.93: the two analytics JNDI resources 9.0 introduced stay mandatory in 10.x
+   * even with the feature off, so a context.xml carried over from 8.x is worth a warning outside an
+   * upgrade run as well.
+   */
+  @Test
+  void should_warn_when_a_9_0_or_later_server_lacks_an_analytics_jndi_resource() throws Exception {
+    Path one = contextXml("<Resource name=\"jdbc/jasperserverSystemAnalytics\"/>");
+    ReportItem item = LocalChecks.analyticsJndiItem("10.1.0", one);
+    assertThat(item.name()).isEqualTo(LocalChecks.ANALYTICS_JNDI);
+    assertThat(item.status()).isEqualTo(Status.WARN);
+    assertThat(item.detail())
+        .contains(one.toString())
+        .contains("jdbc/jasperserverAuditAnalytics")
+        .doesNotContain("jdbc/jasperserverSystemAnalytics");
+    assertThat(item.remediation()).contains("Resource").contains("p.93");
+  }
+
+  @Test
+  void should_pass_when_both_analytics_jndi_resources_are_declared() throws Exception {
+    Path both =
+        contextXml(
+            "<Resource name=\"jdbc/jasperserverSystemAnalytics\"/>"
+                + "<Resource name=\"jdbc/jasperserverAuditAnalytics\"/>");
+    ReportItem item = LocalChecks.analyticsJndiItem("9.0.0", both);
+    assertThat(item.status()).isEqualTo(Status.PASS);
+    assertThat(item.detail()).contains(both.toString());
+  }
+
+  @Test
+  void should_skip_the_analytics_jndi_item_for_a_server_below_9_0() throws Exception {
+    Path none = contextXml("");
+    ReportItem item = LocalChecks.analyticsJndiItem("8.2.0", none);
+    assertThat(item.status()).isEqualTo(Status.SKIP);
+    assertThat(item.detail()).contains("8.2.0").contains("9.0");
+  }
+
+  @Test
+  void should_list_the_analytics_jndi_item_among_the_doctor_checks_after_tomcat() {
+    assertThat(DoctorOperation.CHECKS)
+        .containsSubsequence("tomcat", LocalChecks.ANALYTICS_JNDI, LocalChecks.TELEMETRY);
+  }
+
   private static ServiceController companion(ServiceController.State state) {
     return new ServiceController() {
       @Override

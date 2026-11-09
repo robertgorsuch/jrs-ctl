@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.platform.Platform.OsFamily;
+import com.jaspersoft.jrsctl.ops.AnalyticsJndi;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -24,8 +25,9 @@ import org.semver4j.Semver;
  * guide 10.1 pp.43-44), the JDBC driver jar buildomatic needs in the target package for Oracle, SQL
  * Server and DB2 (release notes 10.1 p.33: the shipped property files name old jars), the password
  * storage settings that differ between the old and the new webapp (installation guide 10.1
- * pp.194-199), and the two analytics JNDI resources a 9.0 webapp's {@code META-INF/context.xml}
- * must declare even when the feature is off (release notes 9.0 p.15). Invariants: pure and
+ * pp.194-199), and the two analytics JNDI resources a 9.0 or later webapp's {@code
+ * META-INF/context.xml} must declare even when the feature is off (release notes 9.0 p.15, upgrade
+ * guide 10.1 p.93; shared with doctor through {@link AnalyticsJndi}). Invariants: pure and
  * read-only; every judgement names the exact file it looked for, and every refusal names the exact
  * copy or edit that satisfies it; a condition that does not apply (community edition, an older
  * target, a bundled database) is a pass, never a guess.
@@ -40,16 +42,13 @@ final class VendorPreconditions {
   static final String DB_TYPE = "dbType";
   static final String JDBC_ARTIFACT_ID = "maven.jdbc.artifactId";
   static final String JDBC_VERSION = "maven.jdbc.version";
-  static final List<String> ANALYTICS_JNDI =
-      List.of("jdbc/jasperserverSystemAnalytics", "jdbc/jasperserverAuditAnalytics");
+  static final List<String> ANALYTICS_JNDI = AnalyticsJndi.RESOURCES;
 
   /** The databases the vendor ships no driver for (upgrade guide 10.1 p.43). */
   static final Set<String> DRIVERLESS_DB_TYPES = Set.of("oracle", "sqlserver", "db2");
 
   static final Semver LICENSE_FROM = new Semver("10.0.0");
   static final Semver PASSWORD_MIGRATION_FROM = new Semver("10.1.0");
-  static final Semver ANALYTICS_JNDI_FROM = new Semver("9.0.0");
-  static final Semver ANALYTICS_JNDI_BELOW = new Semver("10.0.0");
 
   private static final Pattern LICENSE_DIRECTORY =
       // the bundled installer quotes the whole option ("-Djs.license.directory=C:\...\"), so an
@@ -278,16 +277,7 @@ final class VendorPreconditions {
    * The analytics JNDI resources missing from a {@code META-INF/context.xml}; all when unreadable.
    */
   static List<String> missingAnalyticsJndi(Path contextXml) {
-    if (!Files.isRegularFile(contextXml)) {
-      return ANALYTICS_JNDI;
-    }
-    String text;
-    try {
-      text = Files.readString(contextXml, StandardCharsets.ISO_8859_1);
-    } catch (IOException e) {
-      return ANALYTICS_JNDI;
-    }
-    return ANALYTICS_JNDI.stream().filter(name -> !text.contains(name)).toList();
+    return AnalyticsJndi.missing(contextXml);
   }
 
   private static Optional<String> value(
