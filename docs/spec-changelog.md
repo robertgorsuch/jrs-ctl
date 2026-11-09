@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`export --full-server` over REST from another machine; ADR-0051, issue #265)
+
+- §9.2: from a machine whose configuration names no installation, `export --full-server` is no longer refused: with no `js-export` to run it is the server's REST export with the `everything` parameter when the `EXPORT_ASYNC` probe passes (the REST API reference, 8.2 to 10.1, lists repository resources, permissions, report jobs, users, roles and server settings for it and does not mention calendars; the plan says so). On the server host a full-server export is `js-export --everything` as before. `--stop-service` on a REST export is noted as having no effect.
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.

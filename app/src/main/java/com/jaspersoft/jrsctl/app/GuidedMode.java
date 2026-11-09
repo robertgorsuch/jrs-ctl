@@ -336,8 +336,10 @@ final class GuidedMode {
         // calendars, so that is the question, and it decides the tool
         if (Prompter.yes(
             out,
-            "Include scheduled report jobs and calendars? They need buildomatic's js-export;"
-                + " without them the server's REST export is used [y/N] ",
+            "Include scheduled report jobs and calendars? On the server host they need"
+                + " buildomatic's js-export; from another machine the server's REST export of"
+                + " everything is used instead. Without them the server's REST export is used"
+                + " [y/N] ",
             false)) {
           args.add("--full-server");
           fullServer = true;
