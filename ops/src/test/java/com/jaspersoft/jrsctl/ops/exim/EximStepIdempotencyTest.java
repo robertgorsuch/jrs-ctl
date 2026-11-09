@@ -181,6 +181,99 @@ class EximStepIdempotencyTest {
     }
   }
 
+  // ------------------------------------------------------------ --pause-jobs (#264, ADR-0050)
+
+  /** The listing before the import is read-only and the same however often it runs. */
+  @Test
+  void should_record_the_same_job_ids_when_record_jobs_executes_twice() throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.jobs.addAll(List.of("1", "2"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Step step = new RecordJobs();
+      Context ctx = fx.context(EximFixture.RUN);
+
+      assertThat(step.mutating()).isFalse();
+      Idempotency.executeOk(step, ctx);
+      String once = Files.readString(RecordJobs.recordFile(ctx));
+      Idempotency.executeOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+
+      assertThat(Files.readString(RecordJobs.recordFile(ctx))).isEqualTo(once);
+      assertThat(Files.readAllLines(RecordJobs.recordFile(ctx))).containsExactly("1", "2");
+      assertThat(adapter.paused).isEmpty();
+    }
+  }
+
+  /** Only the jobs the import added are paused; a second execution pauses the same ids. */
+  @Test
+  void should_pause_only_the_new_jobs_when_pause_imported_jobs_executes_twice() throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.jobs.addAll(List.of("1", "2"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Context ctx = fx.context(EximFixture.RUN);
+      Idempotency.executeOk(new RecordJobs(), ctx);
+      adapter.jobs.add("3");
+      adapter.jobs.add("4");
+      Step step = new PauseImportedJobs();
+
+      assertThat(step.mutating()).isTrue();
+      Idempotency.executeOk(step, ctx);
+      Idempotency.executeOk(step, ctx);
+
+      assertThat(adapter.paused).containsExactly("3", "4", "3", "4");
+      assertThat(Files.readAllLines(PauseImportedJobs.recordFile(ctx))).containsExactly("3", "4");
+      assertThat(adapter.resumed).isEmpty();
+    }
+  }
+
+  @Test
+  void should_resume_only_the_paused_jobs_when_pause_imported_jobs_compensates_twice()
+      throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.jobs.addAll(List.of("1"));
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Context ctx = fx.context(EximFixture.RUN);
+      Idempotency.executeOk(new RecordJobs(), ctx);
+      adapter.jobs.add("9");
+      Step step = new PauseImportedJobs();
+      Idempotency.executeOk(step, ctx);
+
+      Idempotency.compensateOk(step, ctx);
+      Idempotency.compensateOk(step, ctx);
+
+      assertThat(adapter.resumed).containsExactly("9", "9").doesNotContain("1");
+    }
+  }
+
+  /**
+   * Best effort: the import is done, so a refused pause is a warning naming the ids, not a failure.
+   */
+  @Test
+  void should_warn_and_succeed_when_the_server_refuses_to_pause() throws IOException {
+    EximFakeAdapter adapter = new EximFakeAdapter();
+    adapter.jobs.addAll(List.of("1"));
+    adapter.pauseFails = true;
+    try (EximFixture fx = new EximFixture(tmp, () -> adapter)) {
+      Context ctx = fx.context(EximFixture.RUN);
+      Idempotency.executeOk(new RecordJobs(), ctx);
+      adapter.jobs.add("7");
+      List<String> warnings = new java.util.ArrayList<>();
+      EventSink sink =
+          e -> {
+            if (e instanceof com.jaspersoft.jrsctl.core.event.Event.Log log
+                && log.level() == com.jaspersoft.jrsctl.core.event.Event.Log.Level.WARN) {
+              warnings.add(log.message());
+            }
+          };
+
+      Idempotency.executeOk(new PauseImportedJobs(), ctx, sink);
+
+      assertThat(warnings).hasSize(1);
+      assertThat(warnings.get(0)).contains("7").contains("/rest_v2/jobs/pause");
+      assertThat(Files.exists(PauseImportedJobs.recordFile(ctx))).isFalse();
+    }
+  }
+
   /** ADR-0040: the --no-snapshot anchor writes nothing however often it executes. */
   @Test
   void should_not_mutate_when_remove_import_additions_executes_twice() throws IOException {

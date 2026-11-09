@@ -100,6 +100,14 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           + " there in between is deleted with them) and re-imports the pre-import snapshot, which"
           + " puts back what the import overwrote.";
 
+  /** Issue #264, ADR-0050: what {@code --pause-jobs} does after the import, and how it fails. */
+  public static final String PAUSE_JOBS_WARNING =
+      "--pause-jobs: the report jobs present after the import that were not present before are"
+          + " paused, so they do not fire on this server beside the source's; resume them (POST"
+          + " /rest_v2/jobs/resume, or the scheduler UI) once this server should run them. A pause"
+          + " the server refuses is a warning naming the ids, never a rollback of the finished"
+          + " import; a rollback resumes only the jobs this run paused.";
+
   /** ADR-0040: in place of {@link #ROLLBACK_WARNING} in a plan made with {@code --no-snapshot}. */
   public static final String NO_SNAPSHOT_WARNING =
       "--no-snapshot: no pre-import snapshot is taken, so a failed import cannot put back what it"
@@ -450,6 +458,18 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       steps.add(new RemoveNewContent(importPhase, newContentUris));
     }
     steps.addAll(importSteps.subList(firstMutating, importSteps.size()));
+    if (options.pauseJobs()) {
+      // issue #264 (ADR-0050): the listing goes last in the backup phase, before the first step of
+      // the import phase, and the pause into a phase of its own after the import, so a refused
+      // pause never rolls the finished import back
+      int firstImport = 0;
+      while (firstImport < steps.size() && !steps.get(firstImport).phase().equals(importPhase)) {
+        firstImport++;
+      }
+      steps.add(firstImport, new RecordJobs());
+      steps.add(new PauseImportedJobs());
+      warnings.add(PAUSE_JOBS_WARNING);
+    }
 
     List<String> removable = RemoveNewContent.removable(newRoots);
     String removeNew =
@@ -478,6 +498,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       rollback.put(
           importPhase,
           "nothing to put back: none of the archive's resources existed before the import");
+    }
+    if (options.pauseJobs()) {
+      rollback.put(PauseImportedJobs.PHASE, "resume the report jobs this run paused");
     }
     List<String> touched =
         snapshot
@@ -511,6 +534,10 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       inputs.put("snapshot", "none");
     } else if (!options.snapshotStopsService()) {
       inputs.put("snapshot", "live");
+    }
+    // issue #264: likewise, only a plan that pauses says so
+    if (options.pauseJobs()) {
+      inputs.put("pauseJobs", "true");
     }
     return new Plan(planId(IMPORT_OPERATION), steps, summary, PlanFingerprint.of(inputs));
   }

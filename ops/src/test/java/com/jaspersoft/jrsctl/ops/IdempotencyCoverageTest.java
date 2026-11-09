@@ -341,6 +341,16 @@ class IdempotencyCoverageTest {
           Map.entry(
               OPS + "exim.Rephased",
               E + "should_delegate_unchanged_when_rephased_step_executes_twice"),
+          // issue #264, ADR-0050: --pause-jobs
+          Map.entry(
+              OPS + "exim.RecordJobs",
+              E + "should_record_the_same_job_ids_when_record_jobs_executes_twice"),
+          Map.entry(
+              OPS + "exim.PauseImportedJobs",
+              E
+                  + "should_pause_only_the_new_jobs_when_pause_imported_jobs_executes_twice;"
+                  + E
+                  + "should_resume_only_the_paused_jobs_when_pause_imported_jobs_compensates_twice"),
           Map.entry(
               OPS + "exim.RestoreFromPreImportSnapshot",
               E

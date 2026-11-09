@@ -1028,6 +1028,53 @@ public final class RestJrsAdapter implements JrsAdapter {
     }
   }
 
+  @Override
+  public List<String> listJobIds() {
+    ensureSession();
+    RestClient.Response r = client.get(JOBS);
+    if (r.status() == 204) {
+      return List.of();
+    }
+    client.require2xx(r, "GET", JOBS);
+    Wire.JobSummaryList list = Wire.parse(r.body(), Wire.JobSummaryList.class, "GET", JOBS);
+    List<String> ids = new ArrayList<>();
+    if (list.jobsummary() != null) {
+      for (Wire.JobSummary job : list.jobsummary()) {
+        if (job != null && job.id() != null) {
+          ids.add(Long.toString(job.id()));
+        }
+      }
+    }
+    return List.copyOf(ids);
+  }
+
+  @Override
+  public void pauseJobs(List<String> ids) {
+    postJobIds(JOBS + "/pause", ids);
+  }
+
+  @Override
+  public void resumeJobs(List<String> ids) {
+    postJobIds(JOBS + "/resume", ids);
+  }
+
+  private void postJobIds(String path, List<String> ids) {
+    Objects.requireNonNull(ids, "ids");
+    if (ids.isEmpty()) {
+      return;
+    }
+    List<Long> numeric = new ArrayList<>();
+    for (String id : ids) {
+      try {
+        numeric.add(Long.parseLong(id.trim()));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("job id " + id + " is not a number", e);
+      }
+    }
+    ensureSession();
+    client.require2xx(client.postJson(path, new Wire.JobIdList(numeric)), "POST", path);
+  }
+
   // ---------------------------------------------------------------- mutating helpers (Steps only)
 
   @Override

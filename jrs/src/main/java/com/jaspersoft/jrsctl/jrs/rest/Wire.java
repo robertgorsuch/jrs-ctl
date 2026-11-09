@@ -54,6 +54,14 @@ final class Wire {
 
   record ResourceLookup(String uri, String label, String resourceType) {}
 
+  /** {@code GET /rest_v2/jobs} (issue #264); only the id is read. */
+  record JobSummaryList(List<JobSummary> jobsummary) {}
+
+  record JobSummary(Long id, String label, String reportUnitURI) {}
+
+  /** The body of {@code POST /rest_v2/jobs/pause} and {@code /resume}. */
+  record JobIdList(List<Long> jobId) {}
+
   static <T> T parse(String body, Class<T> type, String method, String path) {
     try {
       return Json.mapper().readValue(body == null || body.isBlank() ? "{}" : body, type);
