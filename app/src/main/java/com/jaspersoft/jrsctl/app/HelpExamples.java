@@ -339,6 +339,25 @@ final class HelpExamples {
                 "jrsctl repository load --schema jasperserver_101 --from /data/js-8.2-export.zip"
                     + " --include-events --key-alias deprecatedImportExportEncSecret")));
     m.put(
+        "passwords status",
+        List.of(
+            new Example(
+                "How many stored passwords are still in the legacy format; changes nothing",
+                "jrsctl passwords status")));
+    m.put(
+        "passwords migrate",
+        List.of(
+            new Example(
+                "Look at the plan; changes nothing",
+                "jrsctl passwords migrate --db-backup-confirmed --plan"),
+            new Example(
+                "Migrate the stored passwords to the modern format (back up the database first;"
+                    + " a restore is the only way back)",
+                "jrsctl passwords migrate --db-backup-confirmed"),
+            new Example(
+                "Also remove the completed rows from the vendor's migration tracking table",
+                "jrsctl passwords migrate --db-backup-confirmed --cleanup")));
+    m.put(
         "customizations register",
         List.of(
             new Example(

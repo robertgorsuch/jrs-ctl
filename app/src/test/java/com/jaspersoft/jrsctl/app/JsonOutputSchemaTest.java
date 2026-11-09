@@ -1137,6 +1137,32 @@ class JsonOutputSchemaTest {
 
     s.add(
         of(
+            "passwords status without an installation",
+            "passwords status",
+            2,
+            dir -> {
+              Path home = emptyHome(dir);
+              Files.writeString(
+                  home.resolve("config.yaml"),
+                  """
+                  server:
+                    baseUrl: http://localhost:8080/jasperserver-pro
+                    auth:
+                      username: superuser
+                      passwordRef: env:JRS_PASSWORD
+                  """,
+                  StandardCharsets.UTF_8);
+              return run("passwords", "status", "--json", "--home", home.toString());
+            }));
+    s.add(
+        of(
+            "passwords migrate without the backup confirmation",
+            "passwords migrate",
+            2,
+            dir -> run("passwords", "migrate", "--json", "--home", emptyHome(dir).toString())));
+
+    s.add(
+        of(
             "customizations register",
             "customizations register",
             0,
