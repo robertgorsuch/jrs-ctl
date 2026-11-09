@@ -399,7 +399,8 @@ final class RunsCommand implements Runnable {
                   () -> HotfixOps.open(services),
                   () -> EximOps.open(services),
                   () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services),
-                  () -> RepositoryOps.open(services));
+                  () -> RepositoryOps.open(services),
+                  () -> PasswordOps.open(services));
           plan = registry.rebuild(stored.get().operation(), stored.get().argsJson());
         } catch (RuntimeException e) {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);

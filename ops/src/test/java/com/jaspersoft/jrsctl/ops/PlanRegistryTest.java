@@ -563,6 +563,9 @@ class PlanRegistryTest {
             },
             () -> {
               throw new IllegalStateException("not needed");
+            },
+            () -> {
+              throw new IllegalStateException("not needed");
             });
 
     assertThatThrownBy(() -> registry.rebuild("hotfix.teleport", "{}"))
@@ -575,6 +578,9 @@ class PlanRegistryTest {
   void should_refuse_stored_arguments_that_are_not_json() {
     PlanRegistry registry =
         new PlanRegistry(
+            () -> {
+              throw new IllegalStateException("not needed");
+            },
             () -> {
               throw new IllegalStateException("not needed");
             },
@@ -599,13 +605,27 @@ class PlanRegistryTest {
   private final Recorder exim = new Recorder();
   private final Recorder upgrade = new Recorder();
   private final Recorder repository = new Recorder();
+  private final Recorder passwords = new Recorder();
 
   private PlanRegistry registry() {
     return new PlanRegistry(
         () -> hotfix.as(HotfixOperations.class),
         () -> exim.as(ExportImportOperations.class),
         () -> upgrade.as(UpgradeOperations.class),
-        () -> repository.as(com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.class));
+        () -> repository.as(com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.class),
+        () -> passwords.as(com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.class));
+  }
+
+  /** Spec §10.6: a migration run rebuilds from its stored arguments for {@code runs recover}. */
+  @Test
+  void should_plan_the_same_password_migration_when_rebuilding_from_the_stored_arguments() {
+    com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.MigrateOptions options =
+        new com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.MigrateOptions(true, true);
+
+    registry().rebuild(PlanRegistry.PASSWORDS_MIGRATE, PlanRegistry.passwordsMigrateArgs(options));
+
+    assertThat(passwords.calls).containsExactly("planMigrate");
+    assertThat(passwords.args.get(0)).containsExactly(options);
   }
 
   /** Spec §10.5: a load run rebuilds from its stored arguments for {@code runs recover}. */

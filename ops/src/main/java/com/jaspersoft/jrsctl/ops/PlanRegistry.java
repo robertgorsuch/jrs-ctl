@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.passwords.PasswordOperations;
 import com.jaspersoft.jrsctl.ops.repository.RepositoryOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.nio.file.Path;
@@ -44,6 +45,7 @@ public final class PlanRegistry {
   public static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
   public static final String UPGRADE_TEST = UpgradeOperations.TEST_OPERATION;
   public static final String REPOSITORY_LOAD = RepositoryOperations.LOAD_OPERATION;
+  public static final String PASSWORDS_MIGRATE = PasswordOperations.MIGRATE_OPERATION;
 
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
@@ -51,13 +53,24 @@ public final class PlanRegistry {
       Supplier<HotfixOperations> hotfix,
       Supplier<ExportImportOperations> exim,
       Supplier<UpgradeOperations> upgrade,
-      Supplier<RepositoryOperations> repository) {
+      Supplier<RepositoryOperations> repository,
+      Supplier<PasswordOperations> passwords) {
     Objects.requireNonNull(hotfix, "hotfix");
     Objects.requireNonNull(exim, "exim");
     Objects.requireNonNull(upgrade, "upgrade");
     Objects.requireNonNull(repository, "repository");
+    Objects.requireNonNull(passwords, "passwords");
     builders.put(UPGRADE, args -> upgrade.get().planUpgrade(upgradeOptions(args)));
     builders.put(REPOSITORY_LOAD, args -> repository.get().planLoad(repositoryLoadOptions(args)));
+    builders.put(
+        PASSWORDS_MIGRATE,
+        args ->
+            passwords
+                .get()
+                .planMigrate(
+                    new PasswordOperations.MigrateOptions(
+                        args.path("dbBackupConfirmed").asBoolean(false),
+                        args.path("cleanup").asBoolean(false))));
     builders.put(UPGRADE_TEST, args -> upgrade.get().planTest(upgradeOptions(args)));
     builders.put(
         UPGRADE_ROLLBACK,
@@ -333,6 +346,14 @@ public final class PlanRegistry {
     } else {
       node.putNull("keyAlias");
     }
+    return Json.write(node);
+  }
+
+  /** Spec §10.6: the stored arguments of a password migration run. */
+  public static String passwordsMigrateArgs(PasswordOperations.MigrateOptions options) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    node.put("dbBackupConfirmed", options.dbBackupConfirmed());
+    node.put("cleanup", options.cleanup());
     return Json.write(node);
   }
 

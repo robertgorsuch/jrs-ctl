@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`passwords status` and `passwords migrate`; ADR-0053)
+
+- §10.6 (new): the vendor's password migration (installation guide 10.1 pp.194-199) as a command group. `passwords status` reports the webapp's `password.strategy` and the counts `js-ant detect-password-strategy` prints, read-only; `passwords migrate --db-backup-confirmed [--cleanup]` runs the dry run, the migration (irreversible), the verification and, on request, the tracking-table cleanup as one journaled plan. Needs the installation on this machine (the utility reads the deployed webapp's settings file) and a server of 10.1 or later. `upgrade --migrate-passwords` is unchanged.
+
 ## Draft 1.2 amendment — 2026-11-09 (`repository load` implemented; tools-only configuration; ADR-0052, issue #279)
 
 - §10.5: no longer a design. `jrsctl repository load --schema <name> --from <export> [--include-events] [--key-alias <alias>]` runs the vendor's new-schema route as one journaled plan from a tools-only configuration (`init --tools-only --remote <url> --buildomatic-dir <dir>`; `Config.Server.namesToolsOnly()`). Refusals while planning (not tools-only, no catalogue rule for the database type, a schema that is the configured server's own database: exit 6) and before anything is created (`js.dbName`, `appServerType`, the schema already exists). The compensation drops the schema only when `schema.created` and `default_master.properties` both name it, by name over JDBC; PostgreSQL and MySQL are supported. `--key-password-ref` of the design is dropped. `doctor` in a tools-only configuration skips the installation items and asks the database server's catalogue whether the schema exists; `export` and `import` treat the configuration as REST-only.
