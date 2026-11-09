@@ -28,19 +28,25 @@ import java.util.TreeMap;
 
 /**
  * Builds the {@code repository load} plan of spec §10.5 (ADR-0052). Invariants: planning reads the
- * configuration, the buildomatic, the export and its sidecar and mutates nothing; every refusal of
- * the configuration's shape (not tools-only, no buildomatic, no catalogue rule for the database
- * type, no database password reference, a schema name that is the configured server's own database)
- * happens here, before a plan exists; the plan always carries the five phases in spec order and
- * names the schema drop as the rollback of the three mutating phases; the fingerprint covers the
- * schema name, the export's hash, the buildomatic directory and its {@code
- * default_master.properties} without password keys, so a staged file edited after planning is
- * caught before the run.
+ * configuration, the buildomatic, the export and its sidecar and mutates nothing; the plan's
+ * preflight ends with {@code render-config}, which renders the buildomatic's configuration and
+ * fails closed when the rendered JDBC URL is not the schema on the server the plan was made for
+ * (issue #279 item 6); every refusal of the configuration's shape (not tools-only, no buildomatic,
+ * no catalogue rule for the database type, no database password reference, a schema name that is
+ * the configured server's own database) happens here, before a plan exists; the plan always carries
+ * the five phases in spec order and names the schema drop as the rollback of the three mutating
+ * phases; the fingerprint covers the schema name, the export's hash, the buildomatic directory and
+ * its {@code default_master.properties} without password keys, so a staged file edited after
+ * planning is caught before the run.
  */
 public final class DefaultRepositoryOperations implements RepositoryOperations {
 
   public static final String STRATEGY = "vendor-cli";
-  public static final String NOTHING_MUTATED = "nothing mutated";
+
+  /** The rollback of preflight: only {@code render-config} touches disk there (issue #279). */
+  public static final String PREFLIGHT_ROLLBACK =
+      "js-ant clean-config removes what render-config rendered under the buildomatic's"
+          + " build_conf/default, its own regenerable output; nothing else is touched";
 
   /** What the plan leaves to the operator, in the summary (spec §10.5). */
   public static final String OUTSIDE_THE_PLAN_WARNING =
@@ -230,13 +236,14 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
             new LoadSteps.VerifyBuildomatic(rt, in),
             new LoadSteps.VerifyTargetSchema(rt, in),
             new LoadSteps.AdoptExport(rt, in),
+            new LoadSteps.RenderConfig(rt, in),
             new LoadSteps.CreateJsDb(rt, in),
             new LoadSteps.InitJsDb(rt, in),
             new LoadSteps.ImportMinimal(rt, in),
             new LoadSteps.ImportExport(rt, in),
             new LoadSteps.RecordLoad(rt, in));
     Map<String, String> rollback = new LinkedHashMap<>();
-    rollback.put(LoadPhases.PREFLIGHT, NOTHING_MUTATED);
+    rollback.put(LoadPhases.PREFLIGHT, PREFLIGHT_ROLLBACK);
     String drop = ROLLBACK_SENTENCE.formatted(options.schema());
     rollback.put(LoadPhases.CREATE, drop);
     rollback.put(LoadPhases.INITIALISE, drop);
@@ -247,7 +254,9 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
             LOAD_OPERATION,
             options.schema() + " on " + catalog.adminUrl() + " via " + buildomatic.dir(),
             List.of(),
-            List.of("database " + options.schema()),
+            List.of(
+                "database " + options.schema(),
+                "buildomatic " + buildomatic.dir().resolve("build_conf").resolve("default")),
             false,
             List.of(),
             rollback,

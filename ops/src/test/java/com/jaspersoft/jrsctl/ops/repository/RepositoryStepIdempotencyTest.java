@@ -95,6 +95,38 @@ class RepositoryStepIdempotencyTest {
   }
 
   @Test
+  void should_render_once_when_render_config_executes_twice() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      assertReexecutionConverges(f, f.ops().planLoad(f.options()), "r-g", LoadSteps.RENDER_CONFIG);
+      assertThat(f.vendorLogText().split("gen-config", -1)).hasSize(2);
+      assertThat(f.renderedDir()).exists();
+    }
+  }
+
+  @Test
+  void should_clean_the_rendered_files_once_when_render_config_compensates_twice()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      Plan plan = f.ops().planLoad(f.options());
+      Context ctx = start(f, plan, "r-gc");
+      Idempotency.runUpTo(plan, ctx, LoadSteps.RENDER_CONFIG, f.events::add);
+      Step step = Idempotency.step(plan, LoadSteps.RENDER_CONFIG);
+      Idempotency.executeOk(step, ctx, f.events::add);
+      assertThat(f.renderedDir()).exists();
+
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      Map<String, String> once = state(f);
+      assertThat(f.renderedDir()).doesNotExist();
+      assertThat(f.home().snapshots().resolve("r-gc").resolve(LoadSteps.RENDERED_DIR))
+          .doesNotExist();
+      // one clean-config before gen-config, one as the compensation, none for a clean tree
+      assertThat(f.vendorLogText().split("clean-config", -1)).hasSize(3);
+      Idempotency.compensateOk(step, ctx, f.events::add);
+      assertThat(state(f)).as(String.join("\n", f.logs())).isEqualTo(once);
+    }
+  }
+
+  @Test
   void should_create_the_schema_once_when_create_js_db_executes_twice() throws Exception {
     try (LoadFixture f = LoadFixture.create(tmp)) {
       assertReexecutionConverges(f, f.ops().planLoad(f.options()), "r-c", LoadSteps.CREATE_JS_DB);

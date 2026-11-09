@@ -67,6 +67,11 @@ record LoadInput(
         .or(() -> index.flatMap(ExportIndex::keyAlias));
   }
 
+  /** Where this buildomatic's {@code gen-config} renders: {@code build_conf/default}. */
+  Path renderedDir() {
+    return RenderedConfig.dir(buildomatic);
+  }
+
   String initTarget() {
     return "init-js-db-" + edition;
   }
