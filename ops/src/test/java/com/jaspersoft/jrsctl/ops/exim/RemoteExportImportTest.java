@@ -134,13 +134,58 @@ class RemoteExportImportTest {
     assertThat(adapter.exports).as("the pre-import snapshot, taken through REST").hasSize(1);
   }
 
+  /**
+   * Issue #265 (ADR-0051): from here there is no js-export, so a full-server export is the REST
+   * export's {@code everything} parameter, and the plan says what the REST reference lists for it.
+   */
   @Test
-  void should_refuse_a_full_server_export_naming_the_local_installation_it_needs() {
+  void should_export_a_full_server_through_rest_when_no_installation_is_configured() {
+    Plan plan = fx.ops().planExport(export(true, Optional.empty()));
+
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(plan.summary().strategy()).startsWith("rest (").contains("everything");
+    assertThat(plan.summary().target()).isEqualTo("full server");
+    assertThat(plan.summary().warnings())
+        .contains(DefaultExportImportOperations.FULL_SERVER_REST_NOTE)
+        .noneMatch(w -> w.contains("--stop-service"));
+    assertThat(adapter.exports).hasSize(1);
+    assertThat(adapter.exports.get(0).fullServer()).isTrue();
+    assertThat(adapter.exports.get(0).scope()).isEqualTo(ExportRequest.Scope.EVERYTHING);
+  }
+
+  @Test
+  void should_refuse_a_full_server_export_from_another_machine_when_the_probe_fails() {
+    adapter.capabilities = EnumSet.noneOf(com.jaspersoft.jrsctl.jrs.api.Capability.class);
+
     assertThatThrownBy(() -> fx.ops().planExport(export(true, Optional.empty())))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("full-server")
+        .hasMessageContaining("EXPORT_ASYNC")
         .hasMessageContaining("installation")
         .hasMessageContaining("run jrsctl on the JasperReports Server host");
+  }
+
+  @Test
+  void should_say_that_stop_service_does_not_apply_to_a_rest_full_server_export() {
+    ExportOptions stopping =
+        new ExportOptions(
+            Set.of(),
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            tmp.resolve("out").resolve("full.zip"),
+            Optional.empty(),
+            true);
+
+    Plan plan = fx.ops().planExport(stopping);
+
+    assertThat(plan.summary().serviceRestart()).isFalse();
+    assertThat(plan.summary().warnings())
+        .contains(DefaultExportImportOperations.STOP_SERVICE_REST_NOTE);
   }
 
   @Test
