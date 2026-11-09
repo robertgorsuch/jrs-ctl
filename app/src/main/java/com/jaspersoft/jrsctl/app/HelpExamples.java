@@ -248,6 +248,16 @@ final class HelpExamples {
                 "The same with the service stopped while the export runs",
                 "jrsctl export --full-server --stop-service --out /backups/full-server.zip")));
     m.put(
+        "export record",
+        List.of(
+            new Example(
+                "Write the sidecar for an archive js-export made by hand, so import can check it",
+                "jrsctl export record /backups/js-8.2-export.zip"),
+            new Example(
+                "The same, naming the exporting server's keystore for the fingerprint",
+                "jrsctl export record /backups/js-8.2-export.zip"
+                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0")));
+    m.put(
         "import",
         List.of(
             new Example(

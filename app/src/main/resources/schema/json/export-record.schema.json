@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/export-record.schema.json",
+  "title": "jrsctl export record --json (spec §9.3, #263)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["archive", "sidecar", "sha256", "serverVersion", "origin", "fullServer", "uris", "modules"],
+  "properties": {
+    "archive": { "type": "string" },
+    "sidecar": { "type": "string", "description": "The .jrsctl.json written next to the archive." },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "serverVersion": { "type": "string", "description": "From index.xml's jsVersion, else --source-version, else \"unknown\"." },
+    "origin": { "type": "string", "enum": ["record"], "description": "Recorded from the archive by hand, not written by a jrsctl export." },
+    "fullServer": { "type": "boolean", "description": "The root folder with users, roles and report jobs: a js-export --everything archive." },
+    "uris": { "type": "array", "items": { "type": "string" } },
+    "modules": { "type": "array", "items": { "type": "string" }, "description": "The module ids index.xml lists." },
+    "keystoreFingerprint": { "type": "string", "description": "Present when --source-keystore named the exporting server's .jrsks." },
+    "keyAlias": { "type": "string", "description": "Present when --key-alias was given or index.xml names the Legacy key." }
+  }
+}

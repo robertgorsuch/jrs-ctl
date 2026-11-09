@@ -4,6 +4,9 @@
 
 - §9.4, §9.5: `import --pause-jobs` lists the server's report jobs before the import (`backup.jobs-listing`) and, in a `jobs` phase of its own after it, pauses the ids the import added (`jobs.pause-imported`), so a repository imported beside a running source does not fire every job twice. Best effort: a refused listing or pause is a warning naming the ids and the call to make by hand, never a rollback of the finished import. Compensation resumes exactly the recorded ids. `pauseJobs` joins the stored import arguments (absent means false) and the fingerprint only when set.
 - §7.2: the adapter gains `listJobIds`, `pauseJobs` and `resumeJobs` (`GET /rest_v2/jobs`, `POST /rest_v2/jobs/pause|resume` with a job-id list).
+## Draft 1.2 amendment — 2026-11-09 (`export record`: a sidecar for an archive made by hand; issue #263)
+
+- §9.3, §9.5: `jrsctl export record <archive>` writes the `.jrsctl.json` sidecar for an archive `js-export` made outside jrsctl, from the archive's SHA-256 and its `index.xml` (folders, modules, full-server judgement, `jsVersion`), plus `--source-version`, `--source-keystore` (fingerprint only) and `--key-alias` when given; the Legacy alias is read from the index. The sidecar gains an `origin` field (`export` or `record`; absent means `export`). `import` then verifies the hash, scopes its snapshot, adopts the alias and applies the themes rule as for an exported archive.
 ## Draft 1.2 amendment — 2026-11-09 (`customizations scan --installed <dir>`; issue #266)
 
 - §10.3: `customizations scan` takes `--installed <dir>` to compare an explicit tree (a webapp directory, or a Tomcat tree holding `webapps/jasperserver[-pro]`) instead of the configured installation. It needs no `config.yaml`, lists the explicit tree's Tomcat-side files with `--tomcat`, and registers nothing (`--register` with it is a usage error, exit 1). It is the inventory for a webapp extracted from a container image, which jrsctl otherwise cannot reach (ADR-0043).
