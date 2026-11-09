@@ -118,6 +118,13 @@ public interface CustomizationOperations {
   List<TomcatEntry> scanTomcat();
 
   /**
+   * As {@link #scanTomcat()} for an explicit tree (issue #266): {@code tree} is the Tomcat
+   * directory (it holds {@code webapps/}) or a webapp directory under one (its grandparent is then
+   * listed). Needs no configuration.
+   */
+  List<TomcatEntry> scanTomcat(Path tree);
+
+  /**
    * A warning to show when {@code path} is registered, for a file that cannot be reconciled per
    * file: one under the webapp's {@code scripts/} overlay (issue #117); empty otherwise.
    */
@@ -137,6 +144,16 @@ public interface CustomizationOperations {
    * distribution, its webapp directory or its war) and lists what differs; read-only (#72).
    */
   Scan scan(Path vendor);
+
+  /**
+   * As {@link #scan(Path)} for an explicit tree instead of the configured installation (issue
+   * #266): {@code installed} is the webapp directory itself (it holds {@code WEB-INF/}) or a Tomcat
+   * tree holding {@code webapps/jasperserver-pro} or {@code webapps/jasperserver}, as extracted
+   * from a container image. Needs no configuration; the registered customizations still come from
+   * the state store, so {@code registered} is meaningful only when the tree is the configured
+   * installation.
+   */
+  Scan scan(Path installed, Path vendor);
 
   /**
    * Registers every {@link Change#CHANGED} and {@link Change#ADDED} file of {@code scan} that is

@@ -302,19 +302,39 @@ final class CustomizationsCommand implements Runnable {
         description = "Register every changed and added file that is not registered yet.")
     boolean register;
 
+    @picocli.CommandLine.Option(
+        names = "--installed",
+        paramLabel = "<dir>",
+        description =
+            "Compare this tree instead of the configured installation (#266): the webapp"
+                + " directory itself, or a Tomcat tree holding webapps/jasperserver-pro, as"
+                + " extracted from a container image. Needs no configuration; nothing is"
+                + " registered, the report is the product. With --tomcat, lists that tree's"
+                + " Tomcat-side files.")
+    Path installed;
+
     @Override
     public Integer call() {
       PrintWriter out = spec.commandLine().getOut();
       PrintWriter err = spec.commandLine().getErr();
       Redactor redactor = Redactor.global();
+      if (installed != null && register) {
+        return ExitCodes.fail(
+            out,
+            err,
+            global.json(),
+            ExitCodes.USAGE,
+            "--register cannot be combined with --installed: an explicit tree is not the"
+                + " installation jrsctl manages, so there is nothing to register against");
+      }
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         CustomizationOperations ops = open(boot.services());
         CustomizationOperations.Scan scan;
         List<CustomizationOperations.TomcatEntry> tomcatFiles = List.of();
         try {
-          scan = ops.scan(vendor);
+          scan = installed == null ? ops.scan(vendor) : ops.scan(installed, vendor);
           if (tomcat) {
-            tomcatFiles = ops.scanTomcat();
+            tomcatFiles = installed == null ? ops.scanTomcat() : ops.scanTomcat(installed);
           }
         } catch (CustomizationException e) {
           return refused(out, err, global.json(), e);
@@ -335,8 +355,13 @@ final class CustomizationsCommand implements Runnable {
             printTomcat(out, redactor, tomcatFiles);
           }
         }
-        boolean doRegister = register || global.yes();
-        if (!doRegister && !global.json() && !global.nonInteractive() && candidates > 0) {
+        // an explicit tree is never registered, whatever --yes says (#266)
+        boolean doRegister = installed == null && (register || global.yes());
+        if (installed == null
+            && !doRegister
+            && !global.json()
+            && !global.nonInteractive()
+            && candidates > 0) {
           doRegister =
               Prompter.yes(
                   out,
@@ -396,7 +421,7 @@ final class CustomizationsCommand implements Runnable {
               "registered "
                   + registered.size()
                   + " customization(s); see jrsctl customizations list");
-        } else if (candidates > 0) {
+        } else if (candidates > 0 && installed == null) {
           out.println(
               "nothing registered; register them later with: jrsctl customizations scan --vendor "
                   + vendor

@@ -199,7 +199,14 @@ class DoctorOperationTest {
       Map<String, ReportItem> items = byName(report);
       assertThat(report.exitCode()).as(report.items().toString()).isEqualTo(0);
       for (String local :
-          List.of("layout", "service", "service-manager", "permissions", "keystore", "vendor")) {
+          List.of(
+              "layout",
+              "service",
+              "service-manager",
+              "permissions",
+              "keystore",
+              "vendor",
+              LocalChecks.ANALYTICS_JNDI)) {
         assertThat(items.get(local).status()).as(local).isEqualTo(Status.SKIP);
         assertThat(items.get(local).detail()).as(local).contains("no local installation");
       }
