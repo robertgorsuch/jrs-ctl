@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`customizations scan --installed <dir>`; issue #266)
+
+- §10.3: `customizations scan` takes `--installed <dir>` to compare an explicit tree (a webapp directory, or a Tomcat tree holding `webapps/jasperserver[-pro]`) instead of the configured installation. It needs no `config.yaml`, lists the explicit tree's Tomcat-side files with `--tomcat`, and registers nothing (`--register` with it is a usage error, exit 1). It is the inventory for a webapp extracted from a container image, which jrsctl otherwise cannot reach (ADR-0043).
 ## Draft 1.2 amendment — 2026-11-09 (the analytics JNDI resources on 10.x; issue #268)
 
 - §10.2 step 13a: `check-analytics-jndi` runs for every target from 9.0 on, not for 9.0.x only. The 10.1 upgrade guide (p.93) keeps `jdbc/jasperserverSystemAnalytics` and `jdbc/jasperserverAuditAnalytics` mandatory in 10.x even with the feature off, so a 10.x target whose `context.xml` was carried over from 8.x now gets the warning.
