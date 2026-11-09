@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`customizations scan` diffs for installer-written files; issue #267)
+
+- §10.3: a scan entry classified `INSTALLER` whose file the vendor copy also has carries the unified diff from the vendor copy to the installed file (`diff` in `--json`, printed under the table in text; a one-line notice for a binary or very large file), read from the unpacked copy or straight out of the war. `customizations register` accepts such a file with a warning that an upgrade will most likely report a `CONFLICT` for it. `--register` still skips `INSTALLER` files.
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.

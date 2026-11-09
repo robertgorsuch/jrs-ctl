@@ -1089,6 +1089,15 @@ class JsonOutputSchemaTest {
               Path vendor =
                   Files.createDirectories(
                       dir.resolve("dist").resolve("jasperserver-pro").resolve("WEB-INF"));
+              // #267: an installer-written file that differs carries a diff in the output
+              Files.writeString(
+                  tomcat.resolve("webapps/jasperserver-pro/WEB-INF/js.quartz.properties"),
+                  "org.quartz.threadPool.threadCount=8\n",
+                  StandardCharsets.UTF_8);
+              Files.writeString(
+                  vendor.resolve("js.quartz.properties"),
+                  "org.quartz.threadPool.threadCount=2\n",
+                  StandardCharsets.UTF_8);
               return run(
                   join(
                       serverArgs(dir),

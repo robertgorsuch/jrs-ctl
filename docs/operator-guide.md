@@ -442,7 +442,7 @@ Registers an operator-customised file under `server.installDir` or `server.tomca
 
 - **Mutates:** the state store row and the snapshot under the jrsctl home. Nothing under the installation.
 - **Rollback:** `customizations unregister <path>` removes the row and the snapshot.
-- **Exit codes:** 0; **2** when the file is outside the installation, does not exist, or is already registered.
+- **Exit codes:** 0; **2** when the file is outside the installation, does not exist, or is already registered. A file under `scripts/` or one the installer writes (`META-INF/context.xml`, `WEB-INF/js.quartz.properties` and the other `INSTALLER` files of `scan`) is accepted with a warning on standard error saying what an upgrade will make of it (#117, #267).
 - **Flags:** `<path>` — the customised file; `--original <file>` — the vendor's unmodified copy whose hash becomes the original; `--json` — the registration as JSON.
 
 ### `jrsctl customizations scan --vendor <path> [--tomcat] [--register] [--json]`
@@ -451,7 +451,7 @@ Finds the files the site changed without registering them one by one (#72). The 
 
 - `CHANGED` — in both, different: a customization.
 - `ADDED` — only in the installation: a customization.
-- `INSTALLER` — a file the installer writes with site values, whether it differs from the vendor's copy or the vendor has none: `META-INF/context.xml`, `WEB-INF/js.quartz.properties`, `WEB-INF/classes/keystore.init.properties`, and, depending on the repository database, `WEB-INF/classes/hibernate.properties` (`WEB-INF/hibernate.properties` before 8.2) and `WEB-INF/js.jdbc.properties`. Listed, never registered.
+- `INSTALLER` — a file the installer writes with site values, whether it differs from the vendor's copy or the vendor has none: `META-INF/context.xml`, `WEB-INF/js.quartz.properties`, `WEB-INF/classes/keystore.init.properties`, and, depending on the repository database, `WEB-INF/classes/hibernate.properties` (`WEB-INF/hibernate.properties` before 8.2) and `WEB-INF/js.jdbc.properties`. Listed, and never registered by `--register`. Such a file can carry a site's own change as well as the installer's values (an extra JNDI resource in `context.xml`, a Quartz pool size), so when the vendor copy has the file the scan shows the unified diff from the vendor copy to the installed one, in the text output under the table and in `--json` as the entry's `diff` (#267); a binary or very large file gets a one-line notice instead. Register such a file by hand with `customizations register` when the change is yours: the command accepts it with a warning that an upgrade will most likely report a `CONFLICT` for it rather than re-apply it, since the vendor's copy of an installer-written file is rarely unchanged.
 - `REMOVED` — only in the vendor's copy. Listed, nothing to register.
 
 **`scripts/` is an overlay** (#117). Since 8.0 the front end is the `jasperserver-ui` webpack project: a customised `scripts/` tree is rebuilt and copied whole, under hashed bundle names, so a per-file comparison of it is always a conflict. The scan says so when it lists a file there, and `customizations register` warns for one. Carry the change in your `jasperserver-ui` project (the vendor's JavaScript customisation material describes it), rebuild it, and copy the rebuilt `scripts/` over the new webapp after the upgrade; do not rely on an upgrade to re-apply single files.

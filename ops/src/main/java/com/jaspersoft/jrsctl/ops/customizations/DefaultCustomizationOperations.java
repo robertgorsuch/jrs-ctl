@@ -162,9 +162,19 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
             .webappName()
             .map(com.jaspersoft.jrsctl.core.config.Config.WebappName::yamlValue)
             .orElse("jasperserver-pro");
-    Path scripts =
-        normalise(paths.tomcatDir().resolve("webapps").resolve(webappName).resolve("scripts"));
-    return normalise(path).startsWith(scripts) ? Optional.of(SCRIPTS_ADVICE) : Optional.empty();
+    Path webapp = normalise(paths.tomcatDir().resolve("webapps").resolve(webappName));
+    Path scripts = webapp.resolve("scripts");
+    Path given = normalise(path);
+    if (given.startsWith(scripts)) {
+      return Optional.of(SCRIPTS_ADVICE);
+    }
+    // issue #267: an installer-written file may be registered, with a word on what to expect
+    if (given.startsWith(webapp)
+        && WebappScanner.INSTALLER_WRITTEN.contains(
+            webapp.relativize(given).toString().replace('\\', '/'))) {
+      return Optional.of(INSTALLER_ADVICE);
+    }
+    return Optional.empty();
   }
 
   @Override

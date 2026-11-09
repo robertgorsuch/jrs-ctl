@@ -375,6 +375,7 @@ final class CustomizationsCommand implements Runnable {
                                                 .normalize()
                                                 .equals(c.path().toAbsolutePath().normalize()))
                                     .orElse(false)));
+            e.diff().ifPresent(d -> row.put("diff", d));
             entries.add(row);
           }
           tree.put("entries", entries);
@@ -449,7 +450,18 @@ final class CustomizationsCommand implements Runnable {
       if (installer > 0) {
         out.println(
             "INSTALLER files hold values the installer wrote for this site; they are not"
-                + " registered as customizations");
+                + " registered by --register (register one by hand if the change is yours)");
+      }
+      // issue #267: how each installer-written file differs from the vendor copy, so a site's own
+      // change in one of them (a JNDI resource, a Quartz setting) is not lost behind the label
+      for (CustomizationOperations.ScanEntry e : scan.entries()) {
+        if (e.change() == CustomizationOperations.Change.INSTALLER && e.diff().isPresent()) {
+          out.println();
+          out.println(redactor.redact("INSTALLER " + e.relativePath() + ", vendor -> installed:"));
+          for (String line : e.diff().get().split("\n", -1)) {
+            out.println(redactor.redact("  " + line));
+          }
+        }
       }
     }
   }
