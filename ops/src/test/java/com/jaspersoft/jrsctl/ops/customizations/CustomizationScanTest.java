@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -330,6 +331,52 @@ class CustomizationScanTest {
         .isInstanceOf(CustomizationException.class)
         .hasMessageContaining("jasperserver-pro");
     assertThat(Optional.of(empty)).isPresent();
+  }
+
+  // ------------------------------------------------------------ INSTALLER diffs (#267)
+
+  /**
+   * Issue #267: an installer-written file can also carry a site's own change (a JNDI resource in
+   * context.xml, a Quartz pool size), so the scan shows how it differs from the vendor copy instead
+   * of only naming it; from an unpacked vendor copy and from the war alike.
+   */
+  @Test
+  void should_include_a_unified_diff_for_an_installer_file_that_differs_from_the_vendor_copy()
+      throws Exception {
+    Map<String, ScanEntry> fromDir = byPath(ops.scan(vendorDir().getParent()));
+    Map<String, ScanEntry> fromWar = byPath(ops.scan(vendorWar()));
+
+    for (ScanEntry e :
+        List.of(
+            fromDir.get("WEB-INF/hibernate.properties"),
+            fromWar.get("WEB-INF/hibernate.properties"))) {
+      assertThat(e.change()).isEqualTo(Change.INSTALLER);
+      assertThat(e.diff()).isPresent();
+      assertThat(e.diff().get()).contains("-dialect=vendor").contains("+dialect=site");
+    }
+    assertThat(fromDir.get("WEB-INF/classes/jasperserver.properties").diff())
+        .as("a CHANGED file is registered and diffed with customizations diff, not here")
+        .isEmpty();
+  }
+
+  @Test
+  void should_carry_no_diff_for_an_installer_file_the_vendor_copy_lacks() throws Exception {
+    installed("WEB-INF/classes/keystore.init.properties", "ks=/opt/jrs\n");
+
+    ScanEntry entry = byPath(ops.scan(vendorWar())).get("WEB-INF/classes/keystore.init.properties");
+
+    assertThat(entry.change()).isEqualTo(Change.INSTALLER);
+    assertThat(entry.diff()).isEmpty();
+  }
+
+  /** Registering such a file is allowed; the advice says what an upgrade will make of it. */
+  @Test
+  void should_advise_when_registering_an_installer_written_file() {
+    Optional<String> advice =
+        ops.registrationAdvice(webapp.resolve("WEB-INF/hibernate.properties"));
+
+    assertThat(advice).isPresent();
+    assertThat(advice.get()).contains("installer").contains("CONFLICT");
   }
 
   // ------------------------------------------------------------ explicit tree (#266)

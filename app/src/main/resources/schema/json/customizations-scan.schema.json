@@ -17,7 +17,8 @@
         "properties": {
           "path": { "type": "string", "description": "Relative to the webapp, with / separators." },
           "change": { "enum": ["CHANGED", "ADDED", "INSTALLER", "REMOVED"] },
-          "registered": { "type": "boolean" }
+          "registered": { "type": "boolean" },
+          "diff": { "type": "string", "description": "INSTALLER files the vendor copy also has (#267): the unified diff from the vendor copy to the installed file, or a one-line notice for a binary or very large file." }
         }
       }
     },
