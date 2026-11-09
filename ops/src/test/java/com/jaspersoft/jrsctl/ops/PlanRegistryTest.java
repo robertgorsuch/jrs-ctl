@@ -319,6 +319,33 @@ class PlanRegistryTest {
     assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).noSnapshot()).isFalse();
   }
 
+  /** Issue #264: {@code --pause-jobs} survives the stored arguments; older arguments mean no. */
+  @Test
+  void should_round_trip_pause_jobs_when_import_arguments_carry_it() throws IOException {
+    ExportImportOperations.ImportOptions options =
+        new ExportImportOperations.ImportOptions(
+                Path.of("a.zip").toAbsolutePath().normalize(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty())
+            .withPauseJobs(true);
+
+    JsonNode args = tree(PlanRegistry.importArgs(options));
+
+    assertThat(args.get("pauseJobs").asBoolean()).isTrue();
+    assertThat(PlanRegistry.importOptions(args)).isEqualTo(options);
+    assertThat(PlanRegistry.importOptions(args).pauseJobs()).isTrue();
+    assertThat(PlanRegistry.importOptions(tree("{\"archive\":\"a.zip\"}")).pauseJobs()).isFalse();
+    assertThat(options.withNoSnapshot(true).pauseJobs()).isTrue();
+  }
+
   /**
    * Issue #115: {@code --themes} survives the stored arguments, and an old row means the default.
    */

@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.strategy.Strategies;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
@@ -84,6 +85,14 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
           + " (judged against a listing taken just before the import; anything anyone else creates"
           + " there in between is deleted with them) and re-imports the pre-import snapshot, which"
           + " puts back what the import overwrote.";
+
+  /** Issue #264, ADR-0050: what {@code --pause-jobs} does after the import, and how it fails. */
+  public static final String PAUSE_JOBS_WARNING =
+      "--pause-jobs: the report jobs present after the import that were not present before are"
+          + " paused, so they do not fire on this server beside the source's; resume them (POST"
+          + " /rest_v2/jobs/resume, or the scheduler UI) once this server should run them. A pause"
+          + " the server refuses is a warning naming the ids, never a rollback of the finished"
+          + " import; a rollback resumes only the jobs this run paused.";
 
   /** ADR-0040: in place of {@link #ROLLBACK_WARNING} in a plan made with {@code --no-snapshot}. */
   public static final String NO_SNAPSHOT_WARNING =
@@ -183,6 +192,73 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     inputs.put("strategy", options.strategy().map(Enum::name).orElse("auto"));
     inputs.put("config", configHash());
     return new Plan(planId(EXPORT_OPERATION), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  // ---------------------------------------------------------------- export record (#263)
+
+  @Override
+  public RecordedSidecar recordSidecar(RecordSidecarOptions options) {
+    Objects.requireNonNull(options, "options");
+    Path archive = options.archive();
+    if (!Files.isRegularFile(archive)) {
+      throw new IllegalArgumentException(archive + " does not exist or is not a file");
+    }
+    Path file = Sidecar.pathFor(archive);
+    if (Files.exists(file) && !options.force()) {
+      throw new IllegalStateException(
+          file + " already exists; pass --force to replace it, or import with the one there");
+    }
+    Optional<Path> keystore = options.sourceKeystore();
+    if (keystore.isPresent() && !Files.isRegularFile(keystore.get())) {
+      throw new IllegalArgumentException(
+          "source keystore " + keystore.get() + " does not exist or is not a file");
+    }
+    try {
+      ExportIndex index = ExportIndex.read(archive);
+      String sha256 = services.platform().files().sha256(archive);
+      Optional<String> fingerprint = Optional.empty();
+      if (keystore.isPresent()) {
+        fingerprint = Optional.of(services.platform().files().sha256(keystore.get()));
+      }
+      // an explicit alias wins; the Legacy alias is the one index.xml can name usefully, since
+      // the server's own import/export key is no alias an import could ask for
+      Optional<String> alias =
+          options
+              .keyAlias()
+              .or(() -> index.keyAlias().filter(ExportRequest.PORTABLE_KEY_ALIAS::equals));
+      String version = options.sourceVersion().or(index::version).orElse(UNKNOWN_VERSION);
+      boolean full = index.fullServer();
+      Sidecar.Flags flags =
+          new Sidecar.Flags(
+              full ? ExportRequest.Scope.EVERYTHING : ExportRequest.Scope.REPOSITORY,
+              index.uris(),
+              index.hasUsersRoles(),
+              index.hasAccessEvents(),
+              index.hasAuditEvents(),
+              index.hasMonitoringEvents(),
+              full,
+              full,
+              alias,
+              Optional.empty());
+      Sidecar sidecar =
+          new Sidecar(
+              services.clock().instant(),
+              "recorded from "
+                  + archive.getFileName()
+                  + " ("
+                  + index.jsVersion().orElse("version not in index.xml")
+                  + ")",
+              version,
+              fingerprint,
+              flags,
+              sha256,
+              ExportImportStrategy.Kind.VENDOR_CLI,
+              Sidecar.ORIGIN_RECORD);
+      Sidecar.write(file, sidecar);
+      return new RecordedSidecar(file, sidecar, index);
+    } catch (IOException e) {
+      throw new UncheckedIOException("cannot record " + archive + ": " + e.getMessage(), e);
+    }
   }
 
   // ---------------------------------------------------------------- import
@@ -361,6 +437,18 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       steps.add(new RemoveNewContent(importPhase, newContentUris));
     }
     steps.addAll(importSteps.subList(firstMutating, importSteps.size()));
+    if (options.pauseJobs()) {
+      // issue #264 (ADR-0050): the listing goes last in the backup phase, before the first step of
+      // the import phase, and the pause into a phase of its own after the import, so a refused
+      // pause never rolls the finished import back
+      int firstImport = 0;
+      while (firstImport < steps.size() && !steps.get(firstImport).phase().equals(importPhase)) {
+        firstImport++;
+      }
+      steps.add(firstImport, new RecordJobs());
+      steps.add(new PauseImportedJobs());
+      warnings.add(PAUSE_JOBS_WARNING);
+    }
 
     List<String> removable = RemoveNewContent.removable(newRoots);
     String removeNew =
@@ -389,6 +477,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       rollback.put(
           importPhase,
           "nothing to put back: none of the archive's resources existed before the import");
+    }
+    if (options.pauseJobs()) {
+      rollback.put(PauseImportedJobs.PHASE, "resume the report jobs this run paused");
     }
     List<String> touched =
         snapshot
@@ -422,6 +513,10 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       inputs.put("snapshot", "none");
     } else if (!options.snapshotStopsService()) {
       inputs.put("snapshot", "live");
+    }
+    // issue #264: likewise, only a plan that pauses says so
+    if (options.pauseJobs()) {
+      inputs.put("pauseJobs", "true");
     }
     return new Plan(planId(IMPORT_OPERATION), steps, summary, PlanFingerprint.of(inputs));
   }

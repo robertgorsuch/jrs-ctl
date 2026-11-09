@@ -248,6 +248,16 @@ final class HelpExamples {
                 "The same with the service stopped while the export runs",
                 "jrsctl export --full-server --stop-service --out /backups/full-server.zip")));
     m.put(
+        "export record",
+        List.of(
+            new Example(
+                "Write the sidecar for an archive js-export made by hand, so import can check it",
+                "jrsctl export record /backups/js-8.2-export.zip"),
+            new Example(
+                "The same, naming the exporting server's keystore for the fingerprint",
+                "jrsctl export record /backups/js-8.2-export.zip"
+                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0")));
+    m.put(
         "import",
         List.of(
             new Example(
@@ -259,6 +269,9 @@ final class HelpExamples {
             new Example(
                 "Skip the rollback copy; a failed import then cannot put back what it overwrote",
                 "jrsctl import /backups/samples.zip --update --no-snapshot"),
+            new Example(
+                "Pause the report jobs the archive adds, so they do not fire beside the source's",
+                "jrsctl import /backups/full-server.zip --settings --pause-jobs"),
             new Example(
                 "Archive from a server with another keystore",
                 "jrsctl import /backups/full-server.zip --source-keystore /tmp/source/.jrsks"

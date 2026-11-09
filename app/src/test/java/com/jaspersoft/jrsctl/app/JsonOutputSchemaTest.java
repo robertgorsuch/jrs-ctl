@@ -318,6 +318,27 @@ class JsonOutputSchemaTest {
     return bundle;
   }
 
+  /** A js-export shaped archive: {@code index.xml} at the root, or only {@code resources/}. */
+  private static Path exportZip(Path dir, boolean withIndex) throws IOException {
+    Path zip = dir.resolve("js-export.zip");
+    try (java.io.OutputStream out = Files.newOutputStream(zip);
+        java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(out)) {
+      z.putNextEntry(new java.util.zip.ZipEntry("resources/"));
+      z.closeEntry();
+      if (withIndex) {
+        z.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
+        z.write(
+            ("<export><module id=\"authority\"><user>superuser</user></module>"
+                    + "<module id=\"repositoryResources\"><folder>/</folder></module>"
+                    + "<module id=\"reportJobs\"/>"
+                    + "<property name=\"jsVersion\" value=\"8.2.0 PRO\"/></export>")
+                .getBytes(StandardCharsets.UTF_8));
+        z.closeEntry();
+      }
+    }
+    return zip;
+  }
+
   private static StateStore open(Path home) {
     return StateStore.open(new JrsctlHome(home), Clock.systemUTC());
   }
@@ -929,6 +950,35 @@ class JsonOutputSchemaTest {
                   "--home",
                   emptyHome(dir).toString());
             }));
+    // #263: the sidecar for an archive js-export made by hand; real operations, no server
+    s.add(
+        of(
+            "export record writes a sidecar for a hand-made archive",
+            "export record",
+            0,
+            dir ->
+                run(
+                    "export",
+                    "record",
+                    exportZip(dir, true).toString(),
+                    "--source-version",
+                    "8.2.0",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "export record refuses an archive without index.xml",
+            "export record",
+            2,
+            dir ->
+                run(
+                    "export",
+                    "record",
+                    exportZip(dir, false).toString(),
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
 
     s.add(
         of(
@@ -941,6 +991,19 @@ class JsonOutputSchemaTest {
               Path archive = dir.resolve("in.zip");
               Files.writeString(archive, "zip");
               return run(join(serverArgs(dir), "import", archive.toString(), "--plan"));
+            }));
+    s.add(
+        of(
+            "import --pause-jobs --plan",
+            "import",
+            0,
+            dir -> {
+              fakeExim();
+              serverHome(dir);
+              Path archive = dir.resolve("in.zip");
+              Files.writeString(archive, "zip");
+              return run(
+                  join(serverArgs(dir), "import", archive.toString(), "--pause-jobs", "--plan"));
             }));
     s.add(
         of(

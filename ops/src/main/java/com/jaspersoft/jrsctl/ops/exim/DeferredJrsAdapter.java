@@ -136,4 +136,19 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   public void deleteResource(String uri) {
     adapter().deleteResource(uri);
   }
+
+  @Override
+  public List<String> listJobIds() {
+    return adapter().listJobIds();
+  }
+
+  @Override
+  public void pauseJobs(List<String> ids) {
+    adapter().pauseJobs(ids);
+  }
+
+  @Override
+  public void resumeJobs(List<String> ids) {
+    adapter().resumeJobs(ids);
+  }
 }
