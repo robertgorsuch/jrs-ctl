@@ -1163,6 +1163,59 @@ class JsonOutputSchemaTest {
                       "--vendor",
                       Files.createDirectories(dir.resolve("empty")).toString()));
             }));
+    // #266: an explicit tree (extracted from a container image, say) with no configuration at all
+    s.add(
+        of(
+            "customizations scan of an explicit tree without a configuration",
+            "customizations scan",
+            0,
+            dir -> {
+              Path webapp =
+                  Files.createDirectories(
+                      dir.resolve("extracted/webapps/jasperserver-pro/WEB-INF/classes"));
+              Files.writeString(webapp.resolve("site.properties"), "a=1\n", StandardCharsets.UTF_8);
+              Files.writeString(
+                  Files.createDirectories(dir.resolve("extracted/bin")).resolve("setenv.sh"),
+                  "JAVA_OPTS=-Xmx2g\n",
+                  StandardCharsets.UTF_8);
+              Path vendor =
+                  Files.createDirectories(
+                      dir.resolve("dist").resolve("jasperserver-pro").resolve("WEB-INF"));
+              return run(
+                  "customizations",
+                  "scan",
+                  "--vendor",
+                  vendor.getParent().toString(),
+                  "--installed",
+                  dir.resolve("extracted").toString(),
+                  "--tomcat",
+                  "--json",
+                  "--home",
+                  dir.resolve("home").toString());
+            }));
+    s.add(
+        of(
+            "customizations scan --installed refuses --register",
+            "customizations scan",
+            1,
+            dir -> {
+              Path vendor =
+                  Files.createDirectories(
+                      dir.resolve("dist").resolve("jasperserver-pro").resolve("WEB-INF"));
+              Path webapp =
+                  Files.createDirectories(dir.resolve("extracted/jasperserver-pro/WEB-INF"));
+              return run(
+                  "customizations",
+                  "scan",
+                  "--vendor",
+                  vendor.getParent().toString(),
+                  "--installed",
+                  webapp.getParent().toString(),
+                  "--register",
+                  "--json",
+                  "--home",
+                  dir.resolve("home").toString());
+            }));
     s.add(
         of(
             "customizations diff identical",

@@ -3,6 +3,13 @@
 ## Draft 1.2 amendment — 2026-11-09 (`export record`: a sidecar for an archive made by hand; issue #263)
 
 - §9.3, §9.5: `jrsctl export record <archive>` writes the `.jrsctl.json` sidecar for an archive `js-export` made outside jrsctl, from the archive's SHA-256 and its `index.xml` (folders, modules, full-server judgement, `jsVersion`), plus `--source-version`, `--source-keystore` (fingerprint only) and `--key-alias` when given; the Legacy alias is read from the index. The sidecar gains an `origin` field (`export` or `record`; absent means `export`). `import` then verifies the hash, scopes its snapshot, adopts the alias and applies the themes rule as for an exported archive.
+## Draft 1.2 amendment — 2026-11-09 (`customizations scan --installed <dir>`; issue #266)
+
+- §10.3: `customizations scan` takes `--installed <dir>` to compare an explicit tree (a webapp directory, or a Tomcat tree holding `webapps/jasperserver[-pro]`) instead of the configured installation. It needs no `config.yaml`, lists the explicit tree's Tomcat-side files with `--tomcat`, and registers nothing (`--register` with it is a usage error, exit 1). It is the inventory for a webapp extracted from a container image, which jrsctl otherwise cannot reach (ADR-0043).
+## Draft 1.2 amendment — 2026-11-09 (the analytics JNDI resources on 10.x; issue #268)
+
+- §10.2 step 13a: `check-analytics-jndi` runs for every target from 9.0 on, not for 9.0.x only. The 10.1 upgrade guide (p.93) keeps `jdbc/jasperserverSystemAnalytics` and `jdbc/jasperserverAuditAnalytics` mandatory in 10.x even with the feature off, so a 10.x target whose `context.xml` was carried over from 8.x now gets the warning.
+- §12.1: new `doctor` item `analytics-jndi`, the same check against the deployed webapp outside an upgrade run; probe-dependent (needs the server's version), SKIP below 9.0 and in remote mode. The judgement moved to `ops.AnalyticsJndi`, shared by both.
 
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
