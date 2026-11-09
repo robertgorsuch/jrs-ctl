@@ -130,14 +130,40 @@ class StrategiesTest {
     assertThat(s.reason()).contains("EXPORT_ASYNC");
   }
 
+  /** On the server host a full-server export is js-export's --everything, as before. */
   @Test
-  void should_select_vendor_when_full_server_even_if_probe_passes() {
+  void should_select_vendor_for_a_full_server_export_on_the_server_host_even_if_probe_passes() {
+    Config host = StrategyFixture.vendorConfig(Path.of("/opt/jrs"), Optional.empty());
+
     Strategies.Selection s =
-        strategies.select(config, new FakeJrsAdapter(), export(true), Optional.empty());
+        strategies.select(host, new FakeJrsAdapter(), export(true), Optional.empty());
 
     assertThat(s.kind()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
     assertThat(s.strategy().requiresServiceStop()).isTrue();
     assertThat(s.reason()).contains("full-server");
+  }
+
+  /**
+   * Issue #265 (ADR-0051): from a machine with no installation there is no js-export, so a
+   * full-server export is the REST export's {@code everything} parameter when the probe passes.
+   */
+  @Test
+  void should_select_rest_for_a_full_server_export_from_another_machine_when_the_probe_passes() {
+    Strategies.Selection s =
+        strategies.select(config, new FakeJrsAdapter(), export(true), Optional.empty());
+
+    assertThat(s.kind()).isEqualTo(ExportImportStrategy.Kind.REST);
+    assertThat(s.reason()).contains("everything").contains("no installation");
+  }
+
+  @Test
+  void should_select_vendor_for_a_full_server_export_from_another_machine_when_the_probe_fails() {
+    FakeJrsAdapter noAsync = new FakeJrsAdapter().withCapabilities(Set.of(Capability.ORGS));
+
+    Strategies.Selection s = strategies.select(config, noAsync, export(true), Optional.empty());
+
+    assertThat(s.kind()).isEqualTo(ExportImportStrategy.Kind.VENDOR_CLI);
+    assertThat(s.reason()).contains("EXPORT_ASYNC probe failed");
   }
 
   @Test

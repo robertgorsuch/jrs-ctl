@@ -79,6 +79,20 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   static final String USERS_ROLES_REDUNDANT =
       "--users-roles is redundant with --full-server, which already includes users and roles";
 
+  /** ADR-0051 (issue #265): a full-server export taken over REST from another machine. */
+  static final String FULL_SERVER_REST_NOTE =
+      "this machine has no installation for js-export, so the full-server export is the server's"
+          + " REST export with the everything parameter: the REST API reference lists repository"
+          + " resources, permissions, report jobs, users, roles and server settings for it and"
+          + " does not mention calendars; run jrsctl export --full-server on the server host for"
+          + " js-export --everything if the calendars matter";
+
+  /**
+   * ADR-0051: {@code --stop-service} belongs to js-export; the REST export never stops anything.
+   */
+  static final String STOP_SERVICE_REST_NOTE =
+      "--stop-service applies to js-export only; this export runs over REST with the service up";
+
   /** Spec §9.4 (issue #100, ADR-0031), verbatim in every import plan summary. */
   public static final String ROLLBACK_WARNING =
       "Rollback deletes the resources the failed import created under the snapshotted folders"
@@ -152,7 +166,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     refuseMissingUris(adapter, request);
     Strategies.Selection selection =
         strategies.select(services.config(), adapter, request, options.strategy());
-    requireLocalInstallation(selection, options.strategy(), options.fullServer(), "export");
+    requireLocalInstallation(selection, options.strategy(), "export");
     List<Step> steps = selection.strategy().exportSteps(request);
 
     List<String> warnings = new ArrayList<>();
@@ -164,6 +178,13 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       warnings.add(
           "the service keeps running while js-export reads the repository; pass --stop-service"
               + " for an export taken with the service stopped");
+    } else if (request.stopService() && request.fullServer()) {
+      // ADR-0051: the one REST export an operator may expect to stop the service
+      warnings.add(STOP_SERVICE_REST_NOTE);
+    }
+    if (request.fullServer() && selection.kind() == ExportImportStrategy.Kind.REST) {
+      // ADR-0051: said in the plan, since the REST reference's list differs from js-export's
+      warnings.add(FULL_SERVER_REST_NOTE);
     }
     if (Files.exists(out)) {
       warnings.add(out + " exists and will be replaced");
@@ -303,7 +324,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
             options.mergeOrganization());
     Strategies.Selection chosen =
         strategies.select(services.config(), adapter, request, options.strategy());
-    requireLocalInstallation(chosen, options.strategy(), false, "import");
+    requireLocalInstallation(chosen, options.strategy(), "import");
     List<String> warnings = new ArrayList<>();
     warnings.add(ROLLBACK_WARNING);
     Strategies.Selection selection =
@@ -781,8 +802,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
         strategies.select(
             services.config(), adapter, request, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI));
     try {
-      requireLocalInstallation(
-          vendor, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI), false, "import");
+      requireLocalInstallation(vendor, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI), "import");
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           big
@@ -890,7 +910,6 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   private void requireLocalInstallation(
       Strategies.Selection selection,
       Optional<ExportImportStrategy.Kind> forced,
-      boolean fullServer,
       String operation) {
     if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI
         || services.config().server().namesLocalInstallation()) {
@@ -899,8 +918,6 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     String why;
     if (forced.isPresent() && forced.get() == ExportImportStrategy.Kind.VENDOR_CLI) {
       why = "--strategy vendor uses the vendor " + operation + " tools";
-    } else if (fullServer) {
-      why = "a full-server export uses the vendor tools (js-export)";
     } else {
       why =
           "REST cannot be used ("

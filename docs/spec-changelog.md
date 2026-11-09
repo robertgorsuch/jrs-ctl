@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`export --full-server` over REST from another machine; ADR-0051, issue #265)
+
+- §9.2: from a machine whose configuration names no installation, `export --full-server` is no longer refused: with no `js-export` to run it is the server's REST export with the `everything` parameter when the `EXPORT_ASYNC` probe passes (the REST API reference, 8.2 to 10.1, lists repository resources, permissions, report jobs, users, roles and server settings for it and does not mention calendars; the plan says so). On the server host a full-server export is `js-export --everything` as before. `--stop-service` on a REST export is noted as having no effect.
 ## Draft 1.2 amendment — 2026-11-09 (`import --pause-jobs`; ADR-0050, issue #264)
 
 - §9.4, §9.5: `import --pause-jobs` lists the server's report jobs before the import (`backup.jobs-listing`) and, in a `jobs` phase of its own after it, pauses the ids the import added (`jobs.pause-imported`), so a repository imported beside a running source does not fire every job twice. Best effort: a refused listing or pause is a warning naming the ids and the call to make by hand, never a rollback of the finished import. Compensation resumes exactly the recorded ids. `pauseJobs` joins the stored import arguments (absent means false) and the fingerprint only when set.
