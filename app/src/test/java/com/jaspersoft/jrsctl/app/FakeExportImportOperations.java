@@ -75,6 +75,12 @@ public final class FakeExportImportOperations implements ExportImportOperations 
   }
 
   @Override
+  public RecordedSidecar recordSidecar(RecordSidecarOptions options) {
+    // export record runs the real operations in the CLI tests: it needs no server
+    throw new UnsupportedOperationException("not used by the fake");
+  }
+
+  @Override
   public Plan planImport(ImportOptions options) {
     planFailure.ifPresent(
         e -> {

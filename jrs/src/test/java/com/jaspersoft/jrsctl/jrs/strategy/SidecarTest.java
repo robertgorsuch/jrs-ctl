@@ -100,4 +100,41 @@ class SidecarTest {
     assertThat(read.get().flags().keyAlias()).isEmpty();
     assertThat(read.get().flags().uris()).containsExactly("/public");
   }
+
+  /** Issue #263: a sidecar written by an export says so; one written before the field is one. */
+  @Test
+  void should_default_the_origin_to_export_for_a_sidecar_written_before_it_existed()
+      throws Exception {
+    Path file = tmp.resolve("old.zip.jrsctl.json");
+    Sidecar.write(file, sidecar(Optional.empty()));
+    ObjectNode tree =
+        (ObjectNode) Json.mapper().readTree(Files.readString(file, StandardCharsets.UTF_8));
+    tree.remove("origin");
+    Files.writeString(file, Json.write(tree), StandardCharsets.UTF_8);
+
+    Sidecar read = Sidecar.read(file).orElseThrow();
+
+    assertThat(read.origin()).isEqualTo(Sidecar.ORIGIN_EXPORT);
+    assertThat(sidecar(Optional.empty()).origin()).isEqualTo(Sidecar.ORIGIN_EXPORT);
+  }
+
+  @Test
+  void should_round_trip_a_recorded_origin() throws Exception {
+    Path file = tmp.resolve("rec.zip.jrsctl.json");
+    Sidecar base = sidecar(Optional.empty());
+    Sidecar.write(
+        file,
+        new Sidecar(
+            base.exportedAt(),
+            base.serverIdentity(),
+            base.serverVersion(),
+            base.keystoreFingerprint(),
+            base.flags(),
+            base.sha256(),
+            base.strategy(),
+            Sidecar.ORIGIN_RECORD));
+
+    assertThat(Sidecar.read(file).orElseThrow().origin()).isEqualTo(Sidecar.ORIGIN_RECORD);
+    assertThat(Files.readString(file, StandardCharsets.UTF_8)).contains("\"record\"");
+  }
 }

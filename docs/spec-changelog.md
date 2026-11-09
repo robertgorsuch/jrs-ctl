@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`export record`: a sidecar for an archive made by hand; issue #263)
+
+- §9.3, §9.5: `jrsctl export record <archive>` writes the `.jrsctl.json` sidecar for an archive `js-export` made outside jrsctl, from the archive's SHA-256 and its `index.xml` (folders, modules, full-server judgement, `jsVersion`), plus `--source-version`, `--source-keystore` (fingerprint only) and `--key-alias` when given; the Legacy alias is read from the index. The sidecar gains an `origin` field (`export` or `record`; absent means `export`). `import` then verifies the hash, scopes its snapshot, adopts the alias and applies the themes rule as for an exported archive.
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.
