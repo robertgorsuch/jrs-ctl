@@ -445,7 +445,7 @@ Registers an operator-customised file under `server.installDir` or `server.tomca
 - **Exit codes:** 0; **2** when the file is outside the installation, does not exist, or is already registered.
 - **Flags:** `<path>` — the customised file; `--original <file>` — the vendor's unmodified copy whose hash becomes the original; `--json` — the registration as JSON.
 
-### `jrsctl customizations scan --vendor <path> [--tomcat] [--register] [--json]`
+### `jrsctl customizations scan --vendor <path> [--installed <dir>] [--tomcat] [--register] [--json]`
 
 Finds the files the site changed without registering them one by one (#72). The installed webapp (`server.tomcatDir/webapps/<webappName>`) is compared with the vendor's untouched copy of the same version. `--vendor` is the unpacked distribution, its `jasperserver-pro` (or `jasperserver`) directory, or the `.war`, which is read as a stream and never unpacked. Every file that differs is listed:
 
@@ -460,10 +460,12 @@ Finds the files the site changed without registering them one by one (#72). The 
 
 Logs, caches and work files are ignored, and so are backup copies left beside an edited file (`*.bak`, `*.bak-<date>`, `*.orig`, `*.old`, `*~`). With `--register`, `--yes`, or a yes at the prompt, every changed and added file not yet registered is registered: a changed file with the vendor file's hash as its original, so an upgrade re-applies it automatically where the vendor left the file alone, and an added file with its own hash.
 
+**`--installed <dir>`** (#266) compares an explicit tree instead of the configured installation: the webapp directory itself (it holds `WEB-INF/`), or a Tomcat tree holding `webapps/jasperserver-pro` or `webapps/jasperserver`, as extracted from a container image. It needs no `config.yaml`, so it runs on a host that has never seen `init`; with `--tomcat` it lists that tree's Tomcat-side files. Nothing is registered, whatever `--register` or `--yes` says (`--register` with `--installed` is a usage error, exit 1): the tree is not the installation jrsctl manages, so the report is the product. Take the tree from the image, not from a running container, when the deployment substitutes configuration at start-up: a live tree holds the resolved values and secrets, and the scan would report the substitutions rather than the site's changes. The `registered` column still comes from this home's state store, so it is meaningful only when the explicit tree is the configured installation.
+
 - **Mutates:** nothing without registration; with it, as `customizations register` for each file.
 - **Rollback:** `customizations unregister <path>` for a file registered by mistake.
-- **Exit codes:** 0; **2** when `--vendor` holds no webapp or the installed webapp cannot be found.
-- **Flags:** `--vendor <path>` (required) — the vendor's copy; `--tomcat` — also list the Tomcat-side files to carry over; `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], tomcat: [{path, kind, registered}] (with --tomcat), registered: [...]}`.
+- **Exit codes:** 0; **1** when `--register` is combined with `--installed`; **2** when `--vendor` holds no webapp, the installed webapp cannot be found, or `--installed` names neither a webapp directory nor a Tomcat tree holding one.
+- **Flags:** `--vendor <path>` (required) — the vendor's copy; `--installed <dir>` — the tree to compare instead of the configured installation (a webapp directory or a Tomcat tree holding one), with nothing registered; `--tomcat` — also list the Tomcat-side files to carry over (of `--installed`'s tree when given); `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], tomcat: [{path, kind, registered}] (with --tomcat), registered: [...]}`.
 
 ### `jrsctl customizations unregister <path>`
 

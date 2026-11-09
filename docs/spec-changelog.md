@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`customizations scan --installed <dir>`; issue #266)
+
+- §10.3: `customizations scan` takes `--installed <dir>` to compare an explicit tree (a webapp directory, or a Tomcat tree holding `webapps/jasperserver[-pro]`) instead of the configured installation. It needs no `config.yaml`, lists the explicit tree's Tomcat-side files with `--tomcat`, and registers nothing (`--register` with it is a usage error, exit 1). It is the inventory for a webapp extracted from a container image, which jrsctl otherwise cannot reach (ADR-0043).
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.
