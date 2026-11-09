@@ -259,6 +259,9 @@ class ExportCommandTest {
             () -> fake,
             () -> {
               throw new UnsupportedOperationException("upgrade not used");
+            },
+            () -> {
+              throw new UnsupportedOperationException("repository not used");
             });
 
     Plan plan = registry.rebuild(PlanRegistry.EXPORT, PlanRegistry.exportArgs(options));

@@ -560,6 +560,9 @@ class PlanRegistryTest {
             },
             () -> {
               throw new IllegalStateException("not needed");
+            },
+            () -> {
+              throw new IllegalStateException("not needed");
             });
 
     assertThatThrownBy(() -> registry.rebuild("hotfix.teleport", "{}"))
@@ -580,6 +583,9 @@ class PlanRegistryTest {
             },
             () -> {
               throw new IllegalStateException("not needed");
+            },
+            () -> {
+              throw new IllegalStateException("not needed");
             });
 
     assertThatThrownBy(() -> registry.rebuild(PlanRegistry.HOTFIX_APPLY, "not json at all"))
@@ -592,12 +598,35 @@ class PlanRegistryTest {
   private final Recorder hotfix = new Recorder();
   private final Recorder exim = new Recorder();
   private final Recorder upgrade = new Recorder();
+  private final Recorder repository = new Recorder();
 
   private PlanRegistry registry() {
     return new PlanRegistry(
         () -> hotfix.as(HotfixOperations.class),
         () -> exim.as(ExportImportOperations.class),
-        () -> upgrade.as(UpgradeOperations.class));
+        () -> upgrade.as(UpgradeOperations.class),
+        () -> repository.as(com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.class));
+  }
+
+  /** Spec §10.5: a load run rebuilds from its stored arguments for {@code runs recover}. */
+  @Test
+  void should_plan_the_same_repository_load_when_rebuilding_from_the_stored_arguments()
+      throws IOException {
+    com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.LoadOptions options =
+        new com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.LoadOptions(
+            "jrs_101",
+            Path.of("exports", "js-8.2-export.zip"),
+            true,
+            Optional.of("deprecatedImportExportEncSecret"));
+
+    registry().rebuild(PlanRegistry.REPOSITORY_LOAD, PlanRegistry.repositoryLoadArgs(options));
+
+    assertThat(repository.calls).containsExactly("planLoad");
+    assertThat(repository.args.get(0)).containsExactly(options);
+    JsonNode stored = tree(PlanRegistry.repositoryLoadArgs(options));
+    assertThat(stored.get("schema").asText()).isEqualTo("jrs_101");
+    assertThat(stored.get("includeEvents").asBoolean()).isTrue();
+    assertThat(stored.get("keyAlias").asText()).isEqualTo("deprecatedImportExportEncSecret");
   }
 
   @Test

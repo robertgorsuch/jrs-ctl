@@ -281,6 +281,9 @@ class ImportCommandTest {
             () -> fake,
             () -> {
               throw new UnsupportedOperationException("upgrade not used");
+            },
+            () -> {
+              throw new UnsupportedOperationException("repository not used");
             });
 
     Plan plan = registry.rebuild(PlanRegistry.IMPORT, PlanRegistry.importArgs(options));

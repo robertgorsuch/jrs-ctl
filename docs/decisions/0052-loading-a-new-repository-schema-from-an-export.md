@@ -54,3 +54,13 @@ Option 1, as a design to be implemented behind its own issue. The shape:
 - `init --tools-only` is the first configuration shape with no server installation and no `--remote`-only REST; the operator guide's "two modes" sentence becomes three.
 - A later `repository load rollback` (drop by name, with the same marker and `js.dbName` guard) and a `--pause-jobs` equivalent for the vendor route are natural follow-ups and are not part of this design.
 - Option B of ADR-0047 is answered by a separate command, not by a mode of `upgrade`: `upgrade --mode newdb` keeps rebuilding the installed server's own database, and the plan summary of a `--tomcat-dir` newdb run points at `repository load` as the way to keep the old server running.
+
+## Implementation (2026-11-09, issue #279)
+
+Implemented as designed, with three deviations, each for the reason given:
+
+- `--key-password-ref` is left out. The Legacy key has no password, and an alias that has one is written into the buildomatic's `default_master.properties` by the operator, who stages that file anyway; the plan never writes it.
+- The catalogue probe and the drop by name have rules for PostgreSQL and MySQL only. The other database types are refused while planning with exit 6 rather than guessed at; a rule for one of them is a small, testable addition when a field needs it.
+- The collision rule compares `--schema` with the database that a `database.url` set in `config.yaml` names (when it differs from what buildomatic's properties imply); an installed buildomatic's `js.dbName` cannot be consulted because the command refuses a configuration that names an installation, and the sidecar carries no database name. The catalogue probe, which refuses any schema that already exists, is the guard that covers the rest.
+
+The `doctor` step requires the tool, configuration, secrets, vendor tools, disk and state items; the server items may fail (the target server is not deployed yet), and `vendor-java` and `database` are judged by `verify-buildomatic` and `verify-target-schema` against the buildomatic and the database server themselves, since doctor judges them against the configured server's version and driver.
