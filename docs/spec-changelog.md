@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`customizations scan` diffs for installer-written files; issue #267)
+
+- §10.3: a scan entry classified `INSTALLER` whose file the vendor copy also has carries the unified diff from the vendor copy to the installed file (`diff` in `--json`, printed under the table in text; a one-line notice for a binary or very large file), read from the unpacked copy or straight out of the war. `customizations register` accepts such a file with a warning that an upgrade will most likely report a `CONFLICT` for it. `--register` still skips `INSTALLER` files.
 ## Draft 1.2 amendment — 2026-11-09 (`export --full-server` over REST from another machine; ADR-0051, issue #265)
 
 - §9.2: from a machine whose configuration names no installation, `export --full-server` is no longer refused: with no `js-export` to run it is the server's REST export with the `everything` parameter when the `EXPORT_ASYNC` probe passes (the REST API reference, 8.2 to 10.1, lists repository resources, permissions, report jobs, users, roles and server settings for it and does not mention calendars; the plan says so). On the server host a full-server export is `js-export --everything` as before. `--stop-service` on a REST export is noted as having no effect.

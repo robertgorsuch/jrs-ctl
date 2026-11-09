@@ -115,9 +115,18 @@ final class WebappScanner {
         continue;
       }
       Change change = INSTALLER_WRITTEN.contains(rel) ? Change.INSTALLER : Change.CHANGED;
+      // issue #267: an installer-written file can carry a site's own change too, so say how it
+      // differs; a CHANGED file is registered and diffed with `customizations diff` instead
+      Optional<String> diff =
+          change == Change.INSTALLER ? installerDiff(vendor, rel, file) : Optional.empty();
       out.add(
           new ScanEntry(
-              rel, change, Optional.of(file), Optional.of(vendorPrint.sha256()), isRegistered));
+              rel,
+              change,
+              Optional.of(file),
+              Optional.of(vendorPrint.sha256()),
+              isRegistered,
+              diff));
     }
     for (Map.Entry<String, Fingerprint> e : theirs.entrySet()) {
       if (!ours.containsKey(e.getKey()) && !ignored(e.getKey())) {
@@ -136,6 +145,74 @@ final class WebappScanner {
                 ? a.change().compareTo(b.change())
                 : a.relativePath().compareTo(b.relativePath()));
     return out;
+  }
+
+  /** Files above this are not diffed in a scan listing; the notice says so. */
+  static final long MAX_DIFF_BYTES = 1L << 20;
+
+  /**
+   * The unified diff from the vendor's copy of {@code rel} to the installed {@code file}, the
+   * vendor copy read from the directory or straight out of the war; a one-line notice for a binary
+   * or very large file, and empty only when the vendor copy cannot be read at all.
+   */
+  static Optional<String> installerDiff(Path vendor, String rel, Path file) {
+    String vendorName = "vendor/" + rel;
+    String installedName = "installed/" + rel;
+    try {
+      if (Files.size(file) > MAX_DIFF_BYTES) {
+        return Optional.of(
+            "Files " + vendorName + " and " + installedName + " differ (too large to diff here)");
+      }
+      Optional<byte[]> theirs =
+          Files.isDirectory(vendor)
+              ? Optional.of(Files.readAllBytes(vendor.resolve(rel)))
+              : warEntry(vendor, rel);
+      if (theirs.isEmpty()) {
+        return Optional.empty();
+      }
+      byte[] ours = Files.readAllBytes(file);
+      if (hasNul(theirs.get()) || hasNul(ours)) {
+        return Optional.of("Binary files " + vendorName + " and " + installedName + " differ");
+      }
+      List<String> lines =
+          UnifiedDiff.of(lines(theirs.get()), lines(ours), vendorName, installedName);
+      return Optional.of(String.join("\n", lines));
+    } catch (IOException e) {
+      return Optional.of(
+          "Files " + vendorName + " and " + installedName + " differ (" + e.getMessage() + ")");
+    }
+  }
+
+  /** The bytes of one war entry, read as a stream; empty when the war has no such entry. */
+  private static Optional<byte[]> warEntry(Path war, String name) throws IOException {
+    try (InputStream in = Files.newInputStream(war);
+        ZipInputStream zip = new ZipInputStream(in)) {
+      ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null) {
+        if (entry.getName().equals(name)) {
+          byte[] data = zip.readNBytes((int) Math.min(MAX_DIFF_BYTES + 1, Integer.MAX_VALUE));
+          if (data.length > MAX_DIFF_BYTES) {
+            throw new IOException("too large to diff here");
+          }
+          return Optional.of(data);
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static boolean hasNul(byte[] data) {
+    int limit = Math.min(data.length, 8192);
+    for (int i = 0; i < limit; i++) {
+      if (data[i] == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static List<String> lines(byte[] data) {
+    return List.of(new String(data, java.nio.charset.StandardCharsets.UTF_8).split("\\R", -1));
   }
 
   static boolean ignored(String rel) {

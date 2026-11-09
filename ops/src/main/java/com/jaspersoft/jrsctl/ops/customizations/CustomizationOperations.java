@@ -71,18 +71,44 @@ public interface CustomizationOperations {
     REMOVED
   }
 
-  /** One file of {@link #scan}; {@code installed} is empty for a removed file. */
+  /**
+   * Issue #267: what registering an installer-written file means for an upgrade. The file is
+   * accepted; the operator should expect a conflict rather than an automatic re-apply.
+   */
+  String INSTALLER_ADVICE =
+      "this is a file the installer writes with site values; an upgrade re-applies a registered"
+          + " file only when the vendor's copy is unchanged, which is rarely true for one the"
+          + " installer rewrites, so expect a CONFLICT with a diff in plan-customization-reapply"
+          + " and carry the change over by hand";
+
+  /**
+   * One file of {@link #scan}; {@code installed} is empty for a removed file. {@code diff} is
+   * present for an {@link Change#INSTALLER} file the vendor copy also has (issue #267): the unified
+   * diff from the vendor copy to the installed file, or a one-line notice when either is binary or
+   * very large.
+   */
   record ScanEntry(
       String relativePath,
       Change change,
       Optional<Path> installed,
       Optional<String> vendorSha256,
-      boolean registered) {
+      boolean registered,
+      Optional<String> diff) {
     public ScanEntry {
       Objects.requireNonNull(relativePath, "relativePath");
       Objects.requireNonNull(change, "change");
       Objects.requireNonNull(installed, "installed");
       Objects.requireNonNull(vendorSha256, "vendorSha256");
+      Objects.requireNonNull(diff, "diff");
+    }
+
+    public ScanEntry(
+        String relativePath,
+        Change change,
+        Optional<Path> installed,
+        Optional<String> vendorSha256,
+        boolean registered) {
+      this(relativePath, change, installed, vendorSha256, registered, Optional.empty());
     }
   }
 
