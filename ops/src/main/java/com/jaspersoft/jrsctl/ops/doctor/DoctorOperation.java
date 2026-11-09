@@ -45,6 +45,7 @@ public final class DoctorOperation {
           "vendor",
           "vendor-java",
           "tomcat",
+          LocalChecks.ANALYTICS_JNDI,
           LocalChecks.TELEMETRY,
           LocalChecks.AUDIT,
           "database",
@@ -150,6 +151,16 @@ public final class DoctorOperation {
             ? guard(
                 "tomcat", s -> probe.dependent("tomcat", c -> ServerChecks.tomcat(s, c, layout)))
             : remote("tomcat"));
+    // issue #268: the analytics JNDI resources, mandatory from 9.0 on (upgrade guide 10.1 p.93)
+    items.add(
+        local
+            ? guard(
+                LocalChecks.ANALYTICS_JNDI,
+                s ->
+                    probe.dependent(
+                        LocalChecks.ANALYTICS_JNDI,
+                        c -> LocalChecks.analyticsJndi(c.identity().version(), layout)))
+            : remote(LocalChecks.ANALYTICS_JNDI));
     items.add(
         local
             ? guard(LocalChecks.TELEMETRY, s -> LocalChecks.telemetry(s, layout))

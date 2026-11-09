@@ -5,17 +5,19 @@ import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
 import com.jaspersoft.jrsctl.core.engine.StepResult;
 import com.jaspersoft.jrsctl.core.event.EventSink;
+import com.jaspersoft.jrsctl.ops.AnalyticsJndi;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Release notes 9.0 p.15 (issue #108): a 9.0 webapp's {@code META-INF/context.xml} must declare the
- * JNDI resources {@code jdbc/jasperserverSystemAnalytics} and {@code
- * jdbc/jasperserverAuditAnalytics} "even if the feature is disabled". Invariants: added to the
- * verify phase for a 9.0.x target only; read-only, nothing to compensate; a missing resource is a
- * logged WARN naming the file and the resource, never a failure, because the server that just
- * answered the smoke probes is the judge of whether it starts.
+ * Release notes 9.0 p.15 (issue #108) and upgrade guide 10.1 p.93 (issue #268): a 9.0 or later
+ * webapp's {@code META-INF/context.xml} must declare the JNDI resources {@code
+ * jdbc/jasperserverSystemAnalytics} and {@code jdbc/jasperserverAuditAnalytics} "even if the
+ * feature is disabled". Invariants: added to the verify phase for every target from 9.0 on;
+ * read-only, nothing to compensate; a missing resource is a logged WARN naming the file and the
+ * resource, never a failure, because the server that just answered the smoke probes is the judge of
+ * whether it starts.
  */
 final class AnalyticsJndiSteps {
 
@@ -40,7 +42,7 @@ final class AnalyticsJndiSteps {
 
     @Override
     public String title() {
-      return "check the analytics JNDI resources of the 9.0 webapp";
+      return "check the analytics JNDI resources of the upgraded webapp";
     }
 
     @Override
@@ -53,7 +55,9 @@ final class AnalyticsJndiSteps {
       return contextXml()
           + " must declare "
           + String.join(" and ", VendorPreconditions.ANALYTICS_JNDI)
-          + " even with the feature off (release notes 9.0); a WARN, not a failure";
+          + " even with the feature off (9.0 and later: release notes 9.0, "
+          + AnalyticsJndi.GUIDE
+          + "); a WARN, not a failure";
     }
 
     @Override
@@ -88,8 +92,10 @@ final class AnalyticsJndiSteps {
             contextXml()
                 + " does not declare "
                 + String.join(" or ", missing)
-                + "; JasperReports Server 9.0 wants both even when the analytics feature is off"
-                + " (release notes 9.0): add the Resource elements, then restart the server");
+                + "; JasperReports Server 9.0 and later want both even when the analytics feature"
+                + " is off (release notes 9.0, "
+                + AnalyticsJndi.GUIDE
+                + "): add the Resource elements, then restart the server");
       }
       return StepResult.ok();
     }

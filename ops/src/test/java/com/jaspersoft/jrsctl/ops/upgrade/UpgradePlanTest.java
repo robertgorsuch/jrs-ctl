@@ -627,20 +627,32 @@ class UpgradePlanTest {
     }
   }
 
-  /** Issue #108: the analytics JNDI check is a verify step for a 9.0.x target only. */
+  /**
+   * Issue #108 and #268: the analytics JNDI check is a verify step for every target from 9.0 on;
+   * the two resources stay mandatory in 10.x (upgrade guide 10.1 p.93), so a 10.x target gets it
+   * too, and a target below 9.0 does not.
+   */
   @Test
-  void should_check_the_analytics_jndi_resources_for_a_9_0_target_only() throws Exception {
+  void should_check_the_analytics_jndi_resources_for_every_target_from_9_0() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       Plan nine = f.ops().planUpgrade(newdb(f));
       Plan ten = f.ops().planUpgrade(UpgradeOptions.newdb("10.0.0", f.packageDir));
+      Plan eight = f.ops().planUpgrade(UpgradeOptions.newdb("8.2.1", f.packageDir));
+      // 10.1 is reached from 10.0 in the matrix, not from the fixture's 8.2.0
+      f.fake.adapter.identity = com.jaspersoft.jrsctl.ops.FakeJrsAdapter.identity("10.0.0");
+      Plan tenOne = f.ops().planUpgrade(UpgradeOptions.newdb("10.1.0", f.packageDir));
 
       Step check = UpgradeFixture.step(nine, "check-analytics-jndi");
       assertThat(check.phase()).isEqualTo("verify");
       assertThat(check.mutating()).isFalse();
       assertThat(check.detail())
           .contains("jdbc/jasperserverSystemAnalytics")
-          .contains("jdbc/jasperserverAuditAnalytics");
-      assertThat(UpgradeFixture.ids(ten)).doesNotContain("check-analytics-jndi");
+          .contains("jdbc/jasperserverAuditAnalytics")
+          .contains("9.0 and later");
+      assertThat(UpgradeFixture.ids(ten))
+          .containsSubsequence("plan-customization-reapply", "check-analytics-jndi", "smoke");
+      assertThat(UpgradeFixture.ids(tenOne)).contains("check-analytics-jndi");
+      assertThat(UpgradeFixture.ids(eight)).doesNotContain("check-analytics-jndi");
     }
   }
 
