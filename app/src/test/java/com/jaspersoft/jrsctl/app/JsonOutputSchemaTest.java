@@ -994,6 +994,19 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "import --pause-jobs --plan",
+            "import",
+            0,
+            dir -> {
+              fakeExim();
+              serverHome(dir);
+              Path archive = dir.resolve("in.zip");
+              Files.writeString(archive, "zip");
+              return run(
+                  join(serverArgs(dir), "import", archive.toString(), "--pause-jobs", "--plan"));
+            }));
+    s.add(
+        of(
             "import --yes",
             "import",
             0,

@@ -235,6 +235,22 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public List<String> listJobIds() {
+    calls.add("listJobIds");
+    return List.of();
+  }
+
+  @Override
+  public void pauseJobs(List<String> ids) {
+    calls.add("pauseJobs " + ids);
+  }
+
+  @Override
+  public void resumeJobs(List<String> ids) {
+    calls.add("resumeJobs " + ids);
+  }
+
+  @Override
   public List<String> listUserIds() {
     calls.add("listUserIds");
     return List.of();

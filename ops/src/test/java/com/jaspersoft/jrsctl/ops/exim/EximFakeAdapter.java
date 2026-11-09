@@ -210,6 +210,38 @@ final class EximFakeAdapter implements JrsAdapter {
     return organizations.contains(id);
   }
 
+  /** The report job ids the server holds; a test adds to it to stand for an import's jobs. */
+  final List<String> jobs = new ArrayList<>();
+
+  /** Every id passed to {@link #pauseJobs}, in call order (an id can appear twice). */
+  final List<String> paused = new ArrayList<>();
+
+  final List<String> resumed = new ArrayList<>();
+
+  /** When true, {@link #pauseJobs} fails as a server refusal would. */
+  boolean pauseFails;
+
+  @Override
+  public List<String> listJobIds() {
+    requireUp("list jobs");
+    return List.copyOf(jobs);
+  }
+
+  @Override
+  public void pauseJobs(List<String> ids) {
+    requireUp("pause jobs");
+    if (pauseFails) {
+      throw new IllegalStateException("HTTP 500 from POST /rest_v2/jobs/pause (fake)");
+    }
+    paused.addAll(ids);
+  }
+
+  @Override
+  public void resumeJobs(List<String> ids) {
+    requireUp("resume jobs");
+    resumed.addAll(ids);
+  }
+
   @Override
   public void createFolder(String folderUri, String label) {}
 

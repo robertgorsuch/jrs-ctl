@@ -621,5 +621,20 @@ class StepIdempotencyTest {
     public boolean organizationExists(String id) {
       return true;
     }
+
+    @Override
+    public java.util.List<String> listJobIds() {
+      return java.util.List.of();
+    }
+
+    @Override
+    public void pauseJobs(java.util.List<String> ids) {
+      throw new UnsupportedOperationException("not used");
+    }
+
+    @Override
+    public void resumeJobs(java.util.List<String> ids) {
+      throw new UnsupportedOperationException("not used");
+    }
   }
 }

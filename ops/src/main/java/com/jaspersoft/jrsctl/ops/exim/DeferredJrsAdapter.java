@@ -138,6 +138,21 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public List<String> listJobIds() {
+    return adapter().listJobIds();
+  }
+
+  @Override
+  public void pauseJobs(List<String> ids) {
+    adapter().pauseJobs(ids);
+  }
+
+  @Override
+  public void resumeJobs(List<String> ids) {
+    adapter().resumeJobs(ids);
+  }
+
+  @Override
   public List<String> listUserIds() {
     return adapter().listUserIds();
   }

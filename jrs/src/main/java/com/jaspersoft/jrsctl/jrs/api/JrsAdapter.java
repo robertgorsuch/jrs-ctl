@@ -140,4 +140,19 @@ public interface JrsAdapter extends AutoCloseable {
 
   /** True when {@code GET /rest_v2/organizations/<id>} answers 200; false on 404. */
   boolean organizationExists(String id);
+
+  // ---- report jobs (issue #264): the listing is read-only, pause and resume are Steps only ----
+
+  /** Ids of every report job the server holds ({@code GET /rest_v2/jobs}); empty for none. */
+  List<String> listJobIds();
+
+  /**
+   * Pauses the jobs with these ids ({@code POST /rest_v2/jobs/pause} with the id list; REST API
+   * reference 10.0 p.229). Pausing a paused job is a no-op on the server; an empty list sends
+   * nothing.
+   */
+  void pauseJobs(List<String> ids);
+
+  /** The reverse of {@link #pauseJobs} ({@code POST /rest_v2/jobs/resume}). */
+  void resumeJobs(List<String> ids);
 }
