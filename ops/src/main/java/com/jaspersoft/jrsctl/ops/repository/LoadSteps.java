@@ -16,6 +16,7 @@ import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Steps;
+import com.jaspersoft.jrsctl.ops.db.DatabaseCatalog;
 import com.jaspersoft.jrsctl.ops.db.JdbcConnector;
 import com.jaspersoft.jrsctl.ops.db.JdbcException;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
@@ -33,10 +34,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The steps of {@code repository load} (spec §10.5, ADR-0052). Invariants: the four preflight steps
- * mutate nothing and report every refusal from {@code precheck}, so the run ends with exit 2 and
- * nothing created; the four mutating steps are idempotent through a done marker in the run
- * directory and share one compensation, {@link SchemaDrop}; {@code create-js-db} records the
+ * The steps of {@code repository load} (spec §10.5, ADR-0052). Invariants: the four read-only
+ * preflight steps mutate nothing and report every refusal from {@code precheck}, so the run ends
+ * with exit 2 and nothing created; {@code render-config}, the last preflight step, is the first to
+ * touch disk and only the buildomatic's own {@code build_conf/default} (issue #279 item 6), undone
+ * by {@code js-ant clean-config}; the four schema steps are idempotent through a done marker in the
+ * run directory and share one compensation, {@link SchemaDrop}; {@code create-js-db} records the
  * schema's name before the vendor target is launched; the vendor tools run with {@code
  * vendor.javaHome} and their output is streamed as redacted log events; {@code record-load} is
  * additive and its compensation removes only its own file.
@@ -47,6 +50,10 @@ final class LoadSteps {
   static final String VERIFY_BUILDOMATIC = "verify-buildomatic";
   static final String VERIFY_TARGET_SCHEMA = "verify-target-schema";
   static final String ADOPT_EXPORT = "adopt-export";
+  static final String RENDER_CONFIG = "render-config";
+  static final String CLEAN_CONFIG = "clean-config";
+  static final String GEN_CONFIG = "gen-config";
+  static final String RENDERED_DIR = "rendered-config";
   static final String CREATE_JS_DB = "create-js-db";
   static final String IMPORT_EXPORT = "import-export";
   static final String RECORD_LOAD = "record-load";
@@ -532,6 +539,182 @@ final class LoadSteps {
     }
   }
 
+  /**
+   * {@code js-ant clean-config} then {@code js-ant gen-config}: the buildomatic renders {@code
+   * default_master.properties} into {@code build_conf/default}, the files every later vendor target
+   * reads. The rendered {@code metadata.jdbc.url} must name {@code --schema} on the database server
+   * the plan was made for; otherwise the step fails and its compensation cleans what it rendered,
+   * so nothing is created against a connection the operator has not seen. The rendered properties
+   * are copied, passwords masked, to {@code snapshots/<runId>/rendered-config} for the record.
+   */
+  static final class RenderConfig extends Vendor {
+    RenderConfig(LoadRuntime rt, LoadInput in) {
+      super(rt, in);
+    }
+
+    @Override
+    public String id() {
+      return RENDER_CONFIG;
+    }
+
+    @Override
+    public String phase() {
+      return LoadPhases.PREFLIGHT;
+    }
+
+    @Override
+    public String title() {
+      return "render the buildomatic's configuration (js-ant "
+          + CLEAN_CONFIG
+          + ", "
+          + GEN_CONFIG
+          + ")";
+    }
+
+    @Override
+    public String detail() {
+      return "js-ant "
+          + CLEAN_CONFIG
+          + " then "
+          + GEN_CONFIG
+          + " renders "
+          + Buildomatic.MASTER_PROPERTIES
+          + " into "
+          + in.renderedDir()
+          + "; "
+          + RenderedConfig.JDBC_URL_KEY
+          + " in "
+          + RenderedConfig.JDBC_PROPERTIES
+          + " must name "
+          + in.schema()
+          + " on the server of "
+          + in.catalog().adminUrl()
+          + "; the rendered properties are copied, passwords masked, to snapshots/<runId>/"
+          + RENDERED_DIR;
+    }
+
+    @Override
+    public StepResult execute(Context ctx, EventSink out) {
+      if (isDone(ctx)) {
+        Steps.info(
+            rt.services(), ctx, out, this, "configuration already rendered in this run; skipping");
+        return StepResult.ok();
+      }
+      Optional<StepResult> failure = ant(ctx, out, CLEAN_CONFIG);
+      if (failure.isPresent()) {
+        return failure.get();
+      }
+      failure = ant(ctx, out, GEN_CONFIG);
+      if (failure.isPresent()) {
+        return failure.get();
+      }
+      Path jdbcFile = in.renderedDir().resolve(RenderedConfig.JDBC_PROPERTIES);
+      if (!Files.isRegularFile(jdbcFile)) {
+        return Steps.recoverable(
+            "js-ant " + GEN_CONFIG + " rendered no " + jdbcFile,
+            "run js-ant " + GEN_CONFIG + " in " + in.buildomatic().dir() + " and read its output");
+      }
+      Optional<String> url;
+      try {
+        url = RenderedConfig.property(jdbcFile, RenderedConfig.JDBC_URL_KEY);
+      } catch (IOException e) {
+        return Steps.recoverable(
+            "cannot read " + jdbcFile + ": " + e.getMessage(),
+            "check the file and its permissions");
+      }
+      if (url.isEmpty()) {
+        return Steps.recoverable(
+            jdbcFile + " has no " + RenderedConfig.JDBC_URL_KEY,
+            "check dbType, dbHost, dbPort and js.dbName in "
+                + in.buildomatic().dir().resolve(Buildomatic.MASTER_PROPERTIES));
+      }
+      Optional<DatabaseCatalog> rendered;
+      try {
+        rendered = DatabaseCatalog.of(in.jdbc().withUrl(url.get()));
+      } catch (IllegalArgumentException e) {
+        rendered = Optional.empty();
+      }
+      if (rendered.isEmpty() || !rendered.get().schemaName().equals(in.schema())) {
+        return Steps.recoverable(
+            "rendered "
+                + RenderedConfig.JDBC_URL_KEY
+                + "="
+                + url.get()
+                + " names "
+                + rendered.map(r -> "database " + r.schemaName()).orElse("no database")
+                + ", not --schema "
+                + in.schema(),
+            "fix js.dbName (and dbType) in "
+                + in.buildomatic().dir().resolve(Buildomatic.MASTER_PROPERTIES)
+                + ", then run again");
+      }
+      if (!rendered.get().adminUrl().equals(in.catalog().adminUrl())) {
+        return Steps.recoverable(
+            "rendered "
+                + RenderedConfig.JDBC_URL_KEY
+                + "="
+                + url.get()
+                + " names the server of "
+                + rendered.get().adminUrl()
+                + "; the plan was made for "
+                + in.catalog().adminUrl(),
+            "make dbHost and dbPort in "
+                + in.buildomatic().dir().resolve(Buildomatic.MASTER_PROPERTIES)
+                + " and database.url in config.yaml agree, then plan again");
+      }
+      List<String> copied;
+      try {
+        copied =
+            RenderedConfig.copy(
+                in.renderedDir(), RenderedConfig.copyDir(ctx), rt.services().redactor());
+      } catch (IOException e) {
+        return Steps.recoverable(
+            "cannot copy the rendered configuration to "
+                + RenderedConfig.copyDir(ctx)
+                + ": "
+                + e.getMessage(),
+            "fix the jrsctl home's disk or permissions; nothing was created");
+      }
+      return markDone(
+          ctx,
+          out,
+          "configuration rendered; "
+              + RenderedConfig.JDBC_URL_KEY
+              + "="
+              + url.get()
+              + "; "
+              + copied.size()
+              + " properties file(s) copied, passwords masked, to "
+              + RenderedConfig.copyDir(ctx));
+    }
+
+    /** {@code js-ant clean-config} when something is rendered, then the copy and the marker go. */
+    @Override
+    public StepResult compensate(Context ctx, EventSink out) {
+      if (Files.isDirectory(in.renderedDir())) {
+        Optional<StepResult> failure = ant(ctx, out, CLEAN_CONFIG);
+        if (failure.isPresent()) {
+          return failure.get();
+        }
+      }
+      try {
+        RenderedConfig.deleteCopy(RenderedConfig.copyDir(ctx));
+        Files.deleteIfExists(done(ctx));
+      } catch (IOException e) {
+        return Steps.recoverable(
+            "cannot remove " + RenderedConfig.copyDir(ctx) + ": " + e.getMessage(),
+            "remove it by hand");
+      }
+      Steps.info(
+          rt.services(),
+          ctx,
+          out,
+          this,
+          "rendered configuration cleaned (js-ant " + CLEAN_CONFIG + ")");
+      return StepResult.ok();
+    }
+  }
+
   // ---------------------------------------------------------------- create, initialise, load
 
   /** {@code js-ant create-js-db}, with the schema's name recorded before the target runs. */
@@ -774,7 +957,12 @@ final class LoadSteps {
 
     @Override
     public String detail() {
-      return "snapshots/<runId>/" + RECORD_FILE + " and the audit entry " + AUDIT_COMPLETED;
+      return "snapshots/<runId>/"
+          + RECORD_FILE
+          + " (with the hashes of the rendered configuration kept under "
+          + RENDERED_DIR
+          + ") and the audit entry "
+          + AUDIT_COMPLETED;
     }
 
     @Override
@@ -795,6 +983,16 @@ final class LoadSteps {
       node.put("loadedAt", rt.clock().instant().toString());
       node.put("runId", ctx.runId());
       try {
+        Path copy = RenderedConfig.copyDir(ctx);
+        List<Path> rendered = RenderedConfig.propertiesFiles(copy);
+        if (!rendered.isEmpty()) {
+          ObjectNode renderedNode = node.putObject("renderedConfig");
+          renderedNode.put("dir", copy.toString());
+          ObjectNode files = renderedNode.putObject("files");
+          for (Path f : rendered) {
+            files.put(f.getFileName().toString(), rt.files().sha256(f));
+          }
+        }
         Files.createDirectories(file(ctx).getParent());
         Files.writeString(file(ctx), Json.writePretty(node), StandardCharsets.UTF_8);
       } catch (IOException e) {

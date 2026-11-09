@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`repository load` renders the configuration first; issue #279 item 6)
+
+- §10.5: preflight ends with `render-config`, `js-ant clean-config` then `gen-config`, the first step that touches disk and only the buildomatic's own `build_conf/default`. The rendered `metadata.jdbc.url` must name `--schema` on the database server the plan was made for, else the step fails, `clean-config` undoes it and the run ends with exit 3 and nothing created. The rendered `*.properties` are kept, passwords masked, under `snapshots/<runId>/rendered-config`, and `record-load` writes their hashes. The rendered files are not in the fingerprint; their source `default_master.properties` is.
+
 ## Draft 1.2 amendment — 2026-11-09 (`repository load` implemented; tools-only configuration; ADR-0052, issue #279)
 
 - §10.5: no longer a design. `jrsctl repository load --schema <name> --from <export> [--include-events] [--key-alias <alias>]` runs the vendor's new-schema route as one journaled plan from a tools-only configuration (`init --tools-only --remote <url> --buildomatic-dir <dir>`; `Config.Server.namesToolsOnly()`). Refusals while planning (not tools-only, no catalogue rule for the database type, a schema that is the configured server's own database: exit 6) and before anything is created (`js.dbName`, `appServerType`, the schema already exists). The compensation drops the schema only when `schema.created` and `default_master.properties` both name it, by name over JDBC; PostgreSQL and MySQL are supported. `--key-password-ref` of the design is dropped. `doctor` in a tools-only configuration skips the installation items and asks the database server's catalogue whether the schema exists; `export` and `import` treat the configuration as REST-only.

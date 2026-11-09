@@ -149,6 +149,21 @@ public final class LoadFixture implements AutoCloseable {
     write(buildomaticDir.resolve("fail-" + target), "");
   }
 
+  /** Makes the fake {@code js-ant gen-config} render {@code url} as {@code metadata.jdbc.url}. */
+  public void renderUrl(String url) throws IOException {
+    write(buildomaticDir.resolve("rendered-url"), url);
+  }
+
+  /** Makes the fake {@code js-ant gen-config} write nothing at all. */
+  public void renderNothing() throws IOException {
+    write(buildomaticDir.resolve("render-nothing"), "");
+  }
+
+  /** Where the vendor's {@code gen-config} renders the configuration. */
+  public Path renderedDir() {
+    return buildomaticDir.resolve("build_conf").resolve("default");
+  }
+
   /** Makes the fake {@code js-import} stop before printing Done. */
   public void failImport() throws IOException {
     write(buildomaticDir.resolve("fail-js-import"), "");
@@ -260,6 +275,21 @@ public final class LoadFixture implements AutoCloseable {
             + "if \"%1\"==\"create-js-db\" echo created > \""
             + created
             + "\"\r\n"
+            + "if \"%1\"==\"clean-config\" if exist \"%~dp0build_conf\\default\" rmdir /s /q"
+            + " \"%~dp0build_conf\\default\"\r\n"
+            + "if not \"%1\"==\"gen-config\" goto :done\r\n"
+            + "if exist \"%~dp0render-nothing\" goto :done\r\n"
+            + "if not exist \"%~dp0build_conf\\default\" mkdir \"%~dp0build_conf\\default\"\r\n"
+            + "set \"URL=jdbc:postgresql://db.example.internal:5432/jrs_101\"\r\n"
+            + "if exist \"%~dp0rendered-url\" set /p URL=<\"%~dp0rendered-url\"\r\n"
+            + "echo metadata.jdbc.url=%URL%> \"%~dp0build_conf\\default\\js.jdbc.properties\"\r\n"
+            + "echo metadata.jdbc.username=postgres>>"
+            + " \"%~dp0build_conf\\default\\js.jdbc.properties\"\r\n"
+            + "echo metadata.jdbc.password=TopSecret>>"
+            + " \"%~dp0build_conf\\default\\js.jdbc.properties\"\r\n"
+            + "echo org.quartz.scheduler.instanceName=JasperServerScheduler>"
+            + " \"%~dp0build_conf\\default\\js.quartz.properties\"\r\n"
+            + ":done\r\n"
             + "echo BUILD SUCCESSFUL\r\n"
             + "exit /b 0\r\n");
     write(
@@ -273,6 +303,18 @@ public final class LoadFixture implements AutoCloseable {
             + "if [ \"$1\" = \"create-js-db\" ]; then echo created > \""
             + created
             + "\"; fi\n"
+            + "here=\"$(dirname \"$0\")\"\n"
+            + "if [ \"$1\" = \"clean-config\" ]; then rm -rf \"$here/build_conf/default\"; fi\n"
+            + "if [ \"$1\" = \"gen-config\" ] && [ ! -f \"$here/render-nothing\" ]; then\n"
+            + "  d=\"$here/build_conf/default\"; mkdir -p \"$d\"\n"
+            + "  url=\"jdbc:postgresql://db.example.internal:5432/jrs_101\"\n"
+            + "  if [ -f \"$here/rendered-url\" ]; then url=\"$(cat \"$here/rendered-url\")\"; fi\n"
+            + "  printf 'metadata.jdbc.url=%s\\nmetadata.jdbc.username=postgres\\n' \"$url\" >"
+            + " \"$d/js.jdbc.properties\"\n"
+            + "  echo metadata.jdbc.password=TopSecret >> \"$d/js.jdbc.properties\"\n"
+            + "  echo org.quartz.scheduler.instanceName=JasperServerScheduler >"
+            + " \"$d/js.quartz.properties\"\n"
+            + "fi\n"
             + "echo BUILD SUCCESSFUL\n"
             + "exit 0\n");
     write(

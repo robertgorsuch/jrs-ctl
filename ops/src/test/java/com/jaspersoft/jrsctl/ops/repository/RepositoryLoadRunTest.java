@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,11 @@ class RepositoryLoadRunTest {
 
       assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
       String log = f.vendorLogText();
+      int clean = indexOf(log, "js-ant clean-config");
+      int gen = indexOf(log, "js-ant gen-config");
       int create = indexOf(log, "js-ant create-js-db");
+      assertThat(clean).isLessThan(gen);
+      assertThat(gen).isLessThan(create);
       int init = indexOf(log, "js-ant init-js-db-pro");
       int minimal = indexOf(log, "js-ant import-minimal-pro");
       int load = indexOf(log, "js-import --input-zip");
@@ -48,7 +53,22 @@ class RepositoryLoadRunTest {
       assertThat(record).exists();
       assertThat(Files.readString(record))
           .contains(LoadFixture.SCHEMA)
-          .contains("js-8.2-export.zip");
+          .contains("js-8.2-export.zip")
+          .contains("renderedConfig")
+          .contains("js.jdbc.properties");
+      Path rendered =
+          f.home()
+              .snapshots()
+              .resolve("r-load")
+              .resolve(LoadSteps.RENDERED_DIR)
+              .resolve("js.jdbc.properties");
+      assertThat(rendered).exists();
+      assertThat(Files.readString(rendered))
+          .contains("metadata.jdbc.url=jdbc:postgresql://db.example.internal:5432/jrs_101")
+          .contains("metadata.jdbc.password=" + Redactor.MASK)
+          .doesNotContain("TopSecret");
+      assertThat(f.home().snapshots().resolve("r-load").resolve(LoadSteps.RENDERED_DIR))
+          .isDirectoryContaining("glob:**js.quartz.properties");
       assertThat(f.store().auditRows(20))
           .anyMatch(a -> a.action().equals(LoadSteps.AUDIT_COMPLETED));
       assertThat(f.jdbc.executed).noneMatch(sql -> sql.startsWith("DROP DATABASE"));
@@ -115,6 +135,77 @@ class RepositoryLoadRunTest {
       assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
       assertThat(((RunOutcome.PrecheckFailed) outcome).message()).contains("appServerType");
       assertThat(f.vendorLogText()).isEmpty();
+    }
+  }
+
+  /** Issue #279 item 6: the rendered configuration is what the vendor targets will act on. */
+  @Test
+  void should_roll_back_before_creating_anything_when_the_rendered_url_names_another_database()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.renderUrl("jdbc:postgresql://db.example.internal:5432/jasperserver");
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      RunOutcome.RolledBack rolled = (RunOutcome.RolledBack) outcome;
+      assertThat(rolled.rolledBackToPhase()).isEqualTo(LoadPhases.PREFLIGHT);
+      assertThat(rolled.cause())
+          .contains("metadata.jdbc.url")
+          .contains("jasperserver")
+          .contains(LoadFixture.SCHEMA);
+      assertThat(f.vendorLogText()).doesNotContain("create-js-db");
+      assertThat(f.schemaExists()).isFalse();
+      // the compensation is js-ant clean-config: the rendered files and their copy are gone
+      assertThat(f.renderedDir()).doesNotExist();
+      assertThat(f.home().snapshots().resolve("r-load").resolve(LoadSteps.RENDERED_DIR))
+          .doesNotExist();
+      assertThat(f.vendorLogText().split("clean-config", -1)).hasSize(3);
+    }
+  }
+
+  @Test
+  void should_roll_back_before_creating_anything_when_the_rendered_url_names_another_server()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.renderUrl("jdbc:postgresql://other.example.internal:5432/" + LoadFixture.SCHEMA);
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause())
+          .contains("other.example.internal")
+          .contains("db.example.internal");
+      assertThat(f.vendorLogText()).doesNotContain("create-js-db");
+    }
+  }
+
+  @Test
+  void should_roll_back_before_creating_anything_when_gen_config_renders_no_jdbc_properties()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.renderNothing();
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("js.jdbc.properties");
+      assertThat(f.vendorLogText()).doesNotContain("create-js-db");
+      assertThat(f.schemaExists()).isFalse();
+    }
+  }
+
+  @Test
+  void should_roll_back_before_creating_anything_when_gen_config_fails() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.failTarget("gen-config");
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("gen-config");
+      assertThat(f.vendorLogText()).doesNotContain("create-js-db");
+      assertThat(f.schemaExists()).isFalse();
     }
   }
 

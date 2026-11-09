@@ -208,6 +208,9 @@ import org.junit.jupiter.api.Test;
  * <tr><td>repository LoadSteps.CreateJsDb, InitJsDb, ImportMinimal, ImportExport</td>
  *     <td>RepositoryStepIdempotencyTest#should_&lt;step&gt;_once_when_&lt;step&gt;_executes_twice</td>
  *     <td>RepositoryStepIdempotencyTest#should_drop_the_schema_once_when_&lt;step&gt;_compensates_twice</td></tr>
+ * <tr><td>repository LoadSteps.RenderConfig</td>
+ *     <td>RepositoryStepIdempotencyTest#should_render_once_when_render_config_executes_twice</td>
+ *     <td>RepositoryStepIdempotencyTest#should_clean_the_rendered_files_once_when_render_config_compensates_twice</td></tr>
  * <tr><td>repository LoadSteps.RecordLoad</td>
  *     <td>RepositoryStepIdempotencyTest#should_write_the_same_record_when_record_load_executes_twice</td>
  *     <td>RepositoryStepIdempotencyTest#should_remove_the_record_once_when_record_load_compensates_twice</td></tr>
@@ -603,6 +606,12 @@ class IdempotencyCoverageTest {
                   + "should_import_the_export_once_when_import_export_executes_twice;"
                   + L
                   + "should_drop_the_schema_once_when_import_export_compensates_twice"),
+          Map.entry(
+              OPS + "repository.LoadSteps$RenderConfig",
+              L
+                  + "should_render_once_when_render_config_executes_twice;"
+                  + L
+                  + "should_clean_the_rendered_files_once_when_render_config_compensates_twice"),
           Map.entry(
               OPS + "repository.LoadSteps$RecordLoad",
               L

@@ -32,6 +32,7 @@ class RepositoryLoadPlanTest {
               LoadSteps.VERIFY_BUILDOMATIC,
               LoadSteps.VERIFY_TARGET_SCHEMA,
               LoadSteps.ADOPT_EXPORT,
+              LoadSteps.RENDER_CONFIG,
               LoadSteps.CREATE_JS_DB,
               "init-js-db-pro",
               "import-minimal-pro",
@@ -48,9 +49,14 @@ class RepositoryLoadPlanTest {
       assertThat(plan.summary().target()).contains(LoadFixture.SCHEMA);
       assertThat(plan.summary().serviceRestart()).isFalse();
       assertThat(plan.summary().resourcesTouched())
-          .containsExactly("database " + LoadFixture.SCHEMA);
+          .containsExactly("database " + LoadFixture.SCHEMA, "buildomatic " + f.renderedDir());
       assertThat(plan.summary().rollbackPointsByPhase().get(LoadPhases.PREFLIGHT))
-          .contains("nothing mutated");
+          .isEqualTo(DefaultRepositoryOperations.PREFLIGHT_ROLLBACK)
+          .contains("clean-config");
+      Step render = Idempotency.step(plan, LoadSteps.RENDER_CONFIG);
+      assertThat(render.phase()).isEqualTo(LoadPhases.PREFLIGHT);
+      assertThat(render.mutating()).isTrue();
+      assertThat(render.detail()).contains("gen-config").contains("metadata.jdbc.url");
       for (String phase : List.of(LoadPhases.CREATE, LoadPhases.INITIALISE, LoadPhases.LOAD)) {
         assertThat(plan.summary().rollbackPointsByPhase().get(phase))
             .contains("drop")
