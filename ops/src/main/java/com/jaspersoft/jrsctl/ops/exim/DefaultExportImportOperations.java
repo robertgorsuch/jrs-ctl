@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
+import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.strategy.Strategies;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
@@ -204,6 +205,73 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
     inputs.put("strategy", options.strategy().map(Enum::name).orElse("auto"));
     inputs.put("config", configHash());
     return new Plan(planId(EXPORT_OPERATION), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  // ---------------------------------------------------------------- export record (#263)
+
+  @Override
+  public RecordedSidecar recordSidecar(RecordSidecarOptions options) {
+    Objects.requireNonNull(options, "options");
+    Path archive = options.archive();
+    if (!Files.isRegularFile(archive)) {
+      throw new IllegalArgumentException(archive + " does not exist or is not a file");
+    }
+    Path file = Sidecar.pathFor(archive);
+    if (Files.exists(file) && !options.force()) {
+      throw new IllegalStateException(
+          file + " already exists; pass --force to replace it, or import with the one there");
+    }
+    Optional<Path> keystore = options.sourceKeystore();
+    if (keystore.isPresent() && !Files.isRegularFile(keystore.get())) {
+      throw new IllegalArgumentException(
+          "source keystore " + keystore.get() + " does not exist or is not a file");
+    }
+    try {
+      ExportIndex index = ExportIndex.read(archive);
+      String sha256 = services.platform().files().sha256(archive);
+      Optional<String> fingerprint = Optional.empty();
+      if (keystore.isPresent()) {
+        fingerprint = Optional.of(services.platform().files().sha256(keystore.get()));
+      }
+      // an explicit alias wins; the Legacy alias is the one index.xml can name usefully, since
+      // the server's own import/export key is no alias an import could ask for
+      Optional<String> alias =
+          options
+              .keyAlias()
+              .or(() -> index.keyAlias().filter(ExportRequest.PORTABLE_KEY_ALIAS::equals));
+      String version = options.sourceVersion().or(index::version).orElse(UNKNOWN_VERSION);
+      boolean full = index.fullServer();
+      Sidecar.Flags flags =
+          new Sidecar.Flags(
+              full ? ExportRequest.Scope.EVERYTHING : ExportRequest.Scope.REPOSITORY,
+              index.uris(),
+              index.hasUsersRoles(),
+              index.hasAccessEvents(),
+              index.hasAuditEvents(),
+              index.hasMonitoringEvents(),
+              full,
+              full,
+              alias,
+              Optional.empty());
+      Sidecar sidecar =
+          new Sidecar(
+              services.clock().instant(),
+              "recorded from "
+                  + archive.getFileName()
+                  + " ("
+                  + index.jsVersion().orElse("version not in index.xml")
+                  + ")",
+              version,
+              fingerprint,
+              flags,
+              sha256,
+              ExportImportStrategy.Kind.VENDOR_CLI,
+              Sidecar.ORIGIN_RECORD);
+      Sidecar.write(file, sidecar);
+      return new RecordedSidecar(file, sidecar, index);
+    } catch (IOException e) {
+      throw new UncheckedIOException("cannot record " + archive + ": " + e.getMessage(), e);
+    }
   }
 
   // ---------------------------------------------------------------- import

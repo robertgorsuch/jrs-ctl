@@ -3,6 +3,9 @@
 ## Draft 1.2 amendment — 2026-11-09 (`export --full-server` over REST from another machine; ADR-0051, issue #265)
 
 - §9.2: from a machine whose configuration names no installation, `export --full-server` is no longer refused: with no `js-export` to run it is the server's REST export with the `everything` parameter when the `EXPORT_ASYNC` probe passes (the REST API reference, 8.2 to 10.1, lists repository resources, permissions, report jobs, users, roles and server settings for it and does not mention calendars; the plan says so). On the server host a full-server export is `js-export --everything` as before. `--stop-service` on a REST export is noted as having no effect.
+## Draft 1.2 amendment — 2026-11-09 (`export record`: a sidecar for an archive made by hand; issue #263)
+
+- §9.3, §9.5: `jrsctl export record <archive>` writes the `.jrsctl.json` sidecar for an archive `js-export` made outside jrsctl, from the archive's SHA-256 and its `index.xml` (folders, modules, full-server judgement, `jsVersion`), plus `--source-version`, `--source-keystore` (fingerprint only) and `--key-alias` when given; the Legacy alias is read from the index. The sidecar gains an `origin` field (`export` or `record`; absent means `export`). `import` then verifies the hash, scopes its snapshot, adopts the alias and applies the themes rule as for an exported archive.
 ## Draft 1.2 amendment — 2026-11-09 (`customizations scan --installed <dir>`; issue #266)
 
 - §10.3: `customizations scan` takes `--installed <dir>` to compare an explicit tree (a webapp directory, or a Tomcat tree holding `webapps/jasperserver[-pro]`) instead of the configured installation. It needs no `config.yaml`, lists the explicit tree's Tomcat-side files with `--tomcat`, and registers nothing (`--register` with it is a usage error, exit 1). It is the inventory for a webapp extracted from a container image, which jrsctl otherwise cannot reach (ADR-0043).
