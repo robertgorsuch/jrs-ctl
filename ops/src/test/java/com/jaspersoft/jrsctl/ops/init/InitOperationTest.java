@@ -81,6 +81,74 @@ class InitOperationTest {
   }
 
   /**
+   * ADR-0052: a tools-only configuration names the target server's address and a buildomatic
+   * directory, and nothing of an installation; the database settings are shown from that
+   * buildomatic's default_master.properties and not copied (#73).
+   */
+  @Test
+  void should_propose_a_tools_only_configuration_when_remote_and_buildomatic_dir_given()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path buildomatic = install.resolve("buildomatic");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.env.put("JAVA_HOME", tmp.resolve("jdk17").toString());
+      Files.createDirectories(tmp.resolve("jdk17").resolve("bin"));
+      InitOperation init = new InitOperation(fake.build());
+
+      InitReport report =
+          init.detectToolsOnly(
+              URI.create("https://jrs101.example.com/jasperserver-pro"), buildomatic, fake.env);
+      Config config = init.toConfig(report);
+
+      assertThat(config.server().namesToolsOnly()).isTrue();
+      assertThat(config.server().baseUrl())
+          .contains(URI.create("https://jrs101.example.com/jasperserver-pro"));
+      assertThat(config.server().webappName()).contains(Config.WebappName.JASPERSERVER_PRO);
+      assertThat(config.server().buildomaticDir())
+          .contains(buildomatic.toAbsolutePath().normalize());
+      assertThat(config.server().installDir()).isEmpty();
+      assertThat(config.server().tomcatDir()).isEmpty();
+      assertThat(config.service().kind()).isEmpty();
+      assertThat(config.server().auth().username()).contains("superuser");
+      assertThat(config.vendor().javaHome())
+          .contains(tmp.resolve("jdk17").toAbsolutePath().normalize());
+      assertThat(config.database().url()).isEmpty();
+      assertThat(config.database().passwordRef().map(r -> r.render()))
+          .contains("env:JRS_DB_PASSWORD");
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("server.buildomaticDir")
+                      && v.source().contains("--buildomatic-dir"))
+          .anyMatch(v -> v.key().equals("vendor.javaHome") && v.source().contains("JAVA_HOME"))
+          .anyMatch(
+              v ->
+                  v.key().equals("database.url")
+                      && v.value().equals("jdbc:postgresql://db.example.internal:5433/jasperserver")
+                      && v.source().contains("not copied"))
+          .anyMatch(v -> v.key().equals("server.installDir") && v.source().contains("tools-only"));
+    }
+  }
+
+  @Test
+  void should_refuse_a_tools_only_configuration_when_the_directory_holds_no_buildomatic()
+      throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      InitOperation init = new InitOperation(fake.build());
+      Path empty = Files.createDirectories(tmp.resolve("empty"));
+
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () ->
+                  init.detectToolsOnly(
+                      URI.create("https://jrs101.example.com/jasperserver-pro"),
+                      empty,
+                      java.util.Map.of()))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("js-ant");
+    }
+  }
+
+  /**
    * Issue #59: on the commercial edition jasperadmin administers one organisation only, and a
    * full-server export needs superuser.
    */

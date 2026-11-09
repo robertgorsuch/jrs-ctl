@@ -357,6 +357,52 @@ class InitCommandTest {
     assertThat(loaded.service().kind()).isEmpty();
   }
 
+  /** ADR-0052: a buildomatic on this machine for a server elsewhere, with no installation. */
+  @Test
+  void should_write_a_tools_only_config_when_tools_only_remote_and_buildomatic_dir_given()
+      throws Exception {
+    Path home = tmp.resolve("home");
+    Path install = fakeLayout(tmp.resolve("jrs"));
+    Path buildomatic = install.resolve("buildomatic");
+
+    Run run =
+        run(
+            "init",
+            "--tools-only",
+            "--remote",
+            "https://jrs101.example.com/jasperserver-pro",
+            "--buildomatic-dir",
+            buildomatic.toString(),
+            "--yes",
+            "--home",
+            home.toString());
+
+    assertThat(run.code()).as(run.out() + run.err()).isZero();
+    assertThat(run.out()).contains("tools-only");
+    Config loaded = new ConfigLoader().load(new JrsctlHome(home), Map.of(), Map.of());
+    assertThat(loaded.server().namesToolsOnly()).isTrue();
+    assertThat(loaded.server().buildomaticDir()).contains(buildomatic.toAbsolutePath().normalize());
+    assertThat(loaded.server().installDir()).isEmpty();
+    assertThat(loaded.server().baseUrl())
+        .contains(URI.create("https://jrs101.example.com/jasperserver-pro"));
+  }
+
+  @Test
+  void should_refuse_tools_only_without_remote_and_buildomatic_dir() throws Exception {
+    Run run =
+        run(
+            "init",
+            "--tools-only",
+            "--remote",
+            "https://jrs101.example.com/jasperserver-pro",
+            "--yes",
+            "--home",
+            tmp.resolve("home").toString());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.USAGE);
+    assertThat(run.err()).contains("--tools-only").contains("--buildomatic-dir");
+  }
+
   @Test
   void should_refuse_remote_together_with_an_install_dir() throws Exception {
     Path install = fakeLayout(tmp.resolve("jrs"));

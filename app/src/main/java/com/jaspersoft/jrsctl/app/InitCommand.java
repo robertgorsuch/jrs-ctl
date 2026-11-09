@@ -96,6 +96,15 @@ final class InitCommand implements Callable<Integer> {
               + " https://jrs.example.com/jasperserver-pro.")
   URI remote;
 
+  @Option(
+      names = "--tools-only",
+      description =
+          "With --remote <url> and --buildomatic-dir <dir>: write a tools-only configuration"
+              + " (ADR-0052), a buildomatic on this machine for a server elsewhere, with no"
+              + " installation or service. For jrsctl repository load; doctor keeps its vendor"
+              + " and database items and skips the installation ones.")
+  boolean toolsOnly;
+
   /** A value the operator is offered to change: its key, a label and whether it is a directory. */
   record Field(String key, String label, boolean directory) {}
 
@@ -125,14 +134,24 @@ final class InitCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     PrintWriter err = spec.commandLine().getErr();
     Redactor redactor = Redactor.global();
-    if (remote != null && (installDir != null || buildomaticDir != null)) {
+    if (toolsOnly && (remote == null || buildomaticDir == null || installDir != null)) {
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.USAGE,
+          "--tools-only needs --remote <url> (the server the buildomatic is for) and"
+              + " --buildomatic-dir <dir> (the buildomatic on this machine), and no --install-dir");
+    }
+    if (remote != null && !toolsOnly && (installDir != null || buildomaticDir != null)) {
       return ExitCodes.fail(
           out,
           err,
           global.json(),
           ExitCodes.USAGE,
           "--remote describes a machine without an installation; it cannot be combined with"
-              + " --install-dir or --buildomatic-dir");
+              + " --install-dir or --buildomatic-dir (pass --tools-only for a buildomatic here"
+              + " and a server elsewhere)");
     }
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       InitOperation op = new InitOperation(boot.services());
@@ -150,10 +169,18 @@ final class InitCommand implements Callable<Integer> {
               Optional.of(refused.get().remediation()));
         }
       }
-      InitReport report =
-          remote != null
-              ? op.detectRemote(remote)
-              : op.detect(Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
+      InitReport report;
+      try {
+        report =
+            toolsOnly
+                ? op.detectToolsOnly(remote, buildomaticDir, Env.vars())
+                : remote != null
+                    ? op.detectRemote(remote)
+                    : op.detect(
+                        Optional.ofNullable(installDir), Optional.ofNullable(buildomaticDir));
+      } catch (IllegalArgumentException e) {
+        return ExitCodes.fail(out, err, global.json(), ExitCodes.PRECHECK_FAILED, e.getMessage());
+      }
       if (!global.json()) {
         // field test 3: every installation found is shown; interactively the operator picks one
         InstallChoice.print(report, out);

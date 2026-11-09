@@ -198,6 +198,31 @@ class RemoteExportImportTest {
         .hasMessageContaining("installation");
   }
 
+  /**
+   * ADR-0052: a tools-only configuration has a buildomatic but no installation, and its vendor
+   * tools act on the schema that buildomatic names, not on the configured server; so export and
+   * import treat it as REST-only.
+   */
+  @Test
+  void should_refuse_a_forced_vendor_strategy_when_the_configuration_is_tools_only()
+      throws IOException {
+    Path buildomatic = Files.createDirectories(tmp.resolve("buildomatic"));
+    String toolsOnly =
+        REMOTE_YAML.replace(
+            "  auth:",
+            "  buildomaticDir: " + buildomatic.toString().replace('\\', '/') + "\n  auth:");
+    fx.close();
+    fx = new EximFixture(tmp.resolve("tools-only"), () -> adapter, toolsOnly);
+
+    assertThatThrownBy(
+            () ->
+                fx.ops()
+                    .planExport(export(false, Optional.of(ExportImportStrategy.Kind.VENDOR_CLI))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("--strategy vendor")
+        .hasMessageContaining("tools-only");
+  }
+
   @Test
   void should_refuse_a_forced_vendor_strategy_when_no_local_installation_is_configured() {
     assertThatThrownBy(

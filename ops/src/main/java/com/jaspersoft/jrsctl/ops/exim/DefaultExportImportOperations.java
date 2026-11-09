@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.exim;
 
+import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.PlanSummary;
@@ -911,8 +912,9 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       Strategies.Selection selection,
       Optional<ExportImportStrategy.Kind> forced,
       String operation) {
+    Config.Server server = services.config().server();
     if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI
-        || services.config().server().namesLocalInstallation()) {
+        || (server.namesLocalInstallation() && !server.namesToolsOnly())) {
       return;
     }
     String why;
@@ -925,6 +927,16 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               + "), so the "
               + operation
               + " would need the vendor tools";
+    }
+    if (server.namesToolsOnly()) {
+      // ADR-0052: that buildomatic's js-export and js-import act on the schema its
+      // default_master.properties names, which is not the configured server's repository
+      throw new IllegalArgumentException(
+          why
+              + ", and this is a tools-only configuration (server.buildomaticDir without an"
+              + " installation): its vendor tools act on the schema named in that buildomatic's"
+              + " default_master.properties, not on the configured server; use REST from here, or"
+              + " run jrsctl on the JasperReports Server host");
     }
     throw new IllegalArgumentException(
         why

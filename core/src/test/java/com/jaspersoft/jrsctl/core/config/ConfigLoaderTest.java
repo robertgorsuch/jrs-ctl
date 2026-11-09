@@ -23,6 +23,34 @@ class ConfigLoaderTest {
 
   private final ConfigLoader loader = new ConfigLoader();
 
+  /** ADR-0052: a buildomatic directory with no installation around it is a tools-only shape. */
+  @Test
+  void should_name_a_tools_only_configuration_when_only_the_buildomatic_directory_is_set() {
+    Config.Server toolsOnly =
+        new Config.Server(
+            java.util.Optional.of(java.net.URI.create("http://jrs:8080/jasperserver-pro")),
+            java.util.Optional.empty(),
+            java.util.Optional.empty(),
+            java.util.Optional.empty(),
+            java.util.Optional.of(tmp.resolve("buildomatic")),
+            java.util.Optional.empty(),
+            Config.Auth.defaults());
+    Config.Server installed =
+        new Config.Server(
+            java.util.Optional.empty(),
+            java.util.Optional.empty(),
+            java.util.Optional.of(tmp.resolve("jrs")),
+            java.util.Optional.empty(),
+            java.util.Optional.of(tmp.resolve("buildomatic")),
+            java.util.Optional.empty(),
+            Config.Auth.defaults());
+
+    assertThat(toolsOnly.namesToolsOnly()).isTrue();
+    assertThat(toolsOnly.namesLocalInstallation()).isTrue();
+    assertThat(installed.namesToolsOnly()).isFalse();
+    assertThat(Config.Server.empty().namesToolsOnly()).isFalse();
+  }
+
   @Test
   void should_apply_schema_defaults_when_config_file_is_missing() {
     Config c = loader.load(new JrsctlHome(tmp), Map.of(), Map.of());
