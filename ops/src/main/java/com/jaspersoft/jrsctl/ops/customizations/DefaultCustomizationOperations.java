@@ -106,6 +106,43 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
           "the installed webapp " + installed + " is not a directory",
           "check server.tomcatDir and server.webappName");
     }
+    return compare(installed, webappName, vendor);
+  }
+
+  /** The webapp names the vendor ships, commercial edition first (issue #266). */
+  private static final List<String> WEBAPP_NAMES = List.of("jasperserver-pro", "jasperserver");
+
+  @Override
+  public Scan scan(Path installed, Path vendor) {
+    Objects.requireNonNull(installed, "installed");
+    Objects.requireNonNull(vendor, "vendor");
+    Path webapp = explicitWebapp(installed);
+    return compare(webapp, webapp.getFileName().toString(), vendor);
+  }
+
+  /**
+   * The webapp directory an explicit {@code --installed} tree names: the directory itself when it
+   * holds {@code WEB-INF/}, else {@code webapps/<name>} under it for the names the vendor ships.
+   */
+  private static Path explicitWebapp(Path installed) {
+    if (Files.isDirectory(installed.resolve("WEB-INF"))) {
+      return installed;
+    }
+    for (String name : WEBAPP_NAMES) {
+      Path candidate = installed.resolve("webapps").resolve(name);
+      if (Files.isDirectory(candidate.resolve("WEB-INF"))) {
+        return candidate;
+      }
+    }
+    throw new CustomizationException(
+        installed
+            + " is neither a webapp directory (no WEB-INF) nor a Tomcat tree holding webapps/"
+            + String.join(" or webapps/", WEBAPP_NAMES),
+        "point --installed at the webapp directory, or at the Tomcat tree extracted from the"
+            + " image");
+  }
+
+  private Scan compare(Path installed, String webappName, Path vendor) {
     Path vendorWebapp = WebappScanner.vendorWebapp(vendor, webappName);
     java.util.Set<Path> registered = new java.util.HashSet<>();
     for (Customization c : list()) {
@@ -132,17 +169,38 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
     } catch (HotfixException e) {
       throw new CustomizationException(e.getMessage(), e.remediation(), e);
     }
+    return listTomcat(paths.tomcatDir(), "check that server.tomcatDir is readable");
+  }
+
+  @Override
+  public List<TomcatEntry> scanTomcat(Path tree) {
+    Objects.requireNonNull(tree, "tree");
+    Path tomcatDir;
+    if (Files.isDirectory(tree.resolve("webapps"))) {
+      tomcatDir = tree;
+    } else if (Files.isDirectory(tree.resolve("WEB-INF"))
+        && tree.toAbsolutePath().normalize().getParent() != null
+        && tree.toAbsolutePath().normalize().getParent().getParent() != null) {
+      // webapps/<name> under the Tomcat directory
+      tomcatDir = tree.toAbsolutePath().normalize().getParent().getParent();
+    } else {
+      throw new CustomizationException(
+          tree + " is neither a Tomcat tree (no webapps/) nor a webapp directory under one",
+          "point --installed at the Tomcat tree extracted from the image to list its files");
+    }
+    return listTomcat(tomcatDir, "check that " + tomcatDir + " is readable");
+  }
+
+  private List<TomcatEntry> listTomcat(Path tomcatDir, String remediation) {
     java.util.Set<Path> registered = new java.util.HashSet<>();
     for (Customization c : list()) {
       registered.add(normalise(c.path()));
     }
     try {
-      return TomcatScanner.scan(paths.tomcatDir().toAbsolutePath().normalize(), registered);
+      return TomcatScanner.scan(tomcatDir.toAbsolutePath().normalize(), registered);
     } catch (IOException e) {
       throw new CustomizationException(
-          "cannot list " + paths.tomcatDir() + ": " + e.getMessage(),
-          "check that server.tomcatDir is readable",
-          e);
+          "cannot list " + tomcatDir + ": " + e.getMessage(), remediation, e);
     }
   }
 
