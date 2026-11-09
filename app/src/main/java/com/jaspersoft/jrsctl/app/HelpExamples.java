@@ -264,6 +264,16 @@ final class HelpExamples {
                 "jrsctl import /backups/full-server.zip --source-keystore /tmp/source/.jrsks"
                     + " --source-keystore-password-ref enc:SOURCE_KEYSTORE_PASSWORD")));
     m.put(
+        "import verify",
+        List.of(
+            new Example(
+                "After an import: is every organisation, user, role, folder and resource of the"
+                    + " archive on the server?",
+                "jrsctl import verify /backups/full-server.zip"),
+            new Example(
+                "The same, listing every missing URI in the JSON report",
+                "jrsctl import verify /backups/full-server.zip --uris --json")));
+    m.put(
         "upgrade",
         List.of(
             new Example(

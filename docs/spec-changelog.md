@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (`import verify`; issue #262)
+
+- §9.4, §9.5: `jrsctl import verify <archive>` reports, read-only, whether every organisation, user, role, folder and resource the archive holds is on the server, from the archive's own layout and the server's REST directory and repository listings; one `doctor`-style item per kind, exit 2 when anything is missing or the server could not be asked. §7.2: the adapter gains the read-only `listUserIds`, `listRoleNames` and `organizationExists`.
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.

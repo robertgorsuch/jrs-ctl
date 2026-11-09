@@ -38,13 +38,20 @@ import picocli.CommandLine.Spec;
     exitCodeOnInvalidInput = ExitCodes.USAGE,
     description =
         "Import an export archive after snapshotting the affected subtree; rollback re-imports"
-            + " the snapshot (best effort).")
+            + " the snapshot (best effort).",
+    subcommands = {ImportCommand.Verify.class})
 final class ImportCommand implements Callable<Integer> {
 
   @Spec CommandSpec spec;
   @Mixin GlobalOptions global;
 
-  @Parameters(index = "0", paramLabel = "<archive>", description = "Export archive to import.")
+  // arity 0..1: picocli would otherwise demand the archive when the `verify` subcommand runs;
+  // call() refuses the missing value itself
+  @Parameters(
+      index = "0",
+      arity = "0..1",
+      paramLabel = "<archive>",
+      description = "Export archive to import.")
   Path archive;
 
   @Option(names = "--update", description = "Overwrite resources that already exist.")
@@ -154,6 +161,10 @@ final class ImportCommand implements Callable<Integer> {
   public Integer call() {
     PrintWriter out = spec.commandLine().getOut();
     PrintWriter err = spec.commandLine().getErr();
+    if (archive == null) {
+      return ExitCodes.fail(
+          out, err, global.json(), ExitCodes.USAGE, "Missing required parameter: '<archive>'");
+    }
     Optional<ExportImportStrategy.Kind> kind;
     Optional<SecretRef> passwordRef;
     BrokenDependencies broken;
@@ -215,6 +226,82 @@ final class ImportCommand implements Callable<Integer> {
       return executor.execute(
           new PlanExecutor.Request(
               planned, PlanRegistry.IMPORT, PlanRegistry.importArgs(options), plan, false));
+    }
+  }
+
+  /**
+   * {@code jrsctl import verify <archive> [--uris] [--json]} (issue #262): is everything the
+   * archive holds on the server? Read-only; one report item per kind; exit 2 when anything is
+   * missing or the server could not be asked, or when the archive is not an export.
+   */
+  @Command(
+      name = "verify",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "After an import: check that every organisation, user, role, folder and resource the"
+              + " archive holds is on the server. Read-only; exit 2 when anything is missing.")
+  static final class Verify implements Callable<Integer> {
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Parameters(index = "0", paramLabel = "<archive>", description = "The export ZIP imported.")
+    Path archive;
+
+    @Option(
+        names = "--uris",
+        description =
+            "List every missing id in the JSON report's missing map, not only the first few.")
+    boolean uris;
+
+    @Override
+    public Integer call() {
+      PrintWriter out = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      com.jaspersoft.jrsctl.core.redact.Redactor redactor =
+          com.jaspersoft.jrsctl.core.redact.Redactor.global();
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport report;
+        try {
+          report =
+              new com.jaspersoft.jrsctl.ops.exim.ImportVerification(boot.services())
+                  .verify(archive);
+        } catch (RuntimeException e) {
+          return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
+        }
+        if (global.json()) {
+          out.println(redactor.redact(JsonOut.write(uris ? report : trimmed(report))));
+          out.flush();
+        } else {
+          ReportPrinter.print(
+              out, report.items(), report.counts(), Ansi.forStdout(global, Env.vars()), redactor);
+        }
+        return report.exitCode();
+      }
+    }
+
+    /** Without {@code --uris}, the JSON report names at most the first few missing ids per kind. */
+    private static com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport trimmed(
+        com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport report) {
+      java.util.Map<String, java.util.List<String>> few = new java.util.LinkedHashMap<>();
+      report
+          .missing()
+          .forEach(
+              (kind, ids) ->
+                  few.put(
+                      kind,
+                      ids.subList(
+                          0,
+                          Math.min(
+                              com.jaspersoft.jrsctl.ops.exim.ImportVerification.NAMED,
+                              ids.size()))));
+      return new com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport(
+          report.items(),
+          report.counts(),
+          report.exitCode(),
+          report.archive(),
+          report.archiveCounts(),
+          few);
     }
   }
 }

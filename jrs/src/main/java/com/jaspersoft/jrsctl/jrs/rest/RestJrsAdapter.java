@@ -1028,6 +1028,67 @@ public final class RestJrsAdapter implements JrsAdapter {
     }
   }
 
+  static final String USERS = "/rest_v2/users";
+  static final String ROLES = "/rest_v2/roles";
+
+  @Override
+  public List<String> listUserIds() {
+    ensureSession();
+    RestClient.Response r = client.get(USERS);
+    if (r.status() == 204) {
+      return List.of();
+    }
+    client.require2xx(r, "GET", USERS);
+    Wire.UserList list = Wire.parse(r.body(), Wire.UserList.class, "GET", USERS);
+    List<String> ids = new ArrayList<>();
+    if (list.user() != null) {
+      for (Wire.User u : list.user()) {
+        if (u != null && u.username() != null) {
+          ids.add(qualified(u.username(), u.tenantId()));
+        }
+      }
+    }
+    return List.copyOf(ids);
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    ensureSession();
+    RestClient.Response r = client.get(ROLES);
+    if (r.status() == 204) {
+      return List.of();
+    }
+    client.require2xx(r, "GET", ROLES);
+    Wire.RoleList list = Wire.parse(r.body(), Wire.RoleList.class, "GET", ROLES);
+    List<String> names = new ArrayList<>();
+    if (list.role() != null) {
+      for (Wire.Role role : list.role()) {
+        if (role != null && role.name() != null) {
+          names.add(qualified(role.name(), role.tenantId()));
+        }
+      }
+    }
+    return List.copyOf(names);
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    Objects.requireNonNull(id, "id");
+    ensureSession();
+    String path = ORGANIZATIONS + "/" + RestClient.encodeQuery(id);
+    RestClient.Response r = client.get(path);
+    if (r.status() == 404) {
+      return false;
+    }
+    client.require2xx(r, "GET", path);
+    return true;
+  }
+
+  /** {@code name|org} for an organisation's principal, {@code name} for the root's. */
+  private static String qualified(String name, String tenantId) {
+    return tenantId == null || tenantId.isBlank() ? name : name + "|" + tenantId;
+  }
+
   // ---------------------------------------------------------------- mutating helpers (Steps only)
 
   @Override

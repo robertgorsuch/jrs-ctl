@@ -142,6 +142,21 @@ public final class AppFakeAdapter implements JrsAdapter {
   @Override
   public void deleteResource(String uri) {}
 
+  @Override
+  public java.util.List<String> listUserIds() {
+    return java.util.List.of();
+  }
+
+  @Override
+  public java.util.List<String> listRoleNames() {
+    return java.util.List.of();
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    return true;
+  }
+
   private static void write(Path target, byte[] bytes) {
     try (OutputStream out = Files.newOutputStream(target)) {
       out.write(bytes);

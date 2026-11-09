@@ -606,5 +606,20 @@ class StepIdempotencyTest {
     public void deleteResource(String uri) {
       throw new UnsupportedOperationException("not used");
     }
+
+    @Override
+    public java.util.List<String> listUserIds() {
+      return java.util.List.of();
+    }
+
+    @Override
+    public java.util.List<String> listRoleNames() {
+      return java.util.List.of();
+    }
+
+    @Override
+    public boolean organizationExists(String id) {
+      return true;
+    }
   }
 }

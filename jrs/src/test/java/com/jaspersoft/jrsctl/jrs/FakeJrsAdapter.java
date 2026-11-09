@@ -163,6 +163,21 @@ public final class FakeJrsAdapter implements JrsAdapter {
     throw new UnsupportedOperationException("fake");
   }
 
+  @Override
+  public List<String> listUserIds() {
+    return List.of();
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    return List.of();
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    return true;
+  }
+
   public static KeystoreInfo keystoreWith(String fingerprint, Optional<Path> file) {
     return new KeystoreInfo(
         true,

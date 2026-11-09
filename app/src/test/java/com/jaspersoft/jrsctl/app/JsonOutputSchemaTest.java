@@ -954,6 +954,34 @@ class JsonOutputSchemaTest {
               Files.writeString(archive, "zip");
               return run(join(serverArgs(dir), "import", archive.toString(), "--yes"));
             }));
+    // #262: a read-only report; an archive with nothing but index.xml has nothing to find missing
+    s.add(
+        of(
+            "import verify of an archive with nothing to compare",
+            "import verify",
+            0,
+            dir -> {
+              serverHome(dir);
+              Path archive = dir.resolve("in.zip");
+              try (java.io.OutputStream out = Files.newOutputStream(archive);
+                  java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(out)) {
+                z.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
+                z.write("<export/>".getBytes(StandardCharsets.UTF_8));
+                z.closeEntry();
+              }
+              return run(join(serverArgs(dir), "import", "verify", archive.toString()));
+            }));
+    s.add(
+        of(
+            "import verify refuses a file that is not an export",
+            "import verify",
+            2,
+            dir -> {
+              serverHome(dir);
+              Path archive = dir.resolve("in.zip");
+              Files.writeString(archive, "zip");
+              return run(join(serverArgs(dir), "import", "verify", archive.toString()));
+            }));
     s.add(
         of(
             "import with a bad secret reference",

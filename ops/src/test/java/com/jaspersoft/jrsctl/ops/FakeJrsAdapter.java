@@ -234,6 +234,24 @@ public final class FakeJrsAdapter implements JrsAdapter {
     }
   }
 
+  @Override
+  public List<String> listUserIds() {
+    calls.add("listUserIds");
+    return List.of();
+  }
+
+  @Override
+  public List<String> listRoleNames() {
+    calls.add("listRoleNames");
+    return List.of();
+  }
+
+  @Override
+  public boolean organizationExists(String id) {
+    calls.add("organizationExists " + id);
+    return true;
+  }
+
   private static String parentOf(String uri) {
     int slash = uri.lastIndexOf('/');
     return slash <= 0 ? "/" : uri.substring(0, slash);
