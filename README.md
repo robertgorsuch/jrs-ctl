@@ -2,7 +2,7 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **Actively maintained.** The current release is [2.6.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.6.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
+> **Actively maintained.** The current release is [2.7.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.7.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
 >
 > - Supported: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
 > - Each archive bundles a Java 21 runtime; `jrsctl selfcheck` shows which update.
@@ -23,8 +23,8 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Copy content to another server | `jrsctl import` |
 | Install a hotfix, or take one out | `jrsctl hotfix apply` / `jrsctl hotfix rollback` |
 | Upgrade to a new version | `jrsctl upgrade` |
-| Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` (2.7.0, not yet released) |
-| Move stored passwords to the modern format | `jrsctl passwords migrate` (2.7.0, not yet released) |
+| Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` |
+| Move stored passwords to the modern format | `jrsctl passwords migrate` |
 | Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
@@ -52,14 +52,14 @@ Unpack it on the server, then open a terminal in the unpacked folder:
 
 ```bash
 :: Windows (Command Prompt, run as administrator)
-tar -xf jrsctl-2.6.0-windows-x64.zip -C C:\Jaspersoft
-cd C:\Jaspersoft\jrsctl-2.6.0
+tar -xf jrsctl-2.7.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-2.7.0
 ```
 
 ```bash
 # Linux
-tar -xzf jrsctl-2.6.0-linux-x64.tar.gz -C /opt
-cd /opt/jrsctl-2.6.0
+tar -xzf jrsctl-2.7.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-2.7.0
 ```
 
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
@@ -210,7 +210,7 @@ jrsctl upgrade rollback <run id> --to-point B
 
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
 
-### Load a repository into a new schema (2.7.0, not yet released)
+### Load a repository into a new schema
 
 The vendor's alternative to an in-place upgrade: a new, empty schema on the new version's buildomatic, loaded from an export of the old server, while the old server keeps running. You need the new version unpacked on the machine (no installation needed), its `default_master.properties` naming the new schema (`js.dbName`) with `appServerType=skipAppServerCheck`, and the database server's password stored with jrsctl.
 
@@ -222,7 +222,7 @@ jrsctl repository load --schema jrs_101 --from C:\Backups\full.zip
 
 jrsctl checks that the schema does not exist yet and never drops one it did not create. It renders the buildomatic's configuration first and stops if the rendered database connection is not the schema you named. If a later step fails, it drops the schema it created and tells you. Deploying the new server against the schema is your step afterwards. PostgreSQL and MySQL are supported.
 
-### Move stored passwords to the modern format (2.7.0, not yet released)
+### Move stored passwords to the modern format
 
 A 10.1 server installed with `password.strategy=legacy` keeps the old password format until the vendor's migration runs. Back up the database first: the migration cannot be undone, and the command refuses to plan without `--db-backup-confirmed`.
 
@@ -315,8 +315,8 @@ The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (back
 
 Each release file has a `.sha256` checksum beside it:
 
-- Windows: `certutil -hashfile jrsctl-2.6.0-windows-x64.zip SHA256`
-- Linux: `sha256sum -c jrsctl-2.6.0-linux-x64.tar.gz.sha256`
+- Windows: `certutil -hashfile jrsctl-2.7.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-2.7.0-linux-x64.tar.gz.sha256`
 
 Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
 
