@@ -28,9 +28,16 @@ public record Sidecar(
     Optional<String> keystoreFingerprint,
     Flags flags,
     String sha256,
-    ExportImportStrategy.Kind strategy) {
+    ExportImportStrategy.Kind strategy,
+    String origin) {
 
   public static final String SUFFIX = ".jrsctl.json";
+
+  /** Written by a jrsctl export, with the server's own answers. */
+  public static final String ORIGIN_EXPORT = "export";
+
+  /** Written by {@code export record} from an archive made by hand (issue #263). */
+  public static final String ORIGIN_RECORD = "record";
 
   public Sidecar {
     Objects.requireNonNull(exportedAt, "exportedAt");
@@ -40,6 +47,28 @@ public record Sidecar(
     Objects.requireNonNull(flags, "flags");
     Objects.requireNonNull(sha256, "sha256");
     Objects.requireNonNull(strategy, "strategy");
+    // a sidecar written before the field existed came from an export
+    origin = origin == null ? ORIGIN_EXPORT : origin;
+  }
+
+  /** A sidecar an export writes. */
+  public Sidecar(
+      Instant exportedAt,
+      String serverIdentity,
+      String serverVersion,
+      Optional<String> keystoreFingerprint,
+      Flags flags,
+      String sha256,
+      ExportImportStrategy.Kind strategy) {
+    this(
+        exportedAt,
+        serverIdentity,
+        serverVersion,
+        keystoreFingerprint,
+        flags,
+        sha256,
+        strategy,
+        ORIGIN_EXPORT);
   }
 
   /** The request that produced the archive, minus the output path. */

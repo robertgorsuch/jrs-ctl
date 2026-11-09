@@ -4,6 +4,8 @@ import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.secrets.SecretRef;
 import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
+import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
+import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
@@ -17,6 +19,12 @@ import java.util.Set;
  * rules of spec §9.2", a present one forces that kind.
  */
 public interface ExportImportOperations {
+
+  /**
+   * The source version a recorded sidecar carries when neither {@code index.xml} nor the operator
+   * names one (issue #263): it parses as no version, so the import judges nothing by it.
+   */
+  String UNKNOWN_VERSION = "unknown";
 
   /** Options for {@code jrsctl export}; an empty {@code uris} set means the whole repository. */
   record ExportOptions(
@@ -494,4 +502,43 @@ public interface ExportImportOperations {
   Plan planExport(ExportOptions options);
 
   Plan planImport(ImportOptions options);
+
+  /**
+   * Options for {@code jrsctl export record} (issue #263): the archive {@code js-export} made by
+   * hand, the exporting server's version when {@code index.xml} does not carry it (an explicit
+   * value wins over the index), the exporting server's {@code .jrsks} for the fingerprint, the key
+   * alias the archive was encrypted with (an explicit value wins; the Legacy alias is taken from
+   * the index), and whether an existing sidecar may be replaced.
+   */
+  record RecordSidecarOptions(
+      Path archive,
+      Optional<String> sourceVersion,
+      Optional<Path> sourceKeystore,
+      Optional<String> keyAlias,
+      boolean force) {
+    public RecordSidecarOptions {
+      Objects.requireNonNull(archive, "archive");
+      Objects.requireNonNull(sourceVersion, "sourceVersion");
+      Objects.requireNonNull(sourceKeystore, "sourceKeystore");
+      Objects.requireNonNull(keyAlias, "keyAlias");
+    }
+  }
+
+  /** What {@code export record} wrote and what it read. */
+  record RecordedSidecar(Path file, Sidecar sidecar, ExportIndex index) {
+    public RecordedSidecar {
+      Objects.requireNonNull(file, "file");
+      Objects.requireNonNull(sidecar, "sidecar");
+      Objects.requireNonNull(index, "index");
+    }
+  }
+
+  /**
+   * Writes the {@code .jrsctl.json} sidecar for an archive jrsctl did not export (issue #263): the
+   * archive's SHA-256, the version and content read from its {@code index.xml}, and what the
+   * options add, marked {@link Sidecar#ORIGIN_RECORD}. Mutates only the sidecar file; refuses an
+   * archive without {@code index.xml} ({@link IllegalArgumentException}) and an existing sidecar
+   * without {@code force} ({@link IllegalStateException}), both before anything is written.
+   */
+  RecordedSidecar recordSidecar(RecordSidecarOptions options);
 }
