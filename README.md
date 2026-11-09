@@ -23,6 +23,8 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Copy content to another server | `jrsctl import` |
 | Install a hotfix, or take one out | `jrsctl hotfix apply` / `jrsctl hotfix rollback` |
 | Upgrade to a new version | `jrsctl upgrade` |
+| Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` (2.7.0, not yet released) |
+| Move stored passwords to the modern format | `jrsctl passwords migrate` (2.7.0, not yet released) |
 | Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
@@ -207,6 +209,30 @@ jrsctl upgrade rollback <run id> --to-point B
 ```
 
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
+
+### Load a repository into a new schema (2.7.0, not yet released)
+
+The vendor's alternative to an in-place upgrade: a new, empty schema on the new version's buildomatic, loaded from an export of the old server, while the old server keeps running. You need the new version unpacked on the machine (no installation needed), its `default_master.properties` naming the new schema (`js.dbName`) with `appServerType=skipAppServerCheck`, and the database server's password stored with jrsctl.
+
+```bash
+jrsctl init --tools-only --remote https://jrs.example.com/jasperserver-pro --buildomatic-dir C:\jrs-10.1\buildomatic
+jrsctl repository load --schema jrs_101 --from C:\Backups\full.zip --plan
+jrsctl repository load --schema jrs_101 --from C:\Backups\full.zip
+```
+
+jrsctl checks that the schema does not exist yet and never drops one it did not create. It renders the buildomatic's configuration first and stops if the rendered database connection is not the schema you named. If a later step fails, it drops the schema it created and tells you. Deploying the new server against the schema is your step afterwards. PostgreSQL and MySQL are supported.
+
+### Move stored passwords to the modern format (2.7.0, not yet released)
+
+A 10.1 server installed with `password.strategy=legacy` keeps the old password format until the vendor's migration runs. Back up the database first: the migration cannot be undone, and the command refuses to plan without `--db-backup-confirmed`.
+
+```bash
+jrsctl passwords status
+jrsctl passwords migrate --db-backup-confirmed --plan
+jrsctl passwords migrate --db-backup-confirmed
+```
+
+Both run on the server host, where the webapp is deployed, and need JasperReports Server 10.1 or later.
 
 ---
 

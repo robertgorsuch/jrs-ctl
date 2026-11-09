@@ -633,6 +633,16 @@ The vendor's manual alternative to `js-upgrade-newdb` (upgrade guide 10.1 p.62):
 - **Outside the plan**, stated in the summary: deploying the server that uses the schema, the admin passwords (left as the minimal import set them), the site's own tables, `import verify` against the running target afterwards, and pausing imported jobs through the server's REST call once it runs.
 - **Recovery.** Stored arguments (`repositoryLoadArgs`: schema, export path, events, key alias) rebuild the plan for `runs recover`; the fingerprint covers the schema name, the export path and hash, the buildomatic directory and its `default_master.properties` without password keys, the edition, the events flag and the key alias.
 
+### 10.6 Migrating stored passwords to the modern format (ADR-0053)
+
+The vendor's password migration (installation guide 10.1 pp.194-199) as a command of its own, for a server that was installed or upgraded with `password.strategy=legacy`: `jrsctl passwords status [--json]` and `jrsctl passwords migrate --db-backup-confirmed [--cleanup] [--plan] [--yes]` (`ops.passwords`, 2.7.0).
+
+- **Where it runs.** On the server host with the installation configured: the utility reads `WEB-INF/js.password-storage-config.properties` of the deployed webapp. A REST-only or tools-only configuration is refused with exit 2; a server below 10.1 (from the webapp's jar names, else the running server) with exit 6.
+- **`status`**, read-only, in the `doctor` layout: `password-config` (the file and its `password.strategy`; WARN when not `modern`), `vendor` (js-ant and `vendor.javaHome`), `strategy` (the counts of `js-ant detect-password-strategy`: PASS when complete, WARN naming the users still legacy, FAIL when the utility fails or prints no counts). Exit 0 unless an item fails; `--json` adds `passwords` (`total`, `modern`, `legacy`, `complete`, or null) and `strategy`.
+- **`migrate`**, four phases: `preflight` (`doctor`, every item must pass; `verify-password-tools`: js-ant, `vendor.javaHome`, the settings file, WARN when its strategy is not `modern`; `confirm-db-backup`: `--db-backup-confirmed`, audited; `migrate-passwords-dry-run`), `migrate` (`migrate-passwords`, irreversible: a database restore is the only way back), `verify` (`detect-password-strategy`; complete when at most one legacy password, the `anonymousUser`, remains; more is a WARN since externally authenticated users are skipped), `cleanup` (`cleanup-password-migration`, irreversible, tracking rows only, with `--cleanup`). The service keeps running. The CLI prints the gate sentence and exits 2 before planning when the flag is missing.
+- **Idempotency and recovery.** The two irreversible steps run once per run (done marker) and the utility skips users already migrated; the stored arguments (`dbBackupConfirmed`, `cleanup`) rebuild the plan for `runs recover`; the fingerprint covers the webapp, the buildomatic, the settings file's hash, the server version and the cleanup flag.
+- **Outside the plan:** `upgrade --migrate-passwords` keeps running the same targets inside a samedb upgrade while the server is down.
+
 ---
 
 ## 11. Security

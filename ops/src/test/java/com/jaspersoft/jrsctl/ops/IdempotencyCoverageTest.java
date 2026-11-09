@@ -203,6 +203,11 @@ import org.junit.jupiter.api.Test;
  * <tr><td>jrs.service ServiceSteps.StartService (vendor strategy suite)</td>
  *     <td>jrs StepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>jrs StepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
+ * <tr><td>passwords PasswordSteps.Doctor, VerifyTools, ConfirmDbBackup, DryRun, Detect</td>
+ *     <td colspan="2">PasswordStepIdempotencyTest#should_not_mutate_when_read_only_password_steps_execute_twice</td></tr>
+ * <tr><td>passwords PasswordSteps.Migrate, Cleanup (irreversible)</td>
+ *     <td colspan="2">PasswordStepIdempotencyTest#should_migrate_once_when_migrate_executes_twice;
+ *         #should_clean_once_when_cleanup_executes_twice</td></tr>
  * <tr><td>repository LoadSteps.Doctor, VerifyBuildomatic, VerifyTargetSchema, AdoptExport</td>
  *     <td colspan="2">RepositoryStepIdempotencyTest#should_not_mutate_when_read_only_load_steps_execute_twice</td></tr>
  * <tr><td>repository LoadSteps.CreateJsDb, InitJsDb, ImportMinimal, ImportExport</td>
@@ -231,6 +236,10 @@ class IdempotencyCoverageTest {
 
   private static final String L_READ_ONLY =
       L + "should_not_mutate_when_read_only_load_steps_execute_twice";
+  private static final String P = "passwords.PasswordStepIdempotencyTest#";
+
+  private static final String P_READ_ONLY =
+      P + "should_not_mutate_when_read_only_password_steps_execute_twice";
 
   private static final String H_READ_ONLY =
       H + "should_not_mutate_when_read_only_apply_steps_execute_twice";
@@ -577,6 +586,18 @@ class IdempotencyCoverageTest {
           Map.entry(
               JRS + "strategy.RunJsImport",
               J + "should_invoke_js_import_identically_when_run_js_import_executes_twice"),
+          // passwords migrate (spec §10.6, ADR-0053)
+          Map.entry(OPS + "passwords.PasswordSteps$Doctor", P_READ_ONLY),
+          Map.entry(OPS + "passwords.PasswordSteps$VerifyTools", P_READ_ONLY),
+          Map.entry(OPS + "passwords.PasswordSteps$ConfirmDbBackup", P_READ_ONLY),
+          Map.entry(OPS + "passwords.PasswordSteps$DryRun", P_READ_ONLY),
+          Map.entry(OPS + "passwords.PasswordSteps$Detect", P_READ_ONLY),
+          Map.entry(
+              OPS + "passwords.PasswordSteps$Migrate",
+              P + "should_migrate_once_when_migrate_executes_twice"),
+          Map.entry(
+              OPS + "passwords.PasswordSteps$Cleanup",
+              P + "should_clean_once_when_cleanup_executes_twice"),
           // repository load (spec §10.5, ADR-0052)
           Map.entry(OPS + "repository.LoadSteps$Doctor", L_READ_ONLY),
           Map.entry(OPS + "repository.LoadSteps$VerifyBuildomatic", L_READ_ONLY),

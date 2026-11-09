@@ -262,6 +262,9 @@ class ExportCommandTest {
             },
             () -> {
               throw new UnsupportedOperationException("repository not used");
+            },
+            () -> {
+              throw new UnsupportedOperationException("passwords not used");
             });
 
     Plan plan = registry.rebuild(PlanRegistry.EXPORT, PlanRegistry.exportArgs(options));

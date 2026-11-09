@@ -3,6 +3,9 @@
 ## Draft 1.2 amendment — 2026-11-09 (`repository load` renders the configuration first; issue #279 item 6)
 
 - §10.5: preflight ends with `render-config`, `js-ant clean-config` then `gen-config`, the first step that touches disk and only the buildomatic's own `build_conf/default`. The rendered `metadata.jdbc.url` must name `--schema` on the database server the plan was made for, else the step fails, `clean-config` undoes it and the run ends with exit 3 and nothing created. The rendered `*.properties` are kept, passwords masked, under `snapshots/<runId>/rendered-config`, and `record-load` writes their hashes. The rendered files are not in the fingerprint; their source `default_master.properties` is.
+## Draft 1.2 amendment — 2026-11-09 (`passwords status` and `passwords migrate`; ADR-0053)
+
+- §10.6 (new): the vendor's password migration (installation guide 10.1 pp.194-199) as a command group. `passwords status` reports the webapp's `password.strategy` and the counts `js-ant detect-password-strategy` prints, read-only; `passwords migrate --db-backup-confirmed [--cleanup]` runs the dry run, the migration (irreversible), the verification and, on request, the tracking-table cleanup as one journaled plan. Needs the installation on this machine (the utility reads the deployed webapp's settings file) and a server of 10.1 or later. `upgrade --migrate-passwords` is unchanged.
 
 ## Draft 1.2 amendment — 2026-11-09 (`repository load` implemented; tools-only configuration; ADR-0052, issue #279)
 
