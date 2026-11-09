@@ -147,6 +147,15 @@ final class ImportCommand implements Callable<Integer> {
               + " back what it overwrote; it only deletes what it created (audited).")
   boolean noSnapshot;
 
+  @Option(
+      names = "--pause-jobs",
+      description =
+          "After the import, pause the report jobs the archive added (the jobs present"
+              + " afterwards that were not present before), so they do not fire on this server"
+              + " beside the source's. Best effort: a refused pause is a warning naming the ids,"
+              + " never a rollback of the finished import. Rollback resumes only what was paused.")
+  boolean pauseJobs;
+
   @Option(names = "--plan", description = "Show the plan and exit without running it.")
   boolean plan;
 
@@ -202,7 +211,8 @@ final class ImportCommand implements Callable<Integer> {
             forceVersion,
             themes,
             false,
-            noSnapshot);
+            noSnapshot,
+            pauseJobs);
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
       Services services = boot.services();
       Plan planned;

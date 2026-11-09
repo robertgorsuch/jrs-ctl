@@ -188,7 +188,8 @@ public interface ExportImportOperations {
       boolean forceVersion,
       boolean keepThemes,
       boolean snapshotStopsService,
-      boolean noSnapshot) {
+      boolean noSnapshot,
+      boolean pauseJobs) {
 
     public ImportOptions {
       Objects.requireNonNull(archive, "archive");
@@ -198,6 +199,75 @@ public interface ExportImportOperations {
       Objects.requireNonNull(brokenDependencies, "brokenDependencies");
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(organization, "organization");
+    }
+
+    /** The options of an import that pauses no jobs (every option before issue #264). */
+    public ImportOptions(
+        Path archive,
+        boolean update,
+        boolean skipUserUpdate,
+        boolean accessEvents,
+        boolean auditEvents,
+        boolean monitoring,
+        boolean settings,
+        boolean skipThemes,
+        Optional<Path> sourceKeystore,
+        Optional<SecretRef> sourceKeystorePassword,
+        Optional<ExportImportStrategy.Kind> strategy,
+        BrokenDependencies brokenDependencies,
+        Optional<String> keyAlias,
+        Optional<String> organization,
+        boolean mergeOrganization,
+        boolean forceVersion,
+        boolean keepThemes,
+        boolean snapshotStopsService,
+        boolean noSnapshot) {
+      this(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keepThemes,
+          snapshotStopsService,
+          noSnapshot,
+          false);
+    }
+
+    /** The same options with or without the pause of the jobs the import adds (issue #264). */
+    public ImportOptions withPauseJobs(boolean pause) {
+      return new ImportOptions(
+          archive,
+          update,
+          skipUserUpdate,
+          accessEvents,
+          auditEvents,
+          monitoring,
+          settings,
+          skipThemes,
+          sourceKeystore,
+          sourceKeystorePassword,
+          strategy,
+          brokenDependencies,
+          keyAlias,
+          organization,
+          mergeOrganization,
+          forceVersion,
+          keepThemes,
+          snapshotStopsService,
+          noSnapshot,
+          pause);
     }
 
     /** The options of a new import: the snapshot is taken, with the server running. */
@@ -262,7 +332,8 @@ public interface ExportImportOperations {
           forceVersion,
           keepThemes,
           stops,
-          noSnapshot);
+          noSnapshot,
+          pauseJobs);
     }
 
     /** The same options with or without the pre-import snapshot ({@code --no-snapshot}). */
@@ -286,7 +357,8 @@ public interface ExportImportOperations {
           forceVersion,
           keepThemes,
           snapshotStopsService,
-          skip);
+          skip,
+          pauseJobs);
     }
 
     /** The options that keep the themes default: skipped only across a major version. */
@@ -383,7 +455,8 @@ public interface ExportImportOperations {
           force,
           keepThemes,
           snapshotStopsService,
-          noSnapshot);
+          noSnapshot,
+          pauseJobs);
     }
 
     public ImportOptions withKeepThemes(boolean keep) {
@@ -406,7 +479,8 @@ public interface ExportImportOperations {
           forceVersion,
           keep,
           snapshotStopsService,
-          noSnapshot);
+          noSnapshot,
+          pauseJobs);
     }
 
     public ImportOptions(
