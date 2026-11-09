@@ -322,6 +322,23 @@ final class HelpExamples {
                 "Put the files of an upgrade back (restore the database from your backup first)",
                 "jrsctl upgrade rollback <run-id> --to-point B")));
     m.put(
+        "repository load",
+        List.of(
+            new Example(
+                "Look at the plan; changes nothing (from a tools-only configuration: jrsctl init"
+                    + " --tools-only)",
+                "jrsctl repository load --schema jasperserver_101 --from /data/js-8.2-export.zip"
+                    + " --plan"),
+            new Example(
+                "Create the schema js.dbName names, initialise it, load the minimal content and"
+                    + " import the export; a failure drops only that schema",
+                "jrsctl repository load --schema jasperserver_101 --from /data/js-8.2-export.zip"),
+            new Example(
+                "Also load the access, audit and monitoring events, and name the key an export"
+                    + " from another server was encrypted with",
+                "jrsctl repository load --schema jasperserver_101 --from /data/js-8.2-export.zip"
+                    + " --include-events --key-alias deprecatedImportExportEncSecret")));
+    m.put(
         "customizations register",
         List.of(
             new Example(

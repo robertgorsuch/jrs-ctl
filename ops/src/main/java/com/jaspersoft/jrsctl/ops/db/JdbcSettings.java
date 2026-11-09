@@ -61,6 +61,12 @@ public record JdbcSettings(
         new JdbcSettings(type, db.url().get(), db.username(), db.passwordRef(), driverDir));
   }
 
+  /** The same settings against another URL of the same server (a maintenance database). */
+  public JdbcSettings withUrl(String otherUrl) {
+    return new JdbcSettings(
+        type, Objects.requireNonNull(otherUrl, "otherUrl"), username, passwordRef, driverDir);
+  }
+
   /** Buildomatic's directory name for a database type. */
   public static String buildomaticDir(Config.DatabaseType type) {
     return switch (type) {

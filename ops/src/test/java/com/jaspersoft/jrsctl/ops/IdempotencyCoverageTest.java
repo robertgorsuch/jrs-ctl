@@ -203,6 +203,14 @@ import org.junit.jupiter.api.Test;
  * <tr><td>jrs.service ServiceSteps.StartService (vendor strategy suite)</td>
  *     <td>jrs StepIdempotencyTest#should_start_once_when_start_service_executes_twice</td>
  *     <td>jrs StepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
+ * <tr><td>repository LoadSteps.Doctor, VerifyBuildomatic, VerifyTargetSchema, AdoptExport</td>
+ *     <td colspan="2">RepositoryStepIdempotencyTest#should_not_mutate_when_read_only_load_steps_execute_twice</td></tr>
+ * <tr><td>repository LoadSteps.CreateJsDb, InitJsDb, ImportMinimal, ImportExport</td>
+ *     <td>RepositoryStepIdempotencyTest#should_&lt;step&gt;_once_when_&lt;step&gt;_executes_twice</td>
+ *     <td>RepositoryStepIdempotencyTest#should_drop_the_schema_once_when_&lt;step&gt;_compensates_twice</td></tr>
+ * <tr><td>repository LoadSteps.RecordLoad</td>
+ *     <td>RepositoryStepIdempotencyTest#should_write_the_same_record_when_record_load_executes_twice</td>
+ *     <td>RepositoryStepIdempotencyTest#should_remove_the_record_once_when_record_load_compensates_twice</td></tr>
  * </table>
  */
 class IdempotencyCoverageTest {
@@ -216,6 +224,10 @@ class IdempotencyCoverageTest {
   private static final String E = "exim.EximStepIdempotencyTest#";
   private static final String S = "smoke.SmokePlanIdempotencyTest#";
   private static final String J = "jrs:strategy.StepIdempotencyTest#";
+  private static final String L = "repository.RepositoryStepIdempotencyTest#";
+
+  private static final String L_READ_ONLY =
+      L + "should_not_mutate_when_read_only_load_steps_execute_twice";
 
   private static final String H_READ_ONLY =
       H + "should_not_mutate_when_read_only_apply_steps_execute_twice";
@@ -562,6 +574,41 @@ class IdempotencyCoverageTest {
           Map.entry(
               JRS + "strategy.RunJsImport",
               J + "should_invoke_js_import_identically_when_run_js_import_executes_twice"),
+          // repository load (spec §10.5, ADR-0052)
+          Map.entry(OPS + "repository.LoadSteps$Doctor", L_READ_ONLY),
+          Map.entry(OPS + "repository.LoadSteps$VerifyBuildomatic", L_READ_ONLY),
+          Map.entry(OPS + "repository.LoadSteps$VerifyTargetSchema", L_READ_ONLY),
+          Map.entry(OPS + "repository.LoadSteps$AdoptExport", L_READ_ONLY),
+          Map.entry(
+              OPS + "repository.LoadSteps$CreateJsDb",
+              L
+                  + "should_create_the_schema_once_when_create_js_db_executes_twice;"
+                  + L
+                  + "should_drop_the_schema_once_when_create_js_db_compensates_twice"),
+          Map.entry(
+              OPS + "repository.LoadSteps$InitJsDb",
+              L
+                  + "should_initialise_once_when_init_js_db_executes_twice;"
+                  + L
+                  + "should_drop_the_schema_once_when_init_js_db_compensates_twice"),
+          Map.entry(
+              OPS + "repository.LoadSteps$ImportMinimal",
+              L
+                  + "should_import_the_minimal_content_once_when_import_minimal_executes_twice;"
+                  + L
+                  + "should_drop_the_schema_once_when_import_minimal_compensates_twice"),
+          Map.entry(
+              OPS + "repository.LoadSteps$ImportExport",
+              L
+                  + "should_import_the_export_once_when_import_export_executes_twice;"
+                  + L
+                  + "should_drop_the_schema_once_when_import_export_compensates_twice"),
+          Map.entry(
+              OPS + "repository.LoadSteps$RecordLoad",
+              L
+                  + "should_write_the_same_record_when_record_load_executes_twice;"
+                  + L
+                  + "should_remove_the_record_once_when_record_load_compensates_twice"),
           Map.entry(
               JRS + "strategy.ImportSourceKeystore",
               J

@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.ops.BuildomaticDefaults;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.Services;
+import com.jaspersoft.jrsctl.ops.db.DatabaseCatalog;
 import com.jaspersoft.jrsctl.ops.db.DefaultJdbcConnector;
 import com.jaspersoft.jrsctl.ops.db.JdbcConnector;
 import com.jaspersoft.jrsctl.ops.db.JdbcException;
@@ -95,6 +96,16 @@ final class DatabaseCheck {
               + "/jdbc in the buildomatic directory)",
           "set database.driverDir to a directory holding the " + type.yamlValue() + " JDBC jar");
     }
+    // ADR-0052: in a tools-only configuration the URL names the schema repository load is about
+    // to create, so the question is whether the database server answers and whether that schema
+    // is there yet, asked of the server's catalogue
+    Optional<DatabaseCatalog> catalog =
+        s.config().server().namesToolsOnly()
+            ? DatabaseCatalog.of(settings.get())
+            : Optional.empty();
+    if (catalog.isPresent()) {
+      return catalogProbe(s, connector, settings.get(), catalog.get());
+    }
     try (JdbcConnector.Session session = settings.get().open(connector, s.secrets())) {
       String product = session.product();
       if (!session.queryHasRow(settings.get().probeSql())) {
@@ -108,6 +119,35 @@ final class DatabaseCheck {
     } catch (JdbcException e) {
       return ReportItem.fail(
           NAME, e.getMessage(), remediation(e, type, settings.get().driverDir().get()));
+    }
+  }
+
+  /** The tools-only probe: the server's maintenance database, then the catalogue (ADR-0052). */
+  private static ReportItem catalogProbe(
+      Services s, JdbcConnector connector, JdbcSettings settings, DatabaseCatalog catalog) {
+    Config.Database db = s.config().database();
+    String schema = catalog.schemaName();
+    try (JdbcConnector.Session session =
+        settings.withUrl(catalog.adminUrl()).open(connector, s.secrets())) {
+      boolean exists = session.queryHasRow(catalog.existsSql(schema));
+      return ReportItem.pass(
+          NAME,
+          "database server "
+              + session.product()
+              + db.username().map(u -> " reachable as " + u).orElse(" reachable")
+              + " (tools-only: asked through "
+              + catalog.adminUrl()
+              + "); schema "
+              + schema
+              + (exists ? " exists" : " does not exist yet"));
+    } catch (IllegalArgumentException e) {
+      return ReportItem.fail(
+          NAME, e.getMessage(), "correct js.dbName in default_master.properties");
+    } catch (SecretException e) {
+      return ReportItem.fail(NAME, e.getMessage(), "fix " + db.passwordRef().get().render());
+    } catch (JdbcException e) {
+      return ReportItem.fail(
+          NAME, e.getMessage(), remediation(e, settings.type(), settings.driverDir().get()));
     }
   }
 

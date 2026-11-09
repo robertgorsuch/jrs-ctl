@@ -19,6 +19,12 @@ public final class FakeJdbcConnector implements JdbcConnector {
   public Optional<String> failOnStatementContaining = Optional.empty();
   public String product = "FakeDB 1.0";
 
+  /** What {@link Session#queryHasRow} answers for a statement; every query has a row by default. */
+  public java.util.function.Predicate<String> rowAnswer = sql -> true;
+
+  /** Called with every statement {@link Session#executeStatement} accepts, after recording it. */
+  public java.util.function.Consumer<String> onExecute = sql -> {};
+
   @Override
   public Session connect(
       Path driverDir, String url, Optional<String> username, Optional<Secret> password)
@@ -36,7 +42,7 @@ public final class FakeJdbcConnector implements JdbcConnector {
       @Override
       public boolean queryHasRow(String sql) {
         executed.add(sql);
-        return true;
+        return rowAnswer.test(sql);
       }
 
       @Override
@@ -45,6 +51,7 @@ public final class FakeJdbcConnector implements JdbcConnector {
           throw new JdbcException(JdbcException.Kind.SQL_FAILED, "boom: " + statement);
         }
         executed.add(statement);
+        onExecute.accept(statement);
       }
 
       @Override

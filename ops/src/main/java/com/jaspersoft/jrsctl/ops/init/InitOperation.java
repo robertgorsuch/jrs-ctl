@@ -359,6 +359,81 @@ public final class InitOperation {
     return new InitReport(config, values);
   }
 
+  /** What the report says in place of the installation keys of a tools-only configuration. */
+  static final String TOOLS_ONLY_NOTE =
+      "tools-only: the vendor tools of server.buildomaticDir run here for a server elsewhere;"
+          + " no installation or service on this machine (repository load, REST export and"
+          + " import, doctor)";
+
+  /**
+   * A tools-only configuration (ADR-0052): the target server's address as for {@link
+   * #detectRemote}, plus {@code server.buildomaticDir} pointing at a buildomatic directory on this
+   * machine (the new version's, unpacked from the distribution), {@code vendor.javaHome} from
+   * {@code JAVA_HOME} when the environment names one, and the database settings that buildomatic's
+   * {@code default_master.properties} holds, shown and not copied (#73). No installation, Tomcat or
+   * service is detected or written.
+   *
+   * @throws IllegalArgumentException when {@code buildomaticDir} holds no vendor scripts
+   */
+  public InitReport detectToolsOnly(URI baseUrl, Path buildomaticDir, Map<String, String> env) {
+    Objects.requireNonNull(baseUrl, "baseUrl");
+    Objects.requireNonNull(buildomaticDir, "buildomaticDir");
+    Objects.requireNonNull(env, "env");
+    Path dir = buildomaticDir.toAbsolutePath().normalize();
+    var located = new BuildomaticLocator(services.platform()).at(dir);
+    if (located.isEmpty() || !located.get().missingScripts().isEmpty()) {
+      throw new IllegalArgumentException(
+          dir
+              + " holds no buildomatic (js-ant, js-export and js-import with their"
+              + " default_master.properties); point --buildomatic-dir at the buildomatic directory"
+              + " of the unpacked distribution");
+    }
+    InitReport remote = detectRemote(baseUrl);
+    List<InitReport.Detected> values = new ArrayList<>();
+    for (InitReport.Detected d : remote.values()) {
+      if (d.key().equals("server.installDir")) {
+        values.add(new InitReport.Detected("server.installDir", "(none)", TOOLS_ONLY_NOTE));
+      } else {
+        values.add(d);
+      }
+    }
+    values.add(
+        new InitReport.Detected("server.buildomaticDir", dir.toString(), "from --buildomatic-dir"));
+    DefaultMasterProperties master = readDefaultMaster(Optional.of(dir));
+    Config.Database database = database(master, values);
+    Optional<Path> javaHome =
+        Optional.ofNullable(env.get("JAVA_HOME"))
+            .filter(v -> !v.isBlank())
+            .map(v -> Path.of(v).toAbsolutePath().normalize())
+            .filter(Files::isDirectory);
+    javaHome.ifPresent(
+        j ->
+            values.add(
+                new InitReport.Detected(
+                    "vendor.javaHome",
+                    j.toString(),
+                    "from JAVA_HOME; buildomatic runs with it (set it to the JDK the vendor"
+                        + " requires for this version)")));
+    Config base = remote.config();
+    Config config =
+        new Config(
+            new Config.Server(
+                base.server().baseUrl(),
+                base.server().webappName(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(dir),
+                Optional.empty(),
+                base.server().auth()),
+            base.service(),
+            database,
+            new Config.Vendor(javaHome),
+            base.network(),
+            base.backups(),
+            base.smoke());
+    return new InitReport(config, values);
+  }
+
   /** The configuration the report proposes. */
   public Config toConfig(InitReport report) {
     return Objects.requireNonNull(report, "report").config();

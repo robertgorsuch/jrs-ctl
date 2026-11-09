@@ -94,54 +94,57 @@ public final class DoctorOperation {
     // review §3.2 (issue #112): the licence's clustering flag, read by the same probe
     items.add(guard("cluster", s -> probe.authenticated("cluster", ServerChecks::cluster)));
 
-    // #68: a jrsctl that reaches the server over REST only has no installation to check
-    boolean local = services.config().server().namesLocalInstallation();
+    // #68: a jrsctl that reaches the server over REST only has no installation to check;
+    // ADR-0052: a tools-only configuration has a buildomatic to check but no installation
+    boolean toolsOnly = services.config().server().namesToolsOnly();
+    boolean vendor = services.config().server().namesLocalInstallation();
+    boolean local = vendor && !toolsOnly;
     Optional<TomcatLayout> layout = LocalChecks.layout(services);
     ReportItem deployment =
         local
             ? guard(LocalChecks.DEPLOYMENT, s -> LocalChecks.deployment(s, layout))
-            : remote(LocalChecks.DEPLOYMENT);
+            : skipped(LocalChecks.DEPLOYMENT, toolsOnly);
     items.add(deployment);
     // ADR-0043: on a JBoss/WildFly home the missing Tomcat layout is the deployment item's finding,
     // not a second one, so a refused deployment alone exits 6
     boolean notTomcat = local && layout.isEmpty() && deployment.status() == ReportItem.Status.FAIL;
     items.add(
         !local
-            ? remote("layout")
+            ? skipped("layout", toolsOnly)
             : notTomcat
                 ? ReportItem.skip("layout", "not a Tomcat deployment", "see the deployment item")
                 : guard("layout", s -> LocalChecks.layout(s, layout)));
-    items.add(local ? guard("service", LocalChecks::service) : remote("service"));
+    items.add(local ? guard("service", LocalChecks::service) : skipped("service", toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.RUNNING_TOMCAT, s -> LocalChecks.runningTomcat(s, layout))
-            : remote(LocalChecks.RUNNING_TOMCAT));
+            : skipped(LocalChecks.RUNNING_TOMCAT, toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.SERVICE_MANAGER, LocalChecks::serviceManager)
-            : remote(LocalChecks.SERVICE_MANAGER));
+            : skipped(LocalChecks.SERVICE_MANAGER, toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.DATABASE_SERVICE, LocalChecks::databaseService)
-            : remote(LocalChecks.DATABASE_SERVICE));
+            : skipped(LocalChecks.DATABASE_SERVICE, toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.PID_FILE, s -> LocalChecks.pidFile(layout))
-            : remote(LocalChecks.PID_FILE));
+            : skipped(LocalChecks.PID_FILE, toolsOnly));
     items.add(
         local
             ? guard("permissions", s -> LocalChecks.permissions(s, layout))
-            : remote("permissions"));
+            : skipped("permissions", toolsOnly));
     items.add(guard("disk", LocalChecks::disk));
     items.add(
         local
             // the keystore check asks the server for its capabilities, which logs in
             ? guard(
                 "keystore", s -> probe.authenticated("keystore", c -> ServerChecks.keystore(s, c)))
-            : remote("keystore"));
-    items.add(local ? guard("vendor", LocalChecks::vendor) : remote("vendor"));
+            : skipped("keystore", toolsOnly));
+    items.add(vendor ? guard("vendor", LocalChecks::vendor) : remote("vendor"));
     items.add(
-        local
+        vendor
             ? guard(
                 "vendor-java",
                 s -> probe.dependent("vendor-java", c -> ServerChecks.vendorJava(s, c)))
@@ -150,7 +153,7 @@ public final class DoctorOperation {
         local
             ? guard(
                 "tomcat", s -> probe.dependent("tomcat", c -> ServerChecks.tomcat(s, c, layout)))
-            : remote("tomcat"));
+            : skipped("tomcat", toolsOnly));
     // issue #268: the analytics JNDI resources, mandatory from 9.0 on (upgrade guide 10.1 p.93)
     items.add(
         local
@@ -160,15 +163,15 @@ public final class DoctorOperation {
                     probe.dependent(
                         LocalChecks.ANALYTICS_JNDI,
                         c -> LocalChecks.analyticsJndi(c.identity().version(), layout)))
-            : remote(LocalChecks.ANALYTICS_JNDI));
+            : skipped(LocalChecks.ANALYTICS_JNDI, toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.TELEMETRY, s -> LocalChecks.telemetry(s, layout))
-            : remote(LocalChecks.TELEMETRY));
+            : skipped(LocalChecks.TELEMETRY, toolsOnly));
     items.add(
         local
             ? guard(LocalChecks.AUDIT, s -> LocalChecks.audit(layout))
-            : remote(LocalChecks.AUDIT));
+            : skipped(LocalChecks.AUDIT, toolsOnly));
     items.add(guard("database", DatabaseCheck::check));
     items.add(guard("state", LocalChecks::state));
     items.add(guard("runs", LocalChecks::runs));
@@ -185,6 +188,21 @@ public final class DoctorOperation {
         "no local installation configured: this jrsctl reaches the server over REST only",
         "REST export and import work from here; run jrsctl on the server for hotfixes, upgrades"
             + " and vendor tools, or set server.installDir");
+  }
+
+  /** The skip for an installation item: tools-only (ADR-0052) or REST-only (#68). */
+  private static ReportItem skipped(String name, boolean toolsOnly) {
+    return toolsOnly ? toolsOnly(name) : remote(name);
+  }
+
+  /** ADR-0052: a buildomatic for a server elsewhere; the installation items do not apply. */
+  static ReportItem toolsOnly(String name) {
+    return ReportItem.skip(
+        name,
+        "tools-only configuration: server.buildomaticDir names the vendor tools and no"
+            + " installation is configured on this machine",
+        "repository load, REST export and import work from here; run jrsctl on the server for"
+            + " hotfixes and upgrades, or set server.installDir");
   }
 
   private ReportItem guard(String name, DoctorCheck check) {

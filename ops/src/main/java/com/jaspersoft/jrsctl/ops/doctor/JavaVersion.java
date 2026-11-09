@@ -18,17 +18,18 @@ import java.util.regex.Pattern;
  * {@code 1.8.0_x} maps to 8 and {@code 17.0.2} to 17; a JDK that cannot run yields an empty result
  * with the reason.
  */
-final class JavaVersion {
+public final class JavaVersion {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(30);
   private static final Pattern BANNER =
       Pattern.compile("version \"([0-9]+)(?:\\.([0-9]+))?[^\"]*\"");
 
-  record Probe(Optional<Integer> feature, String detail) {}
+  /** The feature version found, or empty with {@code detail} saying why not. */
+  public record Probe(Optional<Integer> feature, String detail) {}
 
   private JavaVersion() {}
 
-  static Probe probe(ProcessRunner runner, Path javaHome) {
+  public static Probe probe(ProcessRunner runner, Path javaHome) {
     Path bin = javaHome.resolve("bin");
     Path java =
         Files.isRegularFile(bin.resolve("java.exe"))

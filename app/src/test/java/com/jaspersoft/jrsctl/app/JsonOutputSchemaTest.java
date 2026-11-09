@@ -1109,6 +1109,31 @@ class JsonOutputSchemaTest {
                     "--json",
                     "--home",
                     emptyHome(dir).toString())));
+    s.add(
+        of(
+            "repository load without --schema and --from",
+            "repository load",
+            1,
+            dir -> run("repository", "load", "--json", "--home", emptyHome(dir).toString())));
+    s.add(
+        of(
+            "repository load refused by a configuration that is not tools-only",
+            "repository load",
+            2,
+            dir -> {
+              serverHome(dir);
+              Path export = dir.resolve("export.zip");
+              Files.writeString(export, "zip", StandardCharsets.UTF_8);
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "repository",
+                      "load",
+                      "--schema",
+                      "jrs_101",
+                      "--from",
+                      export.toString()));
+            }));
 
     s.add(
         of(

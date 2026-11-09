@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.ops.FakeJrsAdapter;
 import com.jaspersoft.jrsctl.ops.FakeLayout;
+import com.jaspersoft.jrsctl.ops.FakePlatform;
 import com.jaspersoft.jrsctl.ops.FakeServices;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.ReportItem.Status;
@@ -212,6 +213,61 @@ class DoctorOperationTest {
       }
       assertThat(items.get("server").status()).isEqualTo(Status.PASS);
       assertThat(items.get("auth").status()).isEqualTo(Status.PASS);
+    }
+  }
+
+  /**
+   * ADR-0052: a tools-only configuration (a buildomatic directory and a server address, no
+   * installation) keeps the vendor-tool items and skips the installation items, saying why.
+   */
+  @Test
+  void should_skip_the_installation_items_and_keep_the_vendor_items_when_tools_only()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    String toolsOnly =
+        """
+        server:
+          baseUrl: http://localhost:8081/jasperserver-pro
+          buildomaticDir: %s
+          auth:
+            mode: basic
+            username: superuser
+            passwordRef: env:JRS_PASSWORD
+        vendor:
+          javaHome: %s
+        network:
+          mode: public
+        """
+            .formatted(
+                install.resolve("buildomatic").toString().replace("\\", "/"),
+                install.resolve("java").toString().replace("\\", "/"));
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home")).yaml(toolsOnly)) {
+      fake.platform.on(
+          List.of(install.resolve("java").resolve("bin").resolve("java").toString(), "-version"),
+          FakePlatform.Response.ok("openjdk version \"11.0.2\" 2019-01-15"));
+      DoctorReport report = new DoctorOperation(fake.build()).run(DoctorOptions.DEFAULT);
+
+      Map<String, ReportItem> items = byName(report);
+      assertThat(report.exitCode()).as(report.items().toString()).isEqualTo(0);
+      for (String skipped :
+          List.of(
+              LocalChecks.DEPLOYMENT,
+              "layout",
+              "service",
+              LocalChecks.RUNNING_TOMCAT,
+              LocalChecks.SERVICE_MANAGER,
+              "permissions",
+              "keystore",
+              "tomcat",
+              LocalChecks.ANALYTICS_JNDI,
+              LocalChecks.TELEMETRY,
+              LocalChecks.AUDIT)) {
+        assertThat(items.get(skipped).status()).as(skipped).isEqualTo(Status.SKIP);
+        assertThat(items.get(skipped).detail()).as(skipped).contains("tools-only");
+      }
+      assertThat(items.get("vendor").status()).isEqualTo(Status.PASS);
+      assertThat(items.get("vendor-java").status()).isEqualTo(Status.PASS);
+      assertThat(items.get("server").status()).isEqualTo(Status.PASS);
     }
   }
 

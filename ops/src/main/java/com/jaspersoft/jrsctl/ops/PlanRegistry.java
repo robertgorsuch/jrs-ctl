@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.repository.RepositoryOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -42,17 +43,21 @@ public final class PlanRegistry {
   public static final String UPGRADE = UpgradeOperations.UPGRADE_OPERATION;
   public static final String UPGRADE_ROLLBACK = UpgradeOperations.ROLLBACK_OPERATION;
   public static final String UPGRADE_TEST = UpgradeOperations.TEST_OPERATION;
+  public static final String REPOSITORY_LOAD = RepositoryOperations.LOAD_OPERATION;
 
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
   public PlanRegistry(
       Supplier<HotfixOperations> hotfix,
       Supplier<ExportImportOperations> exim,
-      Supplier<UpgradeOperations> upgrade) {
+      Supplier<UpgradeOperations> upgrade,
+      Supplier<RepositoryOperations> repository) {
     Objects.requireNonNull(hotfix, "hotfix");
     Objects.requireNonNull(exim, "exim");
     Objects.requireNonNull(upgrade, "upgrade");
+    Objects.requireNonNull(repository, "repository");
     builders.put(UPGRADE, args -> upgrade.get().planUpgrade(upgradeOptions(args)));
+    builders.put(REPOSITORY_LOAD, args -> repository.get().planLoad(repositoryLoadOptions(args)));
     builders.put(UPGRADE_TEST, args -> upgrade.get().planTest(upgradeOptions(args)));
     builders.put(
         UPGRADE_ROLLBACK,
@@ -315,6 +320,28 @@ public final class PlanRegistry {
       node.putNull("keyPasswordRef");
     }
     return Json.write(node);
+  }
+
+  /** Spec §10.5: the stored arguments of a load run ({@code repositoryLoadArgs}). */
+  public static String repositoryLoadArgs(RepositoryOperations.LoadOptions options) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    node.put("schema", options.schema());
+    node.put("export", options.export().toString());
+    node.put("includeEvents", options.includeEvents());
+    if (options.keyAlias().isPresent()) {
+      node.put("keyAlias", options.keyAlias().get());
+    } else {
+      node.putNull("keyAlias");
+    }
+    return Json.write(node);
+  }
+
+  static RepositoryOperations.LoadOptions repositoryLoadOptions(JsonNode args) {
+    return new RepositoryOperations.LoadOptions(
+        required(args, "schema"),
+        Path.of(required(args, "export")),
+        args.path("includeEvents").asBoolean(false),
+        text(args, "keyAlias"));
   }
 
   public static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {

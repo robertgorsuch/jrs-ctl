@@ -225,6 +225,16 @@ public record Config(
       return installDir.isPresent() || tomcatDir.isPresent() || buildomaticDir.isPresent();
     }
 
+    /**
+     * True for a tools-only configuration (ADR-0052): a buildomatic directory on this machine and
+     * no installation around it, so the vendor tools can run here while the server they prepare a
+     * schema for lives elsewhere. Such a configuration also {@link #namesLocalInstallation()},
+     * because the buildomatic and its {@code default_master.properties} are read as usual.
+     */
+    public boolean namesToolsOnly() {
+      return buildomaticDir.isPresent() && installDir.isEmpty() && tomcatDir.isEmpty();
+    }
+
     public static Server empty() {
       return new Server(
           Optional.empty(),

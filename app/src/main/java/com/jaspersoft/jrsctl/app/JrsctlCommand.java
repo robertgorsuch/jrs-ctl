@@ -44,6 +44,7 @@ import picocli.CommandLine.Spec;
       ExportCommand.class,
       ImportCommand.class,
       UpgradeCommand.class,
+      RepositoryCommand.class,
       CustomizationsCommand.class,
       RunsCommand.class,
       KeysCommand.class,
