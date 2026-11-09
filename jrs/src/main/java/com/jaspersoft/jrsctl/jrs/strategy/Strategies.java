@@ -17,14 +17,16 @@ import java.util.Set;
 
 /**
  * Strategy selection (spec §9.2): REST when the {@code EXPORT_ASYNC}/{@code IMPORT_ASYNC} probe
- * passes and the request is not a full-server export; vendor CLI when the request is full-server,
- * when the probe fails or the server cannot be reached, or when {@code --strategy} forces it.
- * Invariants: every selection carries a one-line reason for the plan summary; a forced kind wins
- * except for an import that brings a source keystore, which always uses the vendor tools because
- * {@code js-import --keystore} must run against a stopped server; an unreachable server or a probe
- * that fails for any reason other than refused credentials selects the vendor tools; refused
- * credentials (HTTP 401 or 403) propagate as a {@link RestException}, because falling back would
- * stop the production service over a wrong password.
+ * passes and the request is not a full-server export on the server host; vendor CLI when the
+ * request is full-server and the configuration names an installation (ADR-0051: from another
+ * machine a full-server export is the REST export's {@code everything} parameter), when the probe
+ * fails or the server cannot be reached, or when {@code --strategy} forces it. Invariants: every
+ * selection carries a one-line reason for the plan summary; a forced kind wins except for an import
+ * that brings a source keystore, which always uses the vendor tools because {@code js-import
+ * --keystore} must run against a stopped server; an unreachable server or a probe that fails for
+ * any reason other than refused credentials selects the vendor tools; refused credentials (HTTP 401
+ * or 403) propagate as a {@link RestException}, because falling back would stop the production
+ * service over a wrong password.
  */
 public final class Strategies {
 
@@ -66,7 +68,12 @@ public final class Strategies {
       Optional<ExportImportStrategy.Kind> forced) {
     Objects.requireNonNull(config, "config");
     Objects.requireNonNull(request, "request");
-    return select(adapter, Capability.EXPORT_ASYNC, request.fullServer(), forced);
+    return select(
+        adapter,
+        Capability.EXPORT_ASYNC,
+        request.fullServer(),
+        config.server().namesLocalInstallation(),
+        forced);
   }
 
   public Selection select(
@@ -85,13 +92,20 @@ public final class Strategies {
       }
       return new Selection(vendor, reason);
     }
-    return select(adapter, Capability.IMPORT_ASYNC, false, forced);
+    return select(adapter, Capability.IMPORT_ASYNC, false, true, forced);
   }
 
+  /**
+   * ADR-0051 (issue #265): a full-server export is {@code js-export --everything} where the
+   * installation is ({@code local}); from another machine there is no js-export, so it is the REST
+   * export's {@code everything} parameter when the probe passes, and the vendor tools (which the
+   * caller then refuses, naming why) when it fails.
+   */
   private Selection select(
       JrsAdapter adapter,
       Capability needed,
       boolean fullServer,
+      boolean local,
       Optional<ExportImportStrategy.Kind> forced) {
     Objects.requireNonNull(adapter, "adapter");
     Objects.requireNonNull(forced, "forced");
@@ -101,7 +115,7 @@ public final class Strategies {
         case VENDOR_CLI -> new Selection(vendor, "vendor CLI forced by --strategy vendor");
       };
     }
-    if (fullServer) {
+    if (fullServer && local) {
       return new Selection(vendor, "vendor CLI: a full-server export uses js-export");
     }
     Set<Capability> caps;
@@ -118,6 +132,15 @@ public final class Strategies {
           vendor, "vendor CLI: capability probe failed (" + Failures.describe(e) + ")");
     }
     if (caps.contains(needed)) {
+      if (fullServer) {
+        return new Selection(
+            rest,
+            "REST: "
+                + needed
+                + " probe passed; no installation here for js-export, so the full-server export"
+                + " is the REST export's everything parameter (repository, permissions, report"
+                + " jobs, users, roles, server settings), service stays up");
+      }
       return new Selection(rest, "REST: " + needed + " probe passed, service stays up");
     }
     return new Selection(vendor, "vendor CLI: " + needed + " probe failed on this server");
