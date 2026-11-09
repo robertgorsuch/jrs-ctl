@@ -2,7 +2,7 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **Actively maintained.** The current release is [2.5.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.5.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
+> **Actively maintained.** The current release is [2.6.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.6.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
 >
 > - Supported: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
 > - Each archive bundles a Java 21 runtime; `jrsctl selfcheck` shows which update.
@@ -50,14 +50,14 @@ Unpack it on the server, then open a terminal in the unpacked folder:
 
 ```bash
 :: Windows (Command Prompt, run as administrator)
-tar -xf jrsctl-2.5.0-windows-x64.zip -C C:\Jaspersoft
-cd C:\Jaspersoft\jrsctl-2.5.0
+tar -xf jrsctl-2.6.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-2.6.0
 ```
 
 ```bash
 # Linux
-tar -xzf jrsctl-2.5.0-linux-x64.tar.gz -C /opt
-cd /opt/jrsctl-2.5.0
+tar -xzf jrsctl-2.6.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-2.6.0
 ```
 
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
@@ -289,8 +289,8 @@ The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (back
 
 Each release file has a `.sha256` checksum beside it:
 
-- Windows: `certutil -hashfile jrsctl-2.5.0-windows-x64.zip SHA256`
-- Linux: `sha256sum -c jrsctl-2.5.0-linux-x64.tar.gz.sha256`
+- Windows: `certutil -hashfile jrsctl-2.6.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-2.6.0-linux-x64.tar.gz.sha256`
 
 Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
 
