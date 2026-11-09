@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (the analytics JNDI resources on 10.x; issue #268)
+
+- §10.2 step 13a: `check-analytics-jndi` runs for every target from 9.0 on, not for 9.0.x only. The 10.1 upgrade guide (p.93) keeps `jdbc/jasperserverSystemAnalytics` and `jdbc/jasperserverAuditAnalytics` mandatory in 10.x even with the feature off, so a 10.x target whose `context.xml` was carried over from 8.x now gets the warning.
+- §12.1: new `doctor` item `analytics-jndi`, the same check against the deployed webapp outside an upgrade run; probe-dependent (needs the server's version), SKIP below 9.0 and in remote mode. The judgement moved to `ops.AnalyticsJndi`, shared by both.
+
 ## Draft 1.2 amendment — 2026-10-29 (`upgrade rollback` of a side-by-side run without its stored plan; ADR-0049 amended)
 
 - §10.1: when the run's stored plan is missing or unreadable, `upgrade rollback --to-point B|C` reads the webapp path from the point-B manifest; one that differs from the webapp the configuration now gives marks a side-by-side run, which leaves out `restore-webapp` and `restore-buildomatic` as with a stored `tomcatDir`. Before this, the fallback restored point B under the retargeted `server.tomcatDir`, over the new Tomcat's webapp.
