@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-09 (design: loading a new repository schema from an export; ADR-0052, issue #269)
+
+- §10.5 (new): the design of `jrsctl repository load`, the vendor's manual new-schema route as one journaled plan with a tools-only configuration, four refusals that keep the live database out of reach (the schema must be the one `default_master.properties` names, must not exist, must not be the source server's database, and the buildomatic must skip the app-server check) and a compensation that drops only the schema the run itself created, by name over JDBC. It answers ADR-0047's option B with a separate command rather than a mode of `upgrade`, and it lives in this repository's `ops`; implementation follows under its own issue.
+
 ## Draft 1.2 amendment — 2026-11-09 (`import verify`; issue #262)
 
 - §9.4, §9.5: `jrsctl import verify <archive>` reports, read-only, whether every organisation, user, role, folder and resource the archive holds is on the server, from the archive's own layout and the server's REST directory and repository listings; one `doctor`-style item per kind, exit 2 when anything is missing or the server could not be asked. §7.2: the adapter gains the read-only `listUserIds`, `listRoleNames` and `organizationExists`.

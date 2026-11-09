@@ -620,6 +620,17 @@ record ImportRequest(Path archive, boolean update, boolean skipUserUpdate, boole
 - `jrsctl upgrade rollback <runId> --to-point B|C [--restore-database]`
 - `jrsctl customizations register|unregister|list|diff <path>`
 
+### 10.5 Loading a new repository schema from an export (design, ADR-0052)
+
+The vendor's manual alternative to `js-upgrade-newdb` (upgrade guide 10.1 p.62): create an empty schema under a new name on the new version's buildomatic, initialise it, load the minimal content, import the export. The old server and its database are never touched. ADR-0052 designs it as `jrsctl repository load --schema <name> --from <export> [--include-events] [--key-alias <alias>] [--key-password-ref <ref>] [--plan] [--yes]`, in this repository's `ops`, behind its own implementation issue; the design is the contract until the code lands.
+
+- **Tools-only configuration.** `init --tools-only --buildomatic-dir <dir> --remote <url>` writes `server.baseUrl`, `server.buildomaticDir` and `vendor.javaHome` and no installation or service; `Config.Server.namesToolsOnly()`. `doctor` skips the installation items with *tools-only configuration* and keeps `vendor`, `vendor-java` and `database`. Only this plan accepts a tools-only configuration; every other vendor-tool path keeps requiring `namesLocalInstallation()`.
+- **Phases.** `preflight` (`doctor`, `verify-buildomatic`, `verify-target-schema`, `adopt-export`; nothing mutated), `create` (`create-js-db`), `initialise` (`init-js-db-<ce|pro>`, `import-minimal-<ce|pro>`), `load` (`js-import --input-zip <export> --include-server-settings`, events and `--keyalias` on request or from the sidecar), `verify` (`record-load`).
+- **Refusals before anything is created** (`verify-target-schema`): `js.dbName` in the buildomatic's `default_master.properties` equals `--schema` (the plan never edits that file); the schema does not exist in the target database's catalog, asked over the configured JDBC connection, and there is no `--force`; the name differs from the source server's database (`database.url`, any installed buildomatic's `js.dbName`, the sidecar's exporting server), a match being exit **6** naming the collision; `appServerType=skipAppServerCheck`.
+- **Compensation.** `create-js-db` writes `snapshots/<runId>/schema.created`; every compensation of the three mutating phases drops the schema only when the marker names it and `default_master.properties` still names it, through the configured JDBC connection by name and never through `js-ant drop-js-db`; otherwise it refuses (exit 4, the DBA's command named). No `rollback` subcommand in the first implementation.
+- **Outside the plan**, stated in the summary: deploying the server that uses the schema, the admin passwords (left as the minimal import set them), the site's own tables, `import verify` against the running target afterwards, and pausing imported jobs through the server's REST call once it runs.
+- **Recovery.** Stored arguments (`repositoryLoadArgs`: schema, export path and hash, events, key alias and password reference) rebuild the plan for `runs recover`; the fingerprint covers the staged `default_master.properties` minus passwords, the export hash and the schema name.
+
 ---
 
 ## 11. Security
