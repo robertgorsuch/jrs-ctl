@@ -5,26 +5,46 @@ only (GPL-3.0-only); its text is LICENSE in this directory (ADR-0010).
 Where a bundled library offers a choice of licences, jrsctl uses the one
 named first below, which is compatible with GPL-3.0.
 
-jrsctl bundles the following runtime dependencies (spec section 13.3,
-versions from the root pom.xml). Each is used under the licence named
-here; the licence texts are inside lib/jrsctl.jar under META-INF/ where
-the upstream project ships them, and at the URLs below.
+jrsctl bundles the following runtime dependencies (spec section 13.3),
+all inside lib/jrsctl.jar. The first table holds the libraries jrsctl
+declares, with versions from the root pom.xml; the second the libraries
+they bring in, with the versions resolved when this file was last
+checked against the build (2.7.1). The CycloneDX
+SBOM published beside each archive lists every component and is the
+authoritative inventory. Each is used under the licence named here; the
+licence texts are inside lib/jrsctl.jar under META-INF/ where the
+upstream project ships them, and at the URLs below.
 
 Library                          Version                       Licence
 -------------------------------- ----------------------------- ----------------------------------------
 picocli                          ${picocli.version}            Apache License 2.0
 Jackson (databind, dataformat-yaml,
-  datatype-jsr310, datatype-jdk8) ${jackson.version}            Apache License 2.0
-  SnakeYAML (via jackson-dataformat-yaml)                      Apache License 2.0
+  datatype-jsr310, datatype-jdk8,
+  core)                          ${jackson.version}            Apache License 2.0
 SLF4J API                        ${slf4j.version}              MIT License
 Logback (classic, core)          ${logback.version}            LGPL 2.1 (dual with EPL 1.0)
 logstash-logback-encoder         ${logstash-logback.version}   Apache License 2.0
 sqlite-jdbc (Xerial)             ${sqlite-jdbc.version}        Apache License 2.0 (SQLite: public domain)
 json-schema-validator (networknt) ${json-schema-validator.version} Apache License 2.0
 Apache Commons Compress          ${commons-compress.version}   Apache License 2.0
-semver4j                         ${semver4j.version}           MIT License
+semver4j                        ${semver4j.version}           MIT License
 JLine (terminal, terminal-jni,
   native, reader)                ${jline.version}              BSD-3-Clause
+
+Brought in by the libraries above
+-------------------------------- ----------------------------- ----------------------------------------
+Jackson annotations (via Jackson) 2.23                         Apache License 2.0
+SnakeYAML (via jackson-dataformat-yaml) 2.5                    Apache License 2.0
+ITU date-time (com.ethlo.time,
+  via json-schema-validator)     1.14.0                        Apache License 2.0
+Apache Commons Codec (via
+  Commons Compress)              1.19.0                        Apache License 2.0
+Apache Commons IO (via
+  Commons Compress)              2.20.0                        Apache License 2.0
+Apache Commons Lang (via Commons
+  Compress; pinned in pom.xml)   ${commons-lang3.version}      Apache License 2.0
+JSpecify annotations (via
+  semver4j)                      1.0.0                         Apache License 2.0
 
 Bundled Java runtime (runtime/)
   A jlink image of OpenJDK 21 built from the JDK that produced this
