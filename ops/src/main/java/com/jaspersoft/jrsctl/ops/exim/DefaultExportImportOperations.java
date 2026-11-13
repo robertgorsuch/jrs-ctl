@@ -913,8 +913,7 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       Optional<ExportImportStrategy.Kind> forced,
       String operation) {
     Config.Server server = services.config().server();
-    if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI
-        || (server.namesLocalInstallation() && !server.namesToolsOnly())) {
+    if (selection.kind() != ExportImportStrategy.Kind.VENDOR_CLI || server.namesInstallation()) {
       return;
     }
     String why;

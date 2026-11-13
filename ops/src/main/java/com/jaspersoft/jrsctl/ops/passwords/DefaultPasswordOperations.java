@@ -80,7 +80,7 @@ public final class DefaultPasswordOperations implements PasswordOperations {
   private Resolved resolve(String command) {
     Config config = rt.config();
     Config.Server server = config.server();
-    if (!server.namesLocalInstallation() || server.namesToolsOnly()) {
+    if (!server.namesInstallation()) {
       throw new PasswordException(
           PasswordException.PRECHECK,
           "passwords "

@@ -72,7 +72,9 @@ public final class Strategies {
         adapter,
         Capability.EXPORT_ASYNC,
         request.fullServer(),
-        config.server().namesLocalInstallation(),
+        // a tools-only buildomatic's js-export acts on another schema (ADR-0052): REST, as from
+        // any machine without the installation
+        config.server().namesInstallation(),
         forced);
   }
 
