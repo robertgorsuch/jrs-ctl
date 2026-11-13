@@ -62,6 +62,23 @@ public record DatabaseCatalog(Config.DatabaseType type, String adminUrl, String 
             settings.type(), base.substring(0, slash + 1) + maintenance + params, name));
   }
 
+  /**
+   * True when {@code other} names the same database server: the same type and the same {@link
+   * #adminUrl()} up to its query string. Connection parameters ({@code ?useUnicode=true&...}, which
+   * the vendor's MySQL template adds) choose how to talk to a server, not which server it is; the
+   * scheme and host compare without regard to case, as JDBC and DNS treat them.
+   */
+  public boolean sameServerAs(DatabaseCatalog other) {
+    Objects.requireNonNull(other, "other");
+    return type == other.type
+        && withoutQuery(adminUrl).equalsIgnoreCase(withoutQuery(other.adminUrl));
+  }
+
+  private static String withoutQuery(String url) {
+    int query = url.indexOf('?');
+    return query < 0 ? url : url.substring(0, query);
+  }
+
   /** Constant SQL that returns a row when {@code name} exists on the server. */
   public String existsSql(String name) {
     String literal = requireValid(name);

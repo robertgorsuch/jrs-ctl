@@ -164,6 +164,20 @@ class RepositoryLoadRunTest {
     }
   }
 
+  /** The vendor's MySQL template adds query parameters that config.yaml need not repeat. */
+  @Test
+  void should_load_when_the_rendered_url_differs_from_the_configured_one_only_in_parameters()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.renderUrl("jdbc:postgresql://db.example.internal:5432/" + LoadFixture.SCHEMA + "?ssl=true");
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.vendorLogText()).contains("create-js-db");
+    }
+  }
+
   @Test
   void should_roll_back_before_creating_anything_when_the_rendered_url_names_another_server()
       throws Exception {
