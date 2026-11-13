@@ -648,7 +648,7 @@ final class LoadSteps {
                 + in.buildomatic().dir().resolve(Buildomatic.MASTER_PROPERTIES)
                 + ", then run again");
       }
-      if (!rendered.get().adminUrl().equals(in.catalog().adminUrl())) {
+      if (!rendered.get().sameServerAs(in.catalog())) {
         return Steps.recoverable(
             "rendered "
                 + RenderedConfig.JDBC_URL_KEY

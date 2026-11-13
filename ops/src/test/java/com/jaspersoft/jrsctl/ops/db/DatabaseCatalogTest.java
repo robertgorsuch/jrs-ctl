@@ -43,6 +43,41 @@ class DatabaseCatalogTest {
   }
 
   @Test
+  void should_name_the_same_server_when_only_the_query_parameters_differ() {
+    DatabaseCatalog configured =
+        DatabaseCatalog.of(settings(Config.DatabaseType.MYSQL, "jdbc:mysql://DB:3306/jrs_101"))
+            .orElseThrow();
+    DatabaseCatalog rendered =
+        DatabaseCatalog.of(
+                settings(
+                    Config.DatabaseType.MYSQL,
+                    "jdbc:mysql://db:3306/jrs_101?useUnicode=true&characterEncoding=UTF-8"))
+            .orElseThrow();
+
+    assertThat(rendered.sameServerAs(configured)).isTrue();
+    assertThat(configured.sameServerAs(rendered)).isTrue();
+  }
+
+  @Test
+  void should_name_another_server_when_the_host_or_port_differs() {
+    DatabaseCatalog configured =
+        DatabaseCatalog.of(settings(Config.DatabaseType.MYSQL, "jdbc:mysql://db:3306/jrs_101"))
+            .orElseThrow();
+
+    assertThat(
+            DatabaseCatalog.of(
+                    settings(Config.DatabaseType.MYSQL, "jdbc:mysql://other:3306/jrs_101?a=b"))
+                .orElseThrow()
+                .sameServerAs(configured))
+        .isFalse();
+    assertThat(
+            DatabaseCatalog.of(settings(Config.DatabaseType.MYSQL, "jdbc:mysql://db:3307/jrs_101"))
+                .orElseThrow()
+                .sameServerAs(configured))
+        .isFalse();
+  }
+
+  @Test
   void should_ask_information_schema_and_quote_with_backticks_when_mysql() {
     DatabaseCatalog catalog =
         DatabaseCatalog.of(settings(Config.DatabaseType.MYSQL, "jdbc:mysql://db:3306/jrs_101"))
