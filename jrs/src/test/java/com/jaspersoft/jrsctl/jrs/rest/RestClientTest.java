@@ -129,6 +129,112 @@ class RestClientTest {
         .hasMessageContaining(Redactor.MASK);
   }
 
+  /**
+   * #313: JasperReports Server disables a user after repeated failed logins (the field test saw
+   * superuser at 10 failures, enabled=false), so a refused credential is sent once and never again,
+   * even when the same password is installed again by another login.
+   */
+  @Test
+  void should_send_a_refused_basic_credential_only_once() {
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
+            .willReturn(aResponse().withStatus(401)));
+    RestClient client = builder(new Redactor()).build();
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      client.useBasic("superuser", pw);
+    }
+
+    RestClient.Response first = client.get("/rest_v2/resources");
+    RestClient.Response second = client.get("/rest_v2/resources");
+    try (Secret again = Secret.fromString(PASSWORD)) {
+      client.useBasic("superuser", again);
+    }
+    RestClient.Response third = client.get("/rest_v2/jobs");
+
+    assertThat(first.status()).isEqualTo(401);
+    assertThat(second.status()).isEqualTo(401);
+    assertThat(second.body()).isEqualTo(RestClient.NOT_SENT_REFUSED);
+    assertThat(third.body()).isEqualTo(RestClient.NOT_SENT_REFUSED);
+    assertThat(client.credentialsRefused()).isTrue();
+    wm.verify(1, getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/resources")));
+    wm.verify(0, getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/jobs")));
+  }
+
+  @Test
+  void should_send_a_different_credential_after_one_was_refused() {
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
+            .withBasicAuth("superuser", "wrong")
+            .willReturn(aResponse().withStatus(401)));
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/resources"))
+            .withBasicAuth("superuser", PASSWORD)
+            .willReturn(aResponse().withStatus(200)));
+    RestClient client = builder(new Redactor()).build();
+    try (Secret wrong = Secret.fromString("wrong")) {
+      client.useBasic("superuser", wrong);
+    }
+    client.get("/rest_v2/resources");
+    try (Secret right = Secret.fromString(PASSWORD)) {
+      client.useBasic("superuser", right);
+    }
+
+    RestClient.Response r = client.get("/rest_v2/resources");
+
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(client.credentialsRefused()).isFalse();
+  }
+
+  @Test
+  void should_keep_sending_a_credential_the_server_answered_403() {
+    wm.stubFor(
+        get(urlPathEqualTo("/jasperserver-pro/rest_v2/users"))
+            .willReturn(aResponse().withStatus(403)));
+    RestClient client = builder(new Redactor()).build();
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      client.useBasic("jasperadmin", pw);
+    }
+
+    client.get("/rest_v2/users");
+    client.get("/rest_v2/users");
+
+    assertThat(client.credentialsRefused()).isFalse();
+    wm.verify(2, getRequestedFor(urlPathEqualTo("/jasperserver-pro/rest_v2/users")));
+  }
+
+  @Test
+  void should_not_post_a_refused_form_login_again() {
+    wm.stubFor(
+        post(urlEqualTo("/jasperserver-pro/rest_v2/login"))
+            .willReturn(aResponse().withStatus(401)));
+    wm.stubFor(
+        post(urlEqualTo("/jasperserver-pro/j_spring_security_check"))
+            .willReturn(
+                aResponse()
+                    .withStatus(302)
+                    .withHeader("Location", "/jasperserver-pro/login.html?error=1")));
+    RestClient client = builder(new Redactor()).build();
+
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      client.formLogin("/rest_v2/login", "superuser", pw);
+    }
+    RestClient.Response again;
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      again = client.formLogin("/rest_v2/login", "superuser", pw);
+    }
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      client.formLogin("/j_spring_security_check", "jasperadmin", pw);
+    }
+    client.refuseLastLogin();
+    try (Secret pw = Secret.fromString(PASSWORD)) {
+      client.formLogin("/j_spring_security_check", "jasperadmin", pw);
+    }
+
+    assertThat(again.body()).isEqualTo(RestClient.NOT_SENT_REFUSED);
+    wm.verify(1, postRequestedFor(urlEqualTo("/jasperserver-pro/rest_v2/login")));
+    wm.verify(1, postRequestedFor(urlEqualTo("/jasperserver-pro/j_spring_security_check")));
+  }
+
   @Test
   void should_append_pp_parameter_when_token_auth_configured() {
     wm.stubFor(

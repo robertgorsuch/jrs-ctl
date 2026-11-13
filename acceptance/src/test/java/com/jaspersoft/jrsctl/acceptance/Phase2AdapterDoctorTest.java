@@ -206,6 +206,60 @@ class Phase2AdapterDoctorTest {
     assertThat(items.get("identity").get("status").asText()).isEqualTo("SKIP");
   }
 
+  /**
+   * #313: JasperReports Server disables an account after repeated failed logins, and one round of
+   * doctor and smoke with a wrong password used to send it ten. Each command now sends a refused
+   * credential once and reports every later server item from that refusal.
+   */
+  @Test
+  void doctor_and_smoke_send_a_refused_password_once_each() throws Exception {
+    WireMockServer refusing = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    refusing.start();
+    try {
+      refusing.stubFor(
+          get(urlPathEqualTo(WEBAPP + "/rest_v2/serverInfo")).willReturn(okJson(SERVER_INFO)));
+      refusing.stubFor(
+          com.github.tomakehurst.wiremock.client.WireMock.any(
+                  com.github.tomakehurst.wiremock.client.WireMock.anyUrl())
+              .atPriority(10)
+              .willReturn(aResponse().withStatus(401)));
+      Path home = Files.createDirectories(tmp.resolve("home-refused"));
+      Files.writeString(
+          home.resolve("config.yaml"),
+          """
+          server:
+            baseUrl: http://localhost:%d%s
+            webappName: jasperserver-pro
+            auth:
+              mode: basic
+              username: superuser
+              passwordRef: env:JRS_PASSWORD
+          network:
+            mode: public
+          """
+              .formatted(refusing.port(), WEBAPP),
+          StandardCharsets.UTF_8);
+      Cli cli = new Cli(Map.of("JRS_PASSWORD", "not-the-password"));
+
+      Cli.Result doctor = cli.run("doctor", "--home", home.toString(), "--json").assertExit(2);
+      long afterDoctor = authenticatedRequests(refusing);
+      cli.run("smoke", "--home", home.toString(), "--json").assertExit(2);
+      long afterSmoke = authenticatedRequests(refusing);
+
+      assertThat(items(doctor.stdout()).get("auth").get("status").asText()).isEqualTo("FAIL");
+      assertThat(afterDoctor).as("authenticated requests sent by doctor").isEqualTo(1);
+      assertThat(afterSmoke - afterDoctor).as("authenticated requests sent by smoke").isEqualTo(1);
+    } finally {
+      refusing.stop();
+    }
+  }
+
+  private static long authenticatedRequests(WireMockServer s) {
+    return s.getAllServeEvents().stream()
+        .filter(e -> e.getRequest().containsHeader("Authorization"))
+        .count();
+  }
+
   @Test
   void init_writes_config_for_a_fake_layout_without_prompting() throws Exception {
     Path install = fakeLayout(tmp.resolve("jrs3"));
