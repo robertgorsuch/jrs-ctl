@@ -639,8 +639,15 @@ final class LocalChecks {
     }
   }
 
-  static ReportItem runs(Services s) {
-    List<RunRecord> pending = Recovery.pendingRuns(s.stateStore().get());
+  /**
+   * Pending runs other than {@code ownRun}: a doctor running inside a run sees that run as pending,
+   * and only that one row is left out, so a crashed run listed beside it still fails the check.
+   */
+  static ReportItem runs(Services s, Optional<String> ownRun) {
+    List<RunRecord> pending =
+        Recovery.pendingRuns(s.stateStore().get()).stream()
+            .filter(r -> ownRun.map(own -> !own.equals(r.runId())).orElse(true))
+            .toList();
     if (pending.isEmpty()) {
       return ReportItem.pass("runs", "no pending runs");
     }
@@ -655,10 +662,13 @@ final class LocalChecks {
    * Judged by trying the lock, not by the pid text a crashed process left behind (review 5.4,
    * assessment item E8); a lock this process holds is answered without opening the file (E1).
    */
-  static ReportItem lock(Services s) {
+  static ReportItem lock(Services s, Optional<String> ownRun) {
     Optional<RunLock.Holder> holder = RunLock.heldBy(s.home().runLock());
     if (holder.isEmpty()) {
       return ReportItem.pass("lock", "run lock free");
+    }
+    if (ownRun.isPresent() && ownRun.get().equals(holder.get().runId())) {
+      return ReportItem.pass("lock", "held by this run (" + ownRun.get() + ")");
     }
     return ReportItem.fail(
         "lock",

@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * The steps of {@code passwords migrate} (spec §10.6, ADR-0053; installation guide 10.1
@@ -53,9 +52,6 @@ final class PasswordSteps {
       "passwords migrate converts the stored passwords to the modern format permanently; the only"
           + " way back is a database restore (installation guide 10.1 p.195), so back up the"
           + " repository database yourself and pass --db-backup-confirmed";
-
-  /** Doctor items that, inside a run, report the run's own pending row and lock. */
-  static final Set<String> SELF_REFERENTIAL = Set.of("runs", "lock");
 
   private PasswordSteps() {}
 
@@ -228,14 +224,15 @@ final class PasswordSteps {
 
     @Override
     public String detail() {
-      return "every check must pass; the run's own pending row and lock are not counted";
+      return "every check must pass; the doctor leaves out only this run's own pending row and"
+          + " lock";
     }
 
     @Override
     public CheckResult precheck(Context ctx) {
       DoctorReport report;
       try {
-        report = new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT);
+        report = new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId()));
       } catch (RuntimeException e) {
         return CheckResult.fail(
             "doctor could not run: " + Steps.describe(e), "run jrsctl doctor and fix it first");
@@ -243,9 +240,7 @@ final class PasswordSteps {
       last = Optional.of(report);
       List<String> failing = new ArrayList<>();
       for (ReportItem item : report.items()) {
-        boolean aboutThisRun =
-            SELF_REFERENTIAL.contains(item.name()) && item.detail().contains(ctx.runId());
-        if (item.status() == ReportItem.Status.FAIL && !aboutThisRun) {
+        if (item.status() == ReportItem.Status.FAIL) {
           failing.add(item.name() + ": " + item.detail());
         }
       }
@@ -260,7 +255,8 @@ final class PasswordSteps {
     @Override
     public StepResult execute(Context ctx, EventSink out) {
       DoctorReport report =
-          last.orElseGet(() -> new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT));
+          last.orElseGet(
+              () -> new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId())));
       for (ReportItem item : report.items()) {
         Event.Log.Level level =
             switch (item.status()) {

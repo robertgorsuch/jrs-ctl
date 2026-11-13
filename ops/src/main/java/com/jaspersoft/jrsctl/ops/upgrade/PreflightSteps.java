@@ -60,9 +60,6 @@ final class PreflightSteps {
    */
   static final Set<String> JUDGED_AGAINST_TARGET = Set.of(DoctorReport.COMPAT, "vendor-java");
 
-  /** Doctor items that, inside a run, report the run's own pending row and lock. */
-  static final Set<String> SELF_REFERENTIAL = Set.of("runs", "lock");
-
   /** Doctor items an upgrade needs as PASS, not SKIP: the vendor run and the export log in. */
   static final Set<String> REQUIRED_PASS = Set.of("auth");
 
@@ -123,7 +120,7 @@ final class PreflightSteps {
     public CheckResult precheck(Context ctx) {
       DoctorReport report;
       try {
-        report = new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT);
+        report = new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId()));
       } catch (RuntimeException e) {
         return CheckResult.fail(
             "doctor could not run: " + Failures.describe(e), "run jrsctl doctor and fix it first");
@@ -143,8 +140,7 @@ final class PreflightSteps {
       List<String> failing = new ArrayList<>();
       for (ReportItem item : report.items()) {
         if (item.status() == ReportItem.Status.FAIL
-            && !JUDGED_AGAINST_TARGET.contains(item.name())
-            && !aboutThisRun(item, ctx)) {
+            && !JUDGED_AGAINST_TARGET.contains(item.name())) {
           failing.add(item.name() + ": " + item.detail());
         }
       }
@@ -156,18 +152,11 @@ final class PreflightSteps {
       return CheckResult.pass();
     }
 
-    /**
-     * The doctor runs inside this very run: its "runs" and "lock" checks see the current run as
-     * pending and the lock as held by it. Those two findings are about us, not about the host.
-     */
-    private static boolean aboutThisRun(ReportItem item, Context ctx) {
-      return SELF_REFERENTIAL.contains(item.name()) && item.detail().contains(ctx.runId());
-    }
-
     @Override
     public StepResult execute(Context ctx, EventSink out) {
       DoctorReport report =
-          last.orElseGet(() -> new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT));
+          last.orElseGet(
+              () -> new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId())));
       for (ReportItem item : report.items()) {
         Event.Log.Level level =
             switch (item.status()) {
@@ -175,14 +164,11 @@ final class PreflightSteps {
               case WARN -> Event.Log.Level.WARN;
               case FAIL -> Event.Log.Level.WARN;
             };
-        // precheck let only two kinds of FAIL through; each says why it does not stop the run
-        String suffix = "";
-        if (item.status() == ReportItem.Status.FAIL) {
-          suffix =
-              aboutThisRun(item, ctx)
-                  ? " (this run itself; not a problem with the host)"
-                  : " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")";
-        }
+        // precheck let through only the FAILs judged against the target; say so
+        String suffix =
+            item.status() == ReportItem.Status.FAIL
+                ? " (judged against the target by " + VERIFY_TARGET_PACKAGE + ")"
+                : "";
         Logs.emit(
             rt,
             ctx,

@@ -91,25 +91,35 @@ class UpgradeRunTest {
   }
 
   /**
-   * Field report 2026-10-27: inside a run the doctor sees the run's own pending row and lock as
-   * FAIL. Those lines must say they are about this run, not that the target re-judges them.
+   * Field report 2026-10-27: inside a run the doctor saw the run's own pending row and lock as
+   * FAIL. The doctor now leaves out exactly this run, so those two checks pass.
    */
   @Test
-  void should_label_the_doctor_findings_about_this_run_as_such_when_the_run_logs_them()
-      throws Exception {
+  void should_not_report_this_run_itself_as_pending_or_holding_the_lock() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-self", RunOptions.DEFAULT);
 
       assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
-      List<String> selfLines =
-          f.logs().stream()
-              .filter(m -> m.startsWith("FAIL runs:") || m.startsWith("FAIL lock:"))
-              .filter(m -> m.contains("r-self"))
-              .toList();
-      assertThat(selfLines)
-          .isNotEmpty()
-          .allMatch(m -> m.endsWith("(this run itself; not a problem with the host)"))
-          .noneMatch(m -> m.contains("judged against the target"));
+      assertThat(f.logs())
+          .noneMatch(m -> m.startsWith("FAIL runs:") || m.startsWith("FAIL lock:"))
+          .anyMatch(m -> m.startsWith("PASS runs:"))
+          .anyMatch(m -> m.startsWith("PASS lock:"));
+    }
+  }
+
+  /** Review 2026-11-13 finding 2: this run's own pending row must not hide a crashed run. */
+  @Test
+  void should_refuse_before_stopping_anything_when_another_run_is_pending() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.store().recordRunStart("r-crashed", "hotfix", Optional.empty(), Instant.now());
+
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-self", RunOptions.DEFAULT);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      assertThat(((RunOutcome.PrecheckFailed) outcome).message())
+          .contains("runs:")
+          .contains("r-crashed")
+          .doesNotContain("r-self");
     }
   }
 
