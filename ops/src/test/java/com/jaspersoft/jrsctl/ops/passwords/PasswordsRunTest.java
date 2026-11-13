@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.MigrateOptions;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +55,26 @@ class PasswordsRunTest {
       assertThat(f.cleaned()).isTrue();
       assertThat(f.vendorLogText().indexOf("detect-password-strategy"))
           .isLessThan(f.vendorLogText().indexOf("cleanup-password-migration"));
+    }
+  }
+
+  /** Review 2026-11-13 finding 2: this run's own pending row must not hide a crashed run. */
+  @Test
+  void should_refuse_before_running_any_vendor_target_when_another_run_is_pending()
+      throws Exception {
+    try (PasswordFixture f = PasswordFixture.create(tmp)) {
+      f.fake
+          .stateStore()
+          .recordRunStart("r-crashed", "upgrade", Optional.empty(), f.fake.clock.instant());
+
+      RunOutcome outcome = f.run(f.ops().planMigrate(f.options()), "r-pw");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      RunOutcome.PrecheckFailed failed = (RunOutcome.PrecheckFailed) outcome;
+      assertThat(failed.stepId()).isEqualTo(PasswordSteps.DOCTOR);
+      assertThat(failed.message()).contains("runs:").contains("r-crashed").doesNotContain("r-pw");
+      assertThat(f.vendorLogText()).isEmpty();
+      assertThat(f.migrated()).isFalse();
     }
   }
 

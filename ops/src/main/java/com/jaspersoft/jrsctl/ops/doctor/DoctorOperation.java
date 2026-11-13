@@ -174,8 +174,8 @@ public final class DoctorOperation {
             : skipped(LocalChecks.AUDIT, toolsOnly));
     items.add(guard("database", DatabaseCheck::check));
     items.add(guard("state", LocalChecks::state));
-    items.add(guard("runs", LocalChecks::runs));
-    items.add(guard("lock", LocalChecks::lock));
+    items.add(guard("runs", s -> LocalChecks.runs(s, options.ownRun())));
+    items.add(guard("lock", s -> LocalChecks.lock(s, options.ownRun())));
     items.add(guard("snapshots", LocalChecks::snapshots));
     items.add(guard("network", LocalChecks::network));
     items.add(guard("elevated", LocalChecks::elevated));

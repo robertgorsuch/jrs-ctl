@@ -247,10 +247,45 @@ class LocalChecksTest {
     try (FakeServices fake = FakeServices.in(tmp.resolve("clean"))) {
       Services services = fake.build();
 
-      assertThat(LocalChecks.lock(services).status()).isEqualTo(ReportItem.Status.PASS);
-      assertThat(LocalChecks.runs(services).status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(LocalChecks.lock(services, Optional.empty()).status())
+          .isEqualTo(ReportItem.Status.PASS);
+      assertThat(LocalChecks.runs(services, Optional.empty()).status())
+          .isEqualTo(ReportItem.Status.PASS);
       assertThat(LocalChecks.snapshots(services).detail()).contains("0 snapshot");
       assertThat(LocalChecks.state(services).status()).isEqualTo(ReportItem.Status.PASS);
+    }
+  }
+
+  @Test
+  void should_not_count_the_run_the_doctor_runs_inside_as_pending() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("own-run"))) {
+      Services services = fake.build();
+      fake.stateStore()
+          .recordRunStart("r-own", "passwords.migrate", Optional.empty(), fake.clock.instant());
+
+      ReportItem runs = LocalChecks.runs(services, Optional.of("r-own"));
+
+      assertThat(runs.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(LocalChecks.runs(services, Optional.empty()).status())
+          .isEqualTo(ReportItem.Status.FAIL);
+    }
+  }
+
+  /** Review 2026-11-13 finding 2: the current run in the list must not hide a crashed one. */
+  @Test
+  void should_fail_on_a_crashed_run_when_the_current_run_is_pending_too() throws Exception {
+    try (FakeServices fake = FakeServices.in(tmp.resolve("crashed-run"))) {
+      Services services = fake.build();
+      fake.stateStore()
+          .recordRunStart("r-crashed", "upgrade", Optional.empty(), fake.clock.instant());
+      fake.stateStore()
+          .recordRunStart("r-own", "passwords.migrate", Optional.empty(), fake.clock.instant());
+
+      ReportItem runs = LocalChecks.runs(services, Optional.of("r-own"));
+
+      assertThat(runs.status()).isEqualTo(ReportItem.Status.FAIL);
+      assertThat(runs.detail()).contains("r-crashed").doesNotContain("r-own");
+      assertThat(runs.remediation()).contains("r-crashed");
     }
   }
 
