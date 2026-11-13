@@ -567,6 +567,10 @@ public final class RestJrsAdapter implements JrsAdapter {
       String location = r.header("Location").orElse("").toLowerCase(Locale.ROOT);
       accepted = (r.ok() || r.status() == 302) && !location.contains("error");
     }
+    if (!accepted) {
+      // #313: never post a refused login again in this run; failures lock the account
+      client.refuseLastLogin();
+    }
     if (!accepted || cookie.isEmpty()) {
       throw new RestException(
           r.status(),

@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -45,8 +46,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +58,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
@@ -70,7 +75,11 @@ import javax.net.ssl.X509TrustManager;
  * an unredacted body; downloads and uploads stream through {@link HttpResponse.BodyHandlers#ofFile}
  * and {@link HttpRequest.BodyPublishers#ofFile}; the Basic header is computed once and the password
  * chars are zeroed immediately afterwards. The client is safe for use from several threads; the
- * auth mode may be switched at any time and applies to subsequent requests.
+ * auth mode may be switched at any time and applies to subsequent requests. A credential the server
+ * refused (HTTP 401 on a request that carried it) is never sent again by this client: later
+ * requests carrying it answer 401 at once without reaching the server, because JasperReports Server
+ * disables an account after repeated failed logins (#313); credentials are recognised by a keyed
+ * hash under a random key that lives only in this object, never by their value.
  */
 public final class RestClient {
 
@@ -92,6 +101,12 @@ public final class RestClient {
 
   /** The pre-authentication header, same name as the query parameter (ADR-0018). */
   private static final String PREAUTH_HEADER = "pp";
+
+  /** The body of the 401 a refused credential gets instead of another attempt (#313). */
+  public static final String NOT_SENT_REFUSED =
+      "not sent: the server already refused these credentials in this jrsctl run, and repeated"
+          + " failed logins can lock the account (JasperReports Server disables a user after a"
+          + " number of failures); fix the user name or password reference and run again";
 
   public static final String SESSION_COOKIE = "JSESSIONID";
   public static final String JSON = "application/json";
@@ -148,6 +163,15 @@ public final class RestClient {
    * its own exception, with the credential still pending for the next one.
    */
   private volatile Optional<Runnable> pendingAuth = Optional.empty();
+
+  /** Keyed hash of the Basic header or token in use; empty with no credential (#313). */
+  private volatile Optional<String> credential = Optional.empty();
+
+  /** Keyed hash of the last form-login body (#313). */
+  private volatile Optional<String> lastLogin = Optional.empty();
+
+  private final Set<String> refused = ConcurrentHashMap.newKeySet();
+  private final byte[] fingerprintKey = newFingerprintKey();
 
   private RestClient(Builder b) {
     this.baseUrl = b.baseUrl;
@@ -345,6 +369,8 @@ public final class RestClient {
     this.tokenParam = Optional.empty();
     this.tokenHeader = Optional.empty();
     this.basicHeader = Optional.of(header);
+    this.credential =
+        Optional.of(fingerprint(("basic\n" + header).getBytes(StandardCharsets.UTF_8)));
   }
 
   /**
@@ -420,6 +446,7 @@ public final class RestClient {
     redactor.register(token);
     redactor.register(encoded);
     this.basicHeader = Optional.empty();
+    this.credential = Optional.of(fingerprint(("token\n" + raw).getBytes(StandardCharsets.UTF_8)));
     switch (location) {
       case QUERY -> {
         this.tokenParam = Optional.of(encoded);
@@ -435,6 +462,7 @@ public final class RestClient {
   /** Drops the Basic header and token, pending or applied; cookies are kept. */
   public void clearAuth() {
     this.pendingAuth = Optional.empty();
+    this.credential = Optional.empty();
     this.basicHeader = Optional.empty();
     this.tokenParam = Optional.empty();
     this.tokenHeader = Optional.empty();
@@ -455,6 +483,8 @@ public final class RestClient {
       Arrays.fill(pw, '\0');
     }
     redactor.register(password);
+    String login = fingerprint(body);
+    lastLogin = Optional.of(login);
     try {
       Response r =
           send(
@@ -464,12 +494,27 @@ public final class RestClient {
               Optional.of("application/x-www-form-urlencoded"),
               HttpRequest.BodyPublishers.ofByteArray(body),
               requestTimeout,
-              HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+              HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8),
+              Optional.of(login));
       sessionCookie().ifPresent(redactor::register);
       return r;
     } finally {
       Arrays.fill(body, (byte) 0);
     }
+  }
+
+  /**
+   * Marks the last {@link #formLogin} credential refused when the server said so without a 401
+   * (Spring Security's form login redirects to {@code login.html?error}); it is then never posted
+   * again by this client (#313).
+   */
+  public void refuseLastLogin() {
+    lastLogin.ifPresent(refused::add);
+  }
+
+  /** True when the server has refused the Basic header or token now in use (#313). */
+  public boolean credentialsRefused() {
+    return credential.map(refused::contains).orElse(false);
   }
 
   /** The current {@code JSESSIONID} value held by the cookie manager, if any. */
@@ -707,15 +752,64 @@ public final class RestClient {
       HttpRequest.BodyPublisher body,
       Duration timeout,
       HttpResponse.BodyHandler<String> handler) {
+    return send(method, path, accept, contentType, body, timeout, handler, Optional.empty());
+  }
+
+  /**
+   * {@code login} names the form-login credential the request carries; otherwise it carries the
+   * Basic header or token in use, if any. A carried credential the server refused before is not
+   * sent; a 401 to one marks it refused (#313).
+   */
+  private Response send(
+      String method,
+      String path,
+      String accept,
+      Optional<String> contentType,
+      HttpRequest.BodyPublisher body,
+      Duration timeout,
+      HttpResponse.BodyHandler<String> handler,
+      Optional<String> login) {
     URI uri = resolve(path);
     enforceAllowlist(uri);
+    Optional<String> carried = login.or(() -> credential);
+    if (carried.filter(refused::contains).isPresent()) {
+      return notSent();
+    }
     HttpRequest request = request(uri, method, accept, contentType, body, timeout);
     boolean hadSession = sessionCookie().isPresent();
-    Response first = exchange(request, handler, method, uri);
-    if (first.status() == 401 && hadSession && reauthenticated()) {
-      return exchange(request, handler, method, uri);
+    Response last = exchange(request, handler, method, uri);
+    if (last.status() == 401 && hadSession && reauthenticated()) {
+      last = exchange(request, handler, method, uri);
     }
-    return first;
+    remember(last, carried);
+    return last;
+  }
+
+  private static Response notSent() {
+    return new Response(401, NOT_SENT_REFUSED, Map.of());
+  }
+
+  /** A 401 to a request that carried a credential means the server refused that credential. */
+  private void remember(Response r, Optional<String> carried) {
+    if (r.status() == 401) {
+      carried.ifPresent(refused::add);
+    }
+  }
+
+  private String fingerprint(byte[] material) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(fingerprintKey, "HmacSHA256"));
+      return Base64.getEncoder().encodeToString(mac.doFinal(material));
+    } catch (GeneralSecurityException e) {
+      throw new IllegalStateException("HmacSHA256 is unavailable", e);
+    }
+  }
+
+  private static byte[] newFingerprintKey() {
+    byte[] key = new byte[32];
+    new SecureRandom().nextBytes(key);
+    return key;
   }
 
   private Response exchange(
@@ -749,14 +843,19 @@ public final class RestClient {
       BooleanSupplier cancelled) {
     URI uri = resolve(path);
     enforceAllowlist(uri);
+    Optional<String> carried = credential;
+    if (carried.filter(refused::contains).isPresent()) {
+      return notSent();
+    }
     HttpRequest request = request(uri, method, accept, contentType, body, downloadTimeout);
     boolean hadSession = sessionCookie().isPresent();
-    Response first = exchangeWatched(request, handler, method, uri, progress, cancelled);
-    if (first.status() == 401 && hadSession && reauthenticated()) {
+    Response last = exchangeWatched(request, handler, method, uri, progress, cancelled);
+    if (last.status() == 401 && hadSession && reauthenticated()) {
       progress.touch();
-      return exchangeWatched(request, handler, method, uri, progress, cancelled);
+      last = exchangeWatched(request, handler, method, uri, progress, cancelled);
     }
-    return first;
+    remember(last, carried);
+    return last;
   }
 
   private Response exchangeWatched(
