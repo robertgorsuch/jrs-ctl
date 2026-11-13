@@ -2,7 +2,7 @@
 
 ## Status
 
-jrsctl is actively maintained; the current release is 2.7.0. Report a vulnerability privately
+jrsctl is actively maintained; the current release is 2.7.1. Report a vulnerability privately
 through GitHub's private vulnerability reporting for this repository (Security tab, "Report a
 vulnerability"), not as a public issue; `docs/security.md`, "Reporting a vulnerability", says what
 to include. `docs/security.md` also describes the security model: secrets, redaction, least
