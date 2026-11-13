@@ -1,6 +1,7 @@
 package com.jaspersoft.jrsctl.ops.repository;
 
 import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
+import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
 import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
@@ -19,7 +20,7 @@ import java.util.Optional;
  * ships ({@code pro} or {@code ce}, from {@code conf_source/iePro} or {@code conf_source/ieCe}),
  * the JDBC settings and the catalogue rule for the target database server, the export's SHA-256 and
  * what its sidecar and index say. Invariant: immutable; the key alias is the flag's, else the
- * sidecar's, else the index's.
+ * sidecar's, else index.xml's only when it is the Legacy alias (#312).
  */
 record LoadInput(
     LoadOptions options,
@@ -60,11 +61,22 @@ record LoadInput(
     return Optional.ofNullable(buildomatic.masterProperties().get(key)).map(String::strip);
   }
 
+  /**
+   * The alias js-import decrypts with: the flag's, else the sidecar's, else index.xml's only when
+   * it is the Legacy alias. A plain js-export names the server's own import/export key in
+   * index.xml, which --keyalias does not accept (the vendor import fails in getCipher, #312);
+   * without an alias the importing server uses that same default key, so nothing is passed. jrsctl
+   * import applies the same rule.
+   */
   Optional<String> keyAlias() {
     return options
         .keyAlias()
         .or(() -> sidecar.flatMap(s -> s.flags().keyAlias()))
-        .or(() -> index.flatMap(ExportIndex::keyAlias));
+        .or(
+            () ->
+                index
+                    .flatMap(ExportIndex::keyAlias)
+                    .filter(ExportRequest.PORTABLE_KEY_ALIAS::equals));
   }
 
   /** Where this buildomatic's {@code gen-config} renders: {@code build_conf/default}. */

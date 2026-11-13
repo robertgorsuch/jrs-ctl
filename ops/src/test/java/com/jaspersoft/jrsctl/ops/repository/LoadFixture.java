@@ -234,12 +234,23 @@ public final class LoadFixture implements AutoCloseable {
 
   /** A JasperReports Server export archive: index.xml naming the version, plus a resource. */
   public Path fakeExport(String name) throws IOException {
+    return fakeExport(name, Optional.empty());
+  }
+
+  /**
+   * The same archive with {@code <property name="keyalias">} in index.xml, as the vendor's
+   * js-export writes it (#312: a plain export names the server's own key there).
+   */
+  public Path fakeExport(String name, Optional<String> indexKeyAlias) throws IOException {
     Path zip = Files.createDirectories(root.resolve("exports")).resolve(name);
     try (java.io.OutputStream out = Files.newOutputStream(zip);
         java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(out)) {
       zos.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
       zos.write(
           ("<export>"
+                  + indexKeyAlias
+                      .map(a -> "<property name=\"keyalias\" value=\"" + a + "\"/>")
+                      .orElse("")
                   + "<property name=\"jsVersion\" value=\"8.2.0 PRO\"/>"
                   + "<module id=\"tenants\"/><module id=\"authority\"/>"
                   + "<module id=\"repositoryResources\"/><module id=\"reportJobs\"/>"
