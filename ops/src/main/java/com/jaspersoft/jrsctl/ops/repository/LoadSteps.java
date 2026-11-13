@@ -164,6 +164,18 @@ final class LoadSteps {
       return SchemaDrop.compensate(rt, in, ctx, out, this);
     }
 
+    /**
+     * Every mutating phase is undone by the same schema drop, so a phase-scoped rollback of, say,
+     * {@code initialise} dropped the schema {@code create} made while reporting "rolled back to
+     * phase initialise" (#319 item 5). Rolling back the whole run says what happened: the schema is
+     * dropped and {@code render-config}'s rendered files, which hold the database password in
+     * clear, are cleaned too.
+     */
+    @Override
+    public boolean rollbackAllOnFailure() {
+      return true;
+    }
+
     /** Runs one js-ant target; empty when it succeeded, else the failure to return. */
     Optional<StepResult> ant(Context ctx, EventSink out, String target) {
       VendorRun run =

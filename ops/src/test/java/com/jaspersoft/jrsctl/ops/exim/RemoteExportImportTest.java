@@ -149,6 +149,11 @@ class RemoteExportImportTest {
     assertThat(plan.summary().target()).isEqualTo("full server");
     assertThat(plan.summary().warnings())
         .contains(DefaultExportImportOperations.FULL_SERVER_REST_NOTE)
+        // #319 item 2: one note on calendars, the one for the fake server's 8.2.0
+        .contains(DefaultExportImportOperations.FULL_SERVER_REST_COVERS_OLDER)
+        .doesNotContain(
+            DefaultExportImportOperations.FULL_SERVER_COVERS,
+            DefaultExportImportOperations.FULL_SERVER_REST_COVERS)
         .noneMatch(w -> w.contains("--stop-service"));
     assertThat(adapter.exports).hasSize(1);
     assertThat(adapter.exports.get(0).fullServer()).isTrue();

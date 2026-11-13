@@ -550,4 +550,26 @@ class RunsCommandTest {
       }
     }
   }
+
+  /** #319 item 7: a pending run whose process is gone is interrupted, not running. */
+  @Test
+  void should_show_a_pending_run_as_interrupted_unless_it_holds_the_lock() {
+    Instant start = Instant.parse("2026-11-13T10:00:00Z");
+    Clock clock = Clock.fixed(start.plusSeconds(125), java.time.ZoneOffset.UTC);
+    com.jaspersoft.jrsctl.core.engine.RunRecord pending =
+        new com.jaspersoft.jrsctl.core.engine.RunRecord(
+            "r-crashed",
+            "repository-load",
+            Optional.empty(),
+            start,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+
+    assertThat(RunsCommand.duration(pending, clock, Optional.empty())).isEqualTo("interrupted");
+    assertThat(RunsCommand.duration(pending, clock, Optional.of("r-other")))
+        .isEqualTo("interrupted");
+    assertThat(RunsCommand.duration(pending, clock, Optional.of("r-crashed")))
+        .isEqualTo("2m05s (running)");
+  }
 }

@@ -1,6 +1,8 @@
 package com.jaspersoft.jrsctl.core.engine;
 
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,7 +26,8 @@ public record PlanSummary(
     filesTouched = List.copyOf(filesTouched);
     resourcesTouched = List.copyOf(resourcesTouched);
     backupLocations = List.copyOf(backupLocations);
-    rollbackPointsByPhase = Map.copyOf(rollbackPointsByPhase);
+    // insertion order is the plan's phase order, which the printed plan keeps (#319 item 4)
+    rollbackPointsByPhase = Collections.unmodifiableMap(new LinkedHashMap<>(rollbackPointsByPhase));
     warnings = List.copyOf(warnings);
   }
 }

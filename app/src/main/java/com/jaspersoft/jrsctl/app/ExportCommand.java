@@ -302,7 +302,9 @@ final class ExportCommand implements Callable<Integer> {
           outWriter.println(
               "  content           "
                   + (sidecar.flags().fullServer()
-                      ? "full server (root folder, users, roles, report jobs)"
+                      ? "full server (root folder, users, roles, report jobs"
+                          + (recorded.index().modules().contains("calendars") ? ", calendars" : "")
+                          + ")"
                       : String.join(", ", sidecar.flags().uris())));
           outWriter.println(
               "  keystore          "

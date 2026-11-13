@@ -368,10 +368,12 @@ public final class InitOperation {
   /**
    * A tools-only configuration (ADR-0052): the target server's address as for {@link
    * #detectRemote}, plus {@code server.buildomaticDir} pointing at a buildomatic directory on this
-   * machine (the new version's, unpacked from the distribution), {@code vendor.javaHome} from
-   * {@code JAVA_HOME} when the environment names one, and the database settings that buildomatic's
-   * {@code default_master.properties} holds, shown and not copied (#73). No installation, Tomcat or
-   * service is detected or written.
+   * machine (the new version's, unpacked from the distribution), {@code vendor.javaHome} from the
+   * distribution's own {@code java} folder beside the buildomatic when it holds a {@code java}
+   * launcher, else from {@code JAVA_HOME} when the environment names one (#319 item 1: a JDK 11
+   * {@code JAVA_HOME} was taken although the 10.0 distribution's JDK 17 sat beside it), and the
+   * database settings that buildomatic's {@code default_master.properties} holds, shown and not
+   * copied (#73). No installation, Tomcat or service is detected or written.
    *
    * @throws IllegalArgumentException when {@code buildomaticDir} holds no vendor scripts
    */
@@ -401,19 +403,37 @@ public final class InitOperation {
         new InitReport.Detected("server.buildomaticDir", dir.toString(), "from --buildomatic-dir"));
     DefaultMasterProperties master = readDefaultMaster(Optional.of(dir));
     Config.Database database = database(master, values);
-    Optional<Path> javaHome =
+    Optional<Path> bundled =
+        Optional.ofNullable(dir.getParent())
+            .map(p -> p.resolve("java"))
+            .filter(
+                j ->
+                    Files.isRegularFile(j.resolve("bin").resolve("java"))
+                        || Files.isRegularFile(j.resolve("bin").resolve("java.exe")));
+    Optional<Path> fromEnv =
         Optional.ofNullable(env.get("JAVA_HOME"))
             .filter(v -> !v.isBlank())
             .map(v -> Path.of(v).toAbsolutePath().normalize())
             .filter(Files::isDirectory);
-    javaHome.ifPresent(
-        j ->
-            values.add(
-                new InitReport.Detected(
-                    "vendor.javaHome",
-                    j.toString(),
-                    "from JAVA_HOME; buildomatic runs with it (set it to the JDK the vendor"
-                        + " requires for this version)")));
+    Optional<Path> javaHome = bundled.or(() -> fromEnv);
+    if (bundled.isPresent()) {
+      values.add(
+          new InitReport.Detected(
+              "vendor.javaHome",
+              bundled.get().toString(),
+              "the distribution's own java folder beside the buildomatic; buildomatic runs with"
+                  + " it"
+                  + fromEnv.map(e -> " (JAVA_HOME, " + e + ", is not used)").orElse("")));
+    } else {
+      fromEnv.ifPresent(
+          j ->
+              values.add(
+                  new InitReport.Detected(
+                      "vendor.javaHome",
+                      j.toString(),
+                      "from JAVA_HOME (no java folder beside the buildomatic); buildomatic runs"
+                          + " with it (set it to the JDK the vendor requires for this version)")));
+    }
     Config base = remote.config();
     Config config =
         new Config(

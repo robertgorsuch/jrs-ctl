@@ -339,4 +339,22 @@ class RepositoryLoadRunTest {
       assertThat(f.schemaExists()).isTrue();
     }
   }
+
+  /** #319 item 5: every mutating phase is undone by the same drop, so the whole run rolls back. */
+  @Test
+  void should_roll_back_the_whole_run_when_a_later_phase_fails() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.failTarget("import-minimal-pro");
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome)
+          .as(String.join(System.lineSeparator(), f.logs()))
+          .isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).rolledBackToPhase())
+          .isEqualTo(LoadPhases.PREFLIGHT);
+      assertThat(f.schemaExists()).isFalse();
+      assertThat(f.renderedDir()).doesNotExist();
+    }
+  }
 }

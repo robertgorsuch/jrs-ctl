@@ -83,10 +83,27 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
   /** ADR-0051 (issue #265): a full-server export taken over REST from another machine. */
   static final String FULL_SERVER_REST_NOTE =
       "this machine has no installation for js-export, so the full-server export is the server's"
-          + " REST export with the everything parameter: the REST API reference lists repository"
-          + " resources, permissions, report jobs, users, roles and server settings for it and"
-          + " does not mention calendars; run jrsctl export --full-server on the server host for"
-          + " js-export --everything if the calendars matter";
+          + " REST export with the everything parameter";
+
+  /**
+   * Issue #310: what the REST {@code everything} export carries. The REST API reference lists
+   * repository resources, permissions, report jobs, users, roles and server settings; calendars
+   * were found in it on 10.0.0 in the field, and are not claimed for older servers.
+   */
+  static final String FULL_SERVER_REST_COVERS =
+      "the REST export carries the repository, users, roles, permissions, report jobs, calendars"
+          + " and server settings (calendars confirmed on 10.0); events are left out unless"
+          + " --access-events, --audit-events or --monitoring is given";
+
+  /** Issue #310: the same below 10.0, where calendars in the REST export are not confirmed. */
+  static final String FULL_SERVER_REST_COVERS_OLDER =
+      "the REST export carries the repository, users, roles, permissions, report jobs and server"
+          + " settings; the REST API reference does not mention calendars, which were confirmed in"
+          + " it on 10.0 only, so run jrsctl export --full-server on the server host for js-export"
+          + " --everything if the calendars matter; events are left out unless --access-events,"
+          + " --audit-events or --monitoring is given";
+
+  private static final Semver REST_CALENDARS_FROM = Semver.parse("10.0.0");
 
   /**
    * ADR-0051: {@code --stop-service} belongs to js-export; the REST export never stops anything.
@@ -191,7 +208,15 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
       warnings.add(out + " exists and will be replaced");
     }
     if (request.fullServer() || request.scope() == ExportRequest.Scope.EVERYTHING) {
-      warnings.add(FULL_SERVER_COVERS);
+      if (selection.kind() == ExportImportStrategy.Kind.REST) {
+        Semver v = Semver.coerce(identity.version());
+        warnings.add(
+            v != null && v.isGreaterThanOrEqualTo(REST_CALENDARS_FROM)
+                ? FULL_SERVER_REST_COVERS
+                : FULL_SERVER_REST_COVERS_OLDER);
+      } else {
+        warnings.add(FULL_SERVER_COVERS);
+      }
       if (request.includeUsersRoles()) {
         warnings.add(USERS_ROLES_REDUNDANT);
       }
