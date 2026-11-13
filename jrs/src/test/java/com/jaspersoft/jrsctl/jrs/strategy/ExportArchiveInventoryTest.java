@@ -82,6 +82,45 @@ class ExportArchiveInventoryTest {
     assertThat(inventory.resources()).containsExactly("/public/Samples/AllAccounts");
   }
 
+  /**
+   * #314: js-export writes a character outside its safe set as {@code -} and four hex digits (a
+   * {@code -} itself as {@code -002d}, as the 10.0 field archive shows for every theme folder); the
+   * inventory names the repository ids, so they are decoded.
+   */
+  @Test
+  void should_decode_the_vendors_escaped_characters_in_entry_names() throws Exception {
+    ExportArchiveInventory inventory =
+        ExportArchiveInventory.read(
+            zip(
+                List.of(
+                    "index.xml",
+                    "organizations/acme-002dus.xml",
+                    "users/acme-002dus/jane-002ddoe.xml",
+                    "roles/ROLE_-002dX.xml",
+                    "resources/themes/default/jasper-002dui/.folder.xml",
+                    "resources/public/Images/ico-002dlibrary.jpg.xml",
+                    "resources/public/Images/ico-002dlibrary.jpg.data",
+                    "resources/public/Reports/a-0020b-00e9.xml",
+                    "resources/public/plain-tail-002d.xml")));
+
+    assertThat(inventory.organizations()).containsExactly("acme-us");
+    assertThat(inventory.users()).containsExactly("jane-doe|acme-us");
+    assertThat(inventory.roles()).containsExactly("ROLE_-X");
+    assertThat(inventory.folders()).containsExactly("/themes/default/jasper-ui");
+    assertThat(inventory.resources())
+        .containsExactly(
+            "/public/Images/ico-library.jpg", "/public/Reports/a bé", "/public/plain-tail-");
+  }
+
+  @Test
+  void should_leave_a_dash_without_four_hex_digits_as_it_is() throws Exception {
+    ExportArchiveInventory inventory =
+        ExportArchiveInventory.read(
+            zip(List.of("index.xml", "resources/public/x-12.xml", "resources/public/y-zzzz.xml")));
+
+    assertThat(inventory.resources()).containsExactly("/public/x-12", "/public/y-zzzz");
+  }
+
   @Test
   void should_refuse_an_archive_without_index_xml() throws Exception {
     Path archive = zip(List.of("resources/", "resources/public/.folder.xml"));
