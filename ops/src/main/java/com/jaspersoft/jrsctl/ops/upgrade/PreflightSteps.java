@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.IeClasspathJar;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorJava;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
@@ -220,6 +221,12 @@ final class PreflightSteps {
         return CheckResult.fail(
             "the package names version " + discovered.get() + " but --to says " + to,
             "pass --to " + discovered.get() + " or point --package at the right distribution");
+      }
+      // #315: the vendor upgrade's imports run with the target buildomatic's iecp.jar
+      Optional<IeClasspathJar.Stale> staleClasspath =
+          in.targetBuildomatic().flatMap(IeClasspathJar::stale);
+      if (staleClasspath.isPresent()) {
+        return CheckResult.fail(staleClasspath.get().detail(), staleClasspath.get().remediation());
       }
       // field test 2, U3: the whole run's backups must fit before anything starts; the tester's
       // 800 MB /home held the jrsctl home and the upgrade died part-way

@@ -142,6 +142,36 @@ class RepositoryLoadRunTest {
     }
   }
 
+  /**
+   * #315: on a real 10.0 install a hotfix had swapped the jars of conf_source/iePro/lib and left
+   * iecp.jar naming the old ones; import-minimal then failed with NoClassDefFoundError after the
+   * schema was created. The stale jar is now refused before anything is created.
+   */
+  @Test
+  void should_refuse_before_creating_anything_when_the_class_path_jar_is_stale() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      java.nio.file.Path lib =
+          java.nio.file.Files.createDirectories(
+              f.buildomaticDir.resolve("conf_source").resolve("iePro").resolve("lib"));
+      java.util.jar.Manifest m = new java.util.jar.Manifest();
+      m.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+      m.getMainAttributes().put(java.util.jar.Attributes.Name.CLASS_PATH, "gone-1.0.jar");
+      try (java.io.OutputStream out = java.nio.file.Files.newOutputStream(lib.resolve("iecp.jar"));
+          java.util.jar.JarOutputStream jar = new java.util.jar.JarOutputStream(out, m)) {
+        jar.flush();
+      }
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      RunOutcome.PrecheckFailed failed = (RunOutcome.PrecheckFailed) outcome;
+      assertThat(failed.stepId()).isEqualTo(LoadSteps.VERIFY_BUILDOMATIC);
+      assertThat(failed.message()).contains("iecp.jar").contains("gone-1.0.jar");
+      assertThat(failed.remediation()).startsWith("delete ");
+      assertThat(f.vendorLogText()).isEmpty();
+    }
+  }
+
   @Test
   void should_refuse_before_creating_anything_when_the_buildomatic_would_touch_an_app_server()
       throws Exception {

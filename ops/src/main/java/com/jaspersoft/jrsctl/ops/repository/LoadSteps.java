@@ -12,6 +12,7 @@ import com.jaspersoft.jrsctl.core.secrets.SecretException;
 import com.jaspersoft.jrsctl.core.state.AuditActor;
 import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
+import com.jaspersoft.jrsctl.jrs.vendor.IeClasspathJar;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorRun;
 import com.jaspersoft.jrsctl.jrs.vendor.VendorTools;
 import com.jaspersoft.jrsctl.ops.ReportItem;
@@ -323,6 +324,11 @@ final class LoadSteps {
         return CheckResult.fail(
             b.dir() + " has neither conf_source/iePro nor conf_source/ieCe",
             "point server.buildomaticDir at the buildomatic directory of an unpacked distribution");
+      }
+      // #315: import-minimal runs with iecp.jar, which a hotfix that swapped lib jars leaves stale
+      Optional<IeClasspathJar.Stale> stale = IeClasspathJar.stale(b.dir());
+      if (stale.isPresent()) {
+        return CheckResult.fail(stale.get().detail(), stale.get().remediation());
       }
       Optional<Path> javaHome = rt.config().vendor().javaHome();
       if (javaHome.isEmpty()) {

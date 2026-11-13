@@ -155,6 +155,36 @@ class LocalChecksTest {
     }
   }
 
+  /**
+   * #315: after a hotfix swaps jars in buildomatic's import/export lib, the iecp.jar class path
+   * still names the old ones and every Ant import fails; doctor names the file to delete.
+   */
+  @Test
+  void should_warn_when_the_import_export_class_path_jar_is_stale() throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path lib =
+        Files.createDirectories(
+            install.resolve("buildomatic").resolve("conf_source").resolve("iePro").resolve("lib"));
+    Files.writeString(lib.resolve("spring-context-6.2.17.jar"), "jar");
+    java.util.jar.Manifest m = new java.util.jar.Manifest();
+    m.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+    m.getMainAttributes()
+        .put(java.util.jar.Attributes.Name.CLASS_PATH, "spring-context-6.2.11.jar");
+    try (java.io.OutputStream out = Files.newOutputStream(lib.resolve("iecp.jar"));
+        java.util.jar.JarOutputStream jar = new java.util.jar.JarOutputStream(out, m)) {
+      jar.flush();
+    }
+    try (FakeServices fake = FakeServices.in(tmp.resolve("stale-iecp"))) {
+      fake.yaml(serverYaml("  installDir: " + yamlPath(install) + "\n"));
+
+      ReportItem vendor = LocalChecks.vendor(fake.build());
+
+      assertThat(vendor.status()).isEqualTo(ReportItem.Status.WARN);
+      assertThat(vendor.detail()).contains("iecp.jar").contains("spring-context-6.2.11.jar");
+      assertThat(vendor.remediation()).startsWith("delete ").contains("iecp.jar");
+    }
+  }
+
   /** ADR-0013: the vendor tree may live on another volume or a share, away from the install. */
   @Test
   void should_check_the_vendor_scripts_where_server_buildomatic_dir_points() throws Exception {
