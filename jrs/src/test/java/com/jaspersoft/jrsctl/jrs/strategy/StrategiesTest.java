@@ -156,6 +156,38 @@ class StrategiesTest {
     assertThat(s.reason()).contains("everything").contains("no installation");
   }
 
+  /**
+   * Review 2026-11-13 finding 3: a tools-only configuration (ADR-0052) has a buildomatic but no
+   * installation, and its js-export acts on another schema, so it is REST as from any machine.
+   */
+  @Test
+  void should_select_rest_for_a_full_server_export_from_a_tools_only_configuration() {
+    Config.Server s = config.server();
+    Config toolsOnly =
+        new Config(
+            new Config.Server(
+                s.baseUrl(),
+                s.webappName(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(Path.of("/opt/tools/buildomatic")),
+                s.runAsUser(),
+                s.auth()),
+            config.service(),
+            config.database(),
+            config.vendor(),
+            config.network(),
+            config.backups(),
+            config.smoke());
+    assertThat(toolsOnly.server().namesToolsOnly()).isTrue();
+
+    Strategies.Selection sel =
+        strategies.select(toolsOnly, new FakeJrsAdapter(), export(true), Optional.empty());
+
+    assertThat(sel.kind()).isEqualTo(ExportImportStrategy.Kind.REST);
+    assertThat(sel.reason()).contains("everything");
+  }
+
   @Test
   void should_select_vendor_for_a_full_server_export_from_another_machine_when_the_probe_fails() {
     FakeJrsAdapter noAsync = new FakeJrsAdapter().withCapabilities(Set.of(Capability.ORGS));

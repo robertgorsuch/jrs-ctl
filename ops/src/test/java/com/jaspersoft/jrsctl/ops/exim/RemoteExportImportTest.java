@@ -223,6 +223,27 @@ class RemoteExportImportTest {
         .hasMessageContaining("tools-only");
   }
 
+  /** Review 2026-11-13 finding 3: a full-server export from a tools-only machine is REST. */
+  @Test
+  void should_export_a_full_server_through_rest_when_the_configuration_is_tools_only()
+      throws IOException {
+    Path buildomatic = Files.createDirectories(tmp.resolve("buildomatic"));
+    String toolsOnly =
+        REMOTE_YAML.replace(
+            "  auth:",
+            "  buildomaticDir: " + buildomatic.toString().replace('\\', '/') + "\n  auth:");
+    fx.close();
+    fx = new EximFixture(tmp.resolve("tools-only"), () -> adapter, toolsOnly);
+
+    Plan plan = fx.ops().planExport(export(true, Optional.empty()));
+    RunOutcome outcome = fx.run(plan, EximFixture.RUN);
+
+    assertThat(outcome).as(fx.events.toString()).isInstanceOf(RunOutcome.Succeeded.class);
+    assertThat(plan.summary().strategy()).startsWith("rest (").contains("everything");
+    assertThat(adapter.exports).hasSize(1);
+    assertThat(adapter.exports.get(0).scope()).isEqualTo(ExportRequest.Scope.EVERYTHING);
+  }
+
   @Test
   void should_refuse_a_forced_vendor_strategy_when_no_local_installation_is_configured() {
     assertThatThrownBy(

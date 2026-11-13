@@ -235,6 +235,15 @@ public record Config(
       return buildomaticDir.isPresent() && installDir.isEmpty() && tomcatDir.isEmpty();
     }
 
+    /**
+     * True when the JasperReports Server installation this configuration talks to is on this
+     * machine: it {@link #namesLocalInstallation()} and is not {@link #namesToolsOnly()}. Only then
+     * do the vendor tools here act on the configured server's repository.
+     */
+    public boolean namesInstallation() {
+      return namesLocalInstallation() && !namesToolsOnly();
+    }
+
     public static Server empty() {
       return new Server(
           Optional.empty(),
