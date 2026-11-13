@@ -7,6 +7,7 @@ import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -100,6 +101,25 @@ class RepositoryLoadRunTest {
       // the staged properties changed since planning: the fingerprint says so first
       assertThat(outcome)
           .isInstanceOfAny(RunOutcome.PrecheckFailed.class, RunOutcome.FingerprintMismatch.class);
+      assertThat(f.vendorLogText()).isEmpty();
+      assertThat(f.schemaExists()).isFalse();
+    }
+  }
+
+  /** A schema is not created beside a half-finished run; this run's own row does not count. */
+  @Test
+  void should_refuse_before_creating_anything_when_another_run_is_pending() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.fake
+          .stateStore()
+          .recordRunStart("r-crashed", "upgrade", Optional.empty(), f.fake.clock.instant());
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      RunOutcome.PrecheckFailed failed = (RunOutcome.PrecheckFailed) outcome;
+      assertThat(failed.stepId()).isEqualTo(LoadSteps.DOCTOR);
+      assertThat(failed.message()).contains("runs:").contains("r-crashed").doesNotContain("r-load");
       assertThat(f.vendorLogText()).isEmpty();
       assertThat(f.schemaExists()).isFalse();
     }

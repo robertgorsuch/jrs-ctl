@@ -65,10 +65,12 @@ final class LoadSteps {
    * that will use the schema is usually not deployed yet when the schema is loaded, so {@code
    * vendor-java}, which doctor judges against that server's version, is judged here by {@code
    * verify-buildomatic} instead; and {@code database}, which doctor asks through the configured
-   * driver, is asked precisely by {@code verify-target-schema}.
+   * driver, is asked precisely by {@code verify-target-schema}. {@code runs} and {@code lock} are
+   * in: the doctor leaves out this run's own row and lock, so a FAIL there is another run, and a
+   * schema is not created beside a half-finished run.
    */
   static final Set<String> REQUIRED_NOT_FAILING =
-      Set.of("runtime", "config", "secrets", "vendor", "disk", "state");
+      Set.of("runtime", "config", "secrets", "vendor", "disk", "state", "runs", "lock");
 
   private LoadSteps() {}
 
@@ -224,8 +226,8 @@ final class LoadSteps {
 
     @Override
     public String detail() {
-      return "the tool, the configuration, its secrets, the vendor tools, the disk and the state"
-          + " store must pass; the server items may fail, since the server that will use the"
+      return "the tool, the configuration, its secrets, the vendor tools, the disk, the state"
+          + " store, other pending runs and the run lock must pass; the server items may fail, since the server that will use the"
           + " schema is usually not deployed yet, and the Java and the database server are judged"
           + " by the next two steps";
     }
@@ -234,7 +236,7 @@ final class LoadSteps {
     public CheckResult precheck(Context ctx) {
       DoctorReport report;
       try {
-        report = new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT);
+        report = new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId()));
       } catch (RuntimeException e) {
         return CheckResult.fail(
             "doctor could not run: " + Steps.describe(e), "run jrsctl doctor and fix it first");
@@ -257,7 +259,8 @@ final class LoadSteps {
     @Override
     public StepResult execute(Context ctx, EventSink out) {
       DoctorReport report =
-          last.orElseGet(() -> new DoctorOperation(rt.services()).run(DoctorOptions.DEFAULT));
+          last.orElseGet(
+              () -> new DoctorOperation(rt.services()).run(DoctorOptions.insideRun(ctx.runId())));
       for (ReportItem item : report.items()) {
         Event.Log.Level level =
             switch (item.status()) {
