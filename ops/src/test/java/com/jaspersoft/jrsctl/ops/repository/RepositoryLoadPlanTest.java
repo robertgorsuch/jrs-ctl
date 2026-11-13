@@ -252,4 +252,40 @@ class RepositoryLoadPlanTest {
       assertThat(plan.summary().warnings()).anyMatch(w -> w.contains("8.2.0"));
     }
   }
+
+  /**
+   * #312: a plain js-export names the server's own import/export key in index.xml, a value
+   * js-import's --keyalias does not accept (the vendor import dies in getCipher); the server
+   * decrypts such an archive with its default key only when no alias is passed.
+   */
+  @Test
+  void should_not_pass_the_index_key_alias_when_it_names_the_servers_own_key() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.fakeExport(
+          f.export.getFileName().toString(), Optional.of("59c17da4-eb3b-4fdf-80e6-452c794d2383"));
+
+      Plan plan = f.ops().planLoad(f.options());
+
+      assertThat(Idempotency.step(plan, LoadSteps.IMPORT_EXPORT).detail())
+          .doesNotContain("--keyalias");
+      assertThat(plan.fingerprint().inputs()).doesNotContainKey("keyAlias");
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("key alias"));
+    }
+  }
+
+  /** #312: the Legacy alias is the one index.xml can name usefully, as for jrsctl import. */
+  @Test
+  void should_pass_the_index_key_alias_when_it_is_the_legacy_alias() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.fakeExport(
+          f.export.getFileName().toString(), Optional.of("deprecatedImportExportEncSecret"));
+
+      Plan plan = f.ops().planLoad(f.options());
+
+      assertThat(Idempotency.step(plan, LoadSteps.IMPORT_EXPORT).detail())
+          .contains("--keyalias deprecatedImportExportEncSecret");
+      assertThat(plan.summary().warnings())
+          .anyMatch(w -> w.contains("from the archive's index.xml"));
+    }
+  }
 }
