@@ -65,7 +65,16 @@ class RepositoryLoadPlanTest {
       assertThat(plan.summary().strategy()).contains("js-ant").contains("js-import");
       assertThat(plan.summary().warnings())
           .contains(DefaultRepositoryOperations.OUTSIDE_THE_PLAN_WARNING)
+          .contains(DefaultRepositoryOperations.DEFAULT_ADMIN_PASSWORDS_WARNING)
           .contains(DefaultRepositoryOperations.EVENTS_LEFT_BEHIND_WARNING);
+      // #319 item 4: the rollback points are listed in the plan's phase order
+      assertThat(plan.summary().rollbackPointsByPhase().keySet())
+          .containsExactly(
+              LoadPhases.PREFLIGHT,
+              LoadPhases.CREATE,
+              LoadPhases.INITIALISE,
+              LoadPhases.LOAD,
+              LoadPhases.VERIFY);
       assertThat(plan.fingerprint().inputs())
           .containsEntry("schema", LoadFixture.SCHEMA)
           .containsEntry("exportSha256", f.services.platform().files().sha256(f.export))
@@ -354,6 +363,40 @@ class RepositoryLoadPlanTest {
           .contains("--keyalias deprecatedImportExportEncSecret");
       assertThat(plan.summary().warnings())
           .anyMatch(w -> w.contains("from the archive's index.xml"));
+    }
+  }
+
+  /**
+   * #319 item 3: a recorded sidecar's origin and index.xml's export format are not run together.
+   */
+  @Test
+  void should_name_the_export_format_and_the_source_version_of_a_recorded_sidecar()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      com.jaspersoft.jrsctl.jrs.strategy.Sidecar.write(
+          com.jaspersoft.jrsctl.jrs.strategy.Sidecar.pathFor(f.export),
+          new com.jaspersoft.jrsctl.jrs.strategy.Sidecar(
+              java.time.Instant.EPOCH,
+              "recorded from js-8.2-export.zip (7.5.0 PRO)",
+              "8.2.0",
+              Optional.empty(),
+              new com.jaspersoft.jrsctl.jrs.strategy.Sidecar.Flags(
+                  com.jaspersoft.jrsctl.jrs.api.ExportRequest.Scope.EVERYTHING,
+                  List.of(),
+                  true,
+                  false,
+                  false,
+                  false,
+                  true,
+                  true),
+              f.services.platform().files().sha256(f.export),
+              com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.VENDOR_CLI,
+              com.jaspersoft.jrsctl.jrs.strategy.Sidecar.ORIGIN_RECORD));
+
+      assertThat(f.ops().planLoad(f.options()).summary().warnings())
+          .anyMatch(w -> w.contains("source version 8.2.0 (from export record)"))
+          .anyMatch(w -> w.contains("export format"))
+          .noneMatch(w -> w.contains("exported from recorded from"));
     }
   }
 }

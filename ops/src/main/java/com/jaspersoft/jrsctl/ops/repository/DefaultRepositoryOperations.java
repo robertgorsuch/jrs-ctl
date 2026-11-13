@@ -56,6 +56,16 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
           + " afterwards; and pausing the imported report jobs before its scheduler starts (POST"
           + " /rest_v2/jobs/pause).";
 
+  /**
+   * #319 item 8, seen in the #311 field test: js-import does not overwrite the users the minimal
+   * import created, so the loaded schema keeps the vendor's default admin passwords. Said on its
+   * own, first, because the outside-the-plan list buried it.
+   */
+  public static final String DEFAULT_ADMIN_PASSWORDS_WARNING =
+      "The loaded schema keeps the minimal import's default superuser and jasperadmin passwords:"
+          + " js-import does not overwrite users that already exist, so the export's own passwords"
+          + " for them are not applied. Change both before the new server is reachable.";
+
   /** Upgrade guide 10.1 p.80: js-import leaves the events behind unless asked. */
   public static final String EVENTS_LEFT_BEHIND_WARNING =
       "The access, audit and monitoring events the export may hold are not imported; pass"
@@ -64,7 +74,8 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
   /** The rollback of the create, initialise and load phases; {@code %s} is the schema. */
   public static final String ROLLBACK_SENTENCE =
       "drop schema %s, only if this run created it (schema.created) and default_master.properties"
-          + " still names it; otherwise exit 4 names the DBA's statement";
+          + " still names it, then js-ant clean-config: the whole run rolls back; otherwise exit 4"
+          + " names the DBA's statement";
 
   private final LoadRuntime rt;
 
@@ -195,26 +206,36 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
         new LoadInput(
             options, buildomatic, edition, jdbc, catalog, sha, sidecar, Optional.of(index));
 
+    warnings.add(DEFAULT_ADMIN_PASSWORDS_WARNING);
     warnings.add(OUTSIDE_THE_PLAN_WARNING);
     if (!options.includeEvents()) {
       warnings.add(EVENTS_LEFT_BEHIND_WARNING);
     }
+    // index.xml's jsVersion is the export format (the vendor writes 7.5.0 PRO on 10.0), not the
+    // server's version: say which is which (#319 item 3)
+    String format = "export format " + index.jsVersion().orElse("not in index.xml");
     sidecar.ifPresent(
         s ->
             warnings.add(
                 options.export().getFileName()
-                    + " was exported from "
-                    + s.serverIdentity()
-                    + " (version "
-                    + s.serverVersion()
-                    + ")"
+                    + (s.origin().equals(Sidecar.ORIGIN_RECORD)
+                        ? ": "
+                            + format
+                            + ", source version "
+                            + s.serverVersion()
+                            + " (from export record)"
+                        : " was exported from "
+                            + s.serverIdentity()
+                            + " (version "
+                            + s.serverVersion()
+                            + ")")
                     + (s.sha256().equals(sha) ? "" : "; its sidecar records another hash")));
     if (sidecar.isEmpty()) {
       warnings.add(
           "no sidecar beside "
               + options.export().getFileName()
-              + ": where it was exported from is not checked"
-              + index.jsVersion().map(v -> "; its index.xml says version " + v).orElse(""));
+              + ": where it was exported from is not checked; "
+              + format);
     }
     in.keyAlias()
         .ifPresent(

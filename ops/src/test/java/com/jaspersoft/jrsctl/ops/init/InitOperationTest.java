@@ -90,6 +90,8 @@ class InitOperationTest {
       throws Exception {
     Path install = FakeLayout.linux(tmp.resolve("jrs"));
     Path buildomatic = install.resolve("buildomatic");
+    // no java launcher beside the buildomatic: JAVA_HOME is the fallback (#319 item 1)
+    Files.delete(install.resolve("java").resolve("bin").resolve("java"));
     try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
       fake.env.put("JAVA_HOME", tmp.resolve("jdk17").toString());
       Files.createDirectories(tmp.resolve("jdk17").resolve("bin"));
@@ -127,6 +129,35 @@ class InitOperationTest {
                       && v.value().equals("jdbc:postgresql://db.example.internal:5433/jasperserver")
                       && v.source().contains("not copied"))
           .anyMatch(v -> v.key().equals("server.installDir") && v.source().contains("tools-only"));
+    }
+  }
+
+  /** #319 item 1: the distribution's own JDK beside the buildomatic wins over JAVA_HOME. */
+  @Test
+  void should_take_the_distributions_java_folder_over_java_home_for_a_tools_only_configuration()
+      throws Exception {
+    Path install = FakeLayout.linux(tmp.resolve("jrs"));
+    Path buildomatic = install.resolve("buildomatic");
+    Path bundled = install.resolve("java");
+    Files.createDirectories(bundled.resolve("bin"));
+    Files.writeString(bundled.resolve("bin").resolve("java"), "");
+    try (FakeServices fake = FakeServices.in(tmp.resolve("home"), Platform.OsFamily.LINUX)) {
+      fake.env.put("JAVA_HOME", tmp.resolve("jdk11").toString());
+      Files.createDirectories(tmp.resolve("jdk11").resolve("bin"));
+      InitOperation init = new InitOperation(fake.build());
+
+      InitReport report =
+          init.detectToolsOnly(
+              URI.create("https://jrs101.example.com/jasperserver-pro"), buildomatic, fake.env);
+
+      assertThat(init.toConfig(report).vendor().javaHome())
+          .contains(bundled.toAbsolutePath().normalize());
+      assertThat(report.values())
+          .anyMatch(
+              v ->
+                  v.key().equals("vendor.javaHome")
+                      && v.source().contains("java folder beside the buildomatic")
+                      && v.source().contains("JAVA_HOME"));
     }
   }
 

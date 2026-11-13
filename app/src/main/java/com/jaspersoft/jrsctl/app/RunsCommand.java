@@ -78,7 +78,15 @@ final class RunsCommand implements Runnable {
     spec.commandLine().usage(spec.commandLine().getOut());
   }
 
-  static String duration(RunRecord run, Clock clock) {
+  /**
+   * The run's duration; a run without an end is "(running)" only while it holds the run lock, and
+   * "interrupted" when the lock is free or held by another run, since its process is gone and the
+   * time since it started says nothing (#319 item 7). Judged by trying the lock, as doctor does.
+   */
+  static String duration(RunRecord run, Clock clock, Optional<String> lockHolder) {
+    if (run.endedAt().isEmpty() && !lockHolder.filter(run.runId()::equals).isPresent()) {
+      return "interrupted";
+    }
     Instant end = run.endedAt().orElseGet(clock::instant);
     Duration d = Duration.between(run.startedAt(), end);
     if (d.isNegative()) {
@@ -91,6 +99,11 @@ final class RunsCommand implements Runnable {
                 ? String.format(Locale.ROOT, "%dm%02ds", d.toMinutes(), d.toSecondsPart())
                 : String.format(Locale.ROOT, "%.1fs", d.toMillis() / 1000.0);
     return run.endedAt().isPresent() ? text : text + " (running)";
+  }
+
+  /** The run that holds the run lock now, if any. */
+  static Optional<String> lockHolder(Services services) {
+    return RunLock.heldBy(services.home().runLock()).map(RunLock.Holder::runId);
   }
 
   static String outcome(RunRecord run) {
@@ -217,12 +230,13 @@ final class RunsCommand implements Runnable {
             ansi.dim("STARTED"),
             ansi.dim("DURATION"),
             ansi.dim("OUTCOME"));
+        Optional<String> live = lockHolder(services);
         for (RunRecord r : runs) {
           table.row(
               r.runId(),
               r.operation(),
               r.startedAt().truncatedTo(ChronoUnit.SECONDS).toString(),
-              duration(r, services.clock()),
+              duration(r, services.clock(), live),
               outcome(r));
         }
         for (String line : table.lines()) {
@@ -277,7 +291,10 @@ final class RunsCommand implements Runnable {
         List<String> lines = new ArrayList<>();
         lines.add("Run  " + run.runId() + "  " + run.operation() + "  " + outcome(run));
         lines.add(
-            "  started  " + run.startedAt() + "  duration  " + duration(run, services.clock()));
+            "  started  "
+                + run.startedAt()
+                + "  duration  "
+                + duration(run, services.clock(), lockHolder(services)));
         lines.add("Plan");
         if (planTree.isPresent()) {
           JsonNode summary = planTree.get().path("summary");
