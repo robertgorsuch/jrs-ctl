@@ -582,19 +582,33 @@ public interface ExportImportOperations {
    * hand, the exporting server's version when {@code index.xml} does not carry it (an explicit
    * value wins over the index), the exporting server's {@code .jrsks} for the fingerprint, the key
    * alias the archive was encrypted with (an explicit value wins; the Legacy alias is taken from
-   * the index), and whether an existing sidecar may be replaced.
+   * the index), whether an existing sidecar may be replaced, and the name of the exporting server's
+   * repository database, which {@code repository load} then refuses as its schema.
    */
   record RecordSidecarOptions(
       Path archive,
       Optional<String> sourceVersion,
       Optional<Path> sourceKeystore,
       Optional<String> keyAlias,
-      boolean force) {
+      boolean force,
+      Optional<String> sourceDatabase) {
     public RecordSidecarOptions {
       Objects.requireNonNull(archive, "archive");
       Objects.requireNonNull(sourceVersion, "sourceVersion");
       Objects.requireNonNull(sourceKeystore, "sourceKeystore");
       Objects.requireNonNull(keyAlias, "keyAlias");
+      Objects.requireNonNull(sourceDatabase, "sourceDatabase");
+      sourceDatabase = sourceDatabase.map(String::strip).filter(d -> !d.isEmpty());
+    }
+
+    /** Without a source database name. */
+    public RecordSidecarOptions(
+        Path archive,
+        Optional<String> sourceVersion,
+        Optional<Path> sourceKeystore,
+        Optional<String> keyAlias,
+        boolean force) {
+      this(archive, sourceVersion, sourceKeystore, keyAlias, force, Optional.empty());
     }
   }
 

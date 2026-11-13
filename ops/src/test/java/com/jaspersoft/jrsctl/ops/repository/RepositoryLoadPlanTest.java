@@ -183,6 +183,74 @@ class RepositoryLoadPlanTest {
     }
   }
 
+  /** Issue #317: a tools-only configuration has no database.url of the source's own. */
+  @Test
+  void should_refuse_with_exit_6_when_the_schema_is_the_named_source_database() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      RepositoryOperations.LoadOptions options =
+          new RepositoryOperations.LoadOptions(
+              LoadFixture.SCHEMA,
+              f.export,
+              false,
+              Optional.empty(),
+              Optional.of(LoadFixture.SCHEMA.toUpperCase(java.util.Locale.ROOT)));
+
+      assertThatThrownBy(() -> f.ops().planLoad(options))
+          .isInstanceOf(RepositoryException.class)
+          .hasMessageContaining("--source-database")
+          .extracting(e -> ((RepositoryException) e).exitCode())
+          .isEqualTo(RepositoryException.UNSUPPORTED);
+      assertThat(f.vendorLogText()).isEmpty();
+    }
+  }
+
+  /** Issue #317: export record --source-database writes it; repository load refuses it. */
+  @Test
+  void should_refuse_with_exit_6_when_the_sidecar_records_the_schema_as_the_source()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      sidecar(f, Optional.of(LoadFixture.SCHEMA));
+
+      assertThatThrownBy(() -> f.ops().planLoad(f.options()))
+          .isInstanceOf(RepositoryException.class)
+          .hasMessageContaining("sidecar")
+          .extracting(e -> ((RepositoryException) e).exitCode())
+          .isEqualTo(RepositoryException.UNSUPPORTED);
+    }
+  }
+
+  @Test
+  void should_plan_when_the_recorded_source_database_differs_from_the_schema() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      sidecar(f, Optional.of("jasperserver"));
+
+      assertThat(f.ops().planLoad(f.options()).steps()).isNotEmpty();
+    }
+  }
+
+  private static void sidecar(LoadFixture f, Optional<String> sourceDatabase) throws Exception {
+    com.jaspersoft.jrsctl.jrs.strategy.Sidecar.write(
+        com.jaspersoft.jrsctl.jrs.strategy.Sidecar.pathFor(f.export),
+        new com.jaspersoft.jrsctl.jrs.strategy.Sidecar(
+            java.time.Instant.EPOCH,
+            "recorded from js-8.2-export.zip (8.2.0)",
+            "8.2.0",
+            Optional.empty(),
+            new com.jaspersoft.jrsctl.jrs.strategy.Sidecar.Flags(
+                com.jaspersoft.jrsctl.jrs.api.ExportRequest.Scope.EVERYTHING,
+                List.of(),
+                true,
+                false,
+                false,
+                false,
+                true,
+                true),
+            f.services.platform().files().sha256(f.export),
+            com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy.Kind.VENDOR_CLI,
+            com.jaspersoft.jrsctl.jrs.strategy.Sidecar.ORIGIN_RECORD,
+            sourceDatabase));
+  }
+
   @Test
   void should_refuse_with_exit_6_a_database_type_without_a_catalog_rule() throws Exception {
     try (LoadFixture f = LoadFixture.create(tmp)) {

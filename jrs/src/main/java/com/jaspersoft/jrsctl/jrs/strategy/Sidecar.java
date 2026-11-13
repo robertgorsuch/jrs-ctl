@@ -16,10 +16,12 @@ import java.util.TreeSet;
 /**
  * The {@code <archive>.jrsctl.json} sidecar written next to every export (spec §9.3): when it was
  * taken, from which server, with which request flags, the SHA-256 of the archive and the server
- * keystore fingerprint an import must match. Invariants: {@link #pathFor} is the one place the
- * sidecar name is derived, so export and import always agree; the file is written through a temp
- * file and an atomic rename; an unreadable or malformed sidecar surfaces as {@link
- * IllegalArgumentException} for the import precheck to report, never as a silent skip.
+ * keystore fingerprint an import must match, and, when known, the name of the exporting server's
+ * repository database ({@code sourceDatabase}, which {@code repository load} refuses as its target
+ * schema). Invariants: {@link #pathFor} is the one place the sidecar name is derived, so export and
+ * import always agree; the file is written through a temp file and an atomic rename; an unreadable
+ * or malformed sidecar surfaces as {@link IllegalArgumentException} for the import precheck to
+ * report, never as a silent skip.
  */
 public record Sidecar(
     Instant exportedAt,
@@ -29,7 +31,8 @@ public record Sidecar(
     Flags flags,
     String sha256,
     ExportImportStrategy.Kind strategy,
-    String origin) {
+    String origin,
+    Optional<String> sourceDatabase) {
 
   public static final String SUFFIX = ".jrsctl.json";
 
@@ -49,6 +52,33 @@ public record Sidecar(
     Objects.requireNonNull(strategy, "strategy");
     // a sidecar written before the field existed came from an export
     origin = origin == null ? ORIGIN_EXPORT : origin;
+    // nor a source database
+    sourceDatabase =
+        sourceDatabase == null
+            ? Optional.empty()
+            : sourceDatabase.map(String::strip).filter(d -> !d.isEmpty());
+  }
+
+  /** A sidecar without a source database name. */
+  public Sidecar(
+      Instant exportedAt,
+      String serverIdentity,
+      String serverVersion,
+      Optional<String> keystoreFingerprint,
+      Flags flags,
+      String sha256,
+      ExportImportStrategy.Kind strategy,
+      String origin) {
+    this(
+        exportedAt,
+        serverIdentity,
+        serverVersion,
+        keystoreFingerprint,
+        flags,
+        sha256,
+        strategy,
+        origin,
+        Optional.empty());
   }
 
   /** A sidecar an export writes. */

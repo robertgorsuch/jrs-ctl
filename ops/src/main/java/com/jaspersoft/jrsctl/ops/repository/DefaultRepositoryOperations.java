@@ -170,7 +170,6 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
           "store the database password (jrsctl secrets set JRS_DB_PASSWORD) and set"
               + " database.passwordRef enc:JRS_DB_PASSWORD");
     }
-    refuseCollision(config, jdbc, catalog, options.schema());
     String sha;
     try {
       sha = rt.files().sha256(options.export());
@@ -191,6 +190,7 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
     }
     List<String> warnings = new ArrayList<>();
     Optional<Sidecar> sidecar = readSidecar(options, warnings);
+    refuseCollision(config, jdbc, catalog, options, sidecar);
     LoadInput in =
         new LoadInput(
             options, buildomatic, edition, jdbc, catalog, sha, sidecar, Optional.of(index));
@@ -276,29 +276,60 @@ public final class DefaultRepositoryOperations implements RepositoryOperations {
   }
 
   /**
-   * ADR-0052: the one mistake the command exists to make impossible. When config.yaml sets a {@code
-   * database.url} of its own, different from the one buildomatic's properties imply, it names the
-   * configured server's repository; a {@code --schema} equal to that database is exit 6.
+   * ADR-0052 (as amended for #317): the one mistake the command exists to make impossible. The
+   * source server's repository database is known from three places, each checked: a {@code
+   * database.url} that config.yaml sets of its own, different from the one buildomatic's properties
+   * imply; {@code --source-database}; and the sidecar's {@code sourceDatabase}, which {@code export
+   * record --source-database} writes. A {@code --schema} equal to any of them, ignoring case, is
+   * exit 6. When none is known, {@code verify-target-schema}'s existence check is the guard.
    */
   private void refuseCollision(
-      Config config, JdbcSettings jdbc, DatabaseCatalog catalog, String schema) {
+      Config config,
+      JdbcSettings jdbc,
+      DatabaseCatalog catalog,
+      LoadOptions options,
+      Optional<Sidecar> sidecar) {
+    String schema = options.schema();
     Map<String, String> differ =
         BuildomaticDefaults.disagreements(config, rt.services().platform());
-    if (!differ.containsKey("database.url")) {
-      return;
-    }
-    if (catalog.schemaName().equals(schema)) {
-      throw new RepositoryException(
-          RepositoryException.UNSUPPORTED,
-          "--schema "
-              + schema
-              + " is the database that config.yaml's database.url names ("
+    if (differ.containsKey("database.url") && same(catalog.schemaName(), schema)) {
+      throw collision(
+          schema,
+          "the database that config.yaml's database.url names ("
               + jdbc.url()
-              + "), the configured server's own repository; repository load never creates or"
-              + " drops that database",
-          "pass a new schema name and set js.dbName to it in default_master.properties; the"
-              + " server's own database stays untouched");
+              + "), the configured server's own repository");
     }
+    if (options.sourceDatabase().filter(d -> same(d, schema)).isPresent()) {
+      throw collision(schema, "the source server's repository database (--source-database)");
+    }
+    Optional<String> recorded = sidecar.flatMap(Sidecar::sourceDatabase);
+    if (recorded.filter(d -> same(d, schema)).isPresent()) {
+      throw collision(
+          schema,
+          "the source server's repository database, as the sidecar beside "
+              + options.export().getFileName()
+              + " records it");
+    }
+  }
+
+  /**
+   * Database names compared without case: PostgreSQL folds unquoted names and MySQL on Windows and
+   * macOS ignores case, so a refusal on a case-only difference is the safer error.
+   */
+  private static boolean same(String a, String b) {
+    return a.strip().equalsIgnoreCase(b.strip());
+  }
+
+  private static RepositoryException collision(String schema, String what) {
+    return new RepositoryException(
+        RepositoryException.UNSUPPORTED,
+        "--schema "
+            + schema
+            + " is "
+            + what
+            + "; repository load never creates or drops the source server's database",
+        "pass a new schema name and set js.dbName to it in default_master.properties; the"
+            + " server's own database stays untouched");
   }
 
   /** The sidecar beside the export, or empty with a warning when it exists but cannot be read. */
