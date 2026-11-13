@@ -107,6 +107,39 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * #315: the vendor upgrade's imports run with the target buildomatic's iecp.jar; a stale one is
+   * refused before the service is stopped.
+   */
+  @Test
+  void should_refuse_before_stopping_anything_when_the_target_class_path_jar_is_stale()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path lib =
+          Files.createDirectories(
+              f.packageDir
+                  .resolve("buildomatic")
+                  .resolve("conf_source")
+                  .resolve("iePro")
+                  .resolve("lib"));
+      java.util.jar.Manifest m = new java.util.jar.Manifest();
+      m.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+      m.getMainAttributes().put(java.util.jar.Attributes.Name.CLASS_PATH, "gone-1.0.jar");
+      try (java.io.OutputStream out = Files.newOutputStream(lib.resolve("iecp.jar"));
+          java.util.jar.JarOutputStream jar = new java.util.jar.JarOutputStream(out, m)) {
+        jar.flush();
+      }
+
+      RunOutcome outcome = f.run(f.ops().planTest(newdb(f)), "r-stale", RunOptions.DEFAULT);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      RunOutcome.PrecheckFailed failed = (RunOutcome.PrecheckFailed) outcome;
+      assertThat(failed.stepId()).isEqualTo(PreflightSteps.VERIFY_TARGET_PACKAGE);
+      assertThat(failed.message()).contains("iecp.jar").contains("gone-1.0.jar");
+      assertThat(failed.remediation()).startsWith("delete ");
+    }
+  }
+
   /** Review 2026-11-13 finding 2: this run's own pending row must not hide a crashed run. */
   @Test
   void should_refuse_before_stopping_anything_when_another_run_is_pending() throws Exception {

@@ -25,6 +25,7 @@ import com.jaspersoft.jrsctl.jrs.service.CompanionDatabase;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticLocator;
 import com.jaspersoft.jrsctl.jrs.vendor.BuildomaticResolution;
+import com.jaspersoft.jrsctl.jrs.vendor.IeClasspathJar;
 import com.jaspersoft.jrsctl.ops.AnalyticsJndi;
 import com.jaspersoft.jrsctl.ops.JsConfig;
 import com.jaspersoft.jrsctl.ops.ReportItem;
@@ -609,6 +610,12 @@ final class LocalChecks {
               + " and no ant on PATH",
           "copy the distribution's apache-ant folder next to the buildomatic directory, or put"
               + " Ant's bin directory on PATH for the account that runs jrsctl");
+    }
+    // #315: the Ant import targets (upgrade, repository load) run with iecp.jar, which a hotfix
+    // that swapped jars in its lib directory leaves naming files that are gone
+    Optional<IeClasspathJar.Stale> stale = IeClasspathJar.stale(buildomatic.dir());
+    if (stale.isPresent()) {
+      return ReportItem.warn("vendor", stale.get().detail(), stale.get().remediation());
     }
     return ReportItem.pass(
         "vendor", "js-export, js-import, js-ant present in " + where + "; Ant " + ant.get());
