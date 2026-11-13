@@ -129,6 +129,33 @@ class RecordSidecarTest {
     assertThat(sidecar.flags().uris()).containsExactly("/public/Samples");
   }
 
+  /** Issue #317: the source database survives a write and a read of the sidecar. */
+  @Test
+  void should_record_the_source_database_when_given() throws Exception {
+    Path archive = archive("everything.zip", Optional.of(EVERYTHING));
+
+    RecordedSidecar recorded =
+        fx.ops()
+            .recordSidecar(
+                new RecordSidecarOptions(
+                    archive,
+                    Optional.of("8.2.0"),
+                    Optional.empty(),
+                    Optional.empty(),
+                    false,
+                    Optional.of(" jasperserver ")));
+
+    assertThat(recorded.sidecar().sourceDatabase()).contains("jasperserver");
+    assertThat(Sidecar.read(recorded.file()).orElseThrow().sourceDatabase())
+        .contains("jasperserver");
+    assertThat(
+            fx.ops()
+                .recordSidecar(options(archive("other.zip", Optional.of(EVERYTHING))))
+                .sidecar()
+                .sourceDatabase())
+        .isEmpty();
+  }
+
   /** An archive made with {@code --keyalias deprecatedImportExportEncSecret} says so itself. */
   @Test
   void should_take_the_legacy_key_alias_from_index_xml_without_a_flag() throws Exception {

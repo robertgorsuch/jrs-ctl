@@ -408,18 +408,33 @@ public final class VendorTools {
   /**
    * {@code <javaHome>/bin} followed by the inherited {@code PATH} (looked up case-insensitively, as
    * Windows spells it {@code Path}), joined with {@code ;} for batch wrappers and {@code :} for
-   * shell ones.
+   * shell ones. For a batch wrapper, {@code %SystemRoot%\System32}, {@code %SystemRoot%} and {@code
+   * %SystemRoot%\System32\Wbem} come second: the wrappers' {@code bin\date.bat} and {@code
+   * time.bat} call {@code FIND /I} and {@code REGEDIT}, and a Unix {@code find.exe} earlier on an
+   * inherited {@code PATH} (Git for Windows, MSYS2, Cygwin) broke {@code js-import.bat} in the #311
+   * field test (#318). {@code SystemRoot} is read from the inherited environment, else {@code
+   * C:\Windows}.
    */
   static String pathWithJavaFirst(Path javaHome, Map<String, String> inherited, boolean batch) {
     String separator = batch ? ";" : ":";
     String bin = javaHome.resolve("bin").toString();
-    String rest =
-        inherited.entrySet().stream()
-            .filter(e -> e.getKey().equalsIgnoreCase(VendorFlags.PATH))
-            .map(Map.Entry::getValue)
-            .findFirst()
-            .orElse("");
+    String rest = lookup(inherited, VendorFlags.PATH).orElse("");
+    if (batch) {
+      String root = lookup(inherited, SYSTEM_ROOT).filter(r -> !r.isBlank()).orElse("C:\\Windows");
+      root = root.endsWith("\\") ? root.substring(0, root.length() - 1) : root;
+      bin = String.join(separator, bin, root + "\\System32", root, root + "\\System32\\Wbem");
+    }
     return rest.isBlank() ? bin : bin + separator + rest;
+  }
+
+  private static final String SYSTEM_ROOT = "SystemRoot";
+
+  /** An environment variable by name, ignoring case, as Windows does. */
+  private static Optional<String> lookup(Map<String, String> env, String name) {
+    return env.entrySet().stream()
+        .filter(e -> e.getKey().equalsIgnoreCase(name))
+        .map(Map.Entry::getValue)
+        .findFirst();
   }
 
   // ---------------------------------------------------------------- the one launcher

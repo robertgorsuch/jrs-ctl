@@ -857,4 +857,40 @@ class VendorToolsTest {
     assertThat(runner.last().timeout()).isEqualTo(Duration.ofMinutes(3));
     assertThat(sink.logMessages()).anyMatch(m -> m.contains("killed after 180s"));
   }
+
+  /** Issue #318: date.bat's FIND /I must not reach a Unix find.exe on the inherited PATH. */
+  @Test
+  void should_put_system32_second_on_a_batch_path_when_a_unix_find_comes_first() {
+    Path javaHome = Path.of("jdk17");
+    Map<String, String> inherited =
+        Map.of(
+            "Path",
+            "C:\\Program Files\\Git\\usr\\bin;C:\\Windows\\system32",
+            "SystemRoot",
+            "D:\\Win\\");
+
+    String path = VendorTools.pathWithJavaFirst(javaHome, inherited, true);
+
+    assertThat(path.split(";", -1))
+        .startsWith(
+            javaHome.resolve("bin").toString(),
+            "D:\\Win\\System32",
+            "D:\\Win",
+            "D:\\Win\\System32\\Wbem",
+            "C:\\Program Files\\Git\\usr\\bin");
+  }
+
+  @Test
+  void should_default_the_system_root_and_leave_a_shell_path_alone() {
+    Path javaHome = Path.of("jdk17");
+
+    assertThat(VendorTools.pathWithJavaFirst(javaHome, Map.of(), true).split(";", -1))
+        .containsExactly(
+            javaHome.resolve("bin").toString(),
+            "C:\\Windows\\System32",
+            "C:\\Windows",
+            "C:\\Windows\\System32\\Wbem");
+    assertThat(VendorTools.pathWithJavaFirst(javaHome, Map.of("PATH", "/usr/bin"), false))
+        .isEqualTo(javaHome.resolve("bin") + ":/usr/bin");
+  }
 }

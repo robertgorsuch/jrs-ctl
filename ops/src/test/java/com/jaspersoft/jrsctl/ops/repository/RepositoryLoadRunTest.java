@@ -50,6 +50,7 @@ class RepositoryLoadRunTest {
       assertThat(log).doesNotContain("--include-access-events");
       assertThat(f.schemaExists()).isTrue();
       assertThat(SchemaDrop.recorded(f.ctx("r-load"))).contains(LoadFixture.SCHEMA);
+      assertThat(SchemaDrop.state(f.ctx("r-load"))).contains(SchemaDrop.State.CREATED);
       Path record = f.home().snapshots().resolve("r-load").resolve(LoadSteps.RECORD_FILE);
       assertThat(record).exists();
       assertThat(Files.readString(record))
@@ -337,6 +338,96 @@ class RepositoryLoadRunTest {
       assertThat(failed.cause()).contains("production").contains("DROP DATABASE");
       assertThat(f.jdbc.executed).noneMatch(sql -> sql.startsWith("DROP DATABASE"));
       assertThat(f.schemaExists()).isTrue();
+    }
+  }
+
+  /** Issue #316: the pg_database answers in order: precheck, create-js-db's check, after it. */
+  private static void catalogueAnswers(LoadFixture f, java.util.function.IntPredicate exists) {
+    java.util.concurrent.atomic.AtomicInteger asked =
+        new java.util.concurrent.atomic.AtomicInteger();
+    f.jdbc.rowAnswer =
+        sql -> {
+          if (!sql.contains("pg_database")) {
+            return true;
+          }
+          boolean answer = exists.test(asked.incrementAndGet());
+          try {
+            f.schemaExists(answer || f.schemaExists());
+          } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+          }
+          return f.schemaExists();
+        };
+  }
+
+  /** Issue #316: a schema that appears after verify-target-schema is someone else's. */
+  @Test
+  void should_create_and_drop_nothing_when_the_schema_appears_after_the_precheck()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      catalogueAnswers(f, n -> n > 1);
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome)
+          .as(String.join(System.lineSeparator(), f.logs()))
+          .isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(((RunOutcome.RolledBack) outcome).cause()).contains("appeared");
+      assertThat(f.vendorLogText()).doesNotContain("create-js-db");
+      assertThat(SchemaDrop.marker(f.ctx("r-load"))).doesNotExist();
+      assertThat(f.jdbc.executed).noneMatch(sql -> sql.startsWith("DROP DATABASE"));
+      assertThat(f.schemaExists()).isTrue();
+    }
+  }
+
+  /** Issue #316: a failed create-js-db with the schema there anyway is not provably this run's. */
+  @Test
+  void should_refuse_to_drop_when_create_js_db_failed_and_the_schema_is_there_anyway()
+      throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.failTarget("create-js-db");
+      catalogueAnswers(f, n -> n > 2);
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome)
+          .as(String.join(System.lineSeparator(), f.logs()))
+          .isInstanceOf(RunOutcome.Failed.class);
+      RunOutcome.Failed failed = (RunOutcome.Failed) outcome;
+      assertThat(failed.rollbackIncomplete()).isTrue();
+      assertThat(failed.cause()).contains("DROP DATABASE").contains(LoadFixture.SCHEMA);
+      assertThat(SchemaDrop.state(f.ctx("r-load"))).contains(SchemaDrop.State.UNCERTAIN);
+      assertThat(f.jdbc.executed).noneMatch(sql -> sql.startsWith("DROP DATABASE"));
+      assertThat(f.schemaExists()).isTrue();
+    }
+  }
+
+  /** Issue #316: a failed create-js-db that left nothing behind leaves no marker either. */
+  @Test
+  void should_forget_the_marker_when_create_js_db_failed_and_created_nothing() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      f.failTarget("create-js-db");
+
+      RunOutcome outcome = f.run(f.ops().planLoad(f.options()), "r-load");
+
+      assertThat(outcome)
+          .as(String.join(System.lineSeparator(), f.logs()))
+          .isInstanceOf(RunOutcome.RolledBack.class);
+      assertThat(SchemaDrop.marker(f.ctx("r-load"))).doesNotExist();
+      assertThat(f.jdbc.executed).noneMatch(sql -> sql.startsWith("DROP DATABASE"));
+    }
+  }
+
+  /** A marker written by 2.7 (one line, no state) still lets its run roll back. */
+  @Test
+  void should_read_a_one_line_marker_as_created() throws Exception {
+    try (LoadFixture f = LoadFixture.create(tmp)) {
+      Path marker = SchemaDrop.marker(f.ctx("r-old"));
+      Files.createDirectories(marker.getParent());
+      Files.writeString(marker, LoadFixture.SCHEMA + System.lineSeparator());
+
+      assertThat(SchemaDrop.recorded(f.ctx("r-old"))).contains(LoadFixture.SCHEMA);
+      assertThat(SchemaDrop.state(f.ctx("r-old"))).contains(SchemaDrop.State.CREATED);
     }
   }
 

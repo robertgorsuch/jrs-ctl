@@ -761,9 +761,10 @@ final class LoadSteps {
 
     @Override
     public String detail() {
-      return "records the name in "
+      return "asks the catalogue again, then records the name in "
           + SchemaDrop.MARKER
-          + " first, so a failure anywhere after this drops exactly this schema";
+          + " first, so a failure anywhere after this drops exactly this schema and never one"
+          + " that appeared from elsewhere";
     }
 
     @Override
@@ -772,18 +773,77 @@ final class LoadSteps {
         Steps.info(rt.services(), ctx, out, this, "schema already created in this run; skipping");
         return StepResult.ok();
       }
+      boolean mine = SchemaDrop.recorded(ctx).filter(in.schema()::equals).isPresent();
+      Optional<Boolean> exists = exists();
+      if (exists.isEmpty()) {
+        return Steps.recoverable(
+            "cannot ask " + in.catalog().adminUrl() + " whether " + in.schema() + " exists",
+            "check the database connection and run jrsctl runs recover; nothing was created");
+      }
+      if (exists.get()) {
+        if (mine) {
+          // a crash interrupted create-js-db in this run: the marker says it was ours
+          return Steps.recoverable(
+              "schema "
+                  + in.schema()
+                  + " is on the server and this run was creating it when it stopped; jrsctl"
+                  + " cannot tell whether create-js-db finished",
+              "jrsctl runs recover <runId> --rollback drops it (this run recorded it in "
+                  + SchemaDrop.MARKER
+                  + ")");
+        }
+        // it appeared after verify-target-schema checked: write no marker, so nothing is dropped
+        return Steps.recoverable(
+            "schema "
+                + in.schema()
+                + " appeared on "
+                + in.catalog().adminUrl()
+                + " after "
+                + VERIFY_TARGET_SCHEMA
+                + " found it absent; something else created it, so this run created nothing and"
+                + " will drop nothing",
+            "find out who created "
+                + in.schema()
+                + " (another jrsctl home or run, a DBA), then choose another --schema");
+      }
       try {
-        SchemaDrop.record(ctx, in.schema());
+        SchemaDrop.record(
+            ctx, in.schema(), SchemaDrop.State.CREATING, rt.services().clock().instant());
       } catch (IOException e) {
         return Steps.recoverable(
             "cannot write " + SchemaDrop.marker(ctx) + ": " + e.getMessage(),
             "fix the jrsctl home's disk or permissions; nothing was created");
       }
       Optional<StepResult> failure = ant(ctx, out, CREATE_JS_DB);
-      if (failure.isPresent()) {
-        return failure.get();
+      try {
+        if (failure.isPresent()) {
+          Optional<Boolean> after = exists();
+          if (after.isPresent()) {
+            if (after.get()) {
+              SchemaDrop.promote(ctx, SchemaDrop.State.UNCERTAIN);
+            } else {
+              SchemaDrop.forget(ctx);
+            }
+          }
+          return failure.get();
+        }
+        SchemaDrop.promote(ctx, SchemaDrop.State.CREATED);
+      } catch (IOException e) {
+        return Steps.recoverable(
+            "cannot update " + SchemaDrop.marker(ctx) + ": " + e.getMessage(),
+            "fix the jrsctl home's disk or permissions, then run jrsctl runs recover");
       }
       return markDone(ctx, out, "schema " + in.schema() + " created");
+    }
+
+    /** Whether the catalogue shows the schema now; empty when it cannot be asked. */
+    private Optional<Boolean> exists() {
+      try (JdbcConnector.Session session =
+          in.jdbc().withUrl(in.catalog().adminUrl()).open(rt.jdbc(), rt.services().secrets())) {
+        return Optional.of(session.queryHasRow(in.catalog().existsSql(in.schema())));
+      } catch (JdbcException | SecretException | IllegalArgumentException e) {
+        return Optional.empty();
+      }
     }
   }
 

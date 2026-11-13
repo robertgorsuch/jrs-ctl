@@ -346,6 +346,8 @@ public final class PlanRegistry {
     } else {
       node.putNull("keyAlias");
     }
+    // absent in arguments stored before #317, which read back as empty
+    options.sourceDatabase().ifPresent(d -> node.put("sourceDatabase", d));
     return Json.write(node);
   }
 
@@ -362,7 +364,8 @@ public final class PlanRegistry {
         required(args, "schema"),
         Path.of(required(args, "export")),
         args.path("includeEvents").asBoolean(false),
-        text(args, "keyAlias"));
+        text(args, "keyAlias"),
+        text(args, "sourceDatabase"));
   }
 
   public static String upgradeRollbackArgs(String runId, UpgradeOperations.RollbackPoint point) {

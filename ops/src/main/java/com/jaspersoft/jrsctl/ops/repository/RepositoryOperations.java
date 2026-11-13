@@ -23,17 +23,32 @@ public interface RepositoryOperations {
    * js.dbName} in the buildomatic's {@code default_master.properties}; {@code export} is a {@code
    * js-export --everything} archive (or jrsctl's full-server export); {@code includeEvents} adds
    * the access, audit and monitoring events to the import; {@code keyAlias} names the key the
-   * export was encrypted with when neither the sidecar nor the archive's index says.
+   * export was encrypted with when neither the sidecar nor the archive's index says; {@code
+   * sourceDatabase} names the exporting server's repository database, which {@code schema} must not
+   * equal (exit 6), for a configuration that cannot tell it otherwise.
    */
-  record LoadOptions(String schema, Path export, boolean includeEvents, Optional<String> keyAlias) {
+  record LoadOptions(
+      String schema,
+      Path export,
+      boolean includeEvents,
+      Optional<String> keyAlias,
+      Optional<String> sourceDatabase) {
 
     public LoadOptions {
       Objects.requireNonNull(schema, "schema");
       Objects.requireNonNull(export, "export");
       Objects.requireNonNull(keyAlias, "keyAlias");
+      Objects.requireNonNull(sourceDatabase, "sourceDatabase");
       schema = schema.strip();
       export = export.toAbsolutePath().normalize();
       keyAlias = keyAlias.map(String::strip).filter(a -> !a.isEmpty());
+      sourceDatabase = sourceDatabase.map(String::strip).filter(d -> !d.isEmpty());
+    }
+
+    /** Without a source database name. */
+    public LoadOptions(
+        String schema, Path export, boolean includeEvents, Optional<String> keyAlias) {
+      this(schema, export, includeEvents, keyAlias, Optional.empty());
     }
   }
 
