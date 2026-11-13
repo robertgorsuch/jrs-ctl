@@ -254,6 +254,14 @@ final class ExportCommand implements Callable<Integer> {
                 + " alias is read from index.xml without this flag.")
     String keyAlias;
 
+    @Option(
+        names = "--source-database",
+        paramLabel = "<name>",
+        description =
+            "The exporting server's repository database (js.dbName); repository load then"
+                + " refuses it as --schema.")
+    String sourceDatabase;
+
     @Option(names = "--force", description = "Replace a sidecar that is already there.")
     boolean force;
 
@@ -268,7 +276,8 @@ final class ExportCommand implements Callable<Integer> {
               Optional.ofNullable(sourceVersion),
               Optional.ofNullable(sourceKeystore),
               Optional.ofNullable(keyAlias),
-              force);
+              force,
+              Optional.ofNullable(sourceDatabase));
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         ExportImportOperations.RecordedSidecar recorded;
         try {
@@ -289,6 +298,7 @@ final class ExportCommand implements Callable<Integer> {
           tree.put("modules", new ArrayList<>(new java.util.TreeSet<>(recorded.index().modules())));
           sidecar.keystoreFingerprint().ifPresent(f -> tree.put("keystoreFingerprint", f));
           sidecar.flags().keyAlias().ifPresent(a -> tree.put("keyAlias", a));
+          sidecar.sourceDatabase().ifPresent(d -> tree.put("sourceDatabase", d));
           outWriter.println(redactor.redact(JsonOut.write(tree)));
         } else {
           outWriter.println(redactor.redact("sidecar written to " + recorded.file()));
@@ -317,6 +327,12 @@ final class ExportCommand implements Callable<Integer> {
                       .flags()
                       .keyAlias()
                       .orElse("none; the importing server decrypts with its own keystore"));
+          outWriter.println(
+              "  source database   "
+                  + sidecar
+                      .sourceDatabase()
+                      .orElse(
+                          "not recorded; pass --source-database so repository load refuses it"));
         }
         outWriter.flush();
         return ExitCodes.SUCCESS;

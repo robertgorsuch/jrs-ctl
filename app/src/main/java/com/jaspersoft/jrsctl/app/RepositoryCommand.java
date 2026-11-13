@@ -102,6 +102,14 @@ final class RepositoryCommand implements Runnable {
                 + " index.xml when not given.")
     String keyAlias;
 
+    @Option(
+        names = "--source-database",
+        paramLabel = "<name>",
+        description =
+            "The source server's repository database; --schema equal to it is refused (exit 6)."
+                + " Taken from the sidecar when export record --source-database wrote it.")
+    String sourceDatabase;
+
     @Option(names = "--plan", description = "Show the plan and exit without running it.")
     boolean plan;
 
@@ -121,7 +129,11 @@ final class RepositoryCommand implements Runnable {
         Services services = boot.services();
         RepositoryOperations.LoadOptions options =
             new RepositoryOperations.LoadOptions(
-                schema, export, includeEvents, Optional.ofNullable(keyAlias));
+                schema,
+                export,
+                includeEvents,
+                Optional.ofNullable(keyAlias),
+                Optional.ofNullable(sourceDatabase));
         Plan planned;
         try {
           planned = RepositoryOps.open(services).planLoad(options);

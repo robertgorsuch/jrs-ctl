@@ -637,7 +637,8 @@ class PlanRegistryTest {
             "jrs_101",
             Path.of("exports", "js-8.2-export.zip"),
             true,
-            Optional.of("deprecatedImportExportEncSecret"));
+            Optional.of("deprecatedImportExportEncSecret"),
+            Optional.of("jasperserver"));
 
     registry().rebuild(PlanRegistry.REPOSITORY_LOAD, PlanRegistry.repositoryLoadArgs(options));
 
@@ -647,6 +648,7 @@ class PlanRegistryTest {
     assertThat(stored.get("schema").asText()).isEqualTo("jrs_101");
     assertThat(stored.get("includeEvents").asBoolean()).isTrue();
     assertThat(stored.get("keyAlias").asText()).isEqualTo("deprecatedImportExportEncSecret");
+    assertThat(stored.get("sourceDatabase").asText()).isEqualTo("jasperserver");
   }
 
   @Test

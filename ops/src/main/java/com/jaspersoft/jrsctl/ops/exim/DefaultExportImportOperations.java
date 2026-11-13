@@ -275,7 +275,8 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               flags,
               sha256,
               ExportImportStrategy.Kind.VENDOR_CLI,
-              Sidecar.ORIGIN_RECORD);
+              Sidecar.ORIGIN_RECORD,
+              options.sourceDatabase());
       Sidecar.write(file, sidecar);
       return new RecordedSidecar(file, sidecar, index);
     } catch (IOException e) {
