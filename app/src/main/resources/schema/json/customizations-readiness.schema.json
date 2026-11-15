@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/customizations-readiness.schema.json",
+  "title": "jrsctl customizations readiness --json (spec §10.3, issue #306, ADR-0061)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetVersion", "installedWebapp", "targetVendorWebapp", "libraryLookup", "filesChecked", "classesChecked", "counts", "findings"],
+  "properties": {
+    "targetVersion": { "type": "string" },
+    "installedWebapp": { "type": ["string", "null"], "description": "The webapp whose changed and added files were checked; null with --jar alone." },
+    "targetVendorWebapp": { "type": ["string", "null"], "description": "The target's webapp the library classes were looked up in; null without --target-vendor." },
+    "libraryLookup": { "type": "boolean", "description": "Whether NOT_IN_TARGET was checked (--target-vendor given)." },
+    "filesChecked": { "type": "integer", "minimum": 0 },
+    "classesChecked": { "type": "integer", "minimum": 0 },
+    "counts": {
+      "type": "object",
+      "description": "Files with at least one finding, per kind.",
+      "additionalProperties": false,
+      "required": ["JAKARTA", "JAKARTA_SHIPPED", "NAMESPACE", "NOT_IN_TARGET", "BYTECODE", "UNREADABLE"],
+      "properties": {
+        "JAKARTA": { "type": "integer", "minimum": 0 },
+        "JAKARTA_SHIPPED": { "type": "integer", "minimum": 0 },
+        "NAMESPACE": { "type": "integer", "minimum": 0 },
+        "NOT_IN_TARGET": { "type": "integer", "minimum": 0 },
+        "BYTECODE": { "type": "integer", "minimum": 0 },
+        "UNREADABLE": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "kind", "references"],
+        "properties": {
+          "file": { "type": "string" },
+          "kind": { "enum": ["JAKARTA", "JAKARTA_SHIPPED", "NAMESPACE", "NOT_IN_TARGET", "BYTECODE", "UNREADABLE"] },
+          "references": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

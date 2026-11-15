@@ -432,6 +432,18 @@ final class HelpExamples {
                 "jrsctl customizations scan --vendor /opt/dist/8.2/jasperserver-pro.war"
                     + " --target-vendor /opt/dist/10.0/jasperserver-pro.war --out /tmp/merge")));
     m.put(
+        "customizations readiness",
+        List.of(
+            new Example(
+                "Before a move to 10.x: which of the site's changed and added files need porting to"
+                    + " Jakarta EE, and which library classes the target no longer has",
+                "jrsctl customizations readiness --target 10.0 --vendor"
+                    + " /opt/dist/8.2/jasperserver-pro.war --target-vendor"
+                    + " /opt/dist/10.0/jasperserver-pro.war"),
+            new Example(
+                "Check a module built outside the webapp",
+                "jrsctl customizations readiness --target 10.0 --jar build/libs/site-auth.jar")));
+    m.put(
         "customizations unregister",
         List.of(
             new Example(

@@ -38,7 +38,8 @@ import picocli.CommandLine.Spec;
       CustomizationsCommand.Unregister.class,
       CustomizationsCommand.ListRegistered.class,
       CustomizationsCommand.Diff.class,
-      CustomizationsCommand.ScanWebapp.class
+      CustomizationsCommand.ScanWebapp.class,
+      CustomizationsReadinessCommand.class
     })
 final class CustomizationsCommand implements Runnable {
 

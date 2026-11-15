@@ -1,5 +1,8 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (`customizations readiness`; ADR-0061, issue #306)
+
+- §10.3: `customizations readiness --target <version>` reports the site's classes, jars and descriptor files that name renamed `javax.*` classes, Java EE namespaces, library classes the target's webapp lacks (`--target-vendor`) or a Java above 17. Report only; no class-file library; no hand-written list of removed APIs.
 ## Draft 1.2 amendment — 2026-11-15 (job states in the export sidecar; ADR-0059, issue #309)
 
 - §9.3: sidecar version 2 adds the `jobs` block (recorded states, or the reason there are none); `export` fills it, `export record` only with `--jobs`.
