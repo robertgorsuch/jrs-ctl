@@ -9,10 +9,12 @@ import com.jaspersoft.jrsctl.jrs.api.Capability;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
+import com.jaspersoft.jrsctl.jrs.api.JobSummary;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.strategy.ExportIndex;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
+import com.jaspersoft.jrsctl.jrs.strategy.SidecarJobs;
 import com.jaspersoft.jrsctl.jrs.strategy.Strategies;
 import com.jaspersoft.jrsctl.ops.ConfigShow;
 import com.jaspersoft.jrsctl.ops.Services;
@@ -302,10 +304,33 @@ public final class DefaultExportImportOperations implements ExportImportOperatio
               ExportImportStrategy.Kind.VENDOR_CLI,
               Sidecar.ORIGIN_RECORD,
               options.sourceDatabase());
+      sidecar = sidecar.withJobs(options.jobs() ? configuredServerJobs() : RECORD_JOBS_NOT_ASKED);
       Sidecar.write(file, sidecar);
       return new RecordedSidecar(file, sidecar, index);
     } catch (IOException e) {
       throw new UncheckedIOException("cannot record " + archive + ": " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * Why {@code export record} without {@code --jobs} records no job states: the archive may come
+   * from a server other than the configured one (issue #309, ADR-0059).
+   */
+  static final SidecarJobs RECORD_JOBS_NOT_ASKED =
+      SidecarJobs.notRecorded(
+          "export record was run without --jobs; the archive may come from a server other than"
+              + " the configured one");
+
+  /** The configured server's report jobs now, or why they could not be listed. */
+  private SidecarJobs configuredServerJobs() {
+    try {
+      JrsAdapter adapter = services.adapter().get();
+      List<JobSummary> jobs = adapter.listJobs();
+      return SidecarJobs.recorded(
+          services.clock().instant(), adapter.identity().baseUrl().toString(), jobs);
+    } catch (RuntimeException e) {
+      return SidecarJobs.notRecorded(
+          "the configured server's report jobs could not be listed: " + e.getMessage());
     }
   }
 

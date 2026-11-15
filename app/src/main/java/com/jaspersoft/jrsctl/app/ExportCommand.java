@@ -208,9 +208,11 @@ final class ExportCommand implements Callable<Integer> {
    * {@code jrsctl export record <archive> [--source-version <v>] [--source-keystore <path>]
    * [--key-alias <alias>] [--force] [--json]} (issue #263): the sidecar for an archive {@code
    * js-export} made by hand, so {@code import} can check the hash, adopt the key alias, scope its
-   * snapshot and judge the source version. Invariants: writes only the sidecar; needs no server and
-   * no configuration; a refusal (no {@code index.xml}, a sidecar already there) exits 2 with
-   * nothing written.
+   * snapshot and judge the source version. With {@code --jobs} (issue #309, ADR-0059) it also
+   * records the configured server's report jobs and their states. Invariants: writes only the
+   * sidecar; needs no server and no configuration without {@code --jobs}, and with it never fails
+   * because the server cannot be asked (the sidecar then says why); a refusal (no {@code
+   * index.xml}, a sidecar already there) exits 2 with nothing written.
    */
   @Command(
       name = "record",
@@ -265,6 +267,14 @@ final class ExportCommand implements Callable<Integer> {
     @Option(names = "--force", description = "Replace a sidecar that is already there.")
     boolean force;
 
+    @Option(
+        names = "--jobs",
+        description =
+            "Also record the configured server's report jobs and their states, for jobs resume"
+                + " --from <archive>. Use it only when the configured server is the one that"
+                + " exported the archive, before any job is paused for the move.")
+    boolean jobs;
+
     @Override
     public Integer call() {
       PrintWriter outWriter = spec.commandLine().getOut();
@@ -277,7 +287,8 @@ final class ExportCommand implements Callable<Integer> {
               Optional.ofNullable(sourceKeystore),
               Optional.ofNullable(keyAlias),
               force,
-              Optional.ofNullable(sourceDatabase));
+              Optional.ofNullable(sourceDatabase),
+              jobs);
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         ExportImportOperations.RecordedSidecar recorded;
         try {
@@ -299,6 +310,7 @@ final class ExportCommand implements Callable<Integer> {
           sidecar.keystoreFingerprint().ifPresent(f -> tree.put("keystoreFingerprint", f));
           sidecar.flags().keyAlias().ifPresent(a -> tree.put("keyAlias", a));
           sidecar.sourceDatabase().ifPresent(d -> tree.put("sourceDatabase", d));
+          sidecar.jobs().ifPresent(j -> tree.put("jobs", jobsJson(j)));
           outWriter.println(redactor.redact(JsonOut.write(tree)));
         } else {
           outWriter.println(redactor.redact("sidecar written to " + recorded.file()));
@@ -335,10 +347,31 @@ final class ExportCommand implements Callable<Integer> {
                       .sourceDatabase()
                       .orElse(
                           "not recorded; pass --source-database so repository load refuses it"));
+          sidecar
+              .jobs()
+              .ifPresent(
+                  j ->
+                      outWriter.println(
+                          redactor.redact(
+                              "  report jobs       "
+                                  + (j.recorded()
+                                      ? j.jobs().size()
+                                          + " with their states, from "
+                                          + j.serverUrl().orElse("")
+                                      : "not recorded: " + j.reason().orElse("")))));
         }
         outWriter.flush();
         return ExitCodes.SUCCESS;
       }
+    }
+
+    private static Map<String, Object> jobsJson(com.jaspersoft.jrsctl.jrs.strategy.SidecarJobs j) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("recorded", j.recorded());
+      m.put("count", j.jobs().size());
+      j.serverUrl().ifPresent(u -> m.put("serverUrl", u));
+      j.reason().ifPresent(r -> m.put("reason", r));
+      return m;
     }
   }
 }

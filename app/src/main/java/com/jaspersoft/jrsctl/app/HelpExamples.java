@@ -256,7 +256,11 @@ final class HelpExamples {
             new Example(
                 "The same, naming the exporting server's keystore for the fingerprint",
                 "jrsctl export record /backups/js-8.2-export.zip"
-                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0")));
+                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0"),
+            new Example(
+                "On the exporting server, before any job is paused: also record its report jobs"
+                    + " and their states",
+                "jrsctl export record /backups/js-8.2-export.zip --jobs")));
     m.put(
         "import",
         List.of(
@@ -386,7 +390,10 @@ final class HelpExamples {
                 "jrsctl jobs resume --from /data/jobs-source-8.2.json --plan"),
             new Example(
                 "Resume the jobs that were active when the record was taken",
-                "jrsctl jobs resume --from /data/jobs-source-8.2.json")));
+                "jrsctl jobs resume --from /data/jobs-source-8.2.json"),
+            new Example(
+                "Take the states from the sidecar of an export archive instead",
+                "jrsctl jobs resume --from /backups/full-server.zip --plan")));
     m.put(
         "customizations register",
         List.of(

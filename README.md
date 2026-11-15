@@ -256,6 +256,8 @@ jrsctl jobs resume --from source-jobs.json --plan    # on the new server, after 
 jrsctl jobs resume --from source-jobs.json
 ```
 
+An archive exported by jrsctl also records every job's state in its sidecar, so `jrsctl jobs resume --from <archive>` works too, as long as you exported before pausing the jobs.
+
 `jobs record` changes nothing and never overwrites a file. The new server may number its jobs differently, so jrsctl matches each job by its id, or by its name, report and owner. A job it cannot match, or whose match is ambiguous, is listed and left alone. Jobs recorded in an error state are listed for you to decide. If a pause or resume fails, it is undone, and only the jobs that run changed are touched.
 
 ---

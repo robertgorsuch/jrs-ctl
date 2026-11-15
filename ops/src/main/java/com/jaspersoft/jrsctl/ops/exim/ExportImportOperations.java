@@ -591,7 +591,8 @@ public interface ExportImportOperations {
       Optional<Path> sourceKeystore,
       Optional<String> keyAlias,
       boolean force,
-      Optional<String> sourceDatabase) {
+      Optional<String> sourceDatabase,
+      boolean jobs) {
     public RecordSidecarOptions {
       Objects.requireNonNull(archive, "archive");
       Objects.requireNonNull(sourceVersion, "sourceVersion");
@@ -599,6 +600,17 @@ public interface ExportImportOperations {
       Objects.requireNonNull(keyAlias, "keyAlias");
       Objects.requireNonNull(sourceDatabase, "sourceDatabase");
       sourceDatabase = sourceDatabase.map(String::strip).filter(d -> !d.isEmpty());
+    }
+
+    /** Without asking the configured server for its report jobs. */
+    public RecordSidecarOptions(
+        Path archive,
+        Optional<String> sourceVersion,
+        Optional<Path> sourceKeystore,
+        Optional<String> keyAlias,
+        boolean force,
+        Optional<String> sourceDatabase) {
+      this(archive, sourceVersion, sourceKeystore, keyAlias, force, sourceDatabase, false);
     }
 
     /** Without a source database name. */

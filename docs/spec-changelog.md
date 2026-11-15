@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (job states in the export sidecar; ADR-0059, issue #309)
+
+- §9.3: sidecar version 2 adds the `jobs` block (recorded states, or the reason there are none); `export` fills it, `export record` only with `--jobs`.
+- §10.7: `jobs resume --from` and `jobs pause --from` take an export archive or its sidecar.
+
 ## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
 
 - §10.3: `customizations scan --vendor <source> --target-vendor <target> [--out <dir>]` classifies every site file against the target version (`CARRY`, `MERGE`, `OBSOLETE`, `OWN`, `CLASH`, `INSTALLER`, `OVERLAY`, `REMOVED`) and, with `--out`, writes `.mine`/`.base`/`.theirs` merge inputs for the `MERGE` files. `CLASH` is added to the issue's classes so a site file at a path the target now ships is not reported as safe to copy. Report only; never registers.
