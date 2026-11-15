@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (`import verify --content`; ADR-0060, issue #307)
+
+- §9.4: `import verify --content [--uri-prefix <folder>]` compares every file by SHA-256 and the label and description of every other resource (a report unit's data source and input controls too) with the server's copies; versions, times, permissions and passwords are excluded. New `content` item and JSON field.
+
 ## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
 
 - §10.3: `customizations scan --vendor <source> --target-vendor <target> [--out <dir>]` classifies every site file against the target version (`CARRY`, `MERGE`, `OBSOLETE`, `OWN`, `CLASH`, `INSTALLER`, `OVERLAY`, `REMOVED`) and, with `--out`, writes `.mine`/`.base`/`.theirs` merge inputs for the `MERGE` files. `CLASH` is added to the issue's classes so a site file at a path the target now ships is not reported as safe to copy. Report only; never registers.

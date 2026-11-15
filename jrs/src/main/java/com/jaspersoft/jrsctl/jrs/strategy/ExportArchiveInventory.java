@@ -135,7 +135,7 @@ public record ExportArchiveInventory(
   }
 
   /** {@link #unescape} applied to each {@code /}-separated segment of an archive path. */
-  private static String unescapePath(String path) {
+  static String unescapePath(String path) {
     String[] segments = path.split("/", -1);
     StringBuilder out = new StringBuilder(path.length());
     for (int i = 0; i < segments.length; i++) {

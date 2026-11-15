@@ -114,6 +114,17 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
+  public java.util.Optional<Path> downloadResource(String uri, Path target) {
+    return adapter().downloadResource(uri, target);
+  }
+
+  @Override
+  public java.util.Optional<com.jaspersoft.jrsctl.jrs.api.ResourceFields> resourceFields(
+      String uri, boolean file) {
+    return adapter().resourceFields(uri, file);
+  }
+
+  @Override
   public Path runReportToPdf(String reportUri, Path target) {
     return adapter().runReportToPdf(reportUri, target);
   }
