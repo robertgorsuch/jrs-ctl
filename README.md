@@ -258,6 +258,21 @@ jrsctl jobs resume --from source-jobs.json
 
 `jobs record` changes nothing and never overwrites a file. The new server may number its jobs differently, so jrsctl matches each job by its id, or by its name, report and owner. A job it cannot match, or whose match is ambiguous, is listed and left alone. Jobs recorded in an error state are listed for you to decide. If a pause or resume fails, it is undone, and only the jobs that run changed are touched.
 
+### Gate a container image in CI
+
+*Not in a release yet; comes with the next one.*
+
+jrsctl does not run inside your image. From the pipeline, it compares the webapp tree taken out of the image with the vendor's copy, then checks a test container over REST:
+
+```bash
+jrsctl customizations scan --vendor dist/jasperserver-pro.war --installed extracted/jasperserver-pro
+jrsctl init --remote http://jrs-test:8080/jasperserver-pro --yes --home ./jrsctl-home
+jrsctl doctor --home ./jrsctl-home --fail-on warn --junit reports/doctor.xml
+jrsctl smoke  --home ./jrsctl-home --fail-on warn --junit reports/smoke.xml
+```
+
+`--fail-on warn` fails the step on a warning too, not only on a failure. `--junit` writes a file your pipeline's test view can show. The admin password comes from the `JRS_PASSWORD` variable, so keep it in the pipeline's secret store. The [operator guide](docs/operator-guide.md#gating-a-container-image-in-ci) has the details.
+
 ---
 
 ## If something goes wrong

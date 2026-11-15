@@ -26,6 +26,7 @@ final class SmokeCommand implements Callable<Integer> {
 
   @Spec CommandSpec spec;
   @Mixin GlobalOptions global;
+  @Mixin GateOptions gate;
 
   @Option(
       names = "--mutating",
@@ -37,7 +38,13 @@ final class SmokeCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     Redactor redactor = Redactor.global();
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
-      SmokeReport report = new SmokeOperation(boot.services()).run(new SmokeOptions(mutating));
+      SmokeReport computed = new SmokeOperation(boot.services()).run(new SmokeOptions(mutating));
+      SmokeReport report =
+          new SmokeReport(
+              computed.items(),
+              computed.counts(),
+              gate.exit(computed.exitCode(), computed.items()),
+              computed.runId());
       if (global.json()) {
         out.println(redactor.redact(JsonOut.write(report)));
         out.flush();
@@ -45,7 +52,8 @@ final class SmokeCommand implements Callable<Integer> {
         ReportPrinter.print(
             out, report.items(), report.counts(), Ansi.forStdout(global, Env.vars()), redactor);
       }
-      return report.exitCode();
+      return gate.writeJunit(
+          "smoke", report.items(), report.exitCode(), spec.commandLine().getErr(), redactor);
     }
   }
 }
