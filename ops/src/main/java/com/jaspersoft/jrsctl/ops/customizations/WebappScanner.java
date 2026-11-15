@@ -147,6 +147,50 @@ final class WebappScanner {
     return out;
   }
 
+  /**
+   * The SHA-256 of every file of a vendor webapp, directory or war, by path relative to the webapp
+   * (issue #305); the war is read as a stream, never unpacked.
+   */
+  static Map<String, String> sha256s(Path vendor, FileOps files) throws IOException {
+    Map<String, Fingerprint> prints =
+        Files.isDirectory(vendor) ? directory(vendor, files) : war(vendor);
+    Map<String, String> out = new TreeMap<>();
+    prints.forEach((rel, print) -> out.put(rel, print.sha256()));
+    return out;
+  }
+
+  /**
+   * Copies the {@code wanted} entries of a vendor webapp to their target files (issue #305): from a
+   * directory one by one, from a war in one streamed pass, never unpacking anything else. Targets
+   * must not exist; parent directories are created. Returns the paths not found.
+   */
+  static java.util.Set<String> extract(Path vendor, Map<String, Path> wanted) throws IOException {
+    java.util.Set<String> missing = new java.util.TreeSet<>(wanted.keySet());
+    if (Files.isDirectory(vendor)) {
+      for (Map.Entry<String, Path> e : wanted.entrySet()) {
+        Path source = vendor.resolve(e.getKey());
+        if (Files.isRegularFile(source)) {
+          Files.createDirectories(e.getValue().getParent());
+          Files.copy(source, e.getValue());
+          missing.remove(e.getKey());
+        }
+      }
+      return missing;
+    }
+    try (InputStream in = Files.newInputStream(vendor);
+        ZipInputStream zip = new ZipInputStream(in)) {
+      ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null && !missing.isEmpty()) {
+        Path target = wanted.get(entry.getName());
+        if (target != null && !entry.isDirectory() && missing.remove(entry.getName())) {
+          Files.createDirectories(target.getParent());
+          Files.copy(zip, target);
+        }
+      }
+    }
+    return missing;
+  }
+
   /** Files above this are not diffed in a scan listing; the notice says so. */
   static final long MAX_DIFF_BYTES = 1L << 20;
 

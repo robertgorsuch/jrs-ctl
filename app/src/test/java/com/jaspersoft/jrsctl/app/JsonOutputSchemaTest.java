@@ -1324,6 +1324,37 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "customizations scan against a target version",
+            "customizations scan",
+            0,
+            dir -> {
+              Path site = dir.resolve("site").resolve("jasperserver-pro");
+              Files.createDirectories(site.resolve("WEB-INF"));
+              Files.writeString(site.resolve("WEB-INF/a.xml"), "site\n", StandardCharsets.UTF_8);
+              Files.writeString(site.resolve("WEB-INF/own.xml"), "own\n", StandardCharsets.UTF_8);
+              Path source = dir.resolve("8.2").resolve("jasperserver-pro");
+              Files.createDirectories(source.resolve("WEB-INF"));
+              Files.writeString(source.resolve("WEB-INF/a.xml"), "v1\n", StandardCharsets.UTF_8);
+              Path target = dir.resolve("10.0").resolve("jasperserver-pro");
+              Files.createDirectories(target.resolve("WEB-INF"));
+              Files.writeString(target.resolve("WEB-INF/a.xml"), "v2\n", StandardCharsets.UTF_8);
+              return run(
+                  "customizations",
+                  "scan",
+                  "--vendor",
+                  source.toString(),
+                  "--target-vendor",
+                  target.toString(),
+                  "--installed",
+                  site.toString(),
+                  "--out",
+                  dir.resolve("merge").toString(),
+                  "--json",
+                  "--home",
+                  emptyHome(dir).toString());
+            }));
+    s.add(
+        of(
             "customizations scan of a path without a webapp",
             "customizations scan",
             2,

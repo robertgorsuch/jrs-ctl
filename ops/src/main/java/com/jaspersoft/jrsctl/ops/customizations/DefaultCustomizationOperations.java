@@ -162,6 +162,46 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
   }
 
   @Override
+  public TargetScan classifyAgainstTarget(Scan scan, Path targetVendor, Optional<Path> out) {
+    Objects.requireNonNull(scan, "scan");
+    Objects.requireNonNull(targetVendor, "targetVendor");
+    Objects.requireNonNull(out, "out");
+    String webappName = scan.installedWebapp().getFileName().toString();
+    Path target;
+    try {
+      target = WebappScanner.vendorWebapp(targetVendor, webappName);
+    } catch (CustomizationException e) {
+      throw new CustomizationException(
+          "--target-vendor: " + e.getMessage(),
+          "point --target-vendor at the unpacked distribution of the version you upgrade to, at"
+              + " its "
+              + webappName
+              + " directory, or at "
+              + webappName
+              + ".war");
+    }
+    if (normalise(target).equals(normalise(scan.vendorWebapp()))) {
+      throw new CustomizationException(
+          "--vendor and --target-vendor name the same webapp " + target,
+          "--vendor is the version the server runs, --target-vendor the version you upgrade to");
+    }
+    try {
+      List<TargetEntry> entries =
+          TargetClassifier.classifyAll(
+              scan.entries(), scan.vendorWebapp(), target, services.platform().files());
+      if (out.isPresent()) {
+        entries = TargetClassifier.writeMerges(entries, scan.vendorWebapp(), target, out.get());
+      }
+      return new TargetScan(scan, target, entries, out.map(p -> p.toAbsolutePath().normalize()));
+    } catch (IOException e) {
+      throw new CustomizationException(
+          "cannot compare " + scan.vendorWebapp() + " with " + target + ": " + e.getMessage(),
+          "check that both vendor copies and --out are readable and writable",
+          e);
+    }
+  }
+
+  @Override
   public List<TomcatEntry> scanTomcat() {
     HotfixPaths paths;
     try {
