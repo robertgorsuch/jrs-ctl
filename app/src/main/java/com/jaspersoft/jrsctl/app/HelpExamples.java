@@ -138,7 +138,10 @@ final class HelpExamples {
             new Example("Check everything before a change; changes nothing", "jrsctl doctor"),
             new Example(
                 "Keep diagnosing a server version outside the compatibility matrix",
-                "jrsctl doctor --allow-unsupported")));
+                "jrsctl doctor --allow-unsupported"),
+            new Example(
+                "In a CI pipeline: fail on any WARN too, and write JUnit XML for the test view",
+                "jrsctl doctor --fail-on warn --junit reports/doctor.xml")));
     m.put(
         "smoke",
         List.of(
@@ -147,7 +150,10 @@ final class HelpExamples {
                 "jrsctl smoke"),
             new Example(
                 "Also create, run and delete a temporary report under /temp",
-                "jrsctl smoke --mutating")));
+                "jrsctl smoke --mutating"),
+            new Example(
+                "In a CI pipeline: write JUnit XML for the test view",
+                "jrsctl smoke --junit reports/smoke.xml")));
     m.put(
         "config show",
         List.of(
@@ -289,7 +295,12 @@ final class HelpExamples {
                 "jrsctl import verify /backups/full-server.zip"),
             new Example(
                 "The same, listing every missing URI in the JSON report",
-                "jrsctl import verify /backups/full-server.zip --uris --json")));
+                "jrsctl import verify /backups/full-server.zip --uris --json"),
+            new Example(
+                "Also check that what arrived is identical: files by SHA-256, labels, descriptions"
+                    + " and report units' data sources and input controls, under one folder",
+                "jrsctl import verify /backups/full-server.zip --content --uri-prefix"
+                    + " /public/Finance")));
     m.put(
         "upgrade",
         List.of(

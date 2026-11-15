@@ -25,6 +25,28 @@
         "resources": { "type": "integer", "minimum": 0 }
       }
     },
+    "content": {
+      "type": ["object", "null"],
+      "description": "With --content (issue #307, ADR-0060): how many files and descriptors were compared, and what differs; every difference with --uris, else at most the first few. null without --content, or when the server could not be asked.",
+      "additionalProperties": false,
+      "required": ["files", "descriptors", "differences"],
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "descriptors": { "type": "integer", "minimum": 0 },
+        "differences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["uri", "what"],
+            "properties": {
+              "uri": { "type": "string" },
+              "what": { "type": "string", "description": "content differs, not on the server, label, description, data source, input controls, or could not be read: <reason>" }
+            }
+          }
+        }
+      }
+    },
     "missing": {
       "type": "object",
       "description": "What the archive holds and the server does not, by kind; every URI with --uris, else at most the first few per kind.",

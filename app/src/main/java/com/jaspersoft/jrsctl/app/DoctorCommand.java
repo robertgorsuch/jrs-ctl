@@ -15,7 +15,8 @@ import picocli.CommandLine.Spec;
 
 /**
  * {@code jrsctl doctor} (spec §12.1). Read-only. Invariant: the exit code is the report's (0, 2 or
- * 6); {@code --allow-unsupported} is audited and never changes a non-compat result.
+ * 6), or 2 when {@code --fail-on warn} meets a WARN (ADR-0058); {@code --allow-unsupported} is
+ * audited and never changes a non-compat result.
  */
 @Command(
     name = "doctor",
@@ -26,6 +27,7 @@ final class DoctorCommand implements Callable<Integer> {
 
   @Spec CommandSpec spec;
   @Mixin GlobalOptions global;
+  @Mixin GateOptions gate;
 
   @Option(
       names = "--allow-unsupported",
@@ -38,8 +40,13 @@ final class DoctorCommand implements Callable<Integer> {
     PrintWriter out = spec.commandLine().getOut();
     Redactor redactor = Redactor.global();
     try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
-      DoctorReport report =
+      DoctorReport computed =
           new DoctorOperation(boot.services()).run(new DoctorOptions(allowUnsupported));
+      DoctorReport report =
+          new DoctorReport(
+              computed.items(),
+              computed.counts(),
+              gate.exit(computed.exitCode(), computed.items()));
       if (global.json()) {
         out.println(redactor.redact(JsonOut.write(report)));
         out.flush();
@@ -47,7 +54,8 @@ final class DoctorCommand implements Callable<Integer> {
         ReportPrinter.print(
             out, report.items(), report.counts(), Ansi.forStdout(global, Env.vars()), redactor);
       }
-      return report.exitCode();
+      return gate.writeJunit(
+          "doctor", report.items(), report.exitCode(), spec.commandLine().getErr(), redactor);
     }
   }
 }

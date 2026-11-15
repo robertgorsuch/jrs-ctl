@@ -15,6 +15,7 @@ import com.jaspersoft.jrsctl.jrs.api.JobSummary;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
+import com.jaspersoft.jrsctl.jrs.api.ResourceFields;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.api.Session;
 import com.jaspersoft.jrsctl.jrs.keystore.KeystoreInspector;
@@ -1010,6 +1011,67 @@ public final class RestJrsAdapter implements JrsAdapter {
       client.require2xx(r, "GET", path);
     }
     return true;
+  }
+
+  @Override
+  public Optional<Path> downloadResource(String uri, Path target) {
+    Objects.requireNonNull(uri, "uri");
+    Objects.requireNonNull(target, "target");
+    ensureSession();
+    String path = RESOURCES + RestClient.encodePath(uri);
+    // any Accept that is not a descriptor type returns the content (verified on 10.0.0, #307)
+    RestClient.Response r = client.getToFile(path, "application/octet-stream", target);
+    if (r.status() == 404) {
+      return Optional.empty();
+    }
+    client.require2xx(r, "GET", path);
+    return Optional.of(target);
+  }
+
+  @Override
+  public Optional<ResourceFields> resourceFields(String uri, boolean file) {
+    Objects.requireNonNull(uri, "uri");
+    ensureSession();
+    String path = RESOURCES + RestClient.encodePath(uri) + "?expanded=false";
+    // application/json answers with any type's descriptor, except a file's, which needs its own
+    RestClient.Response r =
+        client.get(path, file ? "application/repository.file+json" : "application/json");
+    if (r.status() == 404) {
+      return Optional.empty();
+    }
+    client.require2xx(r, "GET", path);
+    com.fasterxml.jackson.databind.JsonNode node;
+    try {
+      node = com.jaspersoft.jrsctl.core.json.Json.mapper().readTree(r.body());
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("GET " + path + " answered with JSON jrsctl cannot read", e);
+    }
+    List<String> controls = new ArrayList<>();
+    for (com.fasterxml.jackson.databind.JsonNode control : node.path("inputControls")) {
+      referencedUri(control).ifPresent(controls::add);
+    }
+    return Optional.of(
+        new ResourceFields(
+            node.path("label").asText(""),
+            node.path("description").asText(""),
+            referencedUri(node.path("dataSource")),
+            controls));
+  }
+
+  /**
+   * The {@code uri} of the one object a reference holds: {@code {"dataSourceReference": {"uri":
+   * ...}}}, or an inline resource with its own {@code uri}.
+   */
+  private static Optional<String> referencedUri(com.fasterxml.jackson.databind.JsonNode ref) {
+    if (ref == null || !ref.isObject()) {
+      return Optional.empty();
+    }
+    for (com.fasterxml.jackson.databind.JsonNode child : ref) {
+      if (child.isObject() && child.hasNonNull("uri")) {
+        return Optional.of(child.get("uri").asText());
+      }
+    }
+    return Optional.empty();
   }
 
   @Override

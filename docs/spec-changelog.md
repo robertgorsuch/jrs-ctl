@@ -4,6 +4,12 @@
 
 - §9.3: sidecar version 2 adds the `jobs` block (recorded states, or the reason there are none); `export` fills it, `export record` only with `--jobs`.
 - §10.7: `jobs resume --from` and `jobs pause --from` take an export archive or its sidecar.
+## Draft 1.2 amendment — 2026-11-15 (`import verify --content`; ADR-0060, issue #307)
+
+- §9.4: `import verify --content [--uri-prefix <folder>]` compares every file by SHA-256 and the label and description of every other resource (a report unit's data source and input controls too) with the server's copies; versions, times, permissions and passwords are excluded. New `content` item and JSON field.
+## Draft 1.2 amendment — 2026-11-15 (CI gating: `--fail-on`, `--junit`; ADR-0058, issue #308)
+
+- §12.1: `doctor`, `smoke` and `import verify` take `--fail-on warn|fail` (default `fail`; with `warn` a WARN exits 2, a non-zero exit is never lowered) and `--junit <file>` (JUnit XML, one testcase per item). Default behaviour unchanged.
 
 ## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
 
