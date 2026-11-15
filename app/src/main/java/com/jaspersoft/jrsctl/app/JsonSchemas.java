@@ -80,6 +80,9 @@ public final class JsonSchemas {
     m.put("repository load", new Stream(true));
     m.put("passwords status", new Document("passwords-status.schema.json"));
     m.put("passwords migrate", new Stream(true));
+    m.put("jobs record", new Document("jobs-record.schema.json"));
+    m.put("jobs pause", new Stream(true));
+    m.put("jobs resume", new Stream(true));
     m.put("customizations register", new Document("customization.schema.json"));
     m.put("customizations unregister", new Document("customizations-unregister.schema.json"));
     m.put("customizations list", new Document("customizations-list.schema.json"));

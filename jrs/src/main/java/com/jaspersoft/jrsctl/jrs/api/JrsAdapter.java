@@ -143,8 +143,16 @@ public interface JrsAdapter extends AutoCloseable {
 
   // ---- report jobs (issue #264): the listing is read-only, pause and resume are Steps only ----
 
-  /** Ids of every report job the server holds ({@code GET /rest_v2/jobs}); empty for none. */
-  List<String> listJobIds();
+  /**
+   * Every report job the server holds with its label, report, owner and state ({@code GET
+   * /rest_v2/jobs}; issue #304); empty for none.
+   */
+  List<JobSummary> listJobs();
+
+  /** Ids of every report job the server holds, in {@link #listJobs} order; empty for none. */
+  default List<String> listJobIds() {
+    return listJobs().stream().map(JobSummary::id).toList();
+  }
 
   /**
    * Pauses the jobs with these ids ({@code POST /rest_v2/jobs/pause} with the id list; REST API

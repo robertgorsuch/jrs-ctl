@@ -205,6 +205,8 @@ import org.junit.jupiter.api.Test;
  *     <td>jrs StepIdempotencyTest#should_stop_once_when_start_service_compensates_twice</td></tr>
  * <tr><td>passwords PasswordSteps.Doctor, VerifyTools, ConfirmDbBackup, DryRun, Detect</td>
  *     <td colspan="2">PasswordStepIdempotencyTest#should_not_mutate_when_read_only_password_steps_execute_twice</td></tr>
+ * <tr><td>jobs JobsSteps.Pause, Resume</td>
+ *     <td colspan="2">JobsStepIdempotencyTest (execute twice, compensate twice)</td></tr>
  * <tr><td>passwords PasswordSteps.Migrate, Cleanup (irreversible)</td>
  *     <td colspan="2">PasswordStepIdempotencyTest#should_migrate_once_when_migrate_executes_twice;
  *         #should_clean_once_when_cleanup_executes_twice</td></tr>
@@ -365,6 +367,18 @@ class IdempotencyCoverageTest {
           Map.entry(
               OPS + "exim.Rephased",
               E + "should_delegate_unchanged_when_rephased_step_executes_twice"),
+          // issue #304, ADR-0056: jobs pause and jobs resume
+          Map.entry(
+              OPS + "jobs.JobsSteps$Pause",
+              "jobs.JobsStepIdempotencyTest#should_pause_each_job_once_when_jobs_pause_executes_twice;"
+                  + "jobs.JobsStepIdempotencyTest#"
+                  + "should_resume_only_the_jobs_it_paused_when_jobs_pause_compensates_twice"),
+          Map.entry(
+              OPS + "jobs.JobsSteps$Resume",
+              "jobs.JobsStepIdempotencyTest#"
+                  + "should_resume_each_recorded_active_job_once_when_jobs_resume_executes_twice;"
+                  + "jobs.JobsStepIdempotencyTest#"
+                  + "should_pause_again_only_the_jobs_it_resumed_when_jobs_resume_compensates_twice"),
           // issue #264, ADR-0050: --pause-jobs
           Map.entry(
               OPS + "exim.RecordJobs",

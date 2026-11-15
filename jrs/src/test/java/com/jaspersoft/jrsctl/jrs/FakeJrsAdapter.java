@@ -179,7 +179,7 @@ public final class FakeJrsAdapter implements JrsAdapter {
   }
 
   @Override
-  public List<String> listJobIds() {
+  public List<com.jaspersoft.jrsctl.jrs.api.JobSummary> listJobs() {
     return List.of();
   }
 

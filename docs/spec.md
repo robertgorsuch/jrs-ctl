@@ -643,6 +643,17 @@ The vendor's password migration (installation guide 10.1 pp.194-199) as a comman
 - **Idempotency and recovery.** The two irreversible steps run once per run (done marker) and the utility skips users already migrated; the stored arguments (`dbBackupConfirmed`, `cleanup`) rebuild the plan for `runs recover`; the fingerprint covers the webapp, the buildomatic, the settings file's hash, the server version and the cleanup flag.
 - **Outside the plan:** `upgrade --migrate-passwords` keeps running the same targets inside a samedb upgrade while the server is down.
 
+### 10.7 Report jobs across a migration (ADR-0056)
+
+Each report job's state recorded on one server and restored on another, for a move that stops the source scheduler during the export (issue #304): `jrsctl jobs record [--out <file>] [--json]`, `jrsctl jobs pause (--all | --from <record>) [--plan] [--yes]` and `jrsctl jobs resume --from <record> [--plan] [--yes]` (`ops.jobs`). REST only (`GET /rest_v2/jobs`, `POST /rest_v2/jobs/pause|resume`), so they work from a remote-only home.
+
+- **The record.** JSON, `format: jrsctl-jobs/1`, with `recordedAt`, `server.url`, `server.version` and per job `id`, `label`, `reportUnitURI`, `owner`, `state` (`state.value` of the listing in upper case; REST API reference 8.2 p.145, 10.0 p.196). `record` is read-only and never overwrites: the default file is `jobs/jobs-<UTC time>.json` in the home, and an existing `--out` is refused with exit 2.
+- **Matching.** A recorded job matches the job with the same id only when label, report URI and owner agree; otherwise the one job with that label, report URI and owner. No candidate, or several, leaves the entry unmatched: reported in the plan and the step's output, never guessed.
+- **`pause`.** One step, `jobs.pause` in phase `jobs`: every job (`--all`) or the recorded jobs (`--from`), except those already paused. `--all` carries a warning to record first, because afterwards every job looks paused, in an export too.
+- **`resume`.** One step, `jobs.resume`: the jobs recorded as `NORMAL`, `EXECUTING` or `WAITING` that are paused now. Jobs recorded as `PAUSED` stay paused; jobs recorded in another state (an error state, or none) are named in the plan and left to the operator.
+- **Idempotency and rollback.** Each step lists the server when it runs, writes the ids it is about to change to `runs/<runId>/jobs-paused.txt` or `jobs-resumed.txt` before the call (the record only grows), and compensation changes back exactly those ids. A refused listing or call fails the step (exit 3 after the rollback), unlike the best-effort pause after an import (ADR-0050). The stored arguments (`from`, null for `--all`) rebuild the plan for `runs recover`; the fingerprint covers the server URL, the selection and the record's path and SHA-256, not the job states.
+- **Outside the plan:** `repository load --pause-jobs` and job states in the export sidecar (#309).
+
 ---
 
 ## 11. Security

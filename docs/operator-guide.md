@@ -517,6 +517,35 @@ Migrates the stored passwords to the modern format with the vendor's utility, as
 - **Exit codes:** 0 migrated and verified; **2** `--db-backup-confirmed` missing (printed before anything is planned), the configuration names no installation on this machine, or a preflight step refused (doctor, the utility or its settings file missing), nothing changed; **3** `migrate-passwords` failed (nothing to roll back; the dry run and the utility's own output say what to fix; running again skips users already migrated); **6** the server is older than 10.1.
 - **Flags:** `--db-backup-confirmed` (required) — the repository database has been backed up, says the operator (audited); `--cleanup` — also remove the completed rows from the migration tracking table afterwards; `--plan`, `--yes`, `--json` as for every mutating command.
 
+### `jrsctl jobs record [--out <file>] [--json]`
+
+Writes every report job's id, label, report, owner and state (`GET /rest_v2/jobs`) to a file, read-only (spec §10.7, ADR-0056). Take it on the source server **before** anything pauses the scheduler: once every job is paused, an export shows every job as paused and the original states are gone. The default file is `jobs/jobs-<UTC time>.json` in the jrsctl home; `--out` names another, and an existing file is never overwritten.
+
+- **Mutates:** nothing on the server; writes the record file.
+- **Rollback:** not applicable.
+- **Exit codes:** 0 written; **2** the file exists, cannot be written, or the server refused the listing.
+- **Flags:** `--out <file>`; `--json` — `{"file", "server": {"url", "version"}, "recordedAt", "counts": {"total", "active", "paused", "other"}, "jobs": [{"id", "label", "reportUnitURI", "owner", "state"}]}`.
+
+### `jrsctl jobs pause (--all | --from <record>) [--plan] [--yes] [--json]`
+
+Pauses every report job (`--all`) or the jobs a record names (`--from`), except those already paused, as a one-step journaled plan (`jobs.pause`). A recorded job is found by its id when label, report and owner agree, else by label + report + owner when exactly one job has them; anything else is listed as unmatched and left alone.
+
+- **Mutates:** the scheduler state of the selected jobs (`POST /rest_v2/jobs/pause`).
+- **Rollback:** resumes exactly the jobs this run paused (`runs/<runId>/jobs-paused.txt`), never one that was paused before.
+- **Exit codes:** 0 paused; **1** neither or both of `--all` and `--from`; **2** the record is missing or not a jobs record, or the server refused the listing, nothing changed; **3** the server refused the pause and the run rolled back.
+- **Flags:** `--all` or `--from <record>`; `--plan`, `--yes`, `--json` as for every mutating command.
+
+### `jrsctl jobs resume --from <record> [--plan] [--yes] [--json]`
+
+Resumes the jobs the record shows as active (`NORMAL`, `EXECUTING`, `WAITING`) that are paused now, as a one-step journaled plan (`jobs.resume`). Jobs recorded as paused stay paused. Jobs recorded in another state (an error state) are named in the plan and left for you to decide in the scheduler. The record is usually the source server's: its jobs are matched on this server as for `jobs pause`, and the plan says when the record came from another server.
+
+A typical move: `jobs record --out source-jobs.json` and `jobs pause --all` on the source, the export, the import or `repository load` on the target, validation, then `jobs resume --from source-jobs.json` on the target.
+
+- **Mutates:** the scheduler state of the selected jobs (`POST /rest_v2/jobs/resume`).
+- **Rollback:** pauses again exactly the jobs this run resumed (`runs/<runId>/jobs-resumed.txt`).
+- **Exit codes:** 0 resumed; **2** the record is missing or not a jobs record, or the server refused the listing, nothing changed; **3** the server refused the resume and the run rolled back.
+- **Flags:** `--from <record>` (required); `--plan`, `--yes`, `--json` as for every mutating command.
+
 ### `jrsctl customizations register <path> [--original <file>] [--json]`
 
 Registers an operator-customised file under `server.installDir` or `server.tomcatDir` so an upgrade can reconcile it (spec §10.3): the file is snapshotted under `snapshots/cust-<hash>/file` (retention-protected) and its current hash recorded as the "original". Pass `--original <file>` pointing at the vendor's unmodified copy so the upgrade can tell "the vendor did not change this file" (re-apply automatically) from "the vendor changed it" (report a conflict).

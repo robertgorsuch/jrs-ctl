@@ -80,7 +80,8 @@ final class PlanExecutor {
             () -> EximOps.open(services),
             () -> new com.jaspersoft.jrsctl.ops.upgrade.DefaultUpgradeOperations(services),
             () -> RepositoryOps.open(services),
-            () -> PasswordOps.open(services));
+            () -> PasswordOps.open(services),
+            () -> JobsOps.open(services));
     this.global = Objects.requireNonNull(global, "global");
     this.out = Objects.requireNonNull(out, "out");
     this.err = Objects.requireNonNull(err, "err");

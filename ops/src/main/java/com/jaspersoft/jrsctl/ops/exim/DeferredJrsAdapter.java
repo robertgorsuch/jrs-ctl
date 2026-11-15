@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.api.HealthReport;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
+import com.jaspersoft.jrsctl.jrs.api.JobSummary;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
@@ -138,8 +139,8 @@ public final class DeferredJrsAdapter implements JrsAdapter {
   }
 
   @Override
-  public List<String> listJobIds() {
-    return adapter().listJobIds();
+  public List<JobSummary> listJobs() {
+    return adapter().listJobs();
   }
 
   @Override

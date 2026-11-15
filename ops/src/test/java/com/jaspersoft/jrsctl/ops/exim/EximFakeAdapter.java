@@ -228,6 +228,14 @@ final class EximFakeAdapter implements JrsAdapter {
   }
 
   @Override
+  public List<com.jaspersoft.jrsctl.jrs.api.JobSummary> listJobs() {
+    requireUp("list jobs");
+    return jobs.stream()
+        .map(id -> new com.jaspersoft.jrsctl.jrs.api.JobSummary(id, "", "", "", "NORMAL"))
+        .toList();
+  }
+
+  @Override
   public void pauseJobs(List<String> ids) {
     requireUp("pause jobs");
     if (pauseFails) {

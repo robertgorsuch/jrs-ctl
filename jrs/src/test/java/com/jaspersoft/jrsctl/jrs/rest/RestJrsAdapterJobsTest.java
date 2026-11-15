@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.jrs.api.JobSummary;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -41,6 +42,34 @@ class RestJrsAdapterJobsTest {
                             + "{\"id\":8321,\"label\":\"Weekly\"}]}")));
 
     assertThat(f.adapter.listJobIds()).containsExactly("8320", "8321");
+  }
+
+  @Test
+  void should_read_label_report_owner_and_state_when_listing_jobs() {
+    AdapterFixture f = new AdapterFixture(wm, Config.AuthMode.BASIC);
+    // the shape of the REST API reference 8.2 p.145 / 10.0 p.196, and the #310 field data
+    wm.stubFor(
+        get(urlPathEqualTo(f.path("/rest_v2/jobs")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody(
+                        "{\"jobsummary\":[{\"id\":1898,\"version\":0,"
+                            + "\"reportUnitURI\":\"/reports/AllAccounts\",\"label\":\"Daily\","
+                            + "\"description\":\"d\",\"owner\":\"jasperadmin|organization_1\","
+                            + "\"reportLabel\":\"Accounts\",\"state\":{\"previousFireTime\":null,"
+                            + "\"nextFireTime\":\"2022-03-15T00:00:00+03:00\",\"value\":\"NORMAL\"}},"
+                            + "{\"id\":1899,\"label\":\"Weekly\",\"reportUnitURI\":\"/reports/W\","
+                            + "\"owner\":\"superuser\",\"state\":{\"value\":\"paused\"}},"
+                            + "{\"id\":1900}]}")));
+
+    assertThat(f.adapter.listJobs())
+        .containsExactly(
+            new JobSummary(
+                "1898", "Daily", "/reports/AllAccounts", "jasperadmin|organization_1", "NORMAL"),
+            new JobSummary("1899", "Weekly", "/reports/W", "superuser", "PAUSED"),
+            new JobSummary("1900", "", "", "", ""));
+    assertThat(f.adapter.listJobs().get(1).paused()).isTrue();
   }
 
   @Test

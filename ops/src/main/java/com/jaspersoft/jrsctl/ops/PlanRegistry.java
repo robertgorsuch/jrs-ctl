@@ -10,6 +10,7 @@ import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.jobs.JobsOperations;
 import com.jaspersoft.jrsctl.ops.passwords.PasswordOperations;
 import com.jaspersoft.jrsctl.ops.repository.RepositoryOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
@@ -46,6 +47,8 @@ public final class PlanRegistry {
   public static final String UPGRADE_TEST = UpgradeOperations.TEST_OPERATION;
   public static final String REPOSITORY_LOAD = RepositoryOperations.LOAD_OPERATION;
   public static final String PASSWORDS_MIGRATE = PasswordOperations.MIGRATE_OPERATION;
+  public static final String JOBS_PAUSE = JobsOperations.PAUSE_OPERATION;
+  public static final String JOBS_RESUME = JobsOperations.RESUME_OPERATION;
 
   private final Map<String, Function<JsonNode, Plan>> builders = new LinkedHashMap<>();
 
@@ -54,12 +57,14 @@ public final class PlanRegistry {
       Supplier<ExportImportOperations> exim,
       Supplier<UpgradeOperations> upgrade,
       Supplier<RepositoryOperations> repository,
-      Supplier<PasswordOperations> passwords) {
+      Supplier<PasswordOperations> passwords,
+      Supplier<JobsOperations> jobs) {
     Objects.requireNonNull(hotfix, "hotfix");
     Objects.requireNonNull(exim, "exim");
     Objects.requireNonNull(upgrade, "upgrade");
     Objects.requireNonNull(repository, "repository");
     Objects.requireNonNull(passwords, "passwords");
+    Objects.requireNonNull(jobs, "jobs");
     builders.put(UPGRADE, args -> upgrade.get().planUpgrade(upgradeOptions(args)));
     builders.put(REPOSITORY_LOAD, args -> repository.get().planLoad(repositoryLoadOptions(args)));
     builders.put(
@@ -71,6 +76,16 @@ public final class PlanRegistry {
                     new PasswordOperations.MigrateOptions(
                         args.path("dbBackupConfirmed").asBoolean(false),
                         args.path("cleanup").asBoolean(false))));
+    builders.put(
+        JOBS_PAUSE,
+        args ->
+            jobs.get()
+                .planPause(new JobsOperations.PauseOptions(text(args, "from").map(Path::of))));
+    builders.put(
+        JOBS_RESUME,
+        args ->
+            jobs.get()
+                .planResume(new JobsOperations.ResumeOptions(Path.of(required(args, "from")))));
     builders.put(UPGRADE_TEST, args -> upgrade.get().planTest(upgradeOptions(args)));
     builders.put(
         UPGRADE_ROLLBACK,
@@ -356,6 +371,20 @@ public final class PlanRegistry {
     ObjectNode node = Json.mapper().createObjectNode();
     node.put("dbBackupConfirmed", options.dbBackupConfirmed());
     node.put("cleanup", options.cleanup());
+    return Json.write(node);
+  }
+
+  /** Spec §10.7: the stored arguments of a {@code jobs pause} run; {@code from} null for --all. */
+  public static String jobsPauseArgs(JobsOperations.PauseOptions options) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    putText(node, "from", options.from().map(p -> p.toAbsolutePath().normalize().toString()));
+    return Json.write(node);
+  }
+
+  /** Spec §10.7: the stored arguments of a {@code jobs resume} run. */
+  public static String jobsResumeArgs(JobsOperations.ResumeOptions options) {
+    ObjectNode node = Json.mapper().createObjectNode();
+    node.put("from", options.from().toAbsolutePath().normalize().toString());
     return Json.write(node);
   }
 

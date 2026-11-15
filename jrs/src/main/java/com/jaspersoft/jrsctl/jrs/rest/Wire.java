@@ -64,10 +64,13 @@ final class Wire {
 
   record Role(String name, String tenantId) {}
 
-  /** {@code GET /rest_v2/jobs} (issue #264); only the id is read. */
+  /** {@code GET /rest_v2/jobs} (issues #264, #304; REST API reference 8.2 p.145, 10.0 p.196). */
   record JobSummaryList(List<JobSummary> jobsummary) {}
 
-  record JobSummary(Long id, String label, String reportUnitURI) {}
+  record JobSummary(Long id, String label, String reportUnitURI, String owner, JobState state) {}
+
+  /** The job's state descriptor; only {@code value} is read. */
+  record JobState(String value) {}
 
   /** The body of {@code POST /rest_v2/jobs/pause} and {@code /resume}. */
   record JobIdList(List<Long> jobId) {}
