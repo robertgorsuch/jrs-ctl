@@ -127,7 +127,9 @@
 
       <!-- Aligns jackson-core and jackson-annotations with the four modules declared above: without
            the BOM they resolve through other libraries' transitive declarations and can lag behind
-           databind, which then fails at class-load time (JsonSerializeAs on 2.22 needs 2.22 annotations). -->
+           databind, which then fails at class-load time (on 2.22, JsonSerializeAs needed the 2.22
+           annotations). Rechecked for 2.23.0 (#293): the BOM resolves jackson-core 2.23.0 and
+           jackson-annotations 2.23, which carries a two-part version. -->
       <dependency><groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>${jackson.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>${junit.version}</version><type>pom</type><scope>import</scope></dependency>
       <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>${assertj.version}</version></dependency>
