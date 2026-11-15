@@ -202,6 +202,78 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
   }
 
   @Override
+  public Readiness readiness(ReadinessOptions options) {
+    Objects.requireNonNull(options, "options");
+    if (options.vendor().isEmpty() && options.jars().isEmpty()) {
+      throw new CustomizationException(
+          "nothing to check",
+          "pass --vendor to check the site's changed and added files, or --jar");
+    }
+    ReadinessChecker checker = new ReadinessChecker();
+    Optional<Path> installedWebapp = Optional.empty();
+    if (options.vendor().isPresent()) {
+      Scan scan =
+          options.installed().isPresent()
+              ? scan(options.installed().get(), options.vendor().get())
+              : scan(options.vendor().get());
+      installedWebapp = Optional.of(scan.installedWebapp());
+      for (ScanEntry e : scan.entries()) {
+        if ((e.change() == Change.CHANGED || e.change() == Change.ADDED)
+            && e.installed().isPresent()
+            && readinessCandidate(e.relativePath())) {
+          checker.check(new ReadinessChecker.SiteFile(e.relativePath(), e.installed().get()));
+        }
+      }
+    }
+    for (Path jar : options.jars()) {
+      Path p = jar.toAbsolutePath().normalize();
+      if (!Files.exists(p)) {
+        throw new CustomizationException(
+            "--jar " + p + " does not exist", "name a jar, a class file or a directory of classes");
+      }
+      checker.check(new ReadinessChecker.SiteFile(p.toString(), p));
+    }
+    Optional<Path> target = Optional.empty();
+    Optional<java.util.Set<String>> index = Optional.empty();
+    if (options.targetVendor().isPresent()) {
+      String webappName =
+          installedWebapp.map(w -> w.getFileName().toString()).orElse("jasperserver-pro");
+      Path t;
+      try {
+        t = WebappScanner.vendorWebapp(options.targetVendor().get(), webappName);
+      } catch (CustomizationException e) {
+        throw new CustomizationException(
+            "--target-vendor: " + e.getMessage(),
+            "point --target-vendor at the unpacked distribution of the version you upgrade to, at"
+                + " its webapp directory, or at its .war");
+      }
+      try {
+        index = Optional.of(ReadinessChecker.targetIndex(t));
+      } catch (IOException e) {
+        throw new CustomizationException(
+            "cannot read " + t + ": " + e.getMessage(),
+            "check that the target copy is readable",
+            e);
+      }
+      target = Optional.of(t);
+    }
+    return new Readiness(
+        options.targetVersion(),
+        installedWebapp,
+        target,
+        checker.filesChecked(),
+        checker.classesChecked(),
+        checker.findings(index));
+  }
+
+  /** The site files readiness reads: classes, jars, and XML, JSP, tag and TLD files. */
+  private static boolean readinessCandidate(String rel) {
+    return (rel.startsWith("WEB-INF/classes/") && rel.endsWith(".class"))
+        || (rel.startsWith("WEB-INF/lib/") && rel.endsWith(".jar"))
+        || ReadinessRules.text(rel);
+  }
+
+  @Override
   public List<TomcatEntry> scanTomcat() {
     HotfixPaths paths;
     try {

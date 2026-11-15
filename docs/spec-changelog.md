@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (`customizations readiness`; ADR-0061, issue #306)
+
+- §10.3: `customizations readiness --target <version>` reports the site's classes, jars and descriptor files that name renamed `javax.*` classes, Java EE namespaces, library classes the target's webapp lacks (`--target-vendor`) or a Java above 17. Report only; no class-file library; no hand-written list of removed APIs.
+
 ## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
 
 - §10.3: `customizations scan --vendor <source> --target-vendor <target> [--out <dir>]` classifies every site file against the target version (`CARRY`, `MERGE`, `OBSOLETE`, `OWN`, `CLASH`, `INSTALLER`, `OVERLAY`, `REMOVED`) and, with `--out`, writes `.mine`/`.base`/`.theirs` merge inputs for the `MERGE` files. `CLASH` is added to the issue's classes so a site file at a path the target now ships is not reported as safe to copy. Report only; never registers.

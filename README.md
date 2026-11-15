@@ -219,6 +219,14 @@ jrsctl customizations scan --vendor C:\Downloads\8.2\jasperserver-pro.war --targ
 
 Each of your files is listed with what to do: carry it over as it is, merge it because the new version changed the file too, find where it went because the new version no longer ships it, or keep it apart because the new version now ships a file at the same path. For each file to merge, `--out` writes your copy and both vendor copies side by side, ready for a merge tool. Nothing is changed or registered.
 
+Moving to 10.x also moves to Jakarta EE and Java 17. To see which of your own classes, jars and XML or JSP files will likely need porting, run:
+
+```bash
+jrsctl customizations readiness --target 10.0 --vendor <8.2 war> --target-vendor <10.0 war>
+```
+
+It lists the files that use `javax.*` names Jakarta EE renamed, old Java EE namespaces, classes the 10.0 webapp no longer has, or a Java above 17. It changes nothing, and a file it does not list is not proven ready. *(Not in a release yet; it comes with the next one.)*
+
 ### Load a repository into a new schema
 
 The vendor's alternative to an in-place upgrade: a new, empty schema on the new version's buildomatic, loaded from an export of the old server, while the old server keeps running. You need the new version unpacked on the machine (no installation needed), its `default_master.properties` naming the new schema (`js.dbName`) with `appServerType=skipAppServerCheck`, and the database server's password stored with jrsctl.

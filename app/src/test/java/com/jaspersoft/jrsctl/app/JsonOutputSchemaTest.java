@@ -1355,6 +1355,59 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "customizations readiness of a directory with a Java EE descriptor",
+            "customizations readiness",
+            0,
+            dir -> {
+              Path module = Files.createDirectories(dir.resolve("module").resolve("META-INF"));
+              Files.writeString(
+                  module.resolve("context.xml"),
+                  "<beans xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\">"
+                      + "<bean class=\"javax.servlet.Filter\"/></beans>\n",
+                  StandardCharsets.UTF_8);
+              return run(
+                  "customizations",
+                  "readiness",
+                  "--target",
+                  "10.0",
+                  "--jar",
+                  dir.resolve("module").toString(),
+                  "--json",
+                  "--home",
+                  emptyHome(dir).toString());
+            }));
+    s.add(
+        of(
+            "customizations readiness for a target older than 10.0",
+            "customizations readiness",
+            6,
+            dir ->
+                run(
+                    "customizations",
+                    "readiness",
+                    "--target",
+                    "9.0",
+                    "--jar",
+                    dir.toString(),
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
+            "customizations readiness with nothing to check",
+            "customizations readiness",
+            1,
+            dir ->
+                run(
+                    "customizations",
+                    "readiness",
+                    "--target",
+                    "10.0",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
+    s.add(
+        of(
             "customizations scan of a path without a webapp",
             "customizations scan",
             2,

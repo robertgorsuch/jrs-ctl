@@ -88,6 +88,7 @@ public final class JsonSchemas {
     m.put("customizations list", new Document("customizations-list.schema.json"));
     m.put("customizations diff", new Document("customizations-diff.schema.json"));
     m.put("customizations scan", new Document("customizations-scan.schema.json"));
+    m.put("customizations readiness", new Document("customizations-readiness.schema.json"));
     m.put("runs list", new Document("runs-list.schema.json"));
     m.put("runs show", new Document("runs-show.schema.json"));
     m.put("runs recover", new Stream(false));

@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.ops.customizations;
 import com.jaspersoft.jrsctl.core.state.Customization;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -266,6 +267,86 @@ public interface CustomizationOperations {
    * otherwise; registers nothing.
    */
   TargetScan classifyAgainstTarget(Scan scan, Path targetVendor, Optional<Path> out);
+
+  /** What {@code customizations readiness} reports about one site file (issue #306, ADR-0061). */
+  enum ReadinessKind {
+    /** Names {@code javax.*} classes Jakarta EE 9 renamed to {@code jakarta.*}. */
+    JAKARTA,
+    /** Names renamed {@code javax.*} classes the target's webapp still ships itself. */
+    JAKARTA_SHIPPED,
+    /** Declares a Java EE schema or descriptor namespace. */
+    NAMESPACE,
+    /** Names a library or server class that the target's webapp does not hold. */
+    NOT_IN_TARGET,
+    /** Compiled for a Java newer than 17. */
+    BYTECODE,
+    /** Could not be read. */
+    UNREADABLE
+  }
+
+  /** One kind of finding in one site file, with what it refers to, sorted. */
+  record ReadinessFinding(String file, ReadinessKind kind, List<String> references) {
+    public ReadinessFinding {
+      Objects.requireNonNull(file, "file");
+      Objects.requireNonNull(kind, "kind");
+      references = List.copyOf(references);
+    }
+  }
+
+  /**
+   * The inputs of {@code customizations readiness}: the site's changed and added files from a scan
+   * against {@code vendor} (of {@code installed}, else the configured installation), and/or the
+   * {@code jars} named; {@code targetVendor} enables the lookup of library classes.
+   */
+  record ReadinessOptions(
+      String targetVersion,
+      Optional<Path> vendor,
+      Optional<Path> installed,
+      Optional<Path> targetVendor,
+      List<Path> jars) {
+    public ReadinessOptions {
+      Objects.requireNonNull(targetVersion, "targetVersion");
+      Objects.requireNonNull(vendor, "vendor");
+      Objects.requireNonNull(installed, "installed");
+      Objects.requireNonNull(targetVendor, "targetVendor");
+      jars = List.copyOf(jars);
+    }
+  }
+
+  /** The readiness report: what was checked and what was found. */
+  record Readiness(
+      String targetVersion,
+      Optional<Path> installedWebapp,
+      Optional<Path> targetVendorWebapp,
+      int filesChecked,
+      int classesChecked,
+      List<ReadinessFinding> findings) {
+    public Readiness {
+      Objects.requireNonNull(targetVersion, "targetVersion");
+      Objects.requireNonNull(installedWebapp, "installedWebapp");
+      Objects.requireNonNull(targetVendorWebapp, "targetVendorWebapp");
+      findings = List.copyOf(findings);
+    }
+
+    /** Files with at least one finding, per kind. */
+    public Map<ReadinessKind, Integer> counts() {
+      Map<ReadinessKind, Integer> m = new java.util.EnumMap<>(ReadinessKind.class);
+      for (ReadinessKind k : ReadinessKind.values()) {
+        m.put(k, 0);
+      }
+      for (ReadinessFinding f : findings) {
+        m.merge(f.kind(), 1, Integer::sum);
+      }
+      return m;
+    }
+  }
+
+  /**
+   * A report-only readiness check of the site's classes, jars and descriptor files for a move to
+   * {@code targetVersion} (10.x: Jakarta EE, JDK 17; issue #306, ADR-0061). A file without findings
+   * is not shown to be ready; the check names likely work only.
+   */
+  Readiness readiness(ReadinessOptions options);
 
   /**
    * Registers every {@link Change#CHANGED} and {@link Change#ADDED} file of {@code scan} that is

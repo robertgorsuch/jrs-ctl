@@ -592,6 +592,28 @@ The report starts with the count per class. With **`--out <dir>`**, each `MERGE`
 - **Exit codes:** 0; **1** when `--register` is combined with `--installed` or `--target-vendor`, or `--out` is given without `--target-vendor`; **2** when `--vendor` holds no webapp, the installed webapp cannot be found, or `--installed` names neither a webapp directory nor a Tomcat tree holding one.
 - **Flags:** `--vendor <path>` (required) — the vendor's copy; `--target-vendor <path>` — the copy of the version you upgrade to, for the classes above; `--out <dir>` — with it, where the merge inputs go (new or empty); `--installed <dir>` — the tree to compare instead of the configured installation (a webapp directory or a Tomcat tree holding one), with nothing registered; `--tomcat` — also list the Tomcat-side files to carry over (of `--installed`'s tree when given); `--register` — register without asking; `--json` — `{installedWebapp, vendorWebapp, entries: [{path, change, registered}], tomcat: [{path, kind, registered}] (with --tomcat), registered: [...]}`.
 
+### `jrsctl customizations readiness --target <version> [--vendor <path> [--installed <dir>]] [--target-vendor <path>] [--jar <file>]... [--json]`
+
+Before a move to 10.x, which moves to Jakarta EE and Java 17, lists the site's files that will likely need porting work (#306, ADR-0061). It reads the site's changed and added classes, jars, and XML, JSP, tag and TLD files (from the same comparison as `customizations scan --vendor`), plus any jar, class file or directory of classes you name with `--jar`, for example a module built outside the webapp. Classes are read from their constant pool; nothing is run, compiled or unpacked.
+
+| Kind | Meaning | What to do |
+|---|---|---|
+| `JAKARTA` | Names `javax.*` classes Jakarta EE renamed to `jakarta.*` (servlet, JSP, EL, persistence, validation, inject, JAX-RS, JAXB, mail, JMS, transaction and the rest; never the JDK's own `javax.sql`, `javax.naming`, `javax.xml.parsers` and so on) | Port them; the Apache Tomcat Jakarta EE migration tool or OpenRewrite's javax-to-jakarta recipes can help |
+| `JAKARTA_SHIPPED` | Names such classes, but the target's webapp still ships them (10.0.0 still has `jaxb-api` 2.3.1 and `javax.activation-api`) | They may still resolve; check what the target itself uses |
+| `NAMESPACE` | Declares a Java EE descriptor or schema namespace | Jakarta EE 10 descriptors use `https://jakarta.ee/xml/ns/jakartaee`; check whether the target accepts the old one |
+| `NOT_IN_TARGET` | With `--target-vendor`: names a Spring, Hibernate, Quartz, Ehcache, Jersey, JasperReports or JasperReports Server class that the target's webapp does not have | Removed or moved: find the replacement. For a third-party library jar the site added, this also lists that library's optional dependencies the target never had; read it for the site's own code first |
+| `BYTECODE` | Compiled for a Java newer than 17, the runtime the 10.0.0 distribution bundles | Compile for Java 17 |
+| `UNREADABLE` | Could not be read | Check it by hand |
+
+`--target-vendor` is the vendor's copy of the version you upgrade to, in the same forms as `--vendor`; without it the library lookup is not made, and the report says so. A jar's `META-INF/maven/` build metadata is not read.
+
+**No finding does not mean ready.** The check reads the names a file uses, not what it does, and it does not look for JDK-internal APIs (`jdeps --jdk-internals` does). Build and test the site's code against the target.
+
+- **Mutates:** nothing; read-only, needs no server.
+- **Rollback:** not applicable.
+- **Exit codes:** 0 when the check ran, whatever it found; **1** `--installed` without `--vendor`, or neither `--vendor` nor `--jar`; **2** an input cannot be read (a missing `--jar`, no webapp at `--vendor` or `--target-vendor`); **6** a `--target` below 10.0.
+- **Flags:** `--target <version>` (required, 10.0 or later); `--vendor <path>` — the vendor's copy of the version the server runs, so only the site's changed and added files are read; `--installed <dir>` — with `--vendor`, this tree instead of the configured installation; `--target-vendor <path>` — the target version's vendor copy, for `NOT_IN_TARGET` and `JAKARTA_SHIPPED`; `--jar <file>` — also read this jar, class file or class directory (repeatable); `--json` — `{"targetVersion", "installedWebapp", "targetVendorWebapp", "libraryLookup", "filesChecked", "classesChecked", "counts": {kind: files}, "findings": [{"file", "kind", "references": [...]}]}`.
+
 ### `jrsctl customizations unregister <path>`
 
 Forgets a registered customization: removes its row from the state store and deletes its snapshot. The file under the installation is not touched.
