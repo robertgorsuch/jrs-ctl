@@ -255,6 +255,8 @@ final class ImportCommand implements Callable<Integer> {
     @Spec CommandSpec spec;
     @Mixin GlobalOptions global;
 
+    @Mixin GateOptions gate;
+
     @Parameters(index = "0", paramLabel = "<archive>", description = "The export ZIP imported.")
     Path archive;
 
@@ -290,9 +292,9 @@ final class ImportCommand implements Callable<Integer> {
           return ExitCodes.fail(
               out, err, global.json(), ExitCodes.USAGE, "--uri-prefix needs --content");
         }
-        com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport report;
+        com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport computed;
         try {
-          report =
+          computed =
               new com.jaspersoft.jrsctl.ops.exim.ImportVerification(boot.services())
                   .verify(
                       archive,
@@ -301,6 +303,15 @@ final class ImportCommand implements Callable<Integer> {
         } catch (RuntimeException e) {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
+        com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport report =
+            new com.jaspersoft.jrsctl.ops.exim.ImportVerifyReport(
+                computed.items(),
+                computed.counts(),
+                gate.exit(computed.exitCode(), computed.items()),
+                computed.archive(),
+                computed.archiveCounts(),
+                computed.missing(),
+                computed.content());
         if (global.json()) {
           out.println(redactor.redact(JsonOut.write(uris ? report : trimmed(report))));
           out.flush();
@@ -308,7 +319,7 @@ final class ImportCommand implements Callable<Integer> {
           ReportPrinter.print(
               out, report.items(), report.counts(), Ansi.forStdout(global, Env.vars()), redactor);
         }
-        return report.exitCode();
+        return gate.writeJunit("import verify", report.items(), report.exitCode(), err, redactor);
       }
     }
 

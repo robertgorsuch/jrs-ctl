@@ -193,6 +193,42 @@ class Phase2AdapterDoctorTest {
     assertThat(result.stdout()).doesNotContain("jasperadmin\"password");
   }
 
+  /**
+   * Issue #308, ADR-0058: {@code --fail-on warn} turns a WARN into exit 2 for a CI gate, and {@code
+   * --junit} writes one testcase per item. {@code service.kind: manual} is always a WARN.
+   */
+  @Test
+  void doctor_fail_on_warn_exits_2_and_writes_junit_against_wiremock() throws Exception {
+    Path install = fakeLayout(tmp.resolve("jrs-gate"));
+    Path home = home("home-gate", baseUrl(), install);
+    Path junit = tmp.resolve("doctor.xml");
+    Cli cli = new Cli(Map.of("JRS_PASSWORD", "jasperadmin"));
+
+    Cli.Result plain = cli.run("doctor", "--home", home.toString(), "--json");
+    Cli.Result gated =
+        cli.run(
+            "doctor",
+            "--home",
+            home.toString(),
+            "--json",
+            "--fail-on",
+            "warn",
+            "--junit",
+            junit.toString());
+
+    assertThat(items(plain.stdout()).get("service").get("status").asText()).isEqualTo("WARN");
+    assertThat(gated.exitCode())
+        .as("gated doctor%nstdout:%n%s%nstderr:%n%s", gated.stdout(), gated.stderr())
+        .isEqualTo(plain.exitCode() == 0 ? 2 : plain.exitCode());
+    assertThat(new ObjectMapper().readTree(gated.stdout()).get("exitCode").asInt())
+        .isEqualTo(gated.exitCode());
+    String xml = Files.readString(junit, StandardCharsets.UTF_8);
+    assertThat(xml)
+        .startsWith("<?xml")
+        .contains("<testsuite name=\"jrsctl doctor\"")
+        .containsPattern("name=\"service\" time=\"0\">\\s*<failure type=\"WARN\"");
+  }
+
   @Test
   void doctor_exits_2_with_server_fail_when_port_is_closed() throws Exception {
     Path install = fakeLayout(tmp.resolve("jrs2"));
