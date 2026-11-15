@@ -162,6 +162,8 @@ jrsctl import C:\Backups\samples.zip --update
 
 > If you see `keystore fingerprint mismatch`, the two servers use different encryption keys. Run `jrsctl import --explain` to see how to bring the other server's key along.
 
+To check afterwards that everything arrived, run `jrsctl import verify C:\Backups\samples.zip`. It changes nothing. Add `--content` to also check that every file is identical and that labels and descriptions match. That downloads each file once, so `--uri-prefix /public/Finance` keeps it to one folder. *(`--content` is not in a release yet; it comes with the next one.)*
+
 ### Install a hotfix
 
 Hotfixes from Jaspersoft support come as a `.zip` package (`hotfix_JRSPro10.0.0_cumulative_20260730_0457.zip`). Install it as downloaded. jrsctl prints the package's SHA-256 and asks you to confirm it matches the checksum on the support portal, shows what it will replace, add and delete, backs up every file it touches, and stops and restarts the server if the hotfix needs it:

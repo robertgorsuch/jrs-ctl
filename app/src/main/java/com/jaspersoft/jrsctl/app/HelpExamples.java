@@ -291,7 +291,12 @@ final class HelpExamples {
                 "jrsctl import verify /backups/full-server.zip"),
             new Example(
                 "The same, listing every missing URI in the JSON report",
-                "jrsctl import verify /backups/full-server.zip --uris --json")));
+                "jrsctl import verify /backups/full-server.zip --uris --json"),
+            new Example(
+                "Also check that what arrived is identical: files by SHA-256, labels, descriptions"
+                    + " and report units' data sources and input controls, under one folder",
+                "jrsctl import verify /backups/full-server.zip --content --uri-prefix"
+                    + " /public/Finance")));
     m.put(
         "upgrade",
         List.of(

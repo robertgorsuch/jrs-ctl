@@ -1034,6 +1034,50 @@ class JsonOutputSchemaTest {
               }
               return run(join(serverArgs(dir), "import", "verify", archive.toString()));
             }));
+    // #307: the content comparison; the app's fake adapter cannot download, so each file differs
+    s.add(
+        of(
+            "import verify --content",
+            "import verify",
+            2,
+            dir -> {
+              serverHome(dir);
+              Path archive = dir.resolve("in.zip");
+              try (java.io.OutputStream out = Files.newOutputStream(archive);
+                  java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(out)) {
+                z.putNextEntry(new java.util.zip.ZipEntry("index.xml"));
+                z.write("<export/>".getBytes(StandardCharsets.UTF_8));
+                z.closeEntry();
+                z.putNextEntry(new java.util.zip.ZipEntry("resources/public/a.jpeg.data"));
+                z.write("jpeg".getBytes(StandardCharsets.UTF_8));
+                z.closeEntry();
+              }
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "import",
+                      "verify",
+                      archive.toString(),
+                      "--content",
+                      "--uri-prefix",
+                      "/public"));
+            }));
+    s.add(
+        of(
+            "import verify --uri-prefix without --content",
+            "import verify",
+            1,
+            dir -> {
+              serverHome(dir);
+              return run(
+                  join(
+                      serverArgs(dir),
+                      "import",
+                      "verify",
+                      dir.resolve("in.zip").toString(),
+                      "--uri-prefix",
+                      "/public"));
+            }));
     s.add(
         of(
             "import verify refuses a file that is not an export",

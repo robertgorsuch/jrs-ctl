@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.jrs.api;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
@@ -111,6 +112,24 @@ public interface JrsAdapter extends AutoCloseable {
    * instead of producing an empty archive (field test 2, E3).
    */
   boolean resourceExists(String uri);
+
+  /**
+   * Streams the content of the file resource at {@code uri} to {@code target} ({@code GET
+   * /rest_v2/resources/<uri>}; issue #307, ADR-0060). Empty when the server answers 404. A file
+   * local to a report unit is addressed as {@code <unit>_files/<name>}.
+   */
+  default Optional<Path> downloadResource(String uri, Path target) {
+    throw new UnsupportedOperationException("this adapter cannot download a resource");
+  }
+
+  /**
+   * The descriptor fields of the resource at {@code uri} that {@code import verify --content}
+   * compares (issue #307, ADR-0060); {@code file} asks for a file resource's descriptor instead of
+   * its content. Empty when the server answers 404.
+   */
+  default Optional<ResourceFields> resourceFields(String uri, boolean file) {
+    throw new UnsupportedOperationException("this adapter cannot read a resource descriptor");
+  }
 
   /** Runs the report at {@code reportUri} to PDF, streaming the bytes to {@code target}. */
   Path runReportToPdf(String reportUri, Path target);

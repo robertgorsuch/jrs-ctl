@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -36,6 +37,23 @@ public final class ImportVerification {
   static final String USERS = "users";
   static final String ROLES = "roles";
   static final String RESOURCES = "resources";
+  static final String CONTENT = "content";
+
+  /**
+   * What {@code import verify} compares beyond the ids: with {@code content}, file payloads and key
+   * descriptor fields (issue #307, ADR-0060), limited to {@code uriPrefix} when given.
+   */
+  public record Options(boolean content, Optional<String> uriPrefix) {
+    public Options {
+      Objects.requireNonNull(uriPrefix, "uriPrefix");
+      uriPrefix = uriPrefix.map(String::strip).filter(p -> !p.isEmpty());
+    }
+
+    /** The id comparison only. */
+    public static Options idsOnly() {
+      return new Options(false, Optional.empty());
+    }
+  }
 
   /** How many missing ids an item's detail names before saying "and N more". */
   public static final int NAMED = 5;
@@ -47,7 +65,12 @@ public final class ImportVerification {
   }
 
   public ImportVerifyReport verify(Path archive) {
+    return verify(archive, Options.idsOnly());
+  }
+
+  public ImportVerifyReport verify(Path archive, Options options) {
     Objects.requireNonNull(archive, "archive");
+    Objects.requireNonNull(options, "options");
     Path file = archive.toAbsolutePath().normalize();
     if (!Files.isRegularFile(file)) {
       throw new IllegalArgumentException("archive " + file + " does not exist");
@@ -121,7 +144,68 @@ public final class ImportVerification {
             () -> absent(all, adapter.listTree("/")),
             "GET /rest_v2/resources?folderUri=/&recursive=true",
             missing));
-    return ImportVerifyReport.of(items, file.toString(), counts, missing);
+    Optional<ImportVerifyReport.Content> content = Optional.empty();
+    if (options.content()) {
+      content = content(file, options.uriPrefix(), items);
+    }
+    return ImportVerifyReport.of(items, file.toString(), counts, missing, content);
+  }
+
+  /**
+   * The {@code content} item (issue #307, ADR-0060): SKIP when nothing is in scope, FAIL naming the
+   * first few differences or the server's error, PASS otherwise.
+   */
+  private Optional<ImportVerifyReport.Content> content(
+      Path file, Optional<String> prefix, List<ReportItem> items) {
+    String scope = prefix.map(p -> " under " + ContentVerification.normalize(p)).orElse("");
+    ImportVerifyReport.Content result;
+    try {
+      result = new ContentVerification(services).compare(file, prefix);
+    } catch (IOException e) {
+      throw new UncheckedIOException("cannot read " + file + ": " + e.getMessage(), e);
+    } catch (RuntimeException e) {
+      items.add(
+          ReportItem.fail(
+              CONTENT,
+              "the server could not be asked for the content" + scope + ": " + e.getMessage(),
+              "check that GET /rest_v2/resources answers for the configured account, then run"
+                  + " again"));
+      return Optional.empty();
+    }
+    String compared =
+        plural(result.files(), "file")
+            + " and "
+            + plural(result.descriptors(), "descriptor")
+            + scope;
+    if (result.files() + result.descriptors() == 0) {
+      items.add(
+          ReportItem.skip(CONTENT, "the archive holds no resource" + scope, "nothing to compare"));
+    } else if (result.differences().isEmpty()) {
+      items.add(
+          ReportItem.pass(
+              CONTENT,
+              compared
+                  + " identical (files by SHA-256; label and description, and a report unit's"
+                  + " data source and input controls)"));
+    } else {
+      List<ImportVerifyReport.Difference> d = result.differences();
+      List<String> named =
+          d.subList(0, Math.min(NAMED, d.size())).stream()
+              .map(x -> x.uri() + " (" + x.what() + ")")
+              .toList();
+      items.add(
+          ReportItem.fail(
+              CONTENT,
+              d.size()
+                  + " difference(s) in "
+                  + compared
+                  + ": "
+                  + String.join(", ", named)
+                  + (d.size() > named.size() ? " and " + (d.size() - named.size()) + " more" : ""),
+              "compare those resources on the server with the archive; with --uris the JSON report"
+                  + " lists every difference"));
+    }
+    return Optional.of(result);
   }
 
   private static List<String> absent(List<String> wanted, List<String> present) {
