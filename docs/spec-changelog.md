@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (CI gating: `--fail-on`, `--junit`; ADR-0058, issue #308)
+
+- §12.1: `doctor`, `smoke` and `import verify` take `--fail-on warn|fail` (default `fail`; with `warn` a WARN exits 2, a non-zero exit is never lowered) and `--junit <file>` (JUnit XML, one testcase per item). Default behaviour unchanged.
+
 ## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
 
 - §10.3: `customizations scan --vendor <source> --target-vendor <target> [--out <dir>]` classifies every site file against the target version (`CARRY`, `MERGE`, `OBSOLETE`, `OWN`, `CLASH`, `INSTALLER`, `OVERLAY`, `REMOVED`) and, with `--out`, writes `.mine`/`.base`/`.theirs` merge inputs for the `MERGE` files. `CLASH` is added to the issue's classes so a site file at a path the target now ships is not reported as safe to copy. Report only; never registers.
