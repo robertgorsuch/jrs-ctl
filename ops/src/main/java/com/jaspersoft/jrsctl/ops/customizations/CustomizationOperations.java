@@ -181,6 +181,92 @@ public interface CustomizationOperations {
    */
   Scan scan(Path installed, Path vendor);
 
+  /** How the vendor's file at one path changed from the source to the target version (#305). */
+  enum TargetChange {
+    /** Same content in both versions. */
+    UNCHANGED,
+    /** In both versions, different. */
+    CHANGED,
+    /** In the source version only. */
+    REMOVED,
+    /** In the target version only. */
+    ADDED,
+    /** In neither version. */
+    ABSENT
+  }
+
+  /**
+   * What an upgrade to the target version means for one site file (issue #305, ADR-0057), in the
+   * order the report lists them.
+   */
+  enum TargetClass {
+    /** The site changed a vendor file the vendor did not change: re-apply as is. */
+    CARRY,
+    /** The site and the vendor both changed the file: a three-way merge. */
+    MERGE,
+    /** The site changed a vendor file the target no longer ships: moved or dropped. */
+    OBSOLETE,
+    /** The site added a file the target does not ship either: carry it over. */
+    OWN,
+    /**
+     * The site added a file at a path the target now ships: copying it would replace the vendor's.
+     */
+    CLASH,
+    /** A file the installer writes: put the site's values into the target's copy. */
+    INSTALLER,
+    /**
+     * Under {@code scripts/}: rebuild in jasperserver-ui, not a file merge ({@link
+     * #SCRIPTS_ADVICE}).
+     */
+    OVERLAY,
+    /** The site deleted a vendor file: check whether the target still ships it. */
+    REMOVED
+  }
+
+  /**
+   * One site file of a {@link TargetScan}; {@code merge} names the {@code .mine}, {@code .base} and
+   * {@code .theirs} files written for a {@link TargetClass#MERGE} file with {@code --out}.
+   */
+  record TargetEntry(
+      ScanEntry entry, TargetClass targetClass, TargetChange target, List<Path> merge) {
+    public TargetEntry {
+      Objects.requireNonNull(entry, "entry");
+      Objects.requireNonNull(targetClass, "targetClass");
+      Objects.requireNonNull(target, "target");
+      merge = List.copyOf(merge);
+    }
+  }
+
+  /** A {@link Scan} classified against the target version's vendor webapp (issue #305). */
+  record TargetScan(
+      Scan scan, Path targetVendorWebapp, List<TargetEntry> entries, Optional<Path> out) {
+    public TargetScan {
+      Objects.requireNonNull(scan, "scan");
+      Objects.requireNonNull(targetVendorWebapp, "targetVendorWebapp");
+      Objects.requireNonNull(out, "out");
+      entries = List.copyOf(entries);
+    }
+
+    /** How many entries each class holds, every class present, in report order. */
+    public java.util.Map<TargetClass, Long> counts() {
+      java.util.Map<TargetClass, Long> m = new java.util.EnumMap<>(TargetClass.class);
+      for (TargetClass c : TargetClass.values()) {
+        m.put(c, 0L);
+      }
+      entries.forEach(e -> m.merge(e.targetClass(), 1L, Long::sum));
+      return m;
+    }
+  }
+
+  /**
+   * Classifies every file of {@code scan} against the target version's vendor webapp ({@code
+   * targetVendor}: an unpacked distribution, its webapp directory or its war; issue #305,
+   * ADR-0057). With {@code out}, writes each {@link TargetClass#MERGE} file as {@code <path>.mine},
+   * {@code .base} and {@code .theirs} under it, refusing a directory that is not empty. Read-only
+   * otherwise; registers nothing.
+   */
+  TargetScan classifyAgainstTarget(Scan scan, Path targetVendor, Optional<Path> out);
+
   /**
    * Registers every {@link Change#CHANGED} and {@link Change#ADDED} file of {@code scan} that is
    * not registered yet: a changed file with the vendor's hash as its original, an added one with

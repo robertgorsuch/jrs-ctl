@@ -313,11 +313,41 @@ final class CustomizationsCommand implements Runnable {
                 + " Tomcat-side files.")
     Path installed;
 
+    @picocli.CommandLine.Option(
+        names = "--target-vendor",
+        paramLabel = "<path>",
+        description =
+            "The vendor's copy of the version you upgrade to (distribution, webapp directory or"
+                + " .war; #305): every site file is also classified as CARRY, MERGE, OBSOLETE, OWN,"
+                + " CLASH, INSTALLER, OVERLAY or REMOVED. A report only: nothing is registered.")
+    Path targetVendor;
+
+    @picocli.CommandLine.Option(
+        names = "--out",
+        paramLabel = "<dir>",
+        description =
+            "With --target-vendor: write each MERGE file as <path>.mine, .base and .theirs under"
+                + " this new or empty directory, for git merge-file or a merge tool.")
+    Path mergeOut;
+
     @Override
     public Integer call() {
       PrintWriter out = spec.commandLine().getOut();
       PrintWriter err = spec.commandLine().getErr();
       Redactor redactor = Redactor.global();
+      if (mergeOut != null && targetVendor == null) {
+        return ExitCodes.fail(
+            out, err, global.json(), ExitCodes.USAGE, "--out needs --target-vendor");
+      }
+      if (targetVendor != null && register) {
+        return ExitCodes.fail(
+            out,
+            err,
+            global.json(),
+            ExitCodes.USAGE,
+            "--register cannot be combined with --target-vendor: a comparison of two versions is"
+                + " a report, not an inventory to register");
+      }
       if (installed != null && register) {
         return ExitCodes.fail(
             out,
@@ -330,9 +360,15 @@ final class CustomizationsCommand implements Runnable {
       try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
         CustomizationOperations ops = open(boot.services());
         CustomizationOperations.Scan scan;
+        Optional<CustomizationOperations.TargetScan> classified = Optional.empty();
         List<CustomizationOperations.TomcatEntry> tomcatFiles = List.of();
         try {
           scan = installed == null ? ops.scan(vendor) : ops.scan(installed, vendor);
+          if (targetVendor != null) {
+            classified =
+                Optional.of(
+                    ops.classifyAgainstTarget(scan, targetVendor, Optional.ofNullable(mergeOut)));
+          }
           if (tomcat) {
             tomcatFiles = installed == null ? ops.scanTomcat() : ops.scanTomcat(installed);
           }
@@ -350,14 +386,19 @@ final class CustomizationsCommand implements Runnable {
                             || e.change() == CustomizationOperations.Change.ADDED)
                 .count();
         if (!global.json()) {
-          print(out, redactor, scan);
+          if (classified.isPresent()) {
+            printTarget(out, redactor, classified.get());
+          } else {
+            print(out, redactor, scan);
+          }
           if (tomcat) {
             printTomcat(out, redactor, tomcatFiles);
           }
         }
-        // an explicit tree is never registered, whatever --yes says (#266)
-        boolean doRegister = installed == null && (register || global.yes());
-        if (installed == null
+        // an explicit tree, and a comparison of two versions, are never registered (#266, #305)
+        boolean reportOnly = installed != null || targetVendor != null;
+        boolean doRegister = !reportOnly && (register || global.yes());
+        if (!reportOnly
             && !doRegister
             && !global.json()
             && !global.nonInteractive()
@@ -382,11 +423,28 @@ final class CustomizationsCommand implements Runnable {
           Map<String, Object> tree = new LinkedHashMap<>();
           tree.put("installedWebapp", scan.installedWebapp().toString());
           tree.put("vendorWebapp", scan.vendorWebapp().toString());
+          Map<String, CustomizationOperations.TargetEntry> byPath = new LinkedHashMap<>();
+          if (classified.isPresent()) {
+            tree.put("targetVendorWebapp", classified.get().targetVendorWebapp().toString());
+            Map<String, Long> counts = new LinkedHashMap<>();
+            classified.get().counts().forEach((k, v) -> counts.put(k.name(), v));
+            tree.put("classCounts", counts);
+            classified.get().out().ifPresent(o -> tree.put("mergeOut", o.toString()));
+            classified.get().entries().forEach(t -> byPath.put(t.entry().relativePath(), t));
+          }
           List<Map<String, Object>> entries = new ArrayList<>();
           for (CustomizationOperations.ScanEntry e : scan.entries()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("path", e.relativePath());
             row.put("change", e.change().name());
+            CustomizationOperations.TargetEntry t = byPath.get(e.relativePath());
+            if (t != null) {
+              row.put("class", t.targetClass().name());
+              row.put("target", t.target().name());
+              if (!t.merge().isEmpty()) {
+                row.put("merge", t.merge().stream().map(Path::toString).toList());
+              }
+            }
             row.put(
                 "registered",
                 e.registered()
@@ -422,7 +480,7 @@ final class CustomizationsCommand implements Runnable {
               "registered "
                   + registered.size()
                   + " customization(s); see jrsctl customizations list");
-        } else if (candidates > 0 && installed == null) {
+        } else if (candidates > 0 && !reportOnly) {
           out.println(
               "nothing registered; register them later with: jrsctl customizations scan --vendor "
                   + vendor
@@ -449,6 +507,65 @@ final class CustomizationsCommand implements Runnable {
       out.println(
           "register one with: jrsctl customizations register <tomcatDir>/<path>; an upgrade then"
               + " checks it, but does not copy it to a different Tomcat (--tomcat-dir)");
+    }
+
+    /** What each class asks of the operator, one line each (#305). */
+    private static final Map<CustomizationOperations.TargetClass, String> CLASS_HINTS =
+        Map.of(
+            CustomizationOperations.TargetClass.CARRY,
+            "re-apply as is (a Java class or Spring XML may still need porting to Jakarta EE for"
+                + " a 10.x target)",
+            CustomizationOperations.TargetClass.MERGE,
+            "the vendor changed it too: merge the site's change into the target's copy",
+            CustomizationOperations.TargetClass.OBSOLETE,
+            "the target no longer ships it: find where it moved, or drop the change",
+            CustomizationOperations.TargetClass.OWN,
+            "the site's own file: carry it over",
+            CustomizationOperations.TargetClass.CLASH,
+            "the site added it and the target now ships a file at that path: copying it would"
+                + " replace the vendor's",
+            CustomizationOperations.TargetClass.INSTALLER,
+            "written by the installer: put the site's values into the target's copy",
+            CustomizationOperations.TargetClass.OVERLAY,
+            "under scripts/: rebuild in jasperserver-ui, not a file merge",
+            CustomizationOperations.TargetClass.REMOVED,
+            "the site deleted a vendor file: check whether the target still ships it");
+
+    private static void printTarget(
+        PrintWriter out, Redactor redactor, CustomizationOperations.TargetScan t) {
+      out.println(redactor.redact("installed " + t.scan().installedWebapp()));
+      out.println(redactor.redact("vendor    " + t.scan().vendorWebapp()));
+      out.println(redactor.redact("target    " + t.targetVendorWebapp()));
+      if (t.entries().isEmpty()) {
+        out.println("no differences: the installed webapp matches the vendor's copy");
+        return;
+      }
+      List<String> summary = new ArrayList<>();
+      for (Map.Entry<CustomizationOperations.TargetClass, Long> c : t.counts().entrySet()) {
+        if (c.getValue() > 0) {
+          summary.add(c.getValue() + " " + c.getKey().name());
+        }
+      }
+      out.println(String.join(", ", summary));
+      CustomizationOperations.TargetClass current = null;
+      for (CustomizationOperations.TargetEntry e : t.entries()) {
+        if (e.targetClass() != current) {
+          current = e.targetClass();
+          out.println();
+          out.println(current.name() + ": " + CLASS_HINTS.get(current));
+        }
+        String merge =
+            e.merge().isEmpty() ? "" : "  -> " + e.merge().get(0) + " (.base, .theirs beside it)";
+        out.println(redactor.redact("  " + e.entry().relativePath() + merge));
+      }
+      if (t.out().isPresent()) {
+        out.println();
+        out.println(
+            redactor.redact(
+                "merge inputs under "
+                    + t.out().get()
+                    + "; merge one with: git merge-file <path>.mine <path>.base <path>.theirs"));
+      }
     }
 
     private static void print(

@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (`customizations scan --target-vendor`; ADR-0057, issue #305)
+
+- §10.3: `customizations scan --vendor <source> --target-vendor <target> [--out <dir>]` classifies every site file against the target version (`CARRY`, `MERGE`, `OBSOLETE`, `OWN`, `CLASH`, `INSTALLER`, `OVERLAY`, `REMOVED`) and, with `--out`, writes `.mine`/`.base`/`.theirs` merge inputs for the `MERGE` files. `CLASH` is added to the issue's classes so a site file at a path the target now ships is not reported as safe to copy. Report only; never registers.
+
 ## Draft 1.2 amendment — 2026-11-15 (`jobs record`, `jobs pause`, `jobs resume`; ADR-0056, issue #304)
 
 - §10.7 (new): report job states across a migration. `jobs record` writes every job's id, label, report, owner and state to a `jrsctl-jobs/1` file, read-only; `jobs pause (--all | --from <record>)` and `jobs resume --from <record>` are one-step journaled plans whose compensation changes back exactly the ids they changed. `resume` resumes only jobs recorded as active and paused now; jobs recorded as paused stay paused, error states are left to the operator. A recorded job is matched by id with the same label, report and owner, else by that key when exactly one job has it; otherwise it is reported unmatched. §7.2: the adapter's `listJobs()` returns `JobSummary` with the state; `listJobIds()` derives from it.

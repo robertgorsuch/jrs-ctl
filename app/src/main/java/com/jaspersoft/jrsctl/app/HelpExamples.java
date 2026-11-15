@@ -407,7 +407,12 @@ final class HelpExamples {
             new Example(
                 "Inventory a webapp tree extracted from a container image, with no configuration",
                 "jrsctl customizations scan --vendor /opt/dist/jasperserver-pro.war"
-                    + " --installed /srv/extracted/tomcat --tomcat --json")));
+                    + " --installed /srv/extracted/tomcat --tomcat --json"),
+            new Example(
+                "Before an upgrade: classify every site file against the target version and write"
+                    + " the files both sides changed as merge inputs",
+                "jrsctl customizations scan --vendor /opt/dist/8.2/jasperserver-pro.war"
+                    + " --target-vendor /opt/dist/10.0/jasperserver-pro.war --out /tmp/merge")));
     m.put(
         "customizations unregister",
         List.of(

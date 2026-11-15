@@ -211,6 +211,14 @@ jrsctl upgrade rollback <run id> --to-point B
 
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
 
+**Your own changes to the webapp** (next release). Before the upgrade, find out which files you changed and what the new version did to the same files:
+
+```bash
+jrsctl customizations scan --vendor C:\Downloads\8.2\jasperserver-pro.war --target-vendor C:\Downloads\10.0\jasperserver-pro.war --out C:\merge
+```
+
+Each of your files is listed with what to do: carry it over as it is, merge it because the new version changed the file too, find where it went because the new version no longer ships it, or keep it apart because the new version now ships a file at the same path. For each file to merge, `--out` writes your copy and both vendor copies side by side, ready for a merge tool. Nothing is changed or registered.
+
 ### Load a repository into a new schema
 
 The vendor's alternative to an in-place upgrade: a new, empty schema on the new version's buildomatic, loaded from an export of the old server, while the old server keeps running. You need the new version unpacked on the machine (no installation needed), its `default_master.properties` naming the new schema (`js.dbName`) with `appServerType=skipAppServerCheck`, and the database server's password stored with jrsctl.
