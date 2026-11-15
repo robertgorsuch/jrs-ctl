@@ -32,6 +32,7 @@ class RecordSidecarTest {
   @TempDir Path tmp;
 
   private EximFixture fx;
+  private EximFakeAdapter adapter;
 
   private static final String EVERYTHING =
       "<export><property name=\"keyalias\" value=\"e0ddc2e1-7ba1-4e76-a8fa-901aa34a458e\"/>"
@@ -48,7 +49,8 @@ class RecordSidecarTest {
 
   @BeforeEach
   void setUp() throws IOException {
-    fx = new EximFixture(tmp, EximFakeAdapter::new);
+    adapter = new EximFakeAdapter();
+    fx = new EximFixture(tmp, () -> adapter);
   }
 
   @AfterEach
@@ -154,6 +156,68 @@ class RecordSidecarTest {
                 .sidecar()
                 .sourceDatabase())
         .isEmpty();
+  }
+
+  /** Issue #309, ADR-0059: without --jobs the configured server is never asked. */
+  @Test
+  void should_record_why_there_are_no_job_states_without_the_jobs_flag() throws Exception {
+    Path archive = archive("full.zip", Optional.of(EVERYTHING));
+    adapter.jobs.add("7");
+
+    Sidecar sidecar = fx.ops().recordSidecar(options(archive)).sidecar();
+
+    assertThat(sidecar.sidecarVersion()).isEqualTo(Sidecar.CURRENT_VERSION);
+    assertThat(sidecar.jobs().orElseThrow().recorded()).isFalse();
+    assertThat(sidecar.jobs().orElseThrow().reason())
+        .hasValueSatisfying(r -> assertThat(r).contains("without --jobs"));
+  }
+
+  @Test
+  void should_record_the_configured_servers_job_states_with_the_jobs_flag() throws Exception {
+    Path archive = archive("full.zip", Optional.of(EVERYTHING));
+    adapter.jobs.addAll(java.util.List.of("7", "8"));
+
+    Sidecar sidecar =
+        fx.ops()
+            .recordSidecar(
+                new RecordSidecarOptions(
+                    archive,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    false,
+                    Optional.empty(),
+                    true))
+            .sidecar();
+
+    com.jaspersoft.jrsctl.jrs.strategy.SidecarJobs jobs = sidecar.jobs().orElseThrow();
+    assertThat(jobs.recorded()).isTrue();
+    assertThat(jobs.jobs()).extracting(j -> j.id()).containsExactly("7", "8");
+    assertThat(Sidecar.read(Sidecar.pathFor(archive)).orElseThrow().jobs()).contains(jobs);
+  }
+
+  @Test
+  void should_still_write_the_sidecar_when_the_server_cannot_list_the_jobs() throws Exception {
+    Path archive = archive("full.zip", Optional.of(EVERYTHING));
+    adapter.serverUp = () -> false;
+
+    Sidecar sidecar =
+        fx.ops()
+            .recordSidecar(
+                new RecordSidecarOptions(
+                    archive,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    false,
+                    Optional.empty(),
+                    true))
+            .sidecar();
+
+    assertThat(Sidecar.pathFor(archive)).exists();
+    assertThat(sidecar.jobs().orElseThrow().recorded()).isFalse();
+    assertThat(sidecar.jobs().orElseThrow().reason())
+        .hasValueSatisfying(r -> assertThat(r).contains("could not be listed"));
   }
 
   /** An archive made with {@code --keyalias deprecatedImportExportEncSecret} says so itself. */

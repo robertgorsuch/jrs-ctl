@@ -18,10 +18,13 @@ import java.util.TreeSet;
  * taken, from which server, with which request flags, the SHA-256 of the archive and the server
  * keystore fingerprint an import must match, and, when known, the name of the exporting server's
  * repository database ({@code sourceDatabase}, which {@code repository load} refuses as its target
- * schema). Invariants: {@link #pathFor} is the one place the sidecar name is derived, so export and
- * import always agree; the file is written through a temp file and an atomic rename; an unreadable
- * or malformed sidecar surfaces as {@link IllegalArgumentException} for the import precheck to
- * report, never as a silent skip.
+ * schema), and, from {@code sidecarVersion} 2, the {@code jobs} block: the exporting server's
+ * report jobs and their states, or why there are none (issue #309, ADR-0059). Invariants: {@link
+ * #pathFor} is the one place the sidecar name is derived, so export and import always agree; a
+ * sidecar without {@code sidecarVersion} is version 1 and has no {@code jobs} block; readers ignore
+ * fields they do not know, so an older jrsctl still reads a version 2 sidecar; the file is written
+ * through a temp file and an atomic rename; an unreadable or malformed sidecar surfaces as {@link
+ * IllegalArgumentException} for the import precheck to report, never as a silent skip.
  */
 public record Sidecar(
     Instant exportedAt,
@@ -32,9 +35,17 @@ public record Sidecar(
     String sha256,
     ExportImportStrategy.Kind strategy,
     String origin,
-    Optional<String> sourceDatabase) {
+    Optional<String> sourceDatabase,
+    Integer sidecarVersion,
+    Optional<SidecarJobs> jobs) {
 
   public static final String SUFFIX = ".jrsctl.json";
+
+  /** A sidecar written before the version field existed. */
+  public static final int VERSION_1 = 1;
+
+  /** The version this jrsctl writes: version 1 plus the {@code jobs} block. */
+  public static final int CURRENT_VERSION = 2;
 
   /** Written by a jrsctl export, with the server's own answers. */
   public static final String ORIGIN_EXPORT = "export";
@@ -57,6 +68,50 @@ public record Sidecar(
         sourceDatabase == null
             ? Optional.empty()
             : sourceDatabase.map(String::strip).filter(d -> !d.isEmpty());
+    // nor a version or a jobs block
+    sidecarVersion = sidecarVersion == null ? VERSION_1 : sidecarVersion;
+    jobs = jobs == null ? Optional.empty() : jobs;
+  }
+
+  /** A sidecar this jrsctl writes, at {@link #CURRENT_VERSION}, without a jobs block yet. */
+  public Sidecar(
+      Instant exportedAt,
+      String serverIdentity,
+      String serverVersion,
+      Optional<String> keystoreFingerprint,
+      Flags flags,
+      String sha256,
+      ExportImportStrategy.Kind strategy,
+      String origin,
+      Optional<String> sourceDatabase) {
+    this(
+        exportedAt,
+        serverIdentity,
+        serverVersion,
+        keystoreFingerprint,
+        flags,
+        sha256,
+        strategy,
+        origin,
+        sourceDatabase,
+        CURRENT_VERSION,
+        Optional.empty());
+  }
+
+  /** The same sidecar with {@code jobs} as its jobs block. */
+  public Sidecar withJobs(SidecarJobs block) {
+    return new Sidecar(
+        exportedAt,
+        serverIdentity,
+        serverVersion,
+        keystoreFingerprint,
+        flags,
+        sha256,
+        strategy,
+        origin,
+        sourceDatabase,
+        CURRENT_VERSION,
+        Optional.of(block));
   }
 
   /** A sidecar without a source database name. */

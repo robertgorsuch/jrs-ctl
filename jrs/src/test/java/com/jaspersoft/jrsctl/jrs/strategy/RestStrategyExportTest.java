@@ -170,6 +170,61 @@ class RestStrategyExportTest {
     assertThat(Files.exists(output)).isFalse();
   }
 
+  /** Issue #309, ADR-0059: the sidecar carries every report job and its state at export time. */
+  @Test
+  void should_record_the_report_jobs_and_their_states_in_the_sidecar() throws IOException {
+    stubStart();
+    stubStates("{\"phase\":\"ready\",\"message\":\"Export succeeded\"}");
+    stubDownload();
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/jobs")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withBody(
+                        "{\"jobsummary\":[{\"id\":8320,\"label\":\"Daily\","
+                            + "\"reportUnitURI\":\"/public/a\",\"owner\":\"jasperadmin|organization_1\","
+                            + "\"state\":{\"value\":\"NORMAL\"}},"
+                            + "{\"id\":8321,\"label\":\"Weekly\",\"state\":{\"value\":\"PAUSED\"}}]}")));
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    com.jaspersoft.jrsctl.jrs.strategy.Sidecar sidecar =
+        Sidecar.read(Sidecar.pathFor(output)).orElseThrow();
+    assertThat(sidecar.sidecarVersion()).isEqualTo(Sidecar.CURRENT_VERSION);
+    SidecarJobs jobs = sidecar.jobs().orElseThrow();
+    assertThat(jobs.recorded()).isTrue();
+    assertThat(jobs.jobs())
+        .extracting(j -> j.id() + "=" + j.state())
+        .containsExactly("8320=NORMAL", "8321=PAUSED");
+    assertThat(jobs.jobs().get(0).owner()).isEqualTo("jasperadmin|organization_1");
+  }
+
+  /** Issue #309: a job listing the server refuses never fails the export; the sidecar says why. */
+  @Test
+  void should_write_the_sidecar_with_the_reason_when_the_jobs_cannot_be_listed()
+      throws IOException {
+    stubStart();
+    stubStates("{\"phase\":\"ready\",\"message\":\"Export succeeded\"}");
+    stubDownload();
+    wm.stubFor(
+        get(urlPathEqualTo(rest.path("/rest_v2/jobs"))).willReturn(aResponse().withStatus(500)));
+    List<Step> steps = new RestStrategy(fx.polling).exportSteps(request());
+    Context ctx = fx.context(rest.config, rest.adapter);
+
+    RunOutcome outcome = fx.run(steps, ctx);
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Succeeded.class);
+    SidecarJobs jobs = Sidecar.read(Sidecar.pathFor(output)).orElseThrow().jobs().orElseThrow();
+    assertThat(jobs.recorded()).isFalse();
+    assertThat(jobs.jobs()).isEmpty();
+    assertThat(jobs.reason())
+        .hasValueSatisfying(r -> assertThat(r).contains("could not be listed"));
+  }
+
   /** Field test 2, E4: the alias goes in the export body and into the sidecar for the import. */
   @Test
   void should_send_the_key_alias_and_record_it_in_the_sidecar_when_given() throws IOException {

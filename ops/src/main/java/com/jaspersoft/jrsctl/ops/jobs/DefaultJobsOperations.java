@@ -154,6 +154,7 @@ public final class DefaultJobsOperations implements JobsOperations {
             + " recorded as paused stay paused");
     List<String> warnings = new ArrayList<>();
     sourceWarning(record, identity).ifPresent(warnings::add);
+    pausedAtExportWarning(input.from().orElseThrow(), record).ifPresent(warnings::add);
     if (!selection.errorState().isEmpty()) {
       warnings.add(
           selection.errorState().size()
@@ -201,7 +202,8 @@ public final class DefaultJobsOperations implements JobsOperations {
     inputs.put("selection", selection);
     if (input.from().isPresent()) {
       inputs.put("record", input.from().get().toString());
-      inputs.put("recordSha256", sha256(input.from().get()));
+      // an archive stands for its sidecar: hash the few kilobytes that hold the states
+      inputs.put("recordSha256", sha256(JobsRecord.sourceFile(input.from().get())));
     }
     return new Plan(
         operation.replace('.', '-') + "-" + RunIds.next(services.clock()),
@@ -240,6 +242,24 @@ public final class DefaultJobsOperations implements JobsOperations {
             + record.recordedAt()
             + "; its jobs are matched here by id, or by label, report and owner when the id"
             + " differs");
+  }
+
+  /**
+   * A sidecar records the states at export time (ADR-0059); when every job was paused then, they
+   * were most likely paused for the move, and resuming from the sidecar resumes nothing.
+   */
+  private static Optional<String> pausedAtExportWarning(Path from, JobsRecord record) {
+    Optional<Path> sidecar = JobsRecord.sidecarOf(from);
+    if (sidecar.isEmpty()
+        || record.jobs().isEmpty()
+        || !record.jobs().stream().allMatch(JobSummary::paused)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "every job in "
+            + sidecar.get()
+            + " was paused when the archive was exported; if they were paused for the move,"
+            + " resume from the `jobs record` file taken before the pause instead");
   }
 
   private static Optional<String> unmatchedWarning(JobSelection selection) {

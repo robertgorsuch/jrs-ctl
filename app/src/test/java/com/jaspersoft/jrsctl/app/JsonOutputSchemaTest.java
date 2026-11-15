@@ -966,6 +966,21 @@ class JsonOutputSchemaTest {
                     "--json",
                     "--home",
                     emptyHome(dir).toString())));
+    // #309: --jobs without a reachable configured server still writes the sidecar, with the reason
+    s.add(
+        of(
+            "export record --jobs without a configured server",
+            "export record",
+            0,
+            dir ->
+                run(
+                    "export",
+                    "record",
+                    exportZip(dir, true).toString(),
+                    "--jobs",
+                    "--json",
+                    "--home",
+                    emptyHome(dir).toString())));
     s.add(
         of(
             "export record refuses an archive without index.xml",

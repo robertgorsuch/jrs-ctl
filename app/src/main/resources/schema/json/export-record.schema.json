@@ -8,6 +8,18 @@
   "properties": {
     "archive": { "type": "string" },
     "sidecar": { "type": "string", "description": "The .jrsctl.json written next to the archive." },
+    "jobs": {
+      "type": "object",
+      "description": "The sidecar's jobs block (issue #309, ADR-0059): whether the configured server's report jobs were recorded (--jobs), how many, from where, or why not.",
+      "additionalProperties": false,
+      "required": ["recorded", "count"],
+      "properties": {
+        "recorded": { "type": "boolean" },
+        "count": { "type": "integer", "minimum": 0 },
+        "serverUrl": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "serverVersion": { "type": "string", "description": "From index.xml's jsVersion, else --source-version, else \"unknown\"." },
     "origin": { "type": "string", "enum": ["record"], "description": "Recorded from the archive by hand, not written by a jrsctl export." },

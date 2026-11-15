@@ -101,6 +101,57 @@ class SidecarTest {
     assertThat(read.get().flags().uris()).containsExactly("/public");
   }
 
+  /** Issue #309, ADR-0059: the jobs block and the version round trip. */
+  @Test
+  void should_round_trip_the_jobs_block_at_the_current_version() throws Exception {
+    Path file = tmp.resolve("jobs.zip.jrsctl.json");
+    SidecarJobs block =
+        SidecarJobs.recorded(
+            Instant.parse("2026-11-15T10:00:00Z"),
+            "http://srv:8080/jasperserver-pro",
+            List.of(
+                new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                    "1", "Daily", "/r", "jasperadmin", "NORMAL"),
+                new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                    "2", "Weekly", "/r", "joe", "PAUSED")));
+    Sidecar.write(file, sidecar(Optional.empty()).withJobs(block));
+
+    Sidecar read = Sidecar.read(file).orElseThrow();
+
+    assertThat(read.sidecarVersion()).isEqualTo(Sidecar.CURRENT_VERSION);
+    assertThat(read.jobs()).contains(block);
+    assertThat(Files.readString(file, StandardCharsets.UTF_8)).contains("\"sidecarVersion\" : 2");
+  }
+
+  /** Issue #309: a sidecar written before the version field is version 1 with no jobs block. */
+  @Test
+  void should_read_a_sidecar_without_version_or_jobs_as_version_1() throws Exception {
+    Path file = tmp.resolve("v1.zip.jrsctl.json");
+    Sidecar.write(file, sidecar(Optional.empty()));
+    ObjectNode tree =
+        (ObjectNode) Json.mapper().readTree(Files.readString(file, StandardCharsets.UTF_8));
+    tree.remove("sidecarVersion");
+    tree.remove("jobs");
+    Files.writeString(file, Json.write(tree), StandardCharsets.UTF_8);
+
+    Sidecar read = Sidecar.read(file).orElseThrow();
+
+    assertThat(read.sidecarVersion()).isEqualTo(Sidecar.VERSION_1);
+    assertThat(read.jobs()).isEmpty();
+  }
+
+  /** Issue #309: a block not recorded carries its reason and no jobs. */
+  @Test
+  void should_round_trip_a_block_that_was_not_recorded() throws Exception {
+    Path file = tmp.resolve("none.zip.jrsctl.json");
+    Sidecar.write(file, sidecar(Optional.empty()).withJobs(SidecarJobs.notRecorded("server down")));
+
+    SidecarJobs read = Sidecar.read(file).orElseThrow().jobs().orElseThrow();
+
+    assertThat(read.recorded()).isFalse();
+    assertThat(read.reason()).contains("server down");
+  }
+
   /** Issue #263: a sidecar written by an export says so; one written before the field is one. */
   @Test
   void should_default_the_origin_to_export_for_a_sidecar_written_before_it_existed()

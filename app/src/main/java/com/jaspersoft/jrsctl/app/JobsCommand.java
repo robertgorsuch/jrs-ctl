@@ -179,7 +179,9 @@ final class JobsCommand implements Runnable {
           names = "--from",
           required = true,
           paramLabel = "<record>",
-          description = "Pause the jobs this jobs record file names, matched on the server.")
+          description =
+              "Pause the jobs this jobs record file (or export archive with a sidecar that"
+                  + " records the job states) names, matched on the server.")
       Path from;
     }
 
@@ -216,7 +218,9 @@ final class JobsCommand implements Runnable {
         names = "--from",
         required = true,
         paramLabel = "<record>",
-        description = "The jobs record file, usually taken on the source server before the move.")
+        description =
+            "The jobs record file, usually taken on the source server before the move, or an"
+                + " export archive whose .jrsctl.json sidecar records the job states.")
     Path from;
 
     @Option(names = "--plan", description = "Show the plan and exit without running it.")
