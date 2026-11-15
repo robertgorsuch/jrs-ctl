@@ -158,9 +158,13 @@ public final class AppFakeAdapter implements JrsAdapter {
   }
 
   @Override
-  public java.util.List<String> listJobIds() {
-    return java.util.List.of();
+  public java.util.List<com.jaspersoft.jrsctl.jrs.api.JobSummary> listJobs() {
+    return java.util.List.copyOf(jobs);
   }
+
+  /** The report jobs the fake server holds (issue #304); a test adds to it. */
+  public final java.util.List<com.jaspersoft.jrsctl.jrs.api.JobSummary> jobs =
+      new java.util.ArrayList<>();
 
   @Override
   public void pauseJobs(java.util.List<String> ids) {}

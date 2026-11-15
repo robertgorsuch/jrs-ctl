@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-15 (`jobs record`, `jobs pause`, `jobs resume`; ADR-0056, issue #304)
+
+- §10.7 (new): report job states across a migration. `jobs record` writes every job's id, label, report, owner and state to a `jrsctl-jobs/1` file, read-only; `jobs pause (--all | --from <record>)` and `jobs resume --from <record>` are one-step journaled plans whose compensation changes back exactly the ids they changed. `resume` resumes only jobs recorded as active and paused now; jobs recorded as paused stay paused, error states are left to the operator. A recorded job is matched by id with the same label, report and owner, else by that key when exactly one job has it; otherwise it is reported unmatched. §7.2: the adapter's `listJobs()` returns `JobSummary` with the state; `listJobIds()` derives from it.
+
 ## Draft 1.2 amendment — 2026-11-09 (`repository load` renders the configuration first; issue #279 item 6)
 
 - §10.5: preflight ends with `render-config`, `js-ant clean-config` then `gen-config`, the first step that touches disk and only the buildomatic's own `build_conf/default`. The rendered `metadata.jdbc.url` must name `--schema` on the database server the plan was made for, else the step fails, `clean-config` undoes it and the run ends with exit 3 and nothing created. The rendered `*.properties` are kept, passwords masked, under `snapshots/<runId>/rendered-config`, and `record-load` writes their hashes. The rendered files are not in the fingerprint; their source `default_master.properties` is.

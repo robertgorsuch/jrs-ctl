@@ -237,17 +237,49 @@ public final class FakeJrsAdapter implements JrsAdapter {
   @Override
   public List<String> listJobIds() {
     calls.add("listJobIds");
-    return List.of();
+    return jobs.stream().map(com.jaspersoft.jrsctl.jrs.api.JobSummary::id).toList();
+  }
+
+  /** The server's report jobs (issue #304); pause and resume change their state in place. */
+  public final List<com.jaspersoft.jrsctl.jrs.api.JobSummary> jobs = new ArrayList<>();
+
+  /** When set, {@link #listJobs()} throws it. */
+  public Optional<RuntimeException> listJobsFailure = Optional.empty();
+
+  /** When set, {@link #pauseJobs} and {@link #resumeJobs} throw it after recording the call. */
+  public Optional<RuntimeException> changeJobsFailure = Optional.empty();
+
+  @Override
+  public List<com.jaspersoft.jrsctl.jrs.api.JobSummary> listJobs() {
+    calls.add("listJobs");
+    if (listJobsFailure.isPresent()) {
+      throw listJobsFailure.get();
+    }
+    return List.copyOf(jobs);
   }
 
   @Override
   public void pauseJobs(List<String> ids) {
     calls.add("pauseJobs " + ids);
+    setJobState(ids, "PAUSED");
   }
 
   @Override
   public void resumeJobs(List<String> ids) {
     calls.add("resumeJobs " + ids);
+    setJobState(ids, "NORMAL");
+  }
+
+  private void setJobState(List<String> ids, String state) {
+    if (changeJobsFailure.isPresent()) {
+      throw changeJobsFailure.get();
+    }
+    jobs.replaceAll(
+        j ->
+            ids.contains(j.id())
+                ? new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                    j.id(), j.label(), j.reportUnitUri(), j.owner(), state)
+                : j);
   }
 
   @Override

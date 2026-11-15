@@ -1163,6 +1163,79 @@ class JsonOutputSchemaTest {
 
     s.add(
         of(
+            "jobs record",
+            "jobs record",
+            0,
+            dir -> {
+              serverHome(dir);
+              TestAdapterFactory.adapter.jobs.add(
+                  new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                      "1898", "Daily", "/reports/a", "jasperadmin|organization_1", "NORMAL"));
+              TestAdapterFactory.adapter.jobs.add(
+                  new com.jaspersoft.jrsctl.jrs.api.JobSummary("1899", "", "", "", ""));
+              return run(join(serverArgs(dir), "jobs", "record"));
+            }));
+    s.add(
+        of(
+            "jobs record refuses to overwrite a file",
+            "jobs record",
+            2,
+            dir -> {
+              serverHome(dir);
+              Path out = dir.resolve("jobs.json");
+              Files.writeString(out, "keep");
+              return run(join(serverArgs(dir), "jobs", "record", "--out", out.toString()));
+            }));
+    s.add(
+        of(
+            "jobs pause --all --plan",
+            "jobs pause",
+            0,
+            dir -> {
+              serverHome(dir);
+              TestAdapterFactory.adapter.jobs.add(
+                  new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                      "1898", "Daily", "/reports/a", "jasperadmin", "NORMAL"));
+              return run(join(serverArgs(dir), "jobs", "pause", "--all", "--plan"));
+            }));
+    s.add(
+        of(
+            "jobs resume --plan",
+            "jobs resume",
+            0,
+            dir -> {
+              serverHome(dir);
+              TestAdapterFactory.adapter.jobs.add(
+                  new com.jaspersoft.jrsctl.jrs.api.JobSummary(
+                      "7", "Daily", "/reports/a", "jasperadmin", "PAUSED"));
+              Path record = dir.resolve("source-jobs.json");
+              Files.writeString(
+                  record,
+                  """
+                  {"format":"jrsctl-jobs/1","recordedAt":"2026-11-15T10:00:00Z",
+                   "server":{"url":"http://source:8080/jasperserver-pro","version":"8.2.0"},
+                   "jobs":[{"id":"1898","label":"Daily","reportUnitURI":"/reports/a",
+                            "owner":"jasperadmin","state":"NORMAL"}]}
+                  """,
+                  StandardCharsets.UTF_8);
+              return run(
+                  join(serverArgs(dir), "jobs", "resume", "--from", record.toString(), "--plan"));
+            }));
+    s.add(
+        of(
+            "jobs resume from a file that is not a record",
+            "jobs resume",
+            2,
+            dir -> {
+              serverHome(dir);
+              Path record = dir.resolve("not-a-record.json");
+              Files.writeString(record, "{}");
+              return run(
+                  join(serverArgs(dir), "jobs", "resume", "--from", record.toString(), "--plan"));
+            }));
+
+    s.add(
+        of(
             "customizations register",
             "customizations register",
             0,

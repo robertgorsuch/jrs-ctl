@@ -623,7 +623,7 @@ class StepIdempotencyTest {
     }
 
     @Override
-    public java.util.List<String> listJobIds() {
+    public java.util.List<com.jaspersoft.jrsctl.jrs.api.JobSummary> listJobs() {
       return java.util.List.of();
     }
 

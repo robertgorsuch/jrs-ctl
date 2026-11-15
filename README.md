@@ -25,6 +25,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Upgrade to a new version | `jrsctl upgrade` |
 | Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` |
 | Move stored passwords to the modern format | `jrsctl passwords migrate` |
+| Keep report jobs paused or running as they were across a move (next release) | `jrsctl jobs record` / `jobs resume` |
 | Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
@@ -233,6 +234,21 @@ jrsctl passwords migrate --db-backup-confirmed
 ```
 
 Both run on the server host, where the webapp is deployed, and need JasperReports Server 10.1 or later.
+
+### Keep report jobs as they were across a move
+
+*Not in a release yet; comes with the next one.*
+
+When you move a repository to a new server, you usually stop the old scheduler during the export and switch the jobs on at the new server only after checking it. Record each job's state first, so that afterwards exactly the jobs that were running start again and the ones you had paused stay paused.
+
+```bash
+jrsctl jobs record --out source-jobs.json        # on the old server, before anything is paused
+jrsctl jobs pause --all                          # on the old server, before the export
+jrsctl jobs resume --from source-jobs.json --plan    # on the new server, after checking it
+jrsctl jobs resume --from source-jobs.json
+```
+
+`jobs record` changes nothing and never overwrites a file. The new server may number its jobs differently, so jrsctl matches each job by its id, or by its name, report and owner. A job it cannot match, or whose match is ambiguous, is listed and left alone. Jobs recorded in an error state are listed for you to decide. If a pause or resume fails, it is undone, and only the jobs that run changed are touched.
 
 ---
 

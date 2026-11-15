@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.jrs.api.BrokenDependencies;
 import com.jaspersoft.jrsctl.jrs.api.ExportImportStrategy;
 import com.jaspersoft.jrsctl.ops.exim.ExportImportOperations;
 import com.jaspersoft.jrsctl.ops.hotfix.HotfixOperations;
+import com.jaspersoft.jrsctl.ops.jobs.JobsOperations;
 import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
@@ -566,6 +567,9 @@ class PlanRegistryTest {
             },
             () -> {
               throw new IllegalStateException("not needed");
+            },
+            () -> {
+              throw new IllegalStateException("not needed");
             });
 
     assertThatThrownBy(() -> registry.rebuild("hotfix.teleport", "{}"))
@@ -578,6 +582,9 @@ class PlanRegistryTest {
   void should_refuse_stored_arguments_that_are_not_json() {
     PlanRegistry registry =
         new PlanRegistry(
+            () -> {
+              throw new IllegalStateException("not needed");
+            },
             () -> {
               throw new IllegalStateException("not needed");
             },
@@ -606,6 +613,7 @@ class PlanRegistryTest {
   private final Recorder upgrade = new Recorder();
   private final Recorder repository = new Recorder();
   private final Recorder passwords = new Recorder();
+  private final Recorder jobs = new Recorder();
 
   private PlanRegistry registry() {
     return new PlanRegistry(
@@ -613,7 +621,8 @@ class PlanRegistryTest {
         () -> exim.as(ExportImportOperations.class),
         () -> upgrade.as(UpgradeOperations.class),
         () -> repository.as(com.jaspersoft.jrsctl.ops.repository.RepositoryOperations.class),
-        () -> passwords.as(com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.class));
+        () -> passwords.as(com.jaspersoft.jrsctl.ops.passwords.PasswordOperations.class),
+        () -> jobs.as(com.jaspersoft.jrsctl.ops.jobs.JobsOperations.class));
   }
 
   /** Spec §10.6: a migration run rebuilds from its stored arguments for {@code runs recover}. */
@@ -626,6 +635,24 @@ class PlanRegistryTest {
 
     assertThat(passwords.calls).containsExactly("planMigrate");
     assertThat(passwords.args.get(0)).containsExactly(options);
+  }
+
+  /** Spec §10.7: jobs pause and resume runs rebuild from their stored arguments (issue #304). */
+  @Test
+  void should_plan_the_same_jobs_change_when_rebuilding_from_the_stored_arguments() {
+    Path record = Path.of("records", "jobs.json").toAbsolutePath().normalize();
+    JobsOperations.PauseOptions all = new JobsOperations.PauseOptions(Optional.empty());
+    JobsOperations.PauseOptions from = new JobsOperations.PauseOptions(Optional.of(record));
+    JobsOperations.ResumeOptions resume = new JobsOperations.ResumeOptions(record);
+
+    registry().rebuild(PlanRegistry.JOBS_PAUSE, PlanRegistry.jobsPauseArgs(all));
+    registry().rebuild(PlanRegistry.JOBS_PAUSE, PlanRegistry.jobsPauseArgs(from));
+    registry().rebuild(PlanRegistry.JOBS_RESUME, PlanRegistry.jobsResumeArgs(resume));
+
+    assertThat(jobs.calls).containsExactly("planPause", "planPause", "planResume");
+    assertThat(jobs.args.get(0)).containsExactly(all);
+    assertThat(jobs.args.get(1)).containsExactly(from);
+    assertThat(jobs.args.get(2)).containsExactly(resume);
   }
 
   /** Spec §10.5: a load run rebuilds from its stored arguments for {@code runs recover}. */

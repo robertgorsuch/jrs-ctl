@@ -358,6 +358,36 @@ final class HelpExamples {
                 "Also remove the completed rows from the vendor's migration tracking table",
                 "jrsctl passwords migrate --db-backup-confirmed --cleanup")));
     m.put(
+        "jobs record",
+        List.of(
+            new Example(
+                "Write every report job's state to a file in the jrsctl home; changes nothing",
+                "jrsctl jobs record"),
+            new Example(
+                "Record the source server's jobs before a move, to a file you name",
+                "jrsctl jobs record --out /data/jobs-source-8.2.json")));
+    m.put(
+        "jobs pause",
+        List.of(
+            new Example(
+                "Look at the plan to pause every job; changes nothing",
+                "jrsctl jobs pause --all --plan"),
+            new Example(
+                "Pause every report job (record the states first with jrsctl jobs record)",
+                "jrsctl jobs pause --all"),
+            new Example(
+                "Pause only the jobs a record names",
+                "jrsctl jobs pause --from /data/jobs-source-8.2.json")));
+    m.put(
+        "jobs resume",
+        List.of(
+            new Example(
+                "See which jobs would be resumed, left paused or left to you; changes nothing",
+                "jrsctl jobs resume --from /data/jobs-source-8.2.json --plan"),
+            new Example(
+                "Resume the jobs that were active when the record was taken",
+                "jrsctl jobs resume --from /data/jobs-source-8.2.json")));
+    m.put(
         "customizations register",
         List.of(
             new Example(

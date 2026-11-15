@@ -287,6 +287,9 @@ class ImportCommandTest {
             },
             () -> {
               throw new UnsupportedOperationException("passwords not used");
+            },
+            () -> {
+              throw new UnsupportedOperationException("jobs not used");
             });
 
     Plan plan = registry.rebuild(PlanRegistry.IMPORT, PlanRegistry.importArgs(options));

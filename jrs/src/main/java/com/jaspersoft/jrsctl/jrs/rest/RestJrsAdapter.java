@@ -11,6 +11,7 @@ import com.jaspersoft.jrsctl.jrs.api.ExportRequest;
 import com.jaspersoft.jrsctl.jrs.api.Handles;
 import com.jaspersoft.jrsctl.jrs.api.HealthReport;
 import com.jaspersoft.jrsctl.jrs.api.ImportRequest;
+import com.jaspersoft.jrsctl.jrs.api.JobSummary;
 import com.jaspersoft.jrsctl.jrs.api.JrsAdapter;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.KeystoreInfo;
@@ -1094,7 +1095,7 @@ public final class RestJrsAdapter implements JrsAdapter {
   }
 
   @Override
-  public List<String> listJobIds() {
+  public List<JobSummary> listJobs() {
     ensureSession();
     RestClient.Response r = client.get(JOBS);
     if (r.status() == 204) {
@@ -1102,15 +1103,21 @@ public final class RestJrsAdapter implements JrsAdapter {
     }
     client.require2xx(r, "GET", JOBS);
     Wire.JobSummaryList list = Wire.parse(r.body(), Wire.JobSummaryList.class, "GET", JOBS);
-    List<String> ids = new ArrayList<>();
+    List<JobSummary> jobs = new ArrayList<>();
     if (list.jobsummary() != null) {
       for (Wire.JobSummary job : list.jobsummary()) {
         if (job != null && job.id() != null) {
-          ids.add(Long.toString(job.id()));
+          jobs.add(
+              new JobSummary(
+                  Long.toString(job.id()),
+                  job.label(),
+                  job.reportUnitURI(),
+                  job.owner(),
+                  job.state() == null ? null : job.state().value()));
         }
       }
     }
-    return List.copyOf(ids);
+    return List.copyOf(jobs);
   }
 
   @Override

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/jobs-record.schema.json",
+  "title": "jrsctl jobs record --json (spec §10.7, ADR-0056, #304)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["file", "server", "recordedAt", "counts", "jobs"],
+  "properties": {
+    "file": { "type": "string", "description": "The jobs record written (format jrsctl-jobs/1)." },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "version"],
+      "properties": {
+        "url": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "active", "paused", "other"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "active": { "type": "integer", "minimum": 0, "description": "NORMAL, EXECUTING or WAITING." },
+        "paused": { "type": "integer", "minimum": 0 },
+        "other": { "type": "integer", "minimum": 0, "description": "An error state, or none reported." }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "reportUnitURI", "owner", "state"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string" },
+          "reportUnitURI": { "type": "string" },
+          "owner": { "type": "string" },
+          "state": { "type": "string", "description": "state.value of GET /rest_v2/jobs in upper case; empty when the server sent none." }
+        }
+      }
+    }
+  }
+}
