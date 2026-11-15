@@ -92,13 +92,14 @@ final class WriteSidecar implements Step {
       String sha256 = ctx.platform().files().sha256(archive);
       Sidecar sidecar =
           new Sidecar(
-              clock.instant(),
-              identity.fingerprintInput(),
-              identity.version(),
-              keystore.fingerprint(),
-              Sidecar.Flags.of(request),
-              sha256,
-              strategy);
+                  clock.instant(),
+                  identity.fingerprintInput(),
+                  identity.version(),
+                  keystore.fingerprint(),
+                  Sidecar.Flags.of(request),
+                  sha256,
+                  strategy)
+              .withJobs(jobs(adapter, identity));
       Sidecar.write(target, sidecar);
       Logs.info(
           out,
@@ -108,13 +109,35 @@ final class WriteSidecar implements Step {
               + target
               + (keystore.fingerprint().isPresent()
                   ? " with keystore fingerprint"
-                  : " without keystore fingerprint (" + keystore.reason().orElse("") + ")"));
+                  : " without keystore fingerprint (" + keystore.reason().orElse("") + ")")
+              + sidecar
+                  .jobs()
+                  .map(
+                      j ->
+                          j.recorded()
+                              ? ", " + j.jobs().size() + " report job state(s)"
+                              : ", no report job states (" + j.reason().orElse("") + ")")
+                  .orElse(""));
       return StepResult.ok();
     } catch (IOException e) {
       return Failures.recoverable(
           "cannot write " + target + ": " + e.getMessage(),
           List.of(target),
           "check permissions next to " + archive);
+    }
+  }
+
+  /**
+   * The server's report jobs and their states now (issue #309, ADR-0059). A failure to list them
+   * never fails the export: the block then says why.
+   */
+  private SidecarJobs jobs(JrsAdapter adapter, ServerIdentity identity) {
+    try {
+      return SidecarJobs.recorded(
+          clock.instant(), identity.baseUrl().toString(), adapter.listJobs());
+    } catch (RuntimeException e) {
+      return SidecarJobs.notRecorded(
+          "the server's report jobs could not be listed: " + e.getMessage());
     }
   }
 

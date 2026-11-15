@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.ops.ReportItem;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The {@code import verify} result (issue #262, spec §9.4): one item per kind the archive holds,
@@ -19,9 +20,37 @@ public record ImportVerifyReport(
     int exitCode,
     String archive,
     ArchiveCounts archiveCounts,
-    Map<String, List<String>> missing) {
+    Map<String, List<String>> missing,
+    Optional<Content> content) {
 
   public static final int EXIT_OK = 0;
+
+  /** What differs for one URI with {@code --content} (issue #307, ADR-0060). */
+  public record Difference(String uri, String what) {
+    public Difference {
+      Objects.requireNonNull(uri, "uri");
+      Objects.requireNonNull(what, "what");
+    }
+  }
+
+  /** The files and descriptors {@code --content} compared, and what differs, in URI order. */
+  public record Content(int files, int descriptors, List<Difference> differences) {
+    public Content {
+      differences = List.copyOf(differences);
+    }
+  }
+
+  /** A report without the content comparison. */
+  public ImportVerifyReport(
+      List<ReportItem> items,
+      Report.Counts counts,
+      int exitCode,
+      String archive,
+      ArchiveCounts archiveCounts,
+      Map<String, List<String>> missing) {
+    this(items, counts, exitCode, archive, archiveCounts, missing, Optional.empty());
+  }
+
   public static final int EXIT_FAILED = 2;
 
   /** What the archive holds, by kind. */
@@ -35,13 +64,15 @@ public record ImportVerifyReport(
     Objects.requireNonNull(archiveCounts, "archiveCounts");
     items = List.copyOf(items);
     missing = Map.copyOf(missing);
+    content = content == null ? Optional.empty() : content;
   }
 
   static ImportVerifyReport of(
       List<ReportItem> unsorted,
       String archive,
       ArchiveCounts archiveCounts,
-      Map<String, List<String>> missing) {
+      Map<String, List<String>> missing,
+      Optional<Content> content) {
     Report report = Report.of(unsorted);
     return new ImportVerifyReport(
         report.items(),
@@ -49,7 +80,8 @@ public record ImportVerifyReport(
         report.ok() ? EXIT_OK : EXIT_FAILED,
         archive,
         archiveCounts,
-        missing);
+        missing,
+        content);
   }
 
   public boolean ok() {

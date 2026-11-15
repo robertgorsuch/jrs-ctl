@@ -466,6 +466,10 @@ class Phase8CrashRecoveryTest {
   private static String sidecarWithoutTimestamp(Path sidecar) throws IOException {
     ObjectNode node = (ObjectNode) JSON.readTree(Files.readString(sidecar, StandardCharsets.UTF_8));
     node.remove("exportedAt");
+    // the jobs block's own time (#309) is when the sidecar step ran, which differs between runs too
+    if (node.get("jobs") instanceof ObjectNode jobs) {
+      jobs.remove("recordedAt");
+    }
     return node.toString();
   }
 

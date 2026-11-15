@@ -210,6 +210,39 @@ final class EximFakeAdapter implements JrsAdapter {
     return organizations.contains(id);
   }
 
+  /** File content by URI, for {@code import verify --content} (#307); absent means 404. */
+  final java.util.Map<String, String> contents = new java.util.HashMap<>();
+
+  /** Descriptor fields by URI (#307); absent means 404. */
+  final java.util.Map<String, com.jaspersoft.jrsctl.jrs.api.ResourceFields> fields =
+      new java.util.HashMap<>();
+
+  /** Every {@link #resourceFields} call as {@code uri|file}. */
+  final List<String> fieldRequests = new ArrayList<>();
+
+  @Override
+  public java.util.Optional<Path> downloadResource(String uri, Path target) {
+    requireUp("download " + uri);
+    String body = contents.get(uri);
+    if (body == null) {
+      return java.util.Optional.empty();
+    }
+    try {
+      java.nio.file.Files.writeString(target, body, java.nio.charset.StandardCharsets.UTF_8);
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+    return java.util.Optional.of(target);
+  }
+
+  @Override
+  public java.util.Optional<com.jaspersoft.jrsctl.jrs.api.ResourceFields> resourceFields(
+      String uri, boolean file) {
+    requireUp("descriptor " + uri);
+    fieldRequests.add(uri + "|" + file);
+    return java.util.Optional.ofNullable(fields.get(uri));
+  }
+
   /** The report job ids the server holds; a test adds to it to stand for an import's jobs. */
   final List<String> jobs = new ArrayList<>();
 

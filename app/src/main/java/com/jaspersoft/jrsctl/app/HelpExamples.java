@@ -138,7 +138,10 @@ final class HelpExamples {
             new Example("Check everything before a change; changes nothing", "jrsctl doctor"),
             new Example(
                 "Keep diagnosing a server version outside the compatibility matrix",
-                "jrsctl doctor --allow-unsupported")));
+                "jrsctl doctor --allow-unsupported"),
+            new Example(
+                "In a CI pipeline: fail on any WARN too, and write JUnit XML for the test view",
+                "jrsctl doctor --fail-on warn --junit reports/doctor.xml")));
     m.put(
         "smoke",
         List.of(
@@ -147,7 +150,10 @@ final class HelpExamples {
                 "jrsctl smoke"),
             new Example(
                 "Also create, run and delete a temporary report under /temp",
-                "jrsctl smoke --mutating")));
+                "jrsctl smoke --mutating"),
+            new Example(
+                "In a CI pipeline: write JUnit XML for the test view",
+                "jrsctl smoke --junit reports/smoke.xml")));
     m.put(
         "config show",
         List.of(
@@ -256,7 +262,11 @@ final class HelpExamples {
             new Example(
                 "The same, naming the exporting server's keystore for the fingerprint",
                 "jrsctl export record /backups/js-8.2-export.zip"
-                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0")));
+                    + " --source-keystore /home/jrs/.jrsks --source-version 8.2.0"),
+            new Example(
+                "On the exporting server, before any job is paused: also record its report jobs"
+                    + " and their states",
+                "jrsctl export record /backups/js-8.2-export.zip --jobs")));
     m.put(
         "import",
         List.of(
@@ -285,7 +295,12 @@ final class HelpExamples {
                 "jrsctl import verify /backups/full-server.zip"),
             new Example(
                 "The same, listing every missing URI in the JSON report",
-                "jrsctl import verify /backups/full-server.zip --uris --json")));
+                "jrsctl import verify /backups/full-server.zip --uris --json"),
+            new Example(
+                "Also check that what arrived is identical: files by SHA-256, labels, descriptions"
+                    + " and report units' data sources and input controls, under one folder",
+                "jrsctl import verify /backups/full-server.zip --content --uri-prefix"
+                    + " /public/Finance")));
     m.put(
         "upgrade",
         List.of(
@@ -386,7 +401,10 @@ final class HelpExamples {
                 "jrsctl jobs resume --from /data/jobs-source-8.2.json --plan"),
             new Example(
                 "Resume the jobs that were active when the record was taken",
-                "jrsctl jobs resume --from /data/jobs-source-8.2.json")));
+                "jrsctl jobs resume --from /data/jobs-source-8.2.json"),
+            new Example(
+                "Take the states from the sidecar of an export archive instead",
+                "jrsctl jobs resume --from /backups/full-server.zip --plan")));
     m.put(
         "customizations register",
         List.of(

@@ -131,6 +131,47 @@ Token authentication (`server.auth.mode: token`) sends the pre-authentication to
 
 Two rollbacks deserve a sentence of their own, and the plan summary carries it: **`import` rollback deletes what the failed import created** under the snapshotted folders, judged against a listing taken just before the import, and then re-imports the pre-import snapshot (anything anyone else creates there in between is deleted with them; since issue #100, before which additions were left behind), and **`upgrade --mode samedb` rollback restores files only** (the migrated database must be restored from your own database backup).
 
+## Gating a container image in CI
+
+When JasperReports Server is built as a container image, jrsctl does not run inside the image: a hotfix or upgrade made in a running container is lost at the next build, and `init` and `doctor` refuse a local installation inside a container with exit 6 (ADR-0043). That rule is about managing an installation. It does not apply to the checks below, which read a tree taken out of the image or talk to a running test container over REST from the pipeline's own runner (#308, ADR-0058).
+
+1. **Take the webapp tree out of the image**, not out of a running container, so the scan sees the files the build put there rather than values substituted at start-up. For example, with Docker:
+
+   ```bash
+   docker create --name jrs-scan <image>
+   docker cp jrs-scan:/usr/local/tomcat/webapps/jasperserver-pro ./extracted/jasperserver-pro
+   docker rm jrs-scan
+   ```
+
+   The path inside the image depends on how it was built.
+2. **Compare it with the vendor's copy** of the same version. This needs no configuration:
+
+   ```bash
+   jrsctl customizations scan --vendor ./dist/jasperserver-pro.war --installed ./extracted/jasperserver-pro --json > customizations.json
+   ```
+3. **Start the image as a test stack** in the pipeline, and point a remote configuration at it. `init --remote` writes a server-only configuration whose admin password is the reference `env:JRS_PASSWORD`, so the secret comes from the pipeline's secret store and is never written to disk:
+
+   ```bash
+   jrsctl init --remote http://jrs-test:8080/jasperserver-pro --yes --home ./jrsctl-home
+   ```
+
+   Set `smoke.reportUri` to a report the image carries, for example with `--set smoke.reportUri=/public/Samples/Reports/<report>` on the `smoke` line or `jrsctl config set smoke.reportUri ...`; without it the report check is a WARN.
+4. **Gate on the reports**:
+
+   ```bash
+   export JRS_PASSWORD=<from the pipeline's secret store>
+   jrsctl doctor --home ./jrsctl-home --fail-on warn --junit reports/doctor.xml
+   jrsctl smoke  --home ./jrsctl-home --fail-on warn --junit reports/smoke.xml
+   ```
+
+   In a remote configuration every item about a local installation, including `deployment`, is SKIP, so the container rule never fires here.
+
+**Exit codes for the gate.** 0 passes. **2** fails: an item failed, or with `--fail-on warn` an item is a WARN, or the JUnit file could not be written. **6** (`doctor` only) the server version is outside the compatibility matrix. **1** is a usage error in the pipeline script. `--fail-on warn` never turns a failure into a pass and never changes a 6.
+
+**JUnit output.** `--junit <file>` writes one `testcase` per report item (suite `jrsctl doctor`, `jrsctl smoke` or `jrsctl import verify`): FAIL is a failure, SKIP is skipped, PASS passes, and a WARN is a failure only with `--fail-on warn`, so the test view agrees with the exit code. The texts pass the same redaction filter as every other output. The file replaces any file of that name; its directory must exist.
+
+`--fail-on warn` is strict by design: an item that is a WARN in your environment on purpose fails the gate too. Read a first run's report and decide before turning it on.
+
 ## Commands
 
 Every section below has the same shape so that `jrsctl <command> --explain` answers the same four questions for every command: what it **mutates** (or that it is read-only), how it **rolls back**, which **exit codes** it returns, and what its **flags** do. The global flags above apply everywhere and are not repeated.
@@ -157,7 +198,7 @@ Detects the JasperReports Server installation (Tomcat layout, the Windows servic
 - **Exit codes:** 0 when the file was written or shown; **6** when jrsctl runs inside a container, or `--install-dir` names a JBoss EAP or WildFly home: jrsctl manages JasperReports Server on Apache Tomcat only, and not from inside a container, where a hotfix or upgrade would be lost at the next image build (ADR-0043; `--remote` still works against any server); **2** when no installation is found at the given directory, when the directory is not a JasperReports Server tree, or when confirmation is needed but `--non-interactive` forbids the prompt (pass `--yes`; with `--json` the refusal is an error document). `--json` alone prints the detection report without writing and exits 0.
 - **Flags:** `--install-dir <dir>` — root of the installation when auto-detection does not find it (the directory holding `apache-tomcat/` or the Tomcat tree itself); `--buildomatic-dir <dir>` — the installed buildomatic directory when it is not under the installation root (another disk, a mount point or a network share); without it `init` looks under and beside the installation and Tomcat and writes what it finds as `server.buildomaticDir`, with its source; a directory that cannot be reached is reported and not written; `--remote <url>` — write a server-only configuration for a machine that is not the server (#68): the address, the webapp and admin user its path implies (`superuser` for `jasperserver-pro`) and the password placeholder, with no installation, service or buildomatic; such a jrsctl runs REST `export` and `import`, and `doctor` skips its local checks; cannot be combined with `--install-dir` or `--buildomatic-dir` unless `--tools-only` is given; `--tools-only` — with `--remote <url>` and `--buildomatic-dir <dir>`: write a tools-only configuration (spec §10.5, ADR-0052), a buildomatic on this machine (the new version's, unpacked from the distribution) for a server elsewhere, with no installation or service; `vendor.javaHome` is taken from `JAVA_HOME` when the environment names one, and the database settings are shown from that buildomatic's `default_master.properties` and not copied; such a jrsctl runs `repository load`, REST `export` and `import`, and `doctor` keeps its `vendor`, `vendor-java` and `database` items and skips the installation ones; a directory without `js-ant`, `js-export` and `js-import` is refused with exit 2; `--format yaml|properties` — write `config.yaml` (default) or `jrsctl.properties` (#74): `key=value` lines with the keys `jrsctl config keys` lists, values taken literally so a Windows path needs no doubled backslashes, lists comma-separated; `init` refuses to write one format while the other exists, even with `--force`; `--force` — overwrite an existing configuration file; `--json` — print the detection report and the proposed configuration as JSON without writing anything.
 
-### `jrsctl doctor [--allow-unsupported] [--json]`
+### `jrsctl doctor [--allow-unsupported] [--fail-on warn|fail] [--junit <file>] [--json]`
 
 Read-only health report, the check to run before every change: tool, configuration, secrets, server reachability and identity, authentication, compatibility matrix, the licence's clustering flag (`cluster`: WARN when the licence includes clustering, since jrsctl changes this node only; the vendor's bundled licence carries the flag even on one node, so a single-node server can ignore it), service controller, running Tomcat, service manager, installation layout, keystore, database, vendor Java. Items are sorted FAIL, WARN, PASS, SKIP and every non-PASS item carries a remediation (`-> ...`). The problems come first, a `----` rule separates them from the items that passed or were skipped, and the closing line names them: `1 fail (server), 0 warn, 21 pass, 2 skip`, in red when anything failed, yellow when only warnings remain, green otherwise. So the last line of a long report on a short terminal still says what to fix.
 
@@ -181,17 +222,17 @@ The `vendor` item checks `js-export`, `js-import` and `js-ant` in the installed 
 
 - **Mutates:** nothing. Logs in and logs out of the server with the configured credentials when the password is at hand, otherwise skips the two login items; reads files under the installation.
 - **Rollback:** not applicable.
-- **Exit codes:** 0 all good; **2** at least one item failed; **6** the only failures are the compatibility check (the server/configuration combination is outside the matrix) or the `deployment` item (JBoss EAP/WildFly, or jrsctl inside a container; ADR-0043).
-- **Flags:** `--allow-unsupported` — downgrade the compatibility failure to WARN so diagnostics can continue on an unsupported server; the override is written to the audit table and never changes any other result; `--json` — the report as `{"items": [...], "counts": {...}}`.
+- **Exit codes:** 0 all good; **2** at least one item failed, or with `--fail-on warn` an item is a WARN, or the `--junit` file could not be written; **6** the only failures are the compatibility check (the server/configuration combination is outside the matrix) or the `deployment` item (JBoss EAP/WildFly, or jrsctl inside a container; ADR-0043); `--fail-on warn` leaves a 6 as 6.
+- **Flags:** `--allow-unsupported` — downgrade the compatibility failure to WARN so diagnostics can continue on an unsupported server; the override is written to the audit table and never changes any other result; `--fail-on warn|fail` — the lowest item status that fails the command (default `fail`); with `warn`, a WARN item exits 2 when nothing failed, and a non-zero exit is never lowered (ADR-0058, #308); `--junit <file>` — also write the report as JUnit XML, one testcase per item (see [Gating a container image in CI](#gating-a-container-image-in-ci)); `--json` — the report as `{"items": [...], "counts": {...}}`.
 
-### `jrsctl smoke [--mutating] [--json]`
+### `jrsctl smoke [--mutating] [--fail-on warn|fail] [--junit <file>] [--json]`
 
 Exercises the server end to end: login, repository listing, a sample report run to PDF (`smoke.reportUri`, a missing sample report is a WARN not a FAIL), a scheduler query and an export round trip. The same checks form the `verify` phase at the end of an upgrade.
 
 - **Mutates:** nothing by default. With `--mutating` it additionally creates, runs and deletes a temporary report under `/temp` as a journaled plan with rollback, like any other mutating command (plan, confirmation, run lock).
 - **Rollback:** `--mutating` deletes the temporary resource in its compensation; a failed deletion is reported with the resource uri to remove by hand.
-- **Exit codes:** 0 every check passed; **2** a check failed (read-only), **3**/**4** only with `--mutating` when the temporary report could not be removed cleanly.
-- **Flags:** `--mutating` — include the create/run/delete round trip; `--json` — the report as JSON.
+- **Exit codes:** 0 every check passed; **2** a check failed (read-only), or with `--fail-on warn` a check is a WARN, or the `--junit` file could not be written; **3**/**4** only with `--mutating` when the temporary report could not be removed cleanly.
+- **Flags:** `--mutating` — include the create/run/delete round trip; `--fail-on warn|fail` — the lowest item status that fails the command (default `fail`); with `warn`, a WARN item exits 2 when nothing failed, and a non-zero exit is never lowered (ADR-0058, #308); `--junit <file>` — also write the report as JUnit XML, one testcase per item (see [Gating a container image in CI](#gating-a-container-image-in-ci)); `--json` — the report as JSON.
 
 ### `jrsctl config show [--format yaml|properties] [--json]`
 
@@ -341,16 +382,18 @@ Exports repository content to a ZIP archive and writes a sidecar `<file>.jrsctl.
 
 **Moving content to another server.** Repository passwords inside an archive are encrypted with a key of the exporting server's keystore, by default a key no other server has. Export with `--legacy-key` (or `--key-alias <alias>` for a custom key present in both keystores, security guide 10.1) and the archive is encrypted with a key the importing server holds too; the sidecar records the alias, so `jrsctl import` on the other server decrypts it without a flag (or pass `--key-alias` when the sidecar did not travel with the archive, or for `js-import` by hand: `--keyalias deprecatedImportExportEncSecret`). An import that names a key alias skips the keystore fingerprint check below. Without a Legacy-key export the choice is `--source-keystore`, which swaps this server's keystore for the source's.
 
-### `jrsctl export record <archive> [--source-version <version>] [--source-keystore <path>] [--key-alias <alias>] [--source-database <name>] [--force] [--json]`
+### `jrsctl export record <archive> [--source-version <version>] [--source-keystore <path>] [--key-alias <alias>] [--source-database <name>] [--jobs] [--force] [--json]`
 
 Writes the `<archive>.jrsctl.json` sidecar for an export archive that jrsctl did not make: one taken by hand with `js-export --everything` on a server jrsctl cannot run the vendor tools against (a container, or a host you do not have), or an archive handed over without its sidecar (#263). With the sidecar in place, `import` treats the archive as it treats one jrsctl exported: it verifies the SHA-256 before the snapshot, adopts the key alias, snapshots only the folders the archive holds, and applies the themes rule by the source version. Without it the import warns about each of those and continues.
 
 What is recorded, and where it comes from: the archive's SHA-256 (computed now); the folders and resources, the users-and-roles, audit and monitoring modules, and whether it is a full-server export (the root folder with users, roles and report jobs), all read from the archive's `index.xml`; the exporting server's version from the index's `jsVersion` property, else `--source-version`, else `unknown` (an explicit `--source-version` wins over the index); the keystore fingerprint only when `--source-keystore` names the exporting server's `.jrsks` (read for its hash alone, no password needed); the key alias from `--key-alias`, else the Legacy alias (`deprecatedImportExportEncSecret`) when `index.xml` names it, else none, because the server's own import/export key is no alias an import could ask for. The sidecar is marked `"origin": "record"` so a reader can tell it from one an export wrote. Needs no configuration and no server.
 
+**`--jobs`** (#309, ADR-0059) also records the configured server's report jobs and their states in the sidecar, for `jobs resume --from <archive>`. Use it only when the configured server is the one that exported the archive, and before any job is paused for the move: the sidecar records the states as they are when it is written. Without `--jobs` the configured server is not asked, and the sidecar says that no states were recorded and why. With `--jobs` and a server that cannot be asked, the sidecar is still written, with the reason.
+
 - **Mutates:** only the sidecar file next to the archive, written through a temporary file and an atomic rename; the archive is read, never changed.
 - **Rollback:** delete the sidecar; `import` then behaves as for an archive without one.
 - **Exit codes:** 0; **2** when the archive does not exist or holds no `index.xml` (not a JasperReports Server export), when `--source-keystore` names a file that does not exist, or when a sidecar is already there and `--force` was not given; nothing is written in those cases.
-- **Flags:** `<archive>` — the export ZIP; `--source-version <version>` — the exporting server's version when `index.xml` does not carry it; `--source-keystore <path>` — the exporting server's `.jrsks`, for the fingerprint `import` compares with the importing server's keystore; `--key-alias <alias>` — the alias the archive was encrypted with (`js-export --keyalias`); `--source-database <name>` — the exporting server's repository database (its `js.dbName`), recorded as `sourceDatabase` so `repository load` refuses it as `--schema` (exit 6); `--force` — replace an existing sidecar; `--json` — `{"archive", "sidecar", "sha256", "serverVersion", "origin", "fullServer", "uris", "modules", "keystoreFingerprint"?, "keyAlias"?, "sourceDatabase"?}`.
+- **Flags:** `<archive>` — the export ZIP; `--source-version <version>` — the exporting server's version when `index.xml` does not carry it; `--source-keystore <path>` — the exporting server's `.jrsks`, for the fingerprint `import` compares with the importing server's keystore; `--key-alias <alias>` — the alias the archive was encrypted with (`js-export --keyalias`); `--jobs` — also record the configured server's report job states (above); `--source-database <name>` — the exporting server's repository database (its `js.dbName`), recorded as `sourceDatabase` so `repository load` refuses it as `--schema` (exit 6); `--force` — replace an existing sidecar; `--json` — `{"archive", "sidecar", "sha256", "serverVersion", "origin", "fullServer", "uris", "modules", "keystoreFingerprint"?, "keyAlias"?, "sourceDatabase"?}`.
 
 ### `jrsctl import <archive> [--update] [--skip-user-update] [--access-events] [--audit-events] [--monitoring] [--settings] [--skip-themes] [--themes] [--broken-dependencies fail|skip|include] [--source-keystore <path>] [--source-keystore-password-ref <ref>] [--key-alias <alias>] [--organization <id>] [--merge-organization] [--strategy rest|vendor] [--force-version] [--no-snapshot] [--pause-jobs] [--plan] [--yes] [--json]`
 
@@ -382,16 +425,23 @@ Remediation: import the archive into a 10.1 or later server, or export the data 
 
 `runs recover <id>` rebuilds export and import plans from their stored arguments (the archive must still be where it was; the snapshot path is derived from the archive's hash, so a resumed import finds the same snapshot).
 
-### `jrsctl import verify <archive> [--uris] [--json]`
+### `jrsctl import verify <archive> [--uris] [--content [--uri-prefix <folder>]] [--fail-on warn|fail] [--junit <file>] [--json]`
 
 Answers, after an import, whether everything the archive holds is on the server (#262): the organisations, users and roles the archive carries, and every folder and resource. Each is read from the archive's own layout (`organizations/<id>.xml`, `users/[<org>/]<name>.xml`, `roles/[<org>/]<name>.xml`, `resources/<path>/.folder.xml` for a folder and `resources/<path>/<id>.xml` for a resource, each name decoded from the vendor's escaping, where `js-export` writes `-` and other characters outside its safe set as `-` and four hex digits, so `jasper-002dui` is the folder `jasper-ui`; #314) and looked up on the server over REST: one request per organisation (`GET /rest_v2/organizations/<id>`), one listing each for users and roles (`GET /rest_v2/users`, `GET /rest_v2/roles`, which from the root account cover every organisation) and the recursive listing of the repository root that the import's own pre-import listing uses. The comparison is by id, never by content: it says what the import left out, not whether what arrived is identical. It is the check the vendor's import log cannot give you in one place, and the one an import into a new schema is judged by before anyone trusts it.
 
-The report has one item per kind, in the `doctor` layout: `archive` (what the archive holds), `organizations`, `users`, `roles`, `resources` (folders and resources together). An item is SKIP when the archive has nothing of that kind, PASS when every entry is on the server, FAIL naming the first few missing ids (every one of them in the JSON report with `--uris`, at most the first few without), or FAIL naming the server's error when it could not be asked. An archive that is not an export (no `index.xml`) is refused with exit 2 before anything is asked.
+**`--content`** (#307, ADR-0060) also checks that what arrived is identical, not only present, in a `content` item:
+
+- every file the archive holds (a file resource, and every file inside a report unit such as its JRXML, images and properties) is downloaded from the server and compared with the archive's copy by SHA-256;
+- for every other resource, the label and the description are compared, and for a report unit also its data source and its input controls.
+
+Nothing else is compared. An import rewrites versions, creation and update times and permissions, and the server never returns a data source's password, so those are left out on purpose; a change to some other field, such as a data source's connection URL, is not reported. The item fails naming the first few differences (`content differs`, `not on the server`, `label`, `description`, `data source`, `input controls`, or `could not be read` with the server's answer); the JSON report's `content` lists every one with `--uris`. Requests go one at a time, and every file is downloaded once to a temporary file in the jrsctl home and deleted straight after, so a full comparison of a large repository takes a while: **`--uri-prefix <folder>`** limits it to one folder. Checked on a 10.0.0 server against an export of its samples (494 files, 113 resources).
+
+The report has one item per kind, in the `doctor` layout: `archive` (what the archive holds), `organizations`, `users`, `roles`, `resources` (folders and resources together), and `content` with `--content`. An item is SKIP when the archive has nothing of that kind, PASS when every entry is on the server, FAIL naming the first few missing ids (every one of them in the JSON report with `--uris`, at most the first few without), or FAIL naming the server's error when it could not be asked. An archive that is not an export (no `index.xml`) is refused with exit 2 before anything is asked.
 
 - **Mutates:** nothing; read-only. Logs in with the configured account.
 - **Rollback:** not applicable.
-- **Exit codes:** 0 when every item passes or is skipped; **2** when any item fails, or when the archive does not exist or holds no `index.xml`.
-- **Flags:** `<archive>` — the export ZIP that was imported; `--uris` — list every missing id in the JSON report's `missing` map instead of the first few; `--json` — `{"items", "counts", "exitCode", "archive", "archiveCounts": {"organizations", "users", "roles", "folders", "resources"}, "missing": {"organizations": [...], "users": [...], "roles": [...], "resources": [...]}}`.
+- **Exit codes:** 0 when every item passes or is skipped; **2** when any item fails, or when the archive does not exist or holds no `index.xml` (no JUnit file is written then), or with `--fail-on warn` when an item is a WARN, or when the `--junit` file could not be written; **1** `--uri-prefix` without `--content`.
+- **Flags:** `<archive>` — the export ZIP that was imported; `--uris` — list every missing id in the JSON report's `missing` map, and every content difference, instead of the first few; `--content` — also compare files and key descriptor fields (above); `--uri-prefix <folder>` — with `--content`, only under that folder (without `--content`, a usage error, exit 1); `--fail-on warn|fail` — the lowest item status that fails the command (default `fail`); with `warn`, a WARN item exits 2 when nothing failed, and a non-zero exit is never lowered (ADR-0058, #308); `--junit <file>` — also write the report as JUnit XML, one testcase per item (see [Gating a container image in CI](#gating-a-container-image-in-ci)); `--json` — `{"items", "counts", "exitCode", "archive", "archiveCounts": {"organizations", "users", "roles", "folders", "resources"}, "missing": {"organizations": [...], "users": [...], "roles": [...], "resources": [...]}, "content": {"files", "descriptors", "differences": [{"uri", "what"}]} or null}`.
 
 ### `jrsctl upgrade --to <version> --package <dir> [--mode newdb|samedb] [--db-backup-confirmed] [--db-rebuild-confirmed] [--reapply-hotfixes] [--tomcat-dir <dir>] [--export <file>] [--key-alias <alias>] [--key-password-ref <ref>] [--include-events] [--migrate-passwords] [--skip-locked-files | --no-skip-locked-files] [--test] [--plan] [--yes] [--rollback-all] [--json]`
 
@@ -535,16 +585,18 @@ Pauses every report job (`--all`) or the jobs a record names (`--from`), except 
 - **Exit codes:** 0 paused; **1** neither or both of `--all` and `--from`; **2** the record is missing or not a jobs record, or the server refused the listing, nothing changed; **3** the server refused the pause and the run rolled back.
 - **Flags:** `--all` or `--from <record>`; `--plan`, `--yes`, `--json` as for every mutating command.
 
-### `jrsctl jobs resume --from <record> [--plan] [--yes] [--json]`
+### `jrsctl jobs resume --from <record|archive> [--plan] [--yes] [--json]`
 
 Resumes the jobs the record shows as active (`NORMAL`, `EXECUTING`, `WAITING`) that are paused now, as a one-step journaled plan (`jobs.resume`). Jobs recorded as paused stay paused. Jobs recorded in another state (an error state) are named in the plan and left for you to decide in the scheduler. The record is usually the source server's: its jobs are matched on this server as for `jobs pause`, and the plan says when the record came from another server.
 
 A typical move: `jobs record --out source-jobs.json` and `jobs pause --all` on the source, the export, the import or `repository load` on the target, validation, then `jobs resume --from source-jobs.json` on the target.
 
+**From an export archive** (#309, ADR-0059). `--from` also takes an export archive, or its `.jrsctl.json` sidecar: a jrsctl export records every job's state in the sidecar, and `export record --jobs` does for an archive made by hand. The states are those at export time, so this works when you export **before** pausing the jobs; if you paused them first, the sidecar records them all as paused, the resume would change nothing, and the plan warns you to use the `jobs record` file taken before the pause. A sidecar written by an older jrsctl, or one that says why no states were recorded, is refused with exit 2 and the reason. `jobs pause --from` takes an archive the same way.
+
 - **Mutates:** the scheduler state of the selected jobs (`POST /rest_v2/jobs/resume`).
 - **Rollback:** pauses again exactly the jobs this run resumed (`runs/<runId>/jobs-resumed.txt`).
-- **Exit codes:** 0 resumed; **2** the record is missing or not a jobs record, or the server refused the listing, nothing changed; **3** the server refused the resume and the run rolled back.
-- **Flags:** `--from <record>` (required); `--plan`, `--yes`, `--json` as for every mutating command.
+- **Exit codes:** 0 resumed; **2** the record is missing or not a jobs record, the archive has no sidecar or its sidecar records no job states, or the server refused the listing, nothing changed; **3** the server refused the resume and the run rolled back.
+- **Flags:** `--from <record|archive>` (required): a `jobs record` file, an export archive with its sidecar, or the sidecar; `--plan`, `--yes`, `--json` as for every mutating command.
 
 ### `jrsctl customizations register <path> [--original <file>] [--json]`
 
