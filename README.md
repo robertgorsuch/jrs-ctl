@@ -2,7 +2,7 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **Actively maintained.** The current release is [2.7.2](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.7.2). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
+> **Actively maintained.** The current release is [2.8.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.8.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
 >
 > - Supported: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
 > - Each archive bundles a Java 21 runtime; `jrsctl selfcheck` shows which update.
@@ -25,7 +25,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Upgrade to a new version | `jrsctl upgrade` |
 | Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` |
 | Move stored passwords to the modern format | `jrsctl passwords migrate` |
-| Keep report jobs paused or running as they were across a move (next release) | `jrsctl jobs record` / `jobs resume` |
+| Keep report jobs paused or running as they were across a move | `jrsctl jobs record` / `jobs resume` |
 | Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
@@ -53,14 +53,14 @@ Unpack it on the server, then open a terminal in the unpacked folder:
 
 ```bash
 :: Windows (Command Prompt, run as administrator)
-tar -xf jrsctl-2.7.2-windows-x64.zip -C C:\Jaspersoft
-cd C:\Jaspersoft\jrsctl-2.7.2
+tar -xf jrsctl-2.8.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-2.8.0
 ```
 
 ```bash
 # Linux
-tar -xzf jrsctl-2.7.2-linux-x64.tar.gz -C /opt
-cd /opt/jrsctl-2.7.2
+tar -xzf jrsctl-2.8.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-2.8.0
 ```
 
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
@@ -162,7 +162,7 @@ jrsctl import C:\Backups\samples.zip --update
 
 > If you see `keystore fingerprint mismatch`, the two servers use different encryption keys. Run `jrsctl import --explain` to see how to bring the other server's key along.
 
-To check afterwards that everything arrived, run `jrsctl import verify C:\Backups\samples.zip`. It changes nothing. Add `--content` to also check that every file is identical and that labels and descriptions match. That downloads each file once, so `--uri-prefix /public/Finance` keeps it to one folder. *(`--content` is not in a release yet; it comes with the next one.)*
+To check afterwards that everything arrived, run `jrsctl import verify C:\Backups\samples.zip`. It changes nothing. Add `--content` to also check that every file is identical and that labels and descriptions match. That downloads each file once, so `--uri-prefix /public/Finance` keeps it to one folder.
 
 ### Install a hotfix
 
@@ -213,7 +213,7 @@ jrsctl upgrade rollback <run id> --to-point B
 
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
 
-**Your own changes to the webapp** (next release). Before the upgrade, find out which files you changed and what the new version did to the same files:
+**Your own changes to the webapp.** Before the upgrade, find out which files you changed and what the new version did to the same files:
 
 ```bash
 jrsctl customizations scan --vendor C:\Downloads\8.2\jasperserver-pro.war --target-vendor C:\Downloads\10.0\jasperserver-pro.war --out C:\merge
@@ -227,7 +227,7 @@ Moving to 10.x also moves to Jakarta EE and Java 17. To see which of your own cl
 jrsctl customizations readiness --target 10.0 --vendor <8.2 war> --target-vendor <10.0 war>
 ```
 
-It lists the files that use `javax.*` names Jakarta EE renamed, old Java EE namespaces, classes the 10.0 webapp no longer has, or a Java above 17. It changes nothing, and a file it does not list is not proven ready. *(Not in a release yet; it comes with the next one.)*
+It lists the files that use `javax.*` names Jakarta EE renamed, old Java EE namespaces, classes the 10.0 webapp no longer has, or a Java above 17. It changes nothing, and a file it does not list is not proven ready.
 
 ### Load a repository into a new schema
 
@@ -255,8 +255,6 @@ Both run on the server host, where the webapp is deployed, and need JasperReport
 
 ### Keep report jobs as they were across a move
 
-*Not in a release yet; comes with the next one.*
-
 When you move a repository to a new server, you usually stop the old scheduler during the export and switch the jobs on at the new server only after checking it. Record each job's state first, so that afterwards exactly the jobs that were running start again and the ones you had paused stay paused.
 
 ```bash
@@ -271,8 +269,6 @@ An archive exported by jrsctl also records every job's state in its sidecar, so 
 `jobs record` changes nothing and never overwrites a file. The new server may number its jobs differently, so jrsctl matches each job by its id, or by its name, report and owner. A job it cannot match, or whose match is ambiguous, is listed and left alone. Jobs recorded in an error state are listed for you to decide. If a pause or resume fails, it is undone, and only the jobs that run changed are touched.
 
 ### Gate a container image in CI
-
-*Not in a release yet; comes with the next one.*
 
 jrsctl does not run inside your image. From the pipeline, it compares the webapp tree taken out of the image with the vendor's copy, then checks a test container over REST:
 
@@ -366,8 +362,8 @@ The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (back
 
 Each release file has a `.sha256` checksum beside it:
 
-- Windows: `certutil -hashfile jrsctl-2.7.2-windows-x64.zip SHA256`
-- Linux: `sha256sum -c jrsctl-2.7.2-linux-x64.tar.gz.sha256`
+- Windows: `certutil -hashfile jrsctl-2.8.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-2.8.0-linux-x64.tar.gz.sha256`
 
 Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
 
