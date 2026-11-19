@@ -41,6 +41,8 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 **#339 (2026-11-18):** `write-master-properties` now writes `dbPassword` from `database.passwordRef` unless the target's file has one, and refuses before the stop when neither exists (ADR-0064); tested against the fakes only.
 **#338 (2026-11-18):** `vendor.sourceJavaHome` (ADR-0065) runs the installed version's tools: the point-B `js-export` and the old buildomatic of `upgrade rollback --restore-database`; preflight refuses a source JDK that version does not support, and `doctor` passes `vendor-java` when either JDK fits. With this, the 8.0.4 → 10.0.0 dry run needs none of its four workarounds; tested against the fakes only.
 
+**#348 (2026-11-19):** review follow-ups to #338: `--test` no longer judges the source JDK, the refusal names `--export` only for newdb, a database rollback refuses an unfit source JDK before the server is stopped (the starting version is now also in the vendor-started marker), `doctor` WARNs instead of passing when only `vendor.sourceJavaHome` fits and judges that key whenever it is set; one shared JDK check. Fakes only.
+
 ## Environment facts
 
 - Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.10.0 through the wrapper. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.

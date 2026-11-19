@@ -23,6 +23,18 @@ class ConfigLoaderTest {
 
   private final ConfigLoader loader = new ConfigLoader();
 
+  /** ADR-0065, issue #348: the installed version's tools run on javaHome unless a source is set. */
+  @Test
+  void should_fall_back_to_java_home_for_the_source_tools_when_source_java_home_is_unset() {
+    Path target = Path.of("/opt/jdk-17");
+    Path source = Path.of("/opt/jdk-11");
+
+    assertThat(new Config.Vendor(Optional.of(target)).sourceToolsJavaHome()).contains(target);
+    assertThat(new Config.Vendor(Optional.of(target), Optional.of(source)).sourceToolsJavaHome())
+        .contains(source);
+    assertThat(Config.Vendor.empty().sourceToolsJavaHome()).isEmpty();
+  }
+
   /** ADR-0052: a buildomatic directory with no installation around it is a tools-only shape. */
   @Test
   void should_name_a_tools_only_configuration_when_only_the_buildomatic_directory_is_set() {

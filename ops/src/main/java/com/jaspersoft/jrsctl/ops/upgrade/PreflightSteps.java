@@ -15,7 +15,6 @@ import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
 import com.jaspersoft.jrsctl.jrs.vendor.IeClasspathJar;
-import com.jaspersoft.jrsctl.jrs.vendor.VendorJava;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import com.jaspersoft.jrsctl.ops.TomcatVersion;
 import com.jaspersoft.jrsctl.ops.doctor.DoctorOperation;
@@ -185,8 +184,20 @@ final class PreflightSteps {
 
   static final class VerifyTargetPackage extends ReadOnly {
 
+    /**
+     * Whether the plan takes its own point-B export with the installed version's {@code js-export}:
+     * an upgrade does unless {@code --export} names one, a {@code --test} rehearsal never does
+     * (issue #348).
+     */
+    private final boolean takesOwnExport;
+
     VerifyTargetPackage(UpgradeRuntime rt, UpgradeInput in) {
+      this(rt, in, true);
+    }
+
+    VerifyTargetPackage(UpgradeRuntime rt, UpgradeInput in, boolean planExports) {
       super(rt, in);
+      this.takesOwnExport = planExports && in.options().existingExport().isEmpty();
     }
 
     @Override
@@ -211,8 +222,9 @@ final class PreflightSteps {
     /**
      * ADR-0065: the JDK the installed version's {@code js-export} will run with ({@code
      * vendor.sourceJavaHome}, else {@code vendor.javaHome}) must be one that version supports.
+     * {@code target} is the probe of {@code vendor.javaHome}, reused when the key is unset.
      */
-    private Optional<CheckResult> sourceJdkProblem(String current) {
+    private Optional<CheckResult> sourceJdkProblem(String current, VendorJdkCheck.Probe target) {
       Set<Integer> allowed;
       try {
         allowed = rt.services().matrix().javaRequiredFor(current);
@@ -220,49 +232,25 @@ final class PreflightSteps {
         // the upgrade path check already judged an unknown current version
         return Optional.empty();
       }
-      String required = CompatMatrix.describeJava(allowed);
-      boolean fromSource = rt.config().vendor().sourceJavaHome().isPresent();
-      String key = fromSource ? "vendor.sourceJavaHome" : "vendor.javaHome";
-      Optional<Path> jdk = rt.config().vendor().sourceToolsJavaHome();
+      Optional<Path> source = rt.config().vendor().sourceJavaHome();
+      String key = source.isPresent() ? "vendor.sourceJavaHome" : "vendor.javaHome";
+      VendorJdkCheck.Probe probe = source.isPresent() ? VendorJdkCheck.probe(rt, source) : target;
+      // --export is a usage error in samedb mode (refuseInconsistentOptions); name it for newdb
       String remedy =
           "set vendor.sourceJavaHome to a "
-              + required
+              + CompatMatrix.describeJava(allowed)
               + " JDK for the installed "
               + current
-              + "'s js-export (jrsctl config set vendor.sourceJavaHome <dir>), or take the full"
-              + " export yourself with that JDK and pass --export <file>";
-      if (jdk.isEmpty() || !Files.isDirectory(jdk.get())) {
-        return Optional.of(
-            CheckResult.fail(
-                key + " " + jdk.map(Path::toString).orElse("(not set)") + " is not a directory",
-                remedy));
-      }
-      Optional<Integer> found;
-      try {
-        found = VendorJava.detect(jdk.get(), rt.services().platform().processes());
-      } catch (RuntimeException e) {
-        found = Optional.empty();
-      }
-      if (found.isEmpty()) {
-        return Optional.of(
-            CheckResult.fail(
-                "cannot determine the Java version of " + key + " " + jdk.get(), remedy));
-      }
-      if (!allowed.contains(found.get())) {
-        return Optional.of(
-            CheckResult.fail(
-                key
-                    + " "
-                    + jdk.get()
-                    + " is Java "
-                    + found.get()
-                    + "; the installed "
-                    + current
-                    + "'s js-export, which takes the point-B full export, needs "
-                    + required,
-                remedy));
-      }
-      return Optional.empty();
+              + "'s js-export (jrsctl config set vendor.sourceJavaHome <dir>)"
+              + (in.options().mode() == UpgradeOperations.Mode.NEWDB
+                  ? ", or take the full export yourself with that JDK and pass --export <file>"
+                  : "");
+      return VendorJdkCheck.judge(
+          probe,
+          key,
+          allowed,
+          "the installed " + current + "'s js-export, which takes the point-B full export,",
+          remedy);
     }
 
     @Override
@@ -342,45 +330,24 @@ final class PreflightSteps {
         return CheckResult.fail(
             "no compatibility matrix entry for " + to, "choose a supported target version");
       }
-      String required = CompatMatrix.describeJava(allowed);
-      Optional<Path> javaHome = rt.config().vendor().javaHome();
-      if (javaHome.isEmpty()) {
-        return CheckResult.fail(
-            "vendor.javaHome is not set; the vendor upgrade scripts need a " + required + " JDK",
-            "set vendor.javaHome in config.yaml to a " + required + " JDK");
+      VendorJdkCheck.Probe target = VendorJdkCheck.probe(rt, rt.config().vendor().javaHome());
+      Optional<CheckResult> targetProblem =
+          VendorJdkCheck.judge(
+              target,
+              "vendor.javaHome",
+              allowed,
+              "JasperReports Server " + to,
+              "set vendor.javaHome (jrsctl config set vendor.javaHome <dir>) to an installed "
+                  + CompatMatrix.describeJava(allowed)
+                  + " JDK");
+      if (targetProblem.isPresent()) {
+        return targetProblem.get();
       }
-      if (!Files.isDirectory(javaHome.get())) {
-        return CheckResult.fail(
-            "vendor.javaHome " + javaHome.get() + " is not a directory",
-            "point vendor.javaHome at an installed " + required + " JDK");
-      }
-      Optional<Integer> found;
-      try {
-        found = VendorJava.detect(javaHome.get(), rt.services().platform().processes());
-      } catch (RuntimeException e) {
-        found = Optional.empty();
-      }
-      if (found.isEmpty()) {
-        return CheckResult.fail(
-            "cannot determine the Java version of vendor.javaHome " + javaHome.get(),
-            "point vendor.javaHome at a working " + required + " JDK");
-      }
-      if (!allowed.contains(found.get())) {
-        return CheckResult.fail(
-            "vendor.javaHome "
-                + javaHome.get()
-                + " is Java "
-                + found.get()
-                + "; JasperReports Server "
-                + to
-                + " needs "
-                + required,
-            "set vendor.javaHome to a " + required + " JDK");
-      }
-      // ADR-0065 (issue #338): the plan's own point-B export runs the installed version's
-      // js-export, which 8.x cannot do on 10.x's Java; refused here, before anything is stopped
-      if (in.options().existingExport().isEmpty()) {
-        Optional<CheckResult> source = sourceJdkProblem(current);
+      // ADR-0065 (issues #338, #348): the plan's own point-B export runs the installed version's
+      // js-export, which 8.x cannot do on 10.x's Java; refused here, before anything is stopped.
+      // A rehearsal or an adopted --export takes no export, so it is not judged.
+      if (takesOwnExport) {
+        Optional<CheckResult> source = sourceJdkProblem(current, target);
         if (source.isPresent()) {
           return source.get();
         }

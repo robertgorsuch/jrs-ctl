@@ -822,9 +822,17 @@ final class VendorSteps {
       // rebuild a database the script never touched
       SnapshotSet set = in.snapshots(ctx);
       Files.createDirectories(set.dir());
+      // issue #348: the version the run started from, so a database rollback of a run that never
+      // wrote its manifest can still judge the JDK the old buildomatic will run on
       Files.writeString(
           set.vendorStarted(),
-          scriptName() + " started at " + rt.clock().instant() + System.lineSeparator(),
+          scriptName()
+              + " started at "
+              + rt.clock().instant()
+              + System.lineSeparator()
+              + in.currentVersion()
+                  .map(v -> SnapshotSet.FROM_PREFIX + v + System.lineSeparator())
+                  .orElse(""),
           UTF_8);
       Durability.sync(set.vendorStarted());
     }

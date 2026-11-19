@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
+import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
@@ -201,6 +202,38 @@ class UpgradeRunTest {
   }
 
   /**
+   * Issue #348: a database rollback runs the old version's buildomatic, so a source JDK that
+   * version cannot run is refused when the rollback is planned, before the server is stopped,
+   * though no manifest was written (the run failed) and the version comes from the vendor-started
+   * marker. The step's own precheck refuses the same way should the JDK change after planning.
+   */
+  @Test
+  void should_refuse_a_database_rollback_when_the_source_jdk_does_not_fit_the_old_version()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.failVendorScriptAfterCopy();
+      RunOutcome failed = f.run(f.ops().planUpgrade(newdb(f)), "r-up", RunOptions.DEFAULT);
+      assertThat(failed).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.RolledBack.class);
+      Plan planned = f.ops().planRollback("r-up", new RollbackOptions(RollbackPoint.B, true));
+      f.sourceJavaVersion("openjdk version \"17.0.2\" 2022-01-18");
+
+      assertThatThrownBy(
+              () -> f.ops().planRollback("r-up", new RollbackOptions(RollbackPoint.B, true)))
+          .isInstanceOf(UpgradeException.class)
+          .hasMessageContaining("vendor.sourceJavaHome")
+          .hasMessageContaining("is Java 17")
+          .hasMessageContaining("the old " + UpgradeFixture.OLD_VERSION + "'s buildomatic")
+          .extracting(e -> ((UpgradeException) e).exitCode())
+          .isEqualTo(UpgradeException.PRECHECK);
+      CheckResult atTheDrop =
+          UpgradeFixture.step(planned, DatabaseRestoreSteps.REBUILD_DATABASE)
+              .precheck(f.ctx("r-rb"));
+      assertThat(atTheDrop).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) atTheDrop).message()).contains("is Java 17");
+    }
+  }
+
+  /**
    * ADR-0029: after a newdb run failed inside the vendor script, the database it left behind is
    * dropped and the old one rebuilt from the point-B export with the restored buildomatic.
    */
@@ -371,7 +404,8 @@ class UpgradeRunTest {
    * on vendor.javaHome.
    */
   @Test
-  void should_export_on_the_source_jdk_and_upgrade_on_the_target_jdk() throws Exception {
+  void should_export_on_the_source_jdk_and_upgrade_on_the_target_jdk_when_both_are_set()
+      throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       Plan plan = f.ops().planUpgrade(newdb(f));
 

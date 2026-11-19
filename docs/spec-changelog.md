@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-19 (`vendor.sourceJavaHome` follow-ups; ADR-0065 amendment, issue #348)
+
+- §5.1: `doctor`'s `vendor-java` is a WARN, not a PASS, when only `vendor.sourceJavaHome` fits the detected version (vendor export/import and passwords still use `vendor.javaHome`), and judges a set `vendor.sourceJavaHome` even when `vendor.javaHome` fits or is unset.
+- §10.1: a `--test` rehearsal does not judge the source JDK; the refusal offers `--export` only in newdb mode; `upgrade rollback --restore-database` refuses, when planned and again before the drop, a JDK the version the upgrade started from does not support (that version from the manifest, or from a `from` line in the vendor-started marker).
+
 ## Draft 1.2 amendment — 2026-11-18 (`vendor.sourceJavaHome` for the version an upgrade starts from; ADR-0065, issue #338)
 
 - §5.1: new optional key `vendor.sourceJavaHome`, the JDK for the tools of the version an upgrade starts from; unset, nothing changes. `doctor`'s `vendor-java` passes when either key fits the detected version.

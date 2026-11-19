@@ -729,22 +729,43 @@ class UpgradePlanTest {
         java.util.Optional.of(f.newTomcatDir));
   }
 
+  private static final String JAVA_17 = "openjdk version \"17.0.2\" 2022-01-18";
+
   /**
-   * ADR-0065 (issue #338, field run 2026-11-18): before an 8.x to 10.x upgrade vendor.javaHome is
-   * the target's Java 17, which doctor reported as a FAIL every operator had to ignore; the source
-   * JDK running this version's tools now passes the item, and says what the other one is for.
+   * ADR-0065 (issues #338, #348; field run 2026-11-18): before an 8.x to 10.x upgrade
+   * vendor.javaHome is the target's Java 17. The source JDK covers the upgrade's own export and
+   * rollback, so doctor no longer FAILs, but it warns: vendor export/import and passwords still run
+   * this version's tools on javaHome.
    */
   @Test
-  void should_pass_doctor_vendor_java_through_the_source_jdk_when_java_home_is_the_targets()
+  void should_warn_doctor_vendor_java_when_only_the_source_jdk_fits_the_installed_version()
       throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       ReportItem item = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
 
-      assertThat(item.status()).isEqualTo(ReportItem.Status.PASS);
+      assertThat(item.status()).isEqualTo(ReportItem.Status.WARN);
       assertThat(item.detail())
           .contains("vendor.sourceJavaHome")
           .contains("Java 11")
-          .contains("is for the upgrade target");
+          .contains("is for the upgrade target")
+          .contains("export/import and passwords");
+      assertThat(item.remediation()).contains("REST strategy");
+    }
+  }
+
+  /** Issue #348: a source JDK is judged even when vendor.javaHome already fits. */
+  @Test
+  void should_warn_doctor_vendor_java_when_java_home_fits_but_the_source_jdk_does_not()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      f.sourceJavaVersion(JAVA_17);
+
+      ReportItem item = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
+
+      assertThat(item.status()).isEqualTo(ReportItem.Status.WARN);
+      assertThat(item.detail()).contains("vendor.sourceJavaHome").contains("is Java 17");
+      assertThat(item.remediation()).contains("config unset vendor.sourceJavaHome");
     }
   }
 
@@ -754,10 +775,10 @@ class UpgradePlanTest {
    * no source JDK.
    */
   @Test
-  void should_refuse_a_source_jdk_the_installed_version_does_not_support_unless_export_is_given()
+  void should_refuse_a_source_jdk_the_installed_version_does_not_support_when_the_plan_exports()
       throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
-      f.sourceJavaVersion("openjdk version \"17.0.2\" 2022-01-18");
+      f.sourceJavaVersion(JAVA_17);
 
       CheckResult own =
           UpgradeFixture.step(f.ops().planUpgrade(newdb(f)), "verify-target-package")
@@ -780,13 +801,69 @@ class UpgradePlanTest {
     }
   }
 
+  /** Issue #348: a --test rehearsal never runs the installed js-export, so it is not refused. */
+  @Test
+  void should_not_judge_the_source_jdk_when_the_plan_is_a_rehearsal() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.sourceJavaVersion(JAVA_17);
+
+      CheckResult rehearsal =
+          UpgradeFixture.step(f.ops().planTest(newdb(f)), "verify-target-package")
+              .precheck(f.ctx("r-1"));
+
+      assertThat(rehearsal).isInstanceOf(CheckResult.Pass.class);
+    }
+  }
+
+  /** Issue #348: --export is a usage error in samedb mode, so its refusal does not offer it. */
+  @Test
+  void should_not_offer_export_in_the_source_jdk_remedy_when_the_mode_is_samedb() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.sourceJavaVersion(JAVA_17);
+
+      CheckResult samedb =
+          UpgradeFixture.step(
+                  f.ops().planUpgrade(samedbTo(f, UpgradeFixture.NEW_VERSION)),
+                  "verify-target-package")
+              .precheck(f.ctx("r-1"));
+
+      assertThat(samedb).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) samedb).remediation())
+          .contains("vendor.sourceJavaHome")
+          .doesNotContain("--export");
+    }
+  }
+
+  /**
+   * Issue #348: with the key unset (the default) the installed version's export runs on
+   * vendor.javaHome, so a javaHome only the target supports is refused under that key's name.
+   */
+  @Test
+  void should_judge_java_home_as_the_source_jdk_when_source_java_home_is_unset() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      f.withoutSourceJavaHome();
+
+      CheckResult own =
+          UpgradeFixture.step(f.ops().planUpgrade(newdb(f)), "verify-target-package")
+              .precheck(f.ctx("r-1"));
+
+      assertThat(own).isInstanceOf(CheckResult.Fail.class);
+      assertThat(((CheckResult.Fail) own).message())
+          .startsWith("vendor.javaHome ")
+          .contains("is Java 17")
+          .contains("js-export");
+      assertThat(((CheckResult.Fail) own).remediation()).contains("vendor.sourceJavaHome");
+    }
+  }
+
   /** Review §1.2: doctor judges the vendor JDK against the set the platform sheet lists. */
   @Test
-  void should_judge_doctor_vendor_java_against_every_allowed_major() throws Exception {
+  void should_judge_doctor_vendor_java_against_every_allowed_major_when_probing_both_jdks()
+      throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       // the fixture's server is 8.2.0, whose sheet lists JDK 8 and 11; the fixture's JDK is 17,
       // and here its source JDK (ADR-0065) is 17 as well, so neither fits
-      f.sourceJavaVersion("openjdk version \"17.0.2\" 2022-01-18");
+      f.sourceJavaVersion(JAVA_17);
       ReportItem seventeen = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
       assertThat(seventeen.status()).isEqualTo(ReportItem.Status.FAIL);
       assertThat(seventeen.detail())
@@ -796,6 +873,7 @@ class UpgradePlanTest {
       assertThat(seventeen.remediation()).contains("vendor.sourceJavaHome");
 
       f.javaVersion("openjdk version \"11.0.24\" 2024-07-16");
+      f.sourceJavaVersion(UpgradeFixture.SOURCE_JAVA_BANNER);
       ReportItem eleven = vendorJava(new DoctorOperation(f.services).run(DoctorOptions.DEFAULT));
       assertThat(eleven.status()).isEqualTo(ReportItem.Status.PASS);
       assertThat(eleven.detail()).contains("Java 11").contains("one of Java 8 or 11");

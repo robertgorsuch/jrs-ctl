@@ -76,6 +76,26 @@ record SnapshotSet(Path dir, Platform.OsFamily os) {
     return Optional.empty();
   }
 
+  /** Prefixes the line of {@link #vendorStarted()} that names the version the run started from. */
+  static final String FROM_PREFIX = "from ";
+
+  /**
+   * The version the run started from, as {@link #vendorStarted()} records it (issue #348); empty
+   * for a marker without that line, such as one written before 2.9.
+   */
+  Optional<String> vendorStartedFrom() throws IOException {
+    if (!Files.isRegularFile(vendorStarted())) {
+      return Optional.empty();
+    }
+    for (String line : Files.readAllLines(vendorStarted(), StandardCharsets.UTF_8)) {
+      String stripped = line.strip();
+      if (stripped.startsWith(FROM_PREFIX) && stripped.length() > FROM_PREFIX.length()) {
+        return Optional.of(stripped.substring(FROM_PREFIX.length()).strip());
+      }
+    }
+    return Optional.empty();
+  }
+
   /** An export adopted from outside the home (ADR-0028), as recorded. */
   record ExternalExport(Path path, String sha256) {}
 
