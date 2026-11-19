@@ -259,17 +259,63 @@ final class ServerChecks {
 
   static ReportItem vendorJava(Services s, ServerProbe.Connected c) {
     Optional<Path> javaHome = s.config().vendor().javaHome();
-    Optional<CompatMatrix.Entry> entry = s.matrix().find(c.identity().version());
+    Optional<Path> source = s.config().vendor().sourceJavaHome();
+    String version = c.identity().version();
+    Optional<CompatMatrix.Entry> entry = s.matrix().find(version);
     if (entry.isEmpty()) {
       return ReportItem.skip(
           "vendor-java",
-          "no matrix entry for " + c.identity().version() + "; required Java unknown",
+          "no matrix entry for " + version + "; required Java unknown",
           "fix the compat check first");
     }
     // review §1.2: the platform sheets list more than one JDK for most release lines
     Set<Integer> allowed = entry.get().javaForBuildomatic();
     String need = CompatMatrix.describeJava(allowed);
+    // ADR-0065 (issues #338, #348): vendor.sourceJavaHome runs this version's own tools for an
+    // upgrade's export and database rollback; export, import and passwords stay on javaHome
+    Optional<JavaVersion.Probe> sourceProbe =
+        source.map(p -> JavaVersion.probe(s.platform().processes(), p));
+    boolean sourceFits =
+        sourceProbe.flatMap(JavaVersion.Probe::feature).map(allowed::contains).orElse(false);
+    String sourceProblem =
+        source
+            .map(
+                p ->
+                    "vendor.sourceJavaHome "
+                        + p
+                        + sourceProbe
+                            .flatMap(JavaVersion.Probe::feature)
+                            .map(n -> " is Java " + n)
+                            .orElse(" cannot be probed (" + sourceProbe.get().detail() + ")"))
+            .orElse("");
+    String sourceRemedy =
+        "point vendor.sourceJavaHome at a "
+            + need
+            + " JDK (an upgrade's export and database rollback run JRS "
+            + version
+            + "'s tools on it), or remove it with jrsctl config unset vendor.sourceJavaHome";
     if (javaHome.isEmpty()) {
+      if (sourceFits) {
+        return ReportItem.warn(
+            "vendor-java",
+            "vendor.javaHome is not configured; "
+                + sourceProblem
+                + ", which covers an upgrade's export and database rollback only",
+            "set vendor.javaHome to the JDK of the upgrade target, or to a "
+                + need
+                + " JDK for vendor export/import and passwords");
+      }
+      if (source.isPresent()) {
+        return ReportItem.fail(
+            "vendor-java",
+            "vendor.javaHome is not configured, and "
+                + sourceProblem
+                + "; JRS "
+                + version
+                + " needs "
+                + need,
+            sourceRemedy);
+      }
       return ReportItem.skip(
           "vendor-java",
           "vendor.javaHome is not configured",
@@ -284,51 +330,57 @@ final class ServerChecks {
           "vendor-java", probe.detail(), "point vendor.javaHome at a working " + need + " JDK");
     }
     int found = probe.feature().get();
-    if (!allowed.contains(found)) {
-      // ADR-0065 (issue #338): before an 8.x to 10.x upgrade vendor.javaHome is the target's JDK
-      // and this version's own tools run on vendor.sourceJavaHome; either one fitting passes
-      Optional<Path> source = s.config().vendor().sourceJavaHome();
-      if (source.isPresent()) {
-        JavaVersion.Probe sp = JavaVersion.probe(s.platform().processes(), source.get());
-        if (sp.feature().isPresent() && allowed.contains(sp.feature().get())) {
-          return ReportItem.pass(
-              "vendor-java",
-              "vendor.sourceJavaHome "
-                  + source.get()
-                  + " is Java "
-                  + sp.feature().get()
-                  + " for this version's tools; vendor.javaHome "
-                  + javaHome.get()
-                  + " (Java "
-                  + found
-                  + ") is for the upgrade target");
-        }
-      }
-      return ReportItem.fail(
-          "vendor-java",
+    if (allowed.contains(found)) {
+      String fits =
           javaHome.get()
               + " is Java "
               + found
-              + "; JRS "
-              + c.identity().version()
-              + " needs "
-              + need
-              + source
-                  .map(p -> ", and vendor.sourceJavaHome " + p + " is not one either")
-                  .orElse(""),
-          "set vendor.javaHome to a "
-              + need
-              + " JDK, or, when vendor.javaHome is an upgrade target's JDK, set"
-              + " vendor.sourceJavaHome to a "
-              + need
-              + " JDK");
+              + (allowed.size() == 1 ? " as required" : ", one of " + need);
+      if (source.isPresent() && !sourceFits) {
+        return ReportItem.warn(
+            "vendor-java",
+            fits + ", but " + sourceProblem + " and JRS " + version + "'s tools need " + need,
+            sourceRemedy);
+      }
+      return ReportItem.pass("vendor-java", fits);
     }
-    return ReportItem.pass(
+    // ADR-0065 (issue #338): before an 8.x to 10.x upgrade vendor.javaHome is the target's JDK;
+    // the upgrade itself is covered, but this version's vendor export/import and passwords are not
+    if (sourceFits) {
+      return ReportItem.warn(
+          "vendor-java",
+          sourceProblem
+              + " for an upgrade's export and database rollback; vendor.javaHome "
+              + javaHome.get()
+              + " (Java "
+              + found
+              + ") is for the upgrade target, so vendor-strategy export/import and passwords"
+              + " would run JRS "
+              + version
+              + "'s tools on a JDK it does not support",
+          "expected before an upgrade to a version that needs Java "
+              + found
+              + "; until then use the REST strategy for export/import, or set vendor.javaHome to"
+              + " a "
+              + need
+              + " JDK for them");
+    }
+    return ReportItem.fail(
         "vendor-java",
         javaHome.get()
             + " is Java "
             + found
-            + (allowed.size() == 1 ? " as required" : ", one of " + need));
+            + "; JRS "
+            + version
+            + " needs "
+            + need
+            + source.map(p -> ", and " + sourceProblem + ", not one either").orElse(""),
+        "set vendor.javaHome to a "
+            + need
+            + " JDK, or, when vendor.javaHome is an upgrade target's JDK, set"
+            + " vendor.sourceJavaHome to a "
+            + need
+            + " JDK");
   }
 
   /**

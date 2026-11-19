@@ -507,8 +507,9 @@ class Phase5UpgradeTest {
       return jdk11.get();
     }
     Assumptions.abort(
-        "no JDK 11 found for the vendor Java check (the installed 8.2.0's tools need it);"
-            + " set JRSCTL_VENDOR_JDK to one");
+        "no JDK 11 found for the vendor Java check: the installed 8.2.0's tools need one, as the"
+            + " vendor JDK or (beside a JDK 17) as vendor.sourceJavaHome; install one, or set"
+            + " JRSCTL_VENDOR_JDK or JAVA_HOME_11_X64 to it");
     throw new IllegalStateException("unreachable");
   }
 

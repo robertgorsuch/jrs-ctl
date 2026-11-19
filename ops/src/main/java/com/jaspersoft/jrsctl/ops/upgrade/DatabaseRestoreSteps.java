@@ -2,6 +2,8 @@ package com.jaspersoft.jrsctl.ops.upgrade;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
+import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.Step;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ADR-0029: {@code upgrade rollback --restore-database} after a newdb run. {@code js-upgrade-newdb}
@@ -47,6 +50,43 @@ final class DatabaseRestoreSteps {
 
   static String edition(RestoreSteps.Input in) {
     return in.edition();
+  }
+
+  /**
+   * Issue #348: the JDK the old buildomatic will run on must be one the version the upgrade started
+   * from supports, as the run recorded it. Without a recorded version (or a matrix entry for it)
+   * only a configured JDK is required, as before. Planning a rollback refuses on it, before
+   * anything is stopped; the steps check again before the drop.
+   */
+  static Optional<CheckResult> sourceJdkProblem(UpgradeRuntime rt, RestoreSteps.Input in) {
+    Optional<Path> source = rt.config().vendor().sourceJavaHome();
+    String key = source.isPresent() ? "vendor.sourceJavaHome" : "vendor.javaHome";
+    Optional<Path> jdk = rt.config().vendor().sourceToolsJavaHome();
+    Optional<String> from = in.fromVersion();
+    Set<Integer> allowed = Set.of();
+    if (from.isPresent()) {
+      try {
+        allowed = rt.services().matrix().javaRequiredFor(from.get());
+      } catch (UnsupportedVersionException e) {
+        // a version the matrix no longer knows: judged on presence only
+      }
+    }
+    if (allowed.isEmpty()) {
+      return jdk.isPresent()
+          ? Optional.empty()
+          : Optional.of(
+              CheckResult.fail(
+                  "neither vendor.sourceJavaHome nor vendor.javaHome is set",
+                  "set vendor.sourceJavaHome to the JDK the old version needs"));
+    }
+    return VendorJdkCheck.judge(
+        VendorJdkCheck.probe(rt, jdk),
+        key,
+        allowed,
+        "the old " + from.get() + "'s buildomatic, which rebuilds and re-imports the database,",
+        "set vendor.sourceJavaHome to a "
+            + CompatMatrix.describeJava(allowed)
+            + " JDK (jrsctl config set vendor.sourceJavaHome <dir>) and run the rollback again");
   }
 
   abstract static class DatabaseStep implements Step {
@@ -106,11 +146,11 @@ final class DatabaseRestoreSteps {
             "restore the database from your own backup and run the rollback without"
                 + " --restore-database");
       }
-      // ADR-0065 (issue #338): the old version's tools run on the source JDK when one is set
-      if (rt.config().vendor().sourceToolsJavaHome().isEmpty()) {
-        return CheckResult.fail(
-            "neither vendor.sourceJavaHome nor vendor.javaHome is set",
-            "set vendor.sourceJavaHome to the JDK the old version needs");
+      // ADR-0065 (issues #338, #348): the old version's tools run on the source JDK when one is
+      // set; a JDK that version cannot run is refused here, before the database is dropped
+      Optional<CheckResult> jdk = sourceJdkProblem(rt, in);
+      if (jdk.isPresent()) {
+        return jdk.get();
       }
       Optional<Buildomatic> b = buildomatic();
       if (b.isEmpty()) {

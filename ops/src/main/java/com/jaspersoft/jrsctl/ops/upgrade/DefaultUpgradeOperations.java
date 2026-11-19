@@ -5,6 +5,7 @@ import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigWriter;
+import com.jaspersoft.jrsctl.core.engine.CheckResult;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
 import com.jaspersoft.jrsctl.core.engine.PlanSummary;
@@ -40,6 +41,7 @@ import com.jaspersoft.jrsctl.ops.hotfix.HotfixPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -722,7 +724,8 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     VendorSteps.StageKeystoreInit keystore = new VendorSteps.StageKeystoreInit(rt, in);
     List<Step> steps = new ArrayList<>();
     steps.add(new PreflightSteps.Doctor(rt, in));
-    steps.add(new PreflightSteps.VerifyTargetPackage(rt, in));
+    // issue #348: a rehearsal takes no point-B export, so the source JDK is not judged
+    steps.add(new PreflightSteps.VerifyTargetPackage(rt, in, false));
     // review §2.5 (issue #108): the vendor's own preconditions, before anything is stopped
     steps.add(new VendorPreconditionSteps.Verify(rt, in, userHome));
     steps.add(master);
@@ -875,7 +878,15 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
             paths,
             webappName,
             installedBuildomatic,
-            rollbackEdition(set, webappName));
+            rollbackEdition(set, webappName),
+            recordedFromVersion(set).or(() -> startedFromVersion(set)));
+    if (options.restoreDatabase()) {
+      // issue #348: the old buildomatic must be able to run before the server is even stopped
+      Optional<CheckResult> jdk = DatabaseRestoreSteps.sourceJdkProblem(rt, in);
+      if (jdk.isPresent() && jdk.get() instanceof CheckResult.Fail fail) {
+        throw new UpgradeException(UpgradeException.PRECHECK, fail.message(), fail.remediation());
+      }
+    }
     Optional<Path> newTomcat = sideBySideTomcat(run).or(() -> retargetedTomcat(set, in));
     List<Step> steps = new ArrayList<>();
     // issue #340, ADR-0062: after a run into a new Tomcat the server to stop is the upgraded one
@@ -962,6 +973,15 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     }
     return new Plan(
         "upgrade-rollback-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));
+  }
+
+  /** Issue #348: the version a run started from, as its vendor-started marker records it. */
+  private static Optional<String> startedFromVersion(SnapshotSet set) {
+    try {
+      return set.vendorStartedFrom();
+    } catch (IOException e) {
+      return Optional.empty();
+    }
   }
 
   /**
@@ -1078,7 +1098,24 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     return recordedPath(set, "webapp");
   }
 
+  /**
+   * The version the upgrade run started from, from the point-B manifest ({@code from}); empty
+   * without a manifest or when it recorded "unknown".
+   */
+  static Optional<String> recordedFromVersion(SnapshotSet set) {
+    return recordedString(set, "from").filter(v -> !v.equals("unknown"));
+  }
+
   private static Optional<Path> recordedPath(SnapshotSet set, String key) {
+    try {
+      return recordedString(set, key).map(Path::of);
+    } catch (InvalidPathException e) {
+      // a manifest path this OS cannot parse falls back to resolving it from the configuration
+      return Optional.empty();
+    }
+  }
+
+  private static Optional<String> recordedString(SnapshotSet set, String key) {
     if (!Files.isRegularFile(set.manifest())) {
       return Optional.empty();
     }
@@ -1086,10 +1123,10 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       Map<?, ?> manifest =
           Json.read(Files.readString(set.manifest(), StandardCharsets.UTF_8), Map.class);
       if (manifest.get(key) instanceof String recorded && !recorded.isBlank()) {
-        return Optional.of(Path.of(recorded));
+        return Optional.of(recorded);
       }
     } catch (IOException | RuntimeException e) {
-      // an unreadable manifest falls back to resolving the directory from the configuration
+      // an unreadable manifest falls back to resolving the value from the configuration
     }
     return Optional.empty();
   }

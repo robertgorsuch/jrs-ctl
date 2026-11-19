@@ -372,6 +372,16 @@ public final class UpgradeFixture implements AutoCloseable {
     }
   }
 
+  /**
+   * Drops {@code vendor.sourceJavaHome} from the configuration, the default for an operator who
+   * never set it (ADR-0065, issue #348): the installed version's tools then run on javaHome.
+   */
+  public void withoutSourceJavaHome() throws IOException {
+    String yaml = Files.readString(fake.home.configFile(), StandardCharsets.UTF_8);
+    fake.yaml(yaml.replaceAll("(?m)^  sourceJavaHome: .*\\R", ""));
+    services = fake.build();
+  }
+
   /** Re-scripts the vendor Java probe, e.g. to simulate a JDK 11. */
   public void javaVersion(String banner) {
     for (String exe : List.of("java", "java.exe")) {
