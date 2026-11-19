@@ -520,6 +520,80 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Issue #343 (field run 2026-11-18): on a WAR install {@code server.installDir} is the Tomcat
+   * directory, and point-config-at-target moved only {@code server.tomcatDir}, so the next jrsctl
+   * process bound its service controller and doctor's layout to the old Tomcat. Both keys now move,
+   * and the rollback puts both back.
+   */
+  @Test
+  void should_move_install_dir_with_the_tomcat_and_restore_it_when_the_war_install_is_upgraded()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWarInstallWithManualService(tmp)) {
+      UpgradeOptions options = UpgradePlanTest.withNewTomcat(f);
+      Plan plan = f.ops().planUpgrade(options);
+      Path oldTomcat = f.tomcatDir.toAbsolutePath().normalize();
+      Path newTomcat = f.newTomcatDir.toAbsolutePath().normalize();
+      assertThat(plan.summary().warnings()).noneMatch(w -> w.contains("holds the old Tomcat"));
+      assertThat(plan.steps())
+          .filteredOn(s -> s.id().equals(JrsctlConfigSteps.POINT_CONFIG_AT_TARGET))
+          .singleElement()
+          .satisfies(s -> assertThat(s.detail()).contains("server.installDir -> " + newTomcat));
+      f.store()
+          .savePlan(
+              new StoredPlan(
+                  plan.planId(),
+                  PlanRegistry.UPGRADE,
+                  PlanRegistry.upgradeArgs(options),
+                  "{}",
+                  plan.fingerprint().value(),
+                  Instant.EPOCH,
+                  Instant.EPOCH,
+                  Optional.empty()));
+
+      assertThat(f.run(plan, "r-up-343", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(after.server().installDir()).contains(newTomcat);
+      assertThat(after.server().tomcatDir()).contains(newTomcat);
+
+      Plan back = f.ops().planRollback("r-up-343", RollbackPoint.B);
+      assertThat(f.run(back, "r-rb-343", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Config restored = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(restored.server().installDir()).contains(oldTomcat);
+      assertThat(restored.server().tomcatDir()).contains(oldTomcat);
+    }
+  }
+
+  /**
+   * Issue #343: an installation that holds its Tomcat (the bundled layout) keeps its {@code
+   * server.installDir}, since the new installation's directory cannot be derived; the plan says so.
+   */
+  @Test
+  void should_keep_install_dir_and_warn_when_the_installation_holds_its_tomcat() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+      Path install = f.installDir.toAbsolutePath().normalize();
+      assertThat(plan.summary().warnings())
+          .anySatisfy(
+              w ->
+                  assertThat(w)
+                      .contains("holds the old Tomcat")
+                      .contains(install.toString())
+                      .contains("jrsctl config set server.installDir"));
+
+      assertThat(f.run(plan, "r-up-343-bundled", RunOptions.DEFAULT))
+          .as(String.join("\n", f.logs()))
+          .isInstanceOf(RunOutcome.Succeeded.class);
+      Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
+      assertThat(after.server().installDir()).contains(install);
+      assertThat(after.server().tomcatDir()).contains(f.newTomcatDir.toAbsolutePath().normalize());
+    }
+  }
+
   /** Issue #340: without {@code --tomcat-dir} nothing is bound to another Tomcat. */
   @Test
   void should_not_bind_the_service_to_another_tomcat_when_no_tomcat_dir_is_given()

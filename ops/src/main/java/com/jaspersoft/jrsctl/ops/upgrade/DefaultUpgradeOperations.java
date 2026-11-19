@@ -146,6 +146,16 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
           + " vendor requires for it (installation guide: --add-opens on Tomcat 11), and be"
           + " registered as the service afterwards. The old Tomcat is left as it was.";
 
+  /**
+   * Issue #343: an installation that holds its Tomcat (the bundled installer's layout) keeps naming
+   * the old one after a run into a new Tomcat, and only the operator knows the new installation's
+   * directory.
+   */
+  static final String INSTALL_DIR_WARNING =
+      "server.installDir %s holds the old Tomcat %s and is not changed by the upgrade; once the"
+          + " server runs from %s, set it with jrsctl config set server.installDir <dir>, or doctor"
+          + " and the service steps of later commands keep judging the old Tomcat";
+
   /** ADR-0049: what a rollback of a run into a new Tomcat leaves out, and which Tomcat to start. */
   static final String SIDE_BY_SIDE_ROLLBACK_WARNING =
       "the upgrade ran in the new Tomcat %s: the old webapp and the installed buildomatic were not"
@@ -411,6 +421,10 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
                 + kind.map(k -> reregistration(k, in)).orElse("see the operator guide"));
       }
       warnings.add(TOMCAT_DIR_WARNING.formatted(in.hostTomcatDir()));
+      if (!in.installDir().equals(in.tomcatDir())) {
+        warnings.add(
+            INSTALL_DIR_WARNING.formatted(in.installDir(), in.tomcatDir(), in.hostTomcatDir()));
+      }
       warnings.add(SERVICE_SWITCH_WARNING + reregistration(ServiceConfig.Kind.MANUAL, in));
     }
     // installation guide 10.1 pp.84-86 (issue #109): the --add-opens list for Java 17/21 is the

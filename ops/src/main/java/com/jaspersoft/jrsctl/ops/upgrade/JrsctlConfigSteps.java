@@ -83,11 +83,36 @@ final class JrsctlConfigSteps {
       return Phases.VERIFY;
     }
 
+    /**
+     * Issue #343: where {@code server.installDir} goes after a run into a new Tomcat. A WAR install
+     * names the Tomcat itself as the installation ({@code installDir == tomcatDir}), so it moves
+     * with the Tomcat; an installation that holds its Tomcat (the bundled installer's {@code
+     * apache-tomcat} under it) is left alone, because its new value cannot be derived, and the plan
+     * warns instead ({@link DefaultUpgradeOperations#INSTALL_DIR_WARNING}).
+     */
+    private Optional<Path> newInstallDir() {
+      return in.options()
+          .tomcatDir()
+          .map(p -> p.toAbsolutePath().normalize())
+          .filter(t -> in.installDir().equals(in.tomcatDir()));
+    }
+
+    /** {@code updated} with {@code key} set, round-tripped through a sibling temporary file. */
+    private static Config withKey(
+        ConfigLoader loader, Config updated, Path file, String key, Path value) throws IOException {
+      Path tmpKey = file.resolveSibling(file.getFileName() + ".key");
+      ConfigWriter.write(updated, tmpKey);
+      Config next = loader.fileWith(tmpKey, key, value.toString());
+      Files.deleteIfExists(tmpKey);
+      return next;
+    }
+
     @Override
     public String detail() {
       return "server.buildomaticDir -> "
           + target()
           + in.options().tomcatDir().map(t -> "; server.tomcatDir -> " + t).orElse("")
+          + newInstallDir().map(t -> "; server.installDir -> " + t).orElse("")
           + "; previous config.yaml kept with the backups";
     }
 
@@ -126,18 +151,29 @@ final class JrsctlConfigSteps {
                     .tomcatDir()
                     .map(p -> p.toAbsolutePath().normalize())
                     .equals(newTomcat);
+        Optional<Path> newInstall = newInstallDir();
+        boolean installDone =
+            newInstall.isEmpty()
+                || current
+                    .server()
+                    .installDir()
+                    .map(p -> p.toAbsolutePath().normalize())
+                    .equals(newInstall);
         if (was.map(p -> p.toAbsolutePath().normalize()).equals(Optional.of(target()))
-            && tomcatDone) {
+            && tomcatDone
+            && installDone) {
           Logs.info(rt, ctx, out, this, "server.buildomaticDir already names " + target());
           return StepResult.ok();
         }
         Config updated = loader.fileWith(file, "server.buildomaticDir", target().toString());
         if (newTomcat.isPresent()) {
           // review §2.1: the upgraded server runs in the new Tomcat from now on
-          Path tmpTomcat = file.resolveSibling(file.getFileName() + ".tomcat");
-          ConfigWriter.write(updated, tmpTomcat);
-          updated = loader.fileWith(tmpTomcat, "server.tomcatDir", newTomcat.get().toString());
-          Files.deleteIfExists(tmpTomcat);
+          updated = withKey(loader, updated, file, "server.tomcatDir", newTomcat.get());
+        }
+        if (newInstall.isPresent()) {
+          // issue #343: on a WAR install the installation is the Tomcat itself; the platform's
+          // service controller and doctor's layout follow server.installDir, so it moves too
+          updated = withKey(loader, updated, file, "server.installDir", newInstall.get());
         }
         Path tmp = file.resolveSibling(file.getFileName() + ".new");
         ConfigWriter.write(updated, tmp);
