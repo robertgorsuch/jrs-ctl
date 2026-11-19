@@ -37,6 +37,8 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 `init` and `doctor` were run from the packaged jar against the JasperReports Server 10.0.0 PRO installation on the build machine (`C:\Jaspersoft\jasperreports-server-10.0.0`, Windows service `jasperreportsTomcat`, port 8081). `init` detected the layout, port, webapp, service, database type and bundled Java 17; `doctor` passed 18 of 21 checks (server, auth, identity 10.0.0 PRO MULTI, compat, layout, service, permissions, disk, keystore, vendor tools, vendor Java); the remaining items were the operator's database credentials and the REST-login probe, which has since been fixed. No mutating command has been run against it.
 
+**8.0.4 → 10.0.0 field dry run (2026-11-18, Windows WAR install, `--tomcat-dir`, `service.kind manual`):** the vendor upgrade, the events import and the 10.0 start in the new Tomcat 10.1.62 all succeeded, but three workarounds were needed, filed as #338, #339, #340 and #341. #340 (the start step watched the old Tomcat) is fixed by ADR-0062 and tested against the fakes only; the next `--tomcat-dir` field run is its live check.
+
 ## Environment facts
 
 - Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.10.0 through the wrapper. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.

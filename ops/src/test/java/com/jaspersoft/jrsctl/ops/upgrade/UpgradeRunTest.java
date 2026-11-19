@@ -501,6 +501,41 @@ class UpgradeRunTest {
   }
 
   /**
+   * Issue #340 (field run 2026-11-18): the start step watched the old Tomcat, so with {@code
+   * service.kind manual} it asked for the old server and never saw the new one start. The stop
+   * before the vendor run is still the old Tomcat's; the start after it is the new Tomcat's.
+   */
+  @Test
+  void should_start_the_upgraded_server_in_the_new_tomcat_when_tomcat_dir_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(UpgradePlanTest.withNewTomcat(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-340", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      String newTomcat = f.newTomcatDir.toAbsolutePath().normalize().toString();
+      assertThat(f.fake.platform.boundServiceEvents).containsExactly("start " + newTomcat);
+      assertThat(f.fake.platform.controller.events).containsSubsequence("stop", "start");
+    }
+  }
+
+  /** Issue #340: without {@code --tomcat-dir} nothing is bound to another Tomcat. */
+  @Test
+  void should_not_bind_the_service_to_another_tomcat_when_no_tomcat_dir_is_given()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-up-340-in-place", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.fake.platform.boundServiceEvents).isEmpty();
+      assertThat(f.fake.platform.controller.events).containsSubsequence("stop", "start");
+    }
+  }
+
+  /**
    * ADR-0049: after an upgrade into a new Tomcat, the old webapp and the installed buildomatic are
    * as point B archived them, so the rollback leaves both trees alone; the configuration still
    * points back at the old Tomcat. Without that, the rollback renamed the trees the old server
@@ -550,6 +585,11 @@ class UpgradeRunTest {
       assertThat(newMarker).hasContent("new server state");
       Config after = new ConfigLoader().load(f.fake.home, Map.of(), Map.of());
       assertThat(after.server().tomcatDir()).contains(f.tomcatDir.toAbsolutePath().normalize());
+      // issue #340: the upgrade started the new Tomcat; the rollback stops that one, then
+      // starts the old one through the configured installation (not bound, so not listed)
+      String newTomcat = f.newTomcatDir.toAbsolutePath().normalize().toString();
+      assertThat(f.fake.platform.boundServiceEvents)
+          .containsExactly("start " + newTomcat, "stop " + newTomcat);
     }
   }
 

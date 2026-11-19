@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-18 (side-by-side service steps watch the new Tomcat; ADR-0062, issue #340)
+
+- §10.1: with `--tomcat-dir`, `start-service` and `wait-for-server` after the vendor run, and the reconcile phase's service steps, act on the Tomcat in `--tomcat-dir`; `stop-service` before the vendor run, and its compensation, act on the configured one. A rollback of such a run stops the new Tomcat and starts the old one. The `manual` start instruction names the `bin` directory to run `startup.bat`/`startup.sh` from.
+
 ## Draft 1.2 amendment — 2026-11-15 (`customizations readiness`; ADR-0061, issue #306)
 
 - §10.3: `customizations readiness --target <version>` reports the site's classes, jars and descriptor files that name renamed `javax.*` classes, Java EE namespaces, library classes the target's webapp lacks (`--target-vendor`) or a Java above 17. Report only; no class-file library; no hand-written list of removed APIs.
