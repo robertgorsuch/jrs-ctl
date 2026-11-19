@@ -98,6 +98,13 @@ final class VendorSteps {
   static final String KEY_PASS_PROPERTY = "deprecatedImportExportEncSecret.keypass";
 
   /**
+   * Issue #339, ADR-0064: the repository database password every buildomatic validation needs
+   * ({@code bin/validation.xml}: "dbPassword property is not set"). The second password key jrsctl
+   * writes, from {@code database.passwordRef}, only when the operator's file has none.
+   */
+  static final String DB_PASSWORD_PROPERTY = "dbPassword";
+
+  /**
    * ADR-0046: 10.0's setup.xml (line 1403) asks on stdin, in every upgrade but {@code test}, to
    * confirm a Compact installation stays Compact; jrsctl gives the script no stdin, so Ant fails
    * with "unexpected end of stream". The vendor skips the question when this Ant property is {@code
@@ -382,9 +389,34 @@ final class VendorSteps {
       return buildomaticDir().resolve(Buildomatic.MASTER_PROPERTIES)
           + " ("
           + in.masterOverrides().size()
-          + " keys, no passwords, "
+          + " keys, no passwords copied, "
+          + DB_PASSWORD_PROPERTY
+          + " from database.passwordRef unless the file has one, "
           + SKIP_UPGRADE_CONSENT_PROPERTY
           + "=true; existing file snapshotted)";
+    }
+
+    private Path masterFile() {
+      return buildomaticDir().resolve(Buildomatic.MASTER_PROPERTIES);
+    }
+
+    /**
+     * Issue #339, ADR-0064: whether the operator's own file in the target buildomatic already names
+     * {@code dbPassword}. Read from the pristine copy once this run has staged the file, so a
+     * re-execution judges the operator's file and not jrsctl's own line.
+     */
+    private boolean operatorSuppliesDbPassword(Path runDir) throws IOException {
+      Path backup = MasterProperties.backupFor(runDir);
+      Path original = Files.isRegularFile(backup) ? backup : masterFile();
+      if (!Files.isRegularFile(original) || MasterProperties.isStaged(original)) {
+        return false;
+      }
+      java.util.Properties p = new java.util.Properties();
+      try (java.io.Reader r =
+          Files.newBufferedReader(original, java.nio.charset.StandardCharsets.ISO_8859_1)) {
+        p.load(r);
+      }
+      return !p.getProperty(DB_PASSWORD_PROPERTY, "").isBlank();
     }
 
     @Override
@@ -398,6 +430,29 @@ final class VendorSteps {
         return CheckResult.fail(
             buildomaticDir() + " is not writable",
             "grant jrsctl write access to the target package");
+      }
+      // issue #339, ADR-0064: the vendor's validation stops with "dbPassword property is not set"
+      // otherwise; refused here, before the service is stopped
+      try {
+        if (rt.config().database().passwordRef().isEmpty()
+            && !operatorSuppliesDbPassword(ctx.home().runDir(ctx.runId()))) {
+          return CheckResult.fail(
+              "the vendor scripts need "
+                  + DB_PASSWORD_PROPERTY
+                  + " and neither database.passwordRef nor "
+                  + masterFile()
+                  + " provides it",
+              "store the repository database password (jrsctl init offers to, or jrsctl secrets"
+                  + " set JRS_DB_PASSWORD) and set database.passwordRef enc:JRS_DB_PASSWORD, or"
+                  + " put "
+                  + DB_PASSWORD_PROPERTY
+                  + "=<password> in "
+                  + masterFile());
+        }
+      } catch (IOException e) {
+        return CheckResult.fail(
+            "cannot read " + masterFile() + ": " + e.getMessage(),
+            "check read access to the target package");
       }
       return CheckResult.pass();
     }
@@ -425,6 +480,39 @@ final class VendorSteps {
                 "cannot resolve the key password: " + e.getMessage(),
                 "fix " + keyPassword.get().render());
           }
+        }
+        // issue #339, ADR-0064: the repository password the vendor scripts need, from the
+        // configured reference, unless the operator's own file already names one (theirs wins)
+        Optional<SecretRef> dbPassword = rt.config().database().passwordRef();
+        boolean operatorFile;
+        try {
+          operatorFile = operatorSuppliesDbPassword(runDir);
+        } catch (IOException e) {
+          return Failures.recoverable(
+              "cannot read " + masterFile() + ": " + e.getMessage(),
+              "check read access to the target package");
+        }
+        if (operatorFile) {
+          Logs.info(
+              rt, ctx, out, this, DB_PASSWORD_PROPERTY + " kept from the existing " + masterFile());
+        } else if (dbPassword.isPresent()) {
+          try (Secret secret = rt.services().secrets().resolve(dbPassword.get())) {
+            rt.services().redactor().register(secret);
+            secrets.put(DB_PASSWORD_PROPERTY, secret.chars());
+          } catch (SecretException e) {
+            return Failures.recoverable(
+                "cannot resolve the database password: " + e.getMessage(),
+                "fix " + dbPassword.get().render() + " (database.passwordRef)");
+          }
+          Logs.info(
+              rt,
+              ctx,
+              out,
+              this,
+              DB_PASSWORD_PROPERTY
+                  + " written from database.passwordRef ("
+                  + dbPassword.get().render()
+                  + ")");
         }
         return stage(ctx, out, overrides, secrets, runDir);
       } finally {

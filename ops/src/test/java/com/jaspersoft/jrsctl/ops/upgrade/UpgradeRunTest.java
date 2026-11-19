@@ -295,6 +295,69 @@ class UpgradeRunTest {
     }
   }
 
+  /**
+   * Issue #339 (field run 2026-11-18): the vendor validation stopped with "dbPassword property is
+   * not set" because the target's file was staged with no password. It is now written from {@code
+   * database.passwordRef}, escaped for the properties format, and never reaches the log.
+   */
+  @Test
+  void should_stage_db_password_from_the_configured_reference_and_keep_it_out_of_the_log()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-dbpass", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.stagedMasterProperties())
+          .containsEntry("dbPassword", UpgradeFixture.DB_PASSWORD);
+      assertThat(f.logs())
+          .noneMatch(l -> l.contains(UpgradeFixture.DB_PASSWORD))
+          .anyMatch(l -> l.contains("dbPassword written from database.passwordRef"));
+    }
+  }
+
+  /** Issue #339: a password the operator already put in the target's file is the one used. */
+  @Test
+  void should_keep_the_operators_db_password_when_the_target_file_has_one() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Files.writeString(
+          f.packageDir.resolve("buildomatic").resolve("default_master.properties"),
+          "dbPassword=" + UpgradeFixture.OPERATOR_DB_PASSWORD + "\n");
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-dbpass-op", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      assertThat(f.stagedMasterProperties())
+          .containsEntry("dbPassword", UpgradeFixture.OPERATOR_DB_PASSWORD);
+      assertThat(f.logs()).anyMatch(l -> l.contains("dbPassword kept from the existing"));
+    }
+  }
+
+  /**
+   * Issue #339: with neither a reference nor the operator's file, write-master-properties refuses
+   * before the service is stopped, naming both ways to supply it.
+   */
+  @Test
+  void should_refuse_before_the_stop_when_no_db_password_is_available() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithDatabase(tmp)) {
+      Files.delete(f.packageDir.resolve("buildomatic").resolve("default_master.properties"));
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-dbpass-none", RunOptions.DEFAULT);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.PrecheckFailed.class);
+      RunOutcome.PrecheckFailed failed = (RunOutcome.PrecheckFailed) outcome;
+      assertThat(failed.stepId()).isEqualTo("write-master-properties");
+      assertThat(failed.message()).contains("need dbPassword");
+      assertThat(failed.remediation())
+          .contains("database.passwordRef")
+          .contains("jrsctl secrets set JRS_DB_PASSWORD");
+      assertThat(f.fake.platform.controller.events).doesNotContain("stop");
+    }
+  }
+
   @Test
   void should_back_up_upgrade_and_record_when_vendor_script_succeeds() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {

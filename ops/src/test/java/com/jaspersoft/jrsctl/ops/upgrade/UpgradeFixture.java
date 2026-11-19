@@ -41,6 +41,17 @@ public final class UpgradeFixture implements AutoCloseable {
 
   public static final String OLD_VERSION = "8.2.0";
   public static final String NEW_VERSION = "9.0.0";
+
+  /**
+   * Issue #339: the variable {@code database.passwordRef} names in every fixture, and its value.
+   */
+  public static final String DB_PASSWORD_VARIABLE = "JRS_DB_PASSWORD";
+
+  public static final String DB_PASSWORD = "Repo$ecret\\1";
+
+  /** The password a database fixture's operator put in the target's file themselves. */
+  public static final String OPERATOR_DB_PASSWORD = "OperatorChosen";
+
   public static final String OLD_SCRIPT = "console.log('old');\n";
   public static final String NEW_SCRIPT = "console.log('new');\n";
 
@@ -131,6 +142,8 @@ public final class UpgradeFixture implements AutoCloseable {
     write(keystoreDir.resolve(".jrsks"), "keystore-bytes");
     write(keystoreDir.resolve(".jrsksp"), "keystore-properties");
     this.fake = FakeServices.in(root.resolve("home"), os);
+    // issue #339: the repository password write-master-properties stages for the vendor scripts
+    fake.env.put(DB_PASSWORD_VARIABLE, DB_PASSWORD);
     fake.platform.realFiles = true;
     for (String exe : List.of("java", "java.exe")) {
       fake.platform.on(
@@ -174,9 +187,16 @@ public final class UpgradeFixture implements AutoCloseable {
                         : "",
                     manualService ? "manual" : "systemd",
                     slashes(javaHome))
-            + (withDatabase ? databaseYaml(root) : ""));
+            + (withDatabase
+                ? databaseYaml(root)
+                : "database:\n  passwordRef: env:" + DB_PASSWORD_VARIABLE + "\n"));
     if (withDatabase) {
       Files.createDirectories(root.resolve("drivers"));
+      // issue #339: the database section names no password reference (so doctor skips the
+      // connection), so the operator has prepared the target's file with the password instead
+      write(
+          packageDir.resolve("buildomatic").resolve("default_master.properties"),
+          "dbPassword=" + OPERATOR_DB_PASSWORD + "\n");
     }
     this.services = fake.build();
   }

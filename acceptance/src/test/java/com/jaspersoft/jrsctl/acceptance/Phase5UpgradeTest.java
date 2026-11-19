@@ -344,6 +344,10 @@ class Phase5UpgradeTest {
         buildomatic.resolve("js-ant.bat"),
         "@echo off\r\n"
             + "echo js-ant fake target=%1 JAVA_HOME=%JAVA_HOME%\r\n"
+            // bin/validation.xml:340 refuses without the repository password (issue #339)
+            + "findstr /B /C:\"dbPassword=\" \"%~dp0default_master.properties\" >nul 2>&1 || (echo"
+            + " BUILD FAILED & echo validation.xml:340: Error: dbPassword property is not set &"
+            + " exit /b 0)\r\n"
             + "if \"%1\"==\"pre-upgrade-test-pro\" (echo BUILD SUCCESSFUL & exit /b 0)\r\n"
             // 10.0's setup.xml asks for consent on stdin unless SKIP_UPGRADE_CONSENT=true
             // (ADR-0046)
@@ -361,6 +365,10 @@ class Phase5UpgradeTest {
         buildomatic.resolve("js-ant.sh"),
         "#!/bin/sh\n"
             + "echo \"js-ant fake target=$1 JAVA_HOME=$JAVA_HOME\"\n"
+            // bin/validation.xml:340 refuses without the repository password (issue #339)
+            + "if ! grep -q '^dbPassword=' \"$(dirname \"$0\")/default_master.properties\""
+            + " 2>/dev/null; then echo BUILD FAILED; echo 'validation.xml:340: Error: dbPassword"
+            + " property is not set'; exit 0; fi\n"
             + "if [ \"$1\" = \"pre-upgrade-test-pro\" ]; then echo BUILD SUCCESSFUL; exit 0; fi\n"
             + "if [ \"$1\" = \"upgrade-minimal-pro\" ] && ! grep -q '^SKIP_UPGRADE_CONSENT=true'"
             + " \"$(dirname \"$0\")/default_master.properties\" 2>/dev/null; then\n"
@@ -416,8 +424,14 @@ class Phase5UpgradeTest {
         pkg.resolve("jasperserver-pro").resolve("WEB-INF").resolve("lib").resolve("lib.jar"),
         "lib");
     vendorScripts(pkg.resolve("buildomatic"), Optional.of(webappNew));
+    // issue #339, ADR-0064: the operator prepared the target's file with the repository password;
+    // jrsctl keeps it (the config names no database.passwordRef) and the fake validation needs it
+    write(pkg.resolve("buildomatic").resolve("default_master.properties"), TARGET_MASTER);
     return pkg;
   }
+
+  /** The target package's own {@code default_master.properties}, as the operator left it. */
+  private static final String TARGET_MASTER = "dbPassword=OperatorChosen\n";
 
   /** Picks the vendor JDK and, from its major version, the target version of the upgrade. */
   private static Path vendorJdk() throws Exception {
@@ -652,7 +666,9 @@ class Phase5UpgradeTest {
     assertThat(run.stdout()).contains("succeeded").contains("rehearsal ok; nothing changed");
     assertThat(webapp.resolve(MARKER)).doesNotExist();
     assertThat(webapp.resolve("version.txt")).hasContent("8.2.0");
-    assertThat(pkg.resolve("buildomatic").resolve("default_master.properties")).doesNotExist();
+    // the operator's file is put back exactly as it was (issue #339 gave the package one)
+    assertThat(pkg.resolve("buildomatic").resolve("default_master.properties"))
+        .hasContent(TARGET_MASTER.strip());
     assertThat(pkg.resolve("buildomatic").resolve("keystore.init.properties")).doesNotExist();
   }
 
@@ -767,7 +783,11 @@ class Phase5UpgradeTest {
         Files.readString(
             pkg.resolve("buildomatic").resolve("default_master.properties"),
             StandardCharsets.UTF_8);
-    assertThat(master).contains("dbHost=localhost").doesNotContain("TopSecret");
+    // the installed password is never copied; the operator's own is kept (issue #339)
+    assertThat(master)
+        .contains("dbHost=localhost")
+        .contains("dbPassword=OperatorChosen")
+        .doesNotContain("TopSecret");
     assertThat(jrsctl("runs", "show", upgradeRunId).assertExit(0).stdout())
         .contains("run-vendor-upgrade")
         .contains("SUCCEEDED");
