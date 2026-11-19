@@ -56,7 +56,7 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 ## Stubbed or deferred components
 
-Open as of 2.8.0.
+Open as of 2.9.0.
 
 - Buildomatic on a network share ([#31](https://github.com/robertgorsuch/jrsctl/issues/31)): partly verified. A relocated buildomatic was exercised against a throwaway clone (see "Field layouts" above); resolution against a real UNC share and a network mount is not verified.
 - Upgrade and rollback paths verified only against fake vendor scripts, never against a live installation (no disposable installation or elevation on the build machine; `docs/releases/v1.8.0.md`, "Not verified live"): `upgrade --export`, `upgrade --test`, `upgrade rollback --restore-database`, the key alias passed through the vendor import, the vendor strategy's new-content rollback, and the Linux service paths.
