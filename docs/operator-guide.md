@@ -89,7 +89,7 @@ The only things that cannot happen without a network are the ones that need the 
 
 ## Global flags
 
-Every command accepts these flags, before or after the command name.
+Every command accepts these flags, before or after the command name (`jrsctl --home <dir> runs list` and `jrsctl runs list --home <dir>` are the same). A flag given in both places takes the value given after the command name; `--set` entries from both places are merged, the later one winning for the same key.
 
 | Flag | Meaning |
 |---|---|

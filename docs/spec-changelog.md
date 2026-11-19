@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-19 (global options before the command name; issue #354)
+
+- §5.1: a global option given before the command name now reaches the command (it was parsed and silently dropped: `jrsctl --home <dir> runs list` used the default home while the log went to `<dir>`). Given in both places, the one after the command name wins; `--set` entries are merged. The log file follows the last `--home`.
+
 ## Draft 1.2 amendment — 2026-11-19 (an unusable home is a refusal; issue #351)
 
 - §5.5: a run lock that cannot be created or locked is exit 2 with a remedy, not 4: nothing has run when the lock is taken. Every command refuses a home that exists and is not a folder (a file, a dangling link) with exit 2 before opening anything under it.
