@@ -625,9 +625,19 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     rollbackPoints.put(
         Phases.VENDOR_UPGRADE,
         "point C = restore point B (webapp, buildomatic, configuration, keystore)"
-            + (options.mode() == Mode.NEWDB
-                ? "; the full export is taken here, after the stop, and kept under " + snapshotDir
-                : ""));
+            + (options.mode() != Mode.NEWDB
+                ? ""
+                // issue #341: an adopted export is neither taken here nor kept under the home
+                : options
+                    .existingExport()
+                    .map(
+                        e ->
+                            "; the full export is the one adopted from "
+                                + e.toAbsolutePath().normalize()
+                                + " (not copied: keep it until the run has finished)")
+                    .orElse(
+                        "; the full export is taken here, after the stop, and kept under "
+                            + snapshotDir)));
     rollbackPoints.put(Phases.RECONCILE, "restore point B");
     rollbackPoints.put(
         Phases.VERIFY,
@@ -664,6 +674,19 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     // only when set, so the fingerprint of an unchanged plan stays what an earlier jrsctl computed
     if (options.skipLockedFiles()) {
       inputs.put("skipLockedFiles", "true");
+    }
+    // issue #341: options that change what the plan does are fingerprinted too (ADR-0028 said
+    // they were), again only when set; a key password goes in as its reference, never its value
+    options
+        .tomcatDir()
+        .ifPresent(t -> inputs.put("tomcatDir", t.toAbsolutePath().normalize().toString()));
+    options
+        .existingExport()
+        .ifPresent(e -> inputs.put("export", e.toAbsolutePath().normalize().toString()));
+    options.keyAlias().ifPresent(a -> inputs.put("keyAlias", a));
+    options.keyPassword().ifPresent(r -> inputs.put("keyPasswordRef", r.render()));
+    if (options.migratePasswords()) {
+      inputs.put("migratePasswords", "true");
     }
     return new Plan(
         "upgrade-" + RunIds.next(rt.clock()), steps, summary, PlanFingerprint.of(inputs));

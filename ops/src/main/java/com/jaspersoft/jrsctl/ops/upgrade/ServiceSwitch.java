@@ -41,16 +41,26 @@ final class ServiceSwitch {
    * new.
    */
   private static String windowsService(String service, Path oldTomcat, Path newTomcat) {
+    // issue #341 (field run 2026-11-18): run from PowerShell without CATALINA_HOME, service.bat
+    // created no service and the message was easy to miss; set both variables, run it through
+    // cmd, and check the service exists before configuring it. The service reads no setenv.bat.
     return "from an elevated prompt run "
         + windows(oldTomcat.resolve("bin").resolve("service.bat"))
         + " remove "
         + service
-        + ", then "
+        + ", then, with JAVA_HOME set to the JDK and CATALINA_HOME to "
+        + windows(newTomcat)
+        + ", cmd /c \""
         + windows(newTomcat.resolve("bin").resolve("service.bat"))
         + " install "
         + service
-        + ", then give the new service the JVM options, log-on account and start type the old one"
-        + " had (the new Tomcat's bin\\tomcat*w.exe //ES//"
+        + "\" and check that sc.exe query "
+        + service
+        + " finds it, then give the new service the JVM options (the service reads no"
+        + " setenv.bat), log-on account and start type the old one had (the new Tomcat's"
+        + " bin\\tomcat*w.exe //ES//"
+        + service
+        + " or bin\\tomcat*.exe //US//"
         + service
         + ", or sc.exe config "
         + service

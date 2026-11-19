@@ -706,7 +706,7 @@ Runs, most recent first: run id, operation, started, duration, outcome (terminal
 
 ### `jrsctl runs show <id> [--json]`
 
-One run: the plan summary it was started from (operation, target, files, service, strategy, fingerprint, warnings), every step transition from the journal (`PENDING -> RUNNING -> SUCCEEDED ...` with details such as retry reasons), the snapshots it took and, for a failed run, the outcome block.
+One run: the plan summary it was started from (operation, target, files, service, strategy, fingerprint, warnings), every step transition from the journal (`PENDING -> RUNNING -> SUCCEEDED ...` with details such as retry reasons), the snapshots it took and, for a failed run, the outcome block. For an upgrade run the text lists, under Backups, the webapp and buildomatic archives and the full export as well, and an export adopted with `--export` at the path it was adopted from (#341); `--json` lists the snapshot records only.
 
 - **Mutates:** nothing; read-only.
 - **Rollback:** not applicable.

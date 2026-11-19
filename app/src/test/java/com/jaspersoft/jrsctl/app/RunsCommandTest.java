@@ -236,6 +236,39 @@ class RunsCommandTest {
     assertThat(rows.get(0).get("durationMillis").asLong()).isEqualTo(42_000L);
   }
 
+  /**
+   * Issue #341 (field run 2026-11-18): the webapp archive and the full export are files with
+   * sidecars, not snapshot records, so {@code runs show} listed neither; an adopted export lives
+   * outside the home and is listed from its record.
+   */
+  @Test
+  void should_list_the_webapp_archive_and_the_adopted_export_of_an_upgrade_run() throws Exception {
+    try (StateStore store = open()) {
+      storePlan(store, "plan-up", Optional.of("r-up"));
+      store.recordRunStart("r-up", "upgrade", Optional.of("plan-up"), T0);
+      store.recordRunEnd("r-up", T0.plusSeconds(60), TerminalState.SUCCEEDED, 0);
+    }
+    Path set = Files.createDirectories(home.resolve("snapshots").resolve("r-up"));
+    Path archives = Files.createDirectories(set.resolve("backup-webapp"));
+    for (String name : List.of("webapp.zip", "webapp.tar.gz")) {
+      Files.writeString(archives.resolve(name), "archive");
+    }
+    Path adopted = tmp.resolve("earlier-export.zip");
+    Files.writeString(
+        set.resolve("full-export.external"),
+        adopted + System.lineSeparator() + "abc123" + System.lineSeparator());
+
+    InitCommandTest.Run text =
+        InitCommandTest.run(
+            "runs", "show", "r-up", "--home", home.toString(), "--no-color", "--ascii");
+
+    assertThat(text.code()).as(text.err()).isZero();
+    assertThat(text.out())
+        .contains("(webapp archive)")
+        .contains(adopted + "  (full export (adopted, not copied))")
+        .doesNotContain("(none)");
+  }
+
   @Test
   void should_show_plan_summary_transitions_and_backups_when_run_exists() throws Exception {
     try (StateStore store = open()) {

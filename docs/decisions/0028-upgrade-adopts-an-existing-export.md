@@ -22,7 +22,7 @@ What the vendor tooling allows was checked on the 10.0.0 buildomatic on this mac
 
 ## Consequences
 
-- `UpgradeOptions` gains `existingExport`, `keyAlias`, `keyPassword`; `PlanRegistry` round-trips the three for `runs recover`; the plan fingerprint includes them through the options.
+- `UpgradeOptions` gains `existingExport`, `keyAlias`, `keyPassword`; `PlanRegistry` round-trips the three for `runs recover`. The plan fingerprint was meant to include them through the options but did not until issue #341 (2026-11-18): they are now fingerprinted when set, the key password as its reference.
 - The adopted file is never copied under the home: the space budget (Task 6) no longer reserves the export's estimate for it, and the operator keeps the file where it is until the run has finished; `adopt-full-export` says "not copied" in its detail line.
 - `IdempotencyCoverageTest` lists `AdoptFullExport`; re-execution rewrites the same record, compensation removes it and leaves the operator's file alone.
 - Not verified live: the alias route against the 10.0.0 server on this machine. The fakes prove the properties reach the staged file and the export reaches the wrapper; the first live newdb upgrade from a portable export should be recorded in `BUILD_STATUS.md`.

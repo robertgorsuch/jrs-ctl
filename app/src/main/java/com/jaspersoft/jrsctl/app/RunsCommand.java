@@ -16,6 +16,8 @@ import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
+import com.jaspersoft.jrsctl.ops.upgrade.RunArtefacts;
+import com.jaspersoft.jrsctl.ops.upgrade.UpgradeOperations;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
@@ -331,11 +333,20 @@ final class RunsCommand implements Runnable {
           lines.addAll(t.lines());
         }
         lines.add("Backups");
-        if (snapshots.isEmpty()) {
+        // issue #341: the archives and the full export are files with sidecars, not snapshot
+        // records, so they are listed from the run's snapshot directory
+        List<RunArtefacts.Artefact> artefacts =
+            run.operation().equals(UpgradeOperations.UPGRADE_OPERATION)
+                ? RunArtefacts.of(services.home(), runId, services.platform().os())
+                : List.of();
+        if (snapshots.isEmpty() && artefacts.isEmpty()) {
           lines.add("  (none)");
         } else {
           for (SnapshotRecord s : snapshots) {
             lines.add("  " + s.id() + "  " + s.path() + "  (step " + s.stepId() + ")");
+          }
+          for (RunArtefacts.Artefact a : artefacts) {
+            lines.add("  " + a.path() + "  (" + a.label() + ")");
           }
         }
         for (String line : lines) {
