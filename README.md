@@ -2,7 +2,7 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **Actively maintained.** The current release is [2.8.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.8.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
+> **Actively maintained.** The current release is [2.9.0](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.9.0). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
 >
 > - Supported: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
 > - Each archive bundles a Java 21 runtime; `jrsctl selfcheck` shows which update.
@@ -26,6 +26,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 | Load a repository into a new schema on a new version's buildomatic | `jrsctl repository load` |
 | Move stored passwords to the modern format | `jrsctl passwords migrate` |
 | Keep report jobs paused or running as they were across a move | `jrsctl jobs record` / `jobs resume` |
+| Close an interrupted job you already put right by hand | `jrsctl runs abandon <id>` |
 | Get a support bundle for a ticket | `jrsctl runs support-bundle <id>` |
 
 ---
@@ -53,14 +54,14 @@ Unpack it on the server, then open a terminal in the unpacked folder:
 
 ```bash
 :: Windows (Command Prompt, run as administrator)
-tar -xf jrsctl-2.8.0-windows-x64.zip -C C:\Jaspersoft
-cd C:\Jaspersoft\jrsctl-2.8.0
+tar -xf jrsctl-2.9.0-windows-x64.zip -C C:\Jaspersoft
+cd C:\Jaspersoft\jrsctl-2.9.0
 ```
 
 ```bash
 # Linux
-tar -xzf jrsctl-2.8.0-linux-x64.tar.gz -C /opt
-cd /opt/jrsctl-2.8.0
+tar -xzf jrsctl-2.9.0-linux-x64.tar.gz -C /opt
+cd /opt/jrsctl-2.9.0
 ```
 
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
@@ -211,6 +212,13 @@ When you're happy with it, run the same command without `--plan`. At the end jrs
 jrsctl upgrade rollback <run id> --to-point B
 ```
 
+**When the old and new versions need different Java** (8.x runs on 8 or 11, 10.x on 17 or 21), point `vendor.javaHome` at the new version's Java and `vendor.sourceJavaHome` at the old one's, so the export before the upgrade and a later database rollback run the old version's tools on a Java they support:
+
+```bash
+jrsctl config set vendor.javaHome C:\Java\jdk-17
+jrsctl config set vendor.sourceJavaHome C:\Java\jdk-11
+```
+
 Run `jrsctl upgrade --explain` for the full details, including the Java version the new release needs.
 
 **Your own changes to the webapp.** Before the upgrade, find out which files you changed and what the new version did to the same files:
@@ -296,7 +304,7 @@ jrsctl finishes every job by saying what happened and what to do next. The numbe
 | **5** | You cancelled it, and jrsctl put everything back | Nothing |
 | **6** | This server version, this upgrade step, or this kind of installation (JBoss, WildFly, a container) isn't supported | Nothing changed. Check what is supported under [Before you start](#before-you-start) |
 | **7** | The hotfix isn't signed by a publisher jrsctl trusts, or the file was altered | Don't install it. Get a genuine copy from Jaspersoft |
-| **8** | An earlier job was interrupted (a crash or power cut) | Run the `jrsctl runs recover …` command it prints, to finish or undo that job |
+| **8** | An earlier job was interrupted (a crash or power cut) | Run the `jrsctl runs recover …` command it prints, to finish or undo that job, or `jrsctl runs abandon <id>` if you already put the server right another way |
 | **9** | Another jrsctl job is already running | Wait for it to finish |
 
 Other useful commands:
@@ -362,8 +370,8 @@ The main files are `config.yaml` (the settings `init` wrote), `snapshots\` (back
 
 Each release file has a `.sha256` checksum beside it:
 
-- Windows: `certutil -hashfile jrsctl-2.8.0-windows-x64.zip SHA256`
-- Linux: `sha256sum -c jrsctl-2.8.0-linux-x64.tar.gz.sha256`
+- Windows: `certutil -hashfile jrsctl-2.9.0-windows-x64.zip SHA256`
+- Linux: `sha256sum -c jrsctl-2.9.0-linux-x64.tar.gz.sha256`
 
 Releases are also signed by the Jaspersoft publisher key. See [`docs/security.md`](docs/security.md).
 
