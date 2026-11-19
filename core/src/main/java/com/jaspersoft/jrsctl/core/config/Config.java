@@ -359,15 +359,30 @@ public record Config(
     }
   }
 
-  /** The {@code vendor:} block: the JDK buildomatic runs with, never jrsctl's own runtime. */
-  public record Vendor(Optional<Path> javaHome) {
+  /**
+   * The {@code vendor:} block: the JDKs buildomatic runs with, never jrsctl's own runtime. {@code
+   * javaHome} runs the current or target version's tools; {@code sourceJavaHome}, when set, runs
+   * the tools of the version an upgrade starts from (its point-B export and a database rollback),
+   * since 8.x and 10.x support no Java in common (ADR-0065, issue #338).
+   */
+  public record Vendor(Optional<Path> javaHome, Optional<Path> sourceJavaHome) {
 
     public Vendor {
       Objects.requireNonNull(javaHome, "javaHome");
+      Objects.requireNonNull(sourceJavaHome, "sourceJavaHome");
+    }
+
+    public Vendor(Optional<Path> javaHome) {
+      this(javaHome, Optional.empty());
     }
 
     public static Vendor empty() {
       return new Vendor(Optional.empty());
+    }
+
+    /** The JDK for the tools of the version an upgrade starts from (ADR-0065). */
+    public Optional<Path> sourceToolsJavaHome() {
+      return sourceJavaHome.or(() -> javaHome);
     }
   }
 

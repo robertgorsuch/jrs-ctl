@@ -106,9 +106,11 @@ final class DatabaseRestoreSteps {
             "restore the database from your own backup and run the rollback without"
                 + " --restore-database");
       }
-      if (rt.config().vendor().javaHome().isEmpty()) {
+      // ADR-0065 (issue #338): the old version's tools run on the source JDK when one is set
+      if (rt.config().vendor().sourceToolsJavaHome().isEmpty()) {
         return CheckResult.fail(
-            "vendor.javaHome is not set", "set vendor.javaHome to the JDK the old version needs");
+            "neither vendor.sourceJavaHome nor vendor.javaHome is set",
+            "set vendor.sourceJavaHome to the JDK the old version needs");
       }
       Optional<Buildomatic> b = buildomatic();
       if (b.isEmpty()) {
@@ -240,7 +242,7 @@ final class DatabaseRestoreSteps {
                   b,
                   target(),
                   List.of(),
-                  rt.config().vendor().javaHome(),
+                  rt.config().vendor().sourceToolsJavaHome(),
                   out,
                   Logs.scope(ctx, this));
       return switch (run) {
@@ -324,7 +326,7 @@ final class DatabaseRestoreSteps {
                   b,
                   request(),
                   Optional.empty(),
-                  rt.config().vendor().javaHome(),
+                  rt.config().vendor().sourceToolsJavaHome(),
                   out,
                   Logs.scope(ctx, this));
       return switch (run) {

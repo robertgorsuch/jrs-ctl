@@ -54,7 +54,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "javaHome": { "type": "string" }
+        "javaHome": { "type": "string" },
+        "sourceJavaHome": { "type": "string" }
       }
     },
     "network": {

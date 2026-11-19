@@ -226,6 +226,13 @@ class UpgradeRunTest {
           .contains("--include-server-settings");
       assertThat(f.vendorLogText().indexOf("init-js-db-pro"))
           .isLessThan(f.vendorLogText().indexOf("js-import"));
+      // ADR-0065 (issue #338): the old version's tools rebuild its database on its own JDK
+      assertThat(f.logs())
+          .anyMatch(
+              l ->
+                  l.contains(
+                      "target=init-js-db-pro installed JAVA_HOME="
+                          + f.sourceJavaHome.toAbsolutePath().normalize()));
       assertThat(f.store().auditRows(20)).anyMatch(a -> a.action().equals("upgrade.rolled-back"));
     }
   }
@@ -355,6 +362,28 @@ class UpgradeRunTest {
           .contains("database.passwordRef")
           .contains("jrsctl secrets set JRS_DB_PASSWORD");
       assertThat(f.fake.platform.controller.events).doesNotContain("stop");
+    }
+  }
+
+  /**
+   * ADR-0065 (issue #338, field run 2026-11-18): the installed 8.x js-export ran on the target's
+   * Java 17 and failed. The point-B export now runs on vendor.sourceJavaHome and the vendor upgrade
+   * on vendor.javaHome.
+   */
+  @Test
+  void should_export_on_the_source_jdk_and_upgrade_on_the_target_jdk() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Plan plan = f.ops().planUpgrade(newdb(f));
+
+      RunOutcome outcome = f.run(plan, "r-jdks", RunOptions.DEFAULT);
+
+      assertThat(outcome).as(String.join("\n", f.logs())).isInstanceOf(RunOutcome.Succeeded.class);
+      String source = f.sourceJavaHome.toAbsolutePath().normalize().toString();
+      String target = f.javaHome.toAbsolutePath().normalize().toString();
+      assertThat(f.logs())
+          .anyMatch(l -> l.contains("js-export fake JAVA_HOME=" + source))
+          .noneMatch(l -> l.contains("js-export fake JAVA_HOME=" + target))
+          .anyMatch(l -> l.contains("target=upgrade-minimal-pro JAVA_HOME=" + target));
     }
   }
 

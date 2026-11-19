@@ -82,6 +82,13 @@ class Phase5UpgradeTest {
   private static Path pkg;
   private static Path userHome;
   private static String targetVersion;
+
+  /**
+   * The JDK for the installed 8.2.0's own tools (issue #338, ADR-0065) when the vendor JDK is the
+   * 9.0.0 target's 17; empty when the vendor JDK suits both versions.
+   */
+  private static Optional<Path> sourceJdk = Optional.empty();
+
   private static String upgradeRunId;
 
   @BeforeAll
@@ -167,7 +174,7 @@ class Phase5UpgradeTest {
           scriptPath: %s
           stopTimeoutSeconds: 60
         vendor:
-          javaHome: %s
+          javaHome: %s%s
         network:
           mode: public
         """
@@ -177,7 +184,8 @@ class Phase5UpgradeTest {
                 unix(install),
                 unix(tomcat),
                 unix(tomcat.resolve("bin").resolve(script("catalina"))),
-                unix(vendorJdk)),
+                unix(vendorJdk),
+                sourceJdk.map(j -> "\n  sourceJavaHome: " + unix(j)).orElse("")),
         StandardCharsets.UTF_8);
   }
 
@@ -440,7 +448,12 @@ class Phase5UpgradeTest {
       write(
           fake.resolve("bin").resolve("java"),
           "#!/bin/sh\necho 'openjdk version \"17.0.2\" 2022-01-18' 1>&2\nexit 0\n");
+      Path fake11 = tmp.resolve("jdk11");
+      write(
+          fake11.resolve("bin").resolve("java"),
+          "#!/bin/sh\necho 'openjdk version \"11.0.21\" 2023-10-17' 1>&2\nexit 0\n");
       targetVersion = "9.0.0";
+      sourceJdk = Optional.of(fake11);
       return fake;
     }
     List<Path> candidates = new ArrayList<>();
@@ -468,26 +481,34 @@ class Phase5UpgradeTest {
         }
       }
     }
+    Optional<Path> jdk17 = Optional.empty();
     Optional<Path> jdk11 = Optional.empty();
     for (Path candidate : candidates) {
       Optional<Integer> major = javaMajor(candidate);
       if (major.isEmpty()) {
         continue;
       }
-      if (major.get() == 17) {
-        targetVersion = "9.0.0";
-        return candidate;
+      if (major.get() == 17 && jdk17.isEmpty()) {
+        jdk17 = Optional.of(candidate);
       }
       if (major.get() == 11 && jdk11.isEmpty()) {
         jdk11 = Optional.of(candidate);
       }
+    }
+    // issue #338, ADR-0065: a 9.0.0 target runs on 17, but the installed 8.2.0's export and
+    // rollback tools need 8 or 11, so the 17 path needs an 11 beside it as vendor.sourceJavaHome
+    if (jdk17.isPresent() && jdk11.isPresent()) {
+      targetVersion = "9.0.0";
+      sourceJdk = jdk11;
+      return jdk17.get();
     }
     if (jdk11.isPresent()) {
       targetVersion = "8.3.0";
       return jdk11.get();
     }
     Assumptions.abort(
-        "no JDK 17 or 11 found for the vendor Java check; set JRSCTL_VENDOR_JDK to one");
+        "no JDK 11 found for the vendor Java check (the installed 8.2.0's tools need it);"
+            + " set JRSCTL_VENDOR_JDK to one");
     throw new IllegalStateException("unreachable");
   }
 

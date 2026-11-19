@@ -87,6 +87,10 @@ public final class UpgradeFixture implements AutoCloseable {
   public final Path userHome;
 
   public final Path javaHome;
+
+  /** ADR-0065 (issue #338): the JDK the installed 8.2 tools run on, Java 11. */
+  public final Path sourceJavaHome;
+
   public final Path keystoreDir;
   public final Path vendorLog;
 
@@ -129,6 +133,7 @@ public final class UpgradeFixture implements AutoCloseable {
     this.packageDir = Files.createDirectories(root.resolve("pkg-9.0.0"));
     this.userHome = Files.createDirectories(root.resolve("user-home"));
     this.javaHome = Files.createDirectories(root.resolve("jdk17"));
+    this.sourceJavaHome = Files.createDirectories(root.resolve("jdk11"));
     this.keystoreDir = Files.createDirectories(root.resolve("jrs-home"));
     this.vendorLog = packageDir.resolve("js-ant.log");
     this.newTomcatDir = Files.createDirectories(root.resolve("tomcat-new"));
@@ -139,6 +144,9 @@ public final class UpgradeFixture implements AutoCloseable {
     Files.createDirectories(javaHome.resolve("bin"));
     write(javaHome.resolve("bin").resolve("java"), "");
     write(javaHome.resolve("bin").resolve("java.exe"), "");
+    Files.createDirectories(sourceJavaHome.resolve("bin"));
+    write(sourceJavaHome.resolve("bin").resolve("java"), "");
+    write(sourceJavaHome.resolve("bin").resolve("java.exe"), "");
     write(keystoreDir.resolve(".jrsks"), "keystore-bytes");
     write(keystoreDir.resolve(".jrsksp"), "keystore-properties");
     this.fake = FakeServices.in(root.resolve("home"), os);
@@ -150,6 +158,7 @@ public final class UpgradeFixture implements AutoCloseable {
           List.of(javaHome.resolve("bin").resolve(exe).toString(), "-version"),
           new FakePlatform.Response(0, List.of(javaBanner)));
     }
+    sourceJavaVersion(SOURCE_JAVA_BANNER);
     fake.adapter.keystore =
         new KeystoreInfo(
             true,
@@ -174,6 +183,7 @@ public final class UpgradeFixture implements AutoCloseable {
           stopTimeoutSeconds: 30
         vendor:
           javaHome: %s
+          sourceJavaHome: %s
         network:
           mode: public
         """
@@ -186,7 +196,8 @@ public final class UpgradeFixture implements AutoCloseable {
                         ? "  buildomaticDir: " + slashes(installDir.resolve("buildomatic")) + "\n"
                         : "",
                     manualService ? "manual" : "systemd",
-                    slashes(javaHome))
+                    slashes(javaHome),
+                    slashes(sourceJavaHome))
             + (withDatabase
                 ? databaseYaml(root)
                 : "database:\n  passwordRef: env:" + DB_PASSWORD_VARIABLE + "\n"));
@@ -350,6 +361,17 @@ public final class UpgradeFixture implements AutoCloseable {
     write(installDir.resolve("buildomatic").resolve("default_master.properties"), content);
   }
 
+  public static final String SOURCE_JAVA_BANNER = "openjdk version \"11.0.21\" 2023-10-17";
+
+  /** Re-scripts the source JDK's probe (ADR-0065), e.g. to simulate a JDK 17 there. */
+  public void sourceJavaVersion(String banner) {
+    for (String exe : List.of("java", "java.exe")) {
+      fake.platform.on(
+          List.of(sourceJavaHome.resolve("bin").resolve(exe).toString(), "-version"),
+          new FakePlatform.Response(0, List.of(banner)));
+    }
+  }
+
   /** Re-scripts the vendor Java probe, e.g. to simulate a JDK 11. */
   public void javaVersion(String banner) {
     for (String exe : List.of("java", "java.exe")) {
@@ -401,7 +423,8 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-ant.bat"),
         "@echo off\r\n"
-            + "echo js-ant fake target=%1\r\n"
+            // ADR-0065: the installed (old) version's tools name the JDK they ran with
+            + "echo js-ant fake target=%1 installed JAVA_HOME=%JAVA_HOME%\r\n"
             + "echo %* >> \""
             + log
             + "\"\r\n"
@@ -410,7 +433,7 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-ant.sh"),
         "#!/bin/sh\n"
-            + "echo \"js-ant fake target=$1\"\n"
+            + "echo \"js-ant fake target=$1 installed JAVA_HOME=$JAVA_HOME\"\n"
             + "echo \"$@\" >> \""
             + log
             + "\"\n"
@@ -448,13 +471,16 @@ public final class UpgradeFixture implements AutoCloseable {
     write(
         buildomatic.resolve("js-export.bat"),
         "@echo off\r\n"
+            // ADR-0065: which JDK the installed version's export ran with
+            + "echo js-export fake JAVA_HOME=%JAVA_HOME%\r\n"
             + "echo Processing started\r\n"
             + "echo fake export > \"%2\"\r\n"
             + "echo Done\r\n"
             + "exit /b 0\r\n");
     write(
         buildomatic.resolve("js-export.sh"),
-        "#!/bin/sh\necho Processing started\necho fake export > \"$2\"\necho Done\nexit 0\n");
+        "#!/bin/sh\necho \"js-export fake JAVA_HOME=$JAVA_HOME\"\necho Processing started\n"
+            + "echo fake export > \"$2\"\necho Done\nexit 0\n");
   }
 
   private void targetPackage() throws IOException {

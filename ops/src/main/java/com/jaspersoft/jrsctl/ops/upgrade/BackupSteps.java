@@ -282,10 +282,11 @@ final class BackupSteps {
             "vendor script " + Buildomatic.EXPORT_SCRIPT + " not found in " + b.get().dir(),
             "restore the vendor scripts of the installed version");
       }
-      if (rt.config().vendor().javaHome().isEmpty()) {
+      // ADR-0065 (issue #338): the installed version's js-export runs on its own JDK
+      if (rt.config().vendor().sourceToolsJavaHome().isEmpty()) {
         return CheckResult.fail(
-            "vendor.javaHome is not set; js-export needs a JDK",
-            "set vendor.javaHome in config.yaml");
+            "neither vendor.sourceJavaHome nor vendor.javaHome is set; js-export needs a JDK",
+            "set vendor.sourceJavaHome (or vendor.javaHome) in config.yaml");
       }
       // field test 2, U3: the export is the largest file of the run and had no space check
       long trees;
@@ -356,7 +357,9 @@ final class BackupSteps {
                   b.get(),
                   request,
                   part,
-                  rt.config().vendor().javaHome(),
+                  // ADR-0065: the installed version's tools, on the JDK for the version this starts
+                  // from
+                  rt.config().vendor().sourceToolsJavaHome(),
                   out,
                   Logs.scope(ctx, this));
       return switch (run) {
