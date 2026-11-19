@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-19 (`runs abandon`; ADR-0066, issue #350)
+
+- §6.6: new `jrsctl runs abandon <runId> [--yes]` closes a pending run as it stands. It ends the run as `FAILED` (exit 4) with a `runs.abandon` audit row, in one transaction under the run lock; no step executes or compensates and nothing else changes. The exit-8 message and the guided menu name it.
+- §5.5: no new terminal state or schema version; an abandoned run is told apart by its audit row. `run.schema.json` gains `abandoned`; new `runs-abandon.schema.json`.
+
 ## Draft 1.2 amendment — 2026-11-19 (`vendor.sourceJavaHome` follow-ups; ADR-0065 amendment, issue #348)
 
 - §5.1: `doctor`'s `vendor-java` is a WARN, not a PASS, when only `vendor.sourceJavaHome` fits the detected version (vendor export/import and passwords still use `vendor.javaHome`), and judges a set `vendor.sourceJavaHome` even when `vendor.javaHome` fits or is unset.

@@ -64,6 +64,18 @@ class GuidedModeTest {
 
   // ---- the menu itself --------------------------------------------------------------------------
 
+  /** Issue #350, ADR-0066: an interrupted job can be closed as it is from the recovery entry. */
+  @Test
+  void should_offer_to_close_an_interrupted_job_when_one_is_pending() {
+    guided(List.of(), List.of("r-2"), "7", "3", "q");
+
+    assertThat(text.toString())
+        .contains("must be finished, undone or closed first")
+        .contains("jrsctl runs abandon r-2")
+        .contains("3) Close job r-2 as it is (nothing is run or undone)");
+    assertThat(ran).contains(List.of("runs", "abandon", "r-2"));
+  }
+
   @Test
   void should_offer_documentation_and_name_the_other_entry_points() {
     guided(List.of(), List.of(), "q");

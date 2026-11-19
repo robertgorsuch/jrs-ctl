@@ -495,6 +495,15 @@ final class HelpExamples {
             new Example(
                 "Undo an interrupted run instead", "jrsctl runs recover <run-id> --rollback")));
     m.put(
+        "runs abandon",
+        List.of(
+            new Example(
+                "See what an interrupted run did, then close it as it is (asks first)",
+                "jrsctl runs abandon <run-id>"),
+            new Example(
+                "Close it from a script, once the server was put right another way",
+                "jrsctl runs abandon <run-id> --yes")));
+    m.put(
         "runs prune",
         List.of(
             new Example("See which old backups would be deleted", "jrsctl runs prune --dry-run"),

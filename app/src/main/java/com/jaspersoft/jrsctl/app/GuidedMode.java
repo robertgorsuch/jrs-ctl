@@ -99,9 +99,14 @@ final class GuidedMode {
     List<String> pending = pendingRuns.get();
     if (!pending.isEmpty()) {
       out.println();
-      out.println("! An earlier job was interrupted and must be finished or undone first:");
+      out.println("! An earlier job was interrupted and must be finished, undone or closed first:");
       for (String id : pending) {
-        out.println("    jrsctl runs recover " + id + " --resume     (or --rollback)");
+        out.println(
+            "    jrsctl runs recover "
+                + id
+                + " --resume     (or --rollback, or `jrsctl runs abandon "
+                + id
+                + "`)");
       }
       out.println("  Choose 7 below to do this.");
     }
@@ -665,9 +670,12 @@ final class GuidedMode {
     out.println();
     out.println("  1) Finish job " + id + " from where it stopped");
     out.println("  2) Undo job " + id);
-    switch (Prompter.line(out, "Choose [1-2]: ").orElse("")) {
+    // issue #350, ADR-0066: for a server already put right another way
+    out.println("  3) Close job " + id + " as it is (nothing is run or undone)");
+    switch (Prompter.line(out, "Choose [1-3]: ").orElse("")) {
       case "1" -> execute("runs", "recover", id, "--resume");
       case "2" -> execute("runs", "recover", id, "--rollback");
+      case "3" -> execute("runs", "abandon", id);
       default -> {
         // back to the menu
       }

@@ -14,6 +14,7 @@ import com.jaspersoft.jrsctl.core.state.SnapshotRecord;
 import com.jaspersoft.jrsctl.core.state.StateStore;
 import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.ops.PlanRegistry;
+import com.jaspersoft.jrsctl.ops.RunAbandon;
 import com.jaspersoft.jrsctl.ops.Services;
 import com.jaspersoft.jrsctl.ops.retention.RetentionPruner;
 import com.jaspersoft.jrsctl.ops.upgrade.RunArtefacts;
@@ -68,6 +69,7 @@ import picocli.CommandLine.Spec;
       RunsCommand.ListRuns.class,
       RunsCommand.Show.class,
       RunsCommand.Recover.class,
+      RunsCommand.Abandon.class,
       RunsCommand.Prune.class,
       RunsCommand.SupportBundleCommand.class
     })
@@ -108,13 +110,17 @@ final class RunsCommand implements Runnable {
     return RunLock.heldBy(services.home().runLock()).map(RunLock.Holder::runId);
   }
 
-  static String outcome(RunRecord run) {
+  /** The state column; an abandoned run (ADR-0066) is stored as FAILED and shown as ABANDONED. */
+  static String outcome(RunRecord run, boolean abandoned) {
+    if (abandoned && run.terminalState().isPresent()) {
+      return "ABANDONED" + run.exitCode().map(c -> " (exit " + c + ")").orElse("");
+    }
     return run.terminalState()
         .map(s -> s.name() + run.exitCode().map(c -> " (exit " + c + ")").orElse(""))
         .orElse("PENDING");
   }
 
-  static Map<String, Object> runTree(RunRecord run, Clock clock) {
+  static Map<String, Object> runTree(RunRecord run, boolean abandoned, Clock clock) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("runId", run.runId());
     m.put("operation", run.operation());
@@ -127,18 +133,21 @@ final class RunsCommand implements Runnable {
     m.put("terminalState", run.terminalState());
     m.put("exitCode", run.exitCode());
     m.put("pending", run.pending());
+    // ADR-0066: terminalState stays FAILED, a value every jrsctl knows; this tells them apart
+    m.put("abandoned", abandoned);
     return m;
   }
 
   /** The `runs show --json` document (runs-show.schema.json); the support bundle's run.json. */
   static Map<String, Object> showTree(
       RunRecord run,
+      boolean abandoned,
       Optional<JsonNode> plan,
       List<Transition> transitions,
       List<SnapshotRecord> snapshots,
       Clock clock) {
     Map<String, Object> root = new LinkedHashMap<>();
-    root.put("run", runTree(run, clock));
+    root.put("run", runTree(run, abandoned, clock));
     root.put("plan", plan);
     root.put("transitions", transitions);
     root.put("snapshots", snapshots);
@@ -210,10 +219,11 @@ final class RunsCommand implements Runnable {
                     .filter(r -> filter.matches(r, services.clock()))
                     .limit(max)
                     .toList();
+        Set<String> abandoned = services.stateStore().get().abandonedRunIds();
         if (global.json()) {
           List<Map<String, Object>> rows = new ArrayList<>();
           for (RunRecord r : runs) {
-            rows.add(runTree(r, services.clock()));
+            rows.add(runTree(r, abandoned.contains(r.runId()), services.clock()));
           }
           out.println(redactor.redact(JsonOut.write(rows)));
           out.flush();
@@ -239,7 +249,7 @@ final class RunsCommand implements Runnable {
               r.operation(),
               r.startedAt().truncatedTo(ChronoUnit.SECONDS).toString(),
               duration(r, services.clock(), live),
-              outcome(r));
+              outcome(r, abandoned.contains(r.runId())));
         }
         for (String line : table.lines()) {
           out.println(redactor.redact(line));
@@ -282,16 +292,18 @@ final class RunsCommand implements Runnable {
         Optional<JsonNode> planTree = plan.map(p -> parse(p.planJson()));
         List<Transition> transitions = store.transitions(runId);
         List<SnapshotRecord> snapshots = store.snapshots(runId);
+        boolean abandoned = store.abandonedRunIds().contains(runId);
         if (global.json()) {
           out.println(
               redactor.redact(
                   JsonOut.write(
-                      showTree(run, planTree, transitions, snapshots, services.clock()))));
+                      showTree(
+                          run, abandoned, planTree, transitions, snapshots, services.clock()))));
           out.flush();
           return ExitCodes.SUCCESS;
         }
         List<String> lines = new ArrayList<>();
-        lines.add("Run  " + run.runId() + "  " + run.operation() + "  " + outcome(run));
+        lines.add("Run  " + run.runId() + "  " + run.operation() + "  " + outcome(run, abandoned));
         lines.add(
             "  started  "
                 + run.startedAt()
@@ -355,6 +367,170 @@ final class RunsCommand implements Runnable {
         out.flush();
         return ExitCodes.SUCCESS;
       }
+    }
+  }
+
+  /**
+   * {@code jrsctl runs abandon <id> [--yes] [--json]} (issue #350, ADR-0066): closes a pending run
+   * as it stands. It shows the steps completed, interrupted and never started, says when the run
+   * left the service stopped, and asks; nothing executes or compensates and no file, backup or
+   * snapshot changes. JSON shape: {@code {"runId","abandoned":true,"completed":[],"interrupted":[],
+   * "rolledBack":[],"notStarted":[],"serviceLeftStopped":bool}} (runs-abandon.schema.json).
+   */
+  @Command(
+      name = "abandon",
+      mixinStandardHelpOptions = true,
+      exitCodeOnInvalidInput = ExitCodes.USAGE,
+      description =
+          "Close an interrupted run as it is, when the server was put right another way: no step"
+              + " runs or is undone, and its backups stay.")
+  static final class Abandon implements Callable<Integer> {
+
+    @Spec CommandSpec spec;
+    @Mixin GlobalOptions global;
+
+    @Parameters(index = "0", paramLabel = "<id>", description = "Pending run id.")
+    String runId;
+
+    @Override
+    public Integer call() {
+      PrintWriter out = spec.commandLine().getOut();
+      PrintWriter err = spec.commandLine().getErr();
+      Redactor redactor = Redactor.global();
+      try (Bootstrap boot = Bootstrap.open(global, Env.vars(), Clock.systemUTC())) {
+        Services services = boot.services();
+        StateStore store = services.stateStore().get();
+        RunRef.Lookup lookup = RunRef.lookup(store, runId, out, err, global.json());
+        if (lookup instanceof RunRef.Lookup.Exit exit) {
+          return exit.code();
+        }
+        RunRecord run = ((RunRef.Lookup.Run) lookup).run();
+        runId = run.runId();
+        if (!run.pending()) {
+          return notPending(out, err, run);
+        }
+        RunAbandon.Preview preview = RunAbandon.preview(store, run);
+        if (!global.json()) {
+          printPreview(out, redactor, preview);
+        }
+        if (!global.yes()) {
+          if (global.json() || global.nonInteractive()) {
+            return ExitCodes.fail(
+                out,
+                err,
+                global.json(),
+                ExitCodes.PRECHECK_FAILED,
+                "confirmation required",
+                Optional.of("pass --yes to abandon run " + runId + " without asking"));
+          }
+          if (!Confirm.ask(out, "Abandon run " + runId + "? [y/N] ")) {
+            out.println("not abandoned; nothing has changed");
+            out.flush();
+            return ExitCodes.SUCCESS;
+          }
+        }
+        RunAbandon.Outcome outcome =
+            RunAbandon.abandon(services, runId, AuditActor.current(), services.clock().instant());
+        return switch (outcome) {
+          case RunAbandon.Outcome.Abandoned a -> {
+            if (global.json()) {
+              out.println(redactor.redact(JsonOut.write(tree(preview))));
+            } else {
+              out.println(
+                  redactor.redact(
+                      "run "
+                          + runId
+                          + " abandoned; `jrsctl runs list` shows it as ABANDONED, and its"
+                          + " snapshots stay until `jrsctl runs prune` removes them under"
+                          + " backups.retentionDays"));
+            }
+            out.flush();
+            yield ExitCodes.SUCCESS;
+          }
+          case RunAbandon.Outcome.NotPending n ->
+              notPending(out, err, store.run(runId).orElse(run));
+          case RunAbandon.Outcome.LockHeld h ->
+              ExitCodes.fail(
+                  out,
+                  err,
+                  global.json(),
+                  ExitCodes.LOCK_HELD,
+                  "run "
+                      + h.heldByRunId()
+                      + " is executing now (pid "
+                      + h.pid()
+                      + "); a running run is never abandoned",
+                  Optional.of("wait for it to finish, or stop that process first"));
+        };
+      }
+    }
+
+    private int notPending(PrintWriter out, PrintWriter err, RunRecord run) {
+      return ExitCodes.fail(
+          out,
+          err,
+          global.json(),
+          ExitCodes.PRECHECK_FAILED,
+          "run "
+              + run.runId()
+              + " already ended with state "
+              + run.terminalState().map(Enum::name).orElse("?"),
+          Optional.of("nothing to abandon"));
+    }
+
+    private static void printPreview(
+        PrintWriter out, Redactor redactor, RunAbandon.Preview preview) {
+      RunRecord run = preview.run();
+      List<String> lines = new ArrayList<>();
+      lines.add(
+          "Run "
+              + run.runId()
+              + "  "
+              + run.operation()
+              + "  started "
+              + run.startedAt()
+              + "  PENDING");
+      lines.add("  completed:   " + listOrNone(preview.completed()));
+      lines.add("  interrupted: " + listOrNone(preview.interrupted()));
+      if (!preview.rolledBack().isEmpty()) {
+        lines.add("  rolled back: " + String.join(", ", preview.rolledBack()));
+      }
+      if (!preview.notStarted().isEmpty()) {
+        lines.add("  not started: " + String.join(", ", preview.notStarted()));
+      }
+      if (preview.serviceLeftStopped()) {
+        lines.add("");
+        lines.add(
+            "WARNING: this run stopped the service and never started it again. Abandoning does not"
+                + " start it: unless you started it yourself, it is still down.");
+      }
+      lines.add("");
+      lines.add(
+          "Abandoning closes the run as it is: no step runs or is undone, and its files, backups"
+              + " and snapshots stay. Use it only when the server was put right another way;"
+              + " otherwise use `jrsctl runs recover "
+              + run.runId()
+              + " --resume` or `--rollback`.");
+      for (String line : lines) {
+        out.println(redactor.redact(line));
+      }
+      out.flush();
+    }
+
+    private static String listOrNone(List<String> steps) {
+      return steps.isEmpty() ? "(none)" : String.join(", ", steps);
+    }
+
+    static Map<String, Object> tree(RunAbandon.Preview preview) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("runId", preview.run().runId());
+      m.put("abandoned", true);
+      m.put("completed", preview.completed());
+      m.put("interrupted", preview.interrupted());
+      m.put("rolledBack", preview.rolledBack());
+      m.put("notStarted", preview.notStarted());
+      m.put("serviceLeftStopped", preview.serviceLeftStopped());
+      return m;
     }
   }
 

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -305,6 +306,22 @@ public final class StateStore implements Journal, AutoCloseable {
   /** Most recent runs first. */
   public List<RunRecord> runs(int limit) {
     return runs.runs(limit);
+  }
+
+  /**
+   * Issue #350, ADR-0066 ({@code runs abandon}): ends a pending run as {@link TerminalState#FAILED}
+   * with {@code exitCode} and records a {@code runs.abandon} audit row by {@code actor},
+   * atomically; no step executes or compensates. False, with nothing written, when the run is
+   * unknown or has already ended. The state stays one the schema (and an older jrsctl) knows;
+   * {@link #abandonedRunIds()} tells the two kinds of FAILED apart.
+   */
+  public boolean abandonRun(String runId, Instant endedAt, int exitCode, String actor) {
+    return runs.abandon(runId, endedAt, exitCode, actor, endedAt);
+  }
+
+  /** Ids of the runs {@link #abandonRun} ended. */
+  public Set<String> abandonedRunIds() {
+    return runs.abandonedRunIds();
   }
 
   /** Runs without a terminal state, oldest first (spec §5.5). */

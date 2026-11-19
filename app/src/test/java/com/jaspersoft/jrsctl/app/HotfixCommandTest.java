@@ -355,7 +355,8 @@ class HotfixCommandTest {
     assertThat(run.err())
         .contains("r-pending")
         .contains("jrsctl runs recover r-pending --resume")
-        .contains("jrsctl runs recover r-pending --rollback");
+        .contains("jrsctl runs recover r-pending --rollback")
+        .contains("jrsctl runs abandon r-pending");
     assertThat(fake.executed).isEmpty();
   }
 
