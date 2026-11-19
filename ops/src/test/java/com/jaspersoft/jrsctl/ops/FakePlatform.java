@@ -124,6 +124,62 @@ public final class FakePlatform implements Platform {
     return controller;
   }
 
+  /**
+   * Every stop and start issued through a platform bound by {@link #withInstallDir}, as {@code
+   * "stop <dir>"} / {@code "start <dir>"} (issue #340). Unbound calls are not listed here; both
+   * kinds still reach {@link #controller}, so its {@code events} keep their meaning.
+   */
+  public final List<String> boundServiceEvents = new ArrayList<>();
+
+  /**
+   * This platform with its service controller bound to {@code installDir}: a view whose {@code
+   * services} records the directory in {@link #boundServiceEvents} and otherwise behaves as this
+   * platform; every other call is this platform's own.
+   */
+  @Override
+  public Platform withInstallDir(Path installDir) {
+    Path dir = installDir.toAbsolutePath().normalize();
+    FakePlatform self = this;
+    ServiceController bound =
+        new ServiceController() {
+          @Override
+          public State state() {
+            return controller.state();
+          }
+
+          @Override
+          public State stop(Duration timeout) {
+            boundServiceEvents.add("stop " + dir);
+            return controller.stop(timeout);
+          }
+
+          @Override
+          public State start(Duration timeout) {
+            boundServiceEvents.add("start " + dir);
+            return controller.start(timeout);
+          }
+
+          @Override
+          public String describe() {
+            return controller.describe() + " under " + dir;
+          }
+        };
+    return (Platform)
+        java.lang.reflect.Proxy.newProxyInstance(
+            Platform.class.getClassLoader(),
+            new Class<?>[] {Platform.class},
+            (proxy, method, args) -> {
+              if (method.getName().equals("services")) {
+                return bound;
+              }
+              try {
+                return method.invoke(self, args);
+              } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getCause();
+              }
+            });
+  }
+
   private Optional<Path> volume(Path path) {
     Path abs = path.toAbsolutePath().normalize();
     return freeSpaceUnder.keySet().stream()

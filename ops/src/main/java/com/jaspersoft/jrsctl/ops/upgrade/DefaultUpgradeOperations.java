@@ -22,6 +22,7 @@ import com.jaspersoft.jrsctl.core.state.StoredPlan;
 import com.jaspersoft.jrsctl.jrs.api.JrsUnreachableException;
 import com.jaspersoft.jrsctl.jrs.api.ServerIdentity;
 import com.jaspersoft.jrsctl.jrs.rest.RestException;
+import com.jaspersoft.jrsctl.jrs.service.ServiceRuntime;
 import com.jaspersoft.jrsctl.jrs.service.ServiceSteps;
 import com.jaspersoft.jrsctl.jrs.strategy.Sidecar;
 import com.jaspersoft.jrsctl.jrs.vendor.Buildomatic;
@@ -560,8 +561,14 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
     // the vendor's "Additional tasks", done while the server is still down (review §2.2)
     steps.add(new PostUpgradeSteps.ClearTomcatCaches(rt, in));
     steps.add(new PostUpgradeSteps.ClearRepositoryCache(rt));
-    steps.add(ServiceSteps.start(rt, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
-    steps.add(ServiceSteps.waitForServer(rt, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
+    // issue #340, ADR-0062: from here on the upgraded server is the one in --tomcat-dir, so the
+    // steps that start, stop or wait for it watch that Tomcat; the stop above (and its
+    // compensation, which restarts the old server) stays on the configured installation
+    ServiceRuntime upgraded =
+        options.tomcatDir().isPresent() ? new HostTomcatServiceRuntime(rt, in.hostTomcatDir()) : rt;
+    steps.add(ServiceSteps.start(upgraded, Phases.VENDOR_UPGRADE, VendorSteps.START_SERVICE));
+    steps.add(
+        ServiceSteps.waitForServer(upgraded, Phases.VENDOR_UPGRADE, VendorSteps.WAIT_FOR_SERVER));
     List<Step> embedded = new ArrayList<>();
     List<String> embeddedIds = new ArrayList<>();
     if (options.reapplyHotfixes()) {
@@ -579,12 +586,13 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
       warnings.add(
           "a registered customization lives under WEB-INF; the service is stopped again while it"
               + " is re-applied");
-      steps.add(ServiceSteps.stop(rt, Phases.RECONCILE, reapply + "-stop-service"));
+      steps.add(ServiceSteps.stop(upgraded, Phases.RECONCILE, reapply + "-stop-service"));
     }
     steps.add(new ReconcileSteps.PlanCustomizationReapply(rt, in));
     if (stopForCustomizations) {
-      steps.add(ServiceSteps.start(rt, Phases.RECONCILE, reapply + "-start-service"));
-      steps.add(ServiceSteps.waitForServer(rt, Phases.RECONCILE, reapply + "-wait-for-server"));
+      steps.add(ServiceSteps.start(upgraded, Phases.RECONCILE, reapply + "-start-service"));
+      steps.add(
+          ServiceSteps.waitForServer(upgraded, Phases.RECONCILE, reapply + "-wait-for-server"));
     }
     if (AnalyticsJndi.requiredFor(options.toVersion())) {
       // release notes 9.0 p.15 (issue #108) and upgrade guide 10.1 p.93 (issue #268): the two
@@ -830,7 +838,11 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
             rollbackEdition(set, webappName));
     Optional<Path> newTomcat = sideBySideTomcat(run).or(() -> retargetedTomcat(set, in));
     List<Step> steps = new ArrayList<>();
-    steps.add(ServiceSteps.stop(rt, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
+    // issue #340, ADR-0062: after a run into a new Tomcat the server to stop is the upgraded one
+    // there; the start below brings back the old Tomcat the configuration names (ADR-0049)
+    ServiceRuntime upgraded =
+        newTomcat.<ServiceRuntime>map(t -> new HostTomcatServiceRuntime(rt, t)).orElse(rt);
+    steps.add(ServiceSteps.stop(upgraded, Phases.ROLLBACK, RestoreSteps.STOP_SERVICE));
     // ADR-0049: a run into a new Tomcat never changed the old webapp or the installed buildomatic
     if (newTomcat.isEmpty()) {
       steps.add(new RestoreSteps.RestoreWebapp(rt, in));

@@ -91,9 +91,14 @@ final class ServiceSwitch {
         os == OsFamily.WINDOWS
             ? windowsService(NAME_PLACEHOLDER, oldTomcat, newTomcat)
             : systemd(NAME_PLACEHOLDER, newTomcat);
+    // issue #340: startup.bat finds CATALINA_HOME from the current directory and refuses to
+    // start from anywhere else ("The CATALINA_HOME environment variable is not defined
+    // correctly"), so the instruction names the directory to run it from
     return "start the upgraded server with "
         + render(newTomcat.resolve("bin").resolve(startup), os)
-        + " rather than the old Tomcat's; if a service was registered for "
+        + ", run from "
+        + render(newTomcat.resolve("bin"), os)
+        + ", rather than the old Tomcat's; if a service was registered for "
         + render(oldTomcat, os)
         + " before service.kind was set to manual, re-register it for the new Tomcat ("
         + registered
