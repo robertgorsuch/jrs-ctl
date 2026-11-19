@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-18 (point-config-at-target moves `server.installDir` on a WAR install; ADR-0063, issue #343)
+
+- §10.1: with `--tomcat-dir`, `point-config-at-target` also sets `server.installDir` to the new Tomcat when the installation is the old Tomcat directory itself; an installation that holds its Tomcat keeps the key, and the plan warns with the command to set it. `upgrade rollback` restores it with the rest of `config.yaml`.
+
 ## Draft 1.2 amendment — 2026-11-18 (side-by-side service steps watch the new Tomcat; ADR-0062, issue #340)
 
 - §10.1: with `--tomcat-dir`, `start-service` and `wait-for-server` after the vendor run, and the reconcile phase's service steps, act on the Tomcat in `--tomcat-dir`; `stop-service` before the vendor run, and its compensation, act on the configured one. A rollback of such a run stops the new Tomcat and starts the old one. The `manual` start instruction names the `bin` directory to run `startup.bat`/`startup.sh` from.

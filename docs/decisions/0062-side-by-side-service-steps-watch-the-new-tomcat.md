@@ -26,7 +26,7 @@ The cause is how the controller is bound:
 ## Not decided here
 
 - **Timeouts after the vendor run:** whether a failure of `start-service` or `wait-for-server` *after* `run-vendor-upgrade` should stop compensating (a `Fatal` with "start the server, then `runs recover --resume`") instead of undoing file steps over a rebuilt database. That changes engine-visible failure semantics for every upgrade, so it needs its own decision. With this ADR the common cause of that timeout, watching the wrong Tomcat, is gone.
-- **`point-config-at-target`** moves `server.tomcatDir` but not `server.installDir`. After a side-by-side upgrade of a plain WAR install (where both name the Tomcat directory), the next jrsctl process still binds its controller and `doctor`'s layout to the old Tomcat until `server.installDir` is set by hand. Tracked separately.
+- **`point-config-at-target`** moved `server.tomcatDir` but not `server.installDir`, so on a plain WAR install the next jrsctl process still bound to the old Tomcat. Decided in ADR-0063 (issue #343).
 
 ## Consequences
 

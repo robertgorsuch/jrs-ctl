@@ -203,6 +203,14 @@ public final class UpgradeFixture implements AutoCloseable {
   }
 
   /**
+   * The WAR-file install ({@code server.installDir} is the Tomcat directory, buildomatic beside it)
+   * with {@code service.kind: manual}, so it accepts {@code --tomcat-dir} (issue #343).
+   */
+  public static UpgradeFixture createWarInstallWithManualService(Path root) throws IOException {
+    return new UpgradeFixture(root, false, true, true);
+  }
+
+  /**
    * As {@link #create}, with the webapp deployed under {@code webappName}: a Pro server renamed
    * away from {@code jasperserver-pro}, whose edition only the server identity tells.
    */
