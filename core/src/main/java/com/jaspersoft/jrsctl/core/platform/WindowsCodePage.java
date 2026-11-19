@@ -63,8 +63,7 @@ public final class WindowsCodePage {
     if (override.isPresent()) {
       return override.get();
     }
-    if (Platforms.osFamily(System.getProperty("os.name", "")).orElse(null)
-        != Platform.OsFamily.WINDOWS) {
+    if (!Platforms.hostIsWindows()) {
       return DefaultProcessRunner.nativeCharset();
     }
     return probeChcp().orElseGet(DefaultProcessRunner::nativeCharset);

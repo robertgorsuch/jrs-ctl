@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.compat.CompatMatrix;
 import com.jaspersoft.jrsctl.core.config.Config;
+import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.config.ConfigLoader;
 import com.jaspersoft.jrsctl.core.config.JrsctlHomeResolver;
 import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
@@ -133,12 +134,24 @@ final class Bootstrap implements AutoCloseable {
 
   /**
    * Creates a missing home directory owner-only on both operating systems (review 4.1, issue #50);
-   * an existing one is left alone.
+   * an existing one is left alone. A home that exists but is not a folder (a file, or a link to
+   * nothing or to a file) is refused here, before anything opens a file under it, with exit 2 and a
+   * remedy (#351); it is inspected without following a link, so a dangling link is not taken for a
+   * folder to create. A link to a folder is a folder.
+   *
+   * @throws ConfigException when the home exists and is not a folder
    */
   static void createHome(Platform platform, JrsctlHome home) {
     java.nio.file.Path root = home.root();
     if (java.nio.file.Files.isDirectory(root)) {
       return;
+    }
+    if (java.nio.file.Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+      throw new ConfigException(
+          java.nio.file.Files.exists(root)
+              ? "the jrsctl home " + root.toAbsolutePath() + " is not a folder"
+              : "the jrsctl home " + root.toAbsolutePath() + " is a link to nothing",
+          "choose a folder with --home <dir> or JRSCTL_HOME, or move it aside; nothing was changed");
     }
     try {
       if (platform.os() == Platform.OsFamily.LINUX

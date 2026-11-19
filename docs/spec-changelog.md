@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-19 (an unusable home is a refusal; issue #351)
+
+- §5.5: a run lock that cannot be created or locked is exit 2 with a remedy, not 4: nothing has run when the lock is taken. Every command refuses a home that exists and is not a folder (a file, a dangling link) with exit 2 before opening anything under it.
+- §6.5: `syncDirectory` is not attempted on a Windows host, where a directory cannot be opened as a channel and NTFS journals the rename; the skip is logged once per process.
+
 ## Draft 1.2 amendment — 2026-11-19 (`runs abandon`; ADR-0066, issue #350)
 
 - §6.6: new `jrsctl runs abandon <runId> [--yes]` closes a pending run as it stands. It ends the run as `FAILED` (exit 4) with a `runs.abandon` audit row, in one transaction under the run lock; no step executes or compensates and nothing else changes. The exit-8 message and the guided menu name it.

@@ -8,10 +8,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -59,6 +62,26 @@ class LogFileTest {
     LogFile.configure(new String[] {"selfcheck", "--json"}, Map.of());
 
     assertThat(System.getProperty(LogFile.CONSOLE_LEVEL_PROPERTY)).isEqualTo("OFF");
+  }
+
+  /**
+   * #351: the log is not aimed at a home Bootstrap will refuse, and a folder home still gets it.
+   */
+  @Test
+  void should_leave_the_log_file_unset_when_the_home_is_not_a_folder(@TempDir Path tmp)
+      throws Exception {
+    Path file = Files.writeString(tmp.resolve("home"), "not a folder");
+    System.clearProperty(LogFile.PROPERTY);
+
+    LogFile.configure(new String[] {"runs", "list", "--home", file.toString()}, Map.of());
+
+    assertThat(System.getProperty(LogFile.PROPERTY)).isNull();
+
+    Path folder = Files.createDirectories(tmp.resolve("folder"));
+    LogFile.configure(new String[] {"runs", "list", "--home", folder.toString()}, Map.of());
+
+    assertThat(System.getProperty(LogFile.PROPERTY))
+        .isEqualTo(folder.resolve("logs").resolve("jrsctl.log").toString());
   }
 
   @Test

@@ -3,6 +3,8 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.platform.DefaultHome;
 import com.jaspersoft.jrsctl.core.platform.HomeRedirect;
 import com.jaspersoft.jrsctl.core.platform.UserPaths;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -11,9 +13,10 @@ import java.util.Map;
  * {@code $JRSCTL_HOME}). Invariants: the home is derived from {@code --home}, then {@code
  * JRSCTL_HOME}, then the platform default, using only the argument list and the environment so no
  * class that owns a logger is loaded first; an explicit {@code -Djrsctl.log.file} is never
- * overridden. The platform default comes from {@link DefaultHome}, the same class the running
- * {@link com.jaspersoft.jrsctl.core.platform.Platform} uses, so the log and the state store cannot
- * end up in different homes.
+ * overridden; a home that exists and is not a folder sets nothing, leaving logback's own default.
+ * The platform default comes from {@link DefaultHome}, the same class the running {@link
+ * com.jaspersoft.jrsctl.core.platform.Platform} uses, so the log and the state store cannot end up
+ * in different homes.
  */
 public final class LogFile {
 
@@ -33,7 +36,13 @@ public final class LogFile {
     if (System.getProperty(PROPERTY) != null) {
       return;
     }
-    System.setProperty(PROPERTY, resolve(args, env).toString());
+    Path home = home(args, env);
+    if (Files.exists(home, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(home)) {
+      // #351: Bootstrap refuses this home with exit 2; a log under it would only make logback
+      // print its own failure first, so the log stays at logback's default in java.io.tmpdir
+      return;
+    }
+    System.setProperty(PROPERTY, home.resolve("logs").resolve("jrsctl.log").toString());
   }
 
   /**

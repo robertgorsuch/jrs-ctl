@@ -875,7 +875,7 @@ Prints the usage synopsis of the tool (no argument) or of one top-level command,
 |---|---|---|
 | 0 | success | override flags such as `--allow-unsupported` or `--allow-unsigned` do not change the code; they are audited |
 | 1 | usage error | unknown command or flag, missing argument, unparseable secret reference, unknown `docs` name; also `customizations diff` when the file differs |
-| 2 | precheck / doctor / fingerprint failure, nothing mutated | configuration or secret problem, unreachable server, failed doctor item, plan inputs changed since planning, confirmation needed but not interactive, planning failed |
+| 2 | precheck / doctor / fingerprint failure, nothing mutated | configuration or secret problem, unreachable server, failed doctor item, plan inputs changed since planning, confirmation needed but not interactive, planning failed; a jrsctl home that is not a folder, or a `runs.lock` that cannot be created or written (the lock is taken before anything runs) |
 | 3 | run failed, rolled back cleanly | a step failed and every succeeded step of the phase (or plan) was compensated; also the code of `runs recover --rollback` |
 | 4 | run failed, rollback incomplete — manual action required | a compensation failed, or a fatal step failure after mutation; the outcome block lists backups and the next action |
 | 5 | cancelled | Ctrl-C; the in-flight step was completed or compensated |

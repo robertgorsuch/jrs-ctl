@@ -371,6 +371,23 @@ class HotfixCommandTest {
     }
   }
 
+  /**
+   * #351: the run lock is the run's first act, so a lock file that cannot be opened is a refusal
+   * (exit 2, nothing ran), not the rollback-incomplete 4 an unmapped exception after the run
+   * started used to get.
+   */
+  @Test
+  void should_exit_2_with_a_remedy_when_the_run_lock_cannot_be_taken() throws Exception {
+    Files.createDirectories(new JrsctlHome(home).runLock());
+
+    InitCommandTest.Run run = apply("--yes");
+
+    assertThat(run.code()).as(run.out() + run.err()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("is a folder, not a file").contains("nothing was changed");
+    assertThat(run.err()).doesNotContain("unexpected").doesNotContain("stack trace");
+    assertThat(fake.executed).isEmpty();
+  }
+
   /** Review finding 4.4: {@code --non-interactive} never confirms; only {@code --yes} does. */
   @Test
   void should_exit_2_without_running_when_non_interactive_and_yes_not_given() {
