@@ -255,7 +255,7 @@ Rules:
 ### 5.5 Run lock and recovery
 
 - `runs.lock` in `$JRSCTL_HOME` is taken (OS file lock) before any mutating Plan executes and held until the run reaches a terminal state. A second mutating run fails immediately with exit code 9 and the holder's run id and pid. The lock is checked before the pending-run check, and by trying it rather than by reading the pid out of the file: a run another process is executing is 9 ("wait for it"), and only a run no process holds any more is 8 ("recover it"). A process that holds the lock never opens a second handle on the file: on Linux the lock is a POSIX record lock, which the kernel drops when any descriptor of the process on that file is closed, so the locks a process holds are kept in an in-process registry and `heldBy`/`readHolder` answer from it before touching the file.
-- On startup, `jrsctl` queries `runs` for rows without a terminal state. In interactive mode it offers `resume` or `rollback` (§6.6). In non-interactive mode (`--yes`, `--non-interactive`, `--json`) any mutating command fails with exit code 8 and prints the exact `runs recover` command to run. `--non-interactive` never confirms anything: a plan that needs confirmation exits 2 unless `--yes` is also given; without either flag the confirmation is asked on the terminal, or on stdin when stdout is not a terminal, with end of input meaning no.
+- On startup, `jrsctl` queries `runs` for rows without a terminal state. In interactive mode it offers `resume` or `rollback` (§6.6). In non-interactive mode (`--yes`, `--non-interactive`, `--json`) any mutating command fails with exit code 8 and prints the exact `runs recover` command to run (and `runs abandon` for a server already put right another way). `--non-interactive` never confirms anything: a plan that needs confirmation exits 2 unless `--yes` is also given; without either flag the confirmation is asked on the terminal, or on stdin when stdout is not a terminal, with end of input meaning no.
 
 ### 5.6 Snapshots
 
@@ -353,6 +353,7 @@ Rules:
 ### 6.6 Resume and recovery
 
 - `jrsctl runs recover <runId> --resume|--rollback`.
+- `jrsctl runs abandon <runId> [--yes]` (ADR-0066, #350): closes a pending run as it stands, for a server put right another way. It shows the steps completed, interrupted and never started, and warns when the run left the service stopped. It asks (or takes `--yes`). It ends the run as `FAILED` with exit 4 plus a `runs.abandon` audit row, in one transaction under the run lock. No step executes or compensates, and no file, backup or snapshot changes. `runs list`/`show` print `ABANDONED`, and their JSON adds `abandoned`.
 - Every command that takes a run id accepts part of it (#186): an exact id wins, otherwise the text must be the end of exactly one id or its start (with or without `r-`); several matches exit 1 listing them, none is the unknown-run refusal. Run ids keep their format. `runs list` filters by `--status`, `--operation` (itself or a dotted prefix) and `--since` (date, instant or age) before `--limit`.
 - `jrsctl runs support-bundle <id> [--out <zip>]` — the full contract is §12.4.
 - Resume re-runs the precheck of the interrupted Step and then re-executes it (idempotency guarantees convergence). If the precheck fails, only rollback is offered.

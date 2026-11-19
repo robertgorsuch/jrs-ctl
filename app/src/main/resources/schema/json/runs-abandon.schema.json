@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jaspersoft.com/jrsctl/runs-abandon.schema.json",
+  "title": "jrsctl runs abandon --yes --json (issue #350, ADR-0066): a pending run closed as it stands",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "abandoned", "completed", "interrupted", "rolledBack", "notStarted", "serviceLeftStopped"],
+  "properties": {
+    "runId": { "type": "string" },
+    "abandoned": { "const": true },
+    "completed": { "type": "array", "items": { "type": "string" }, "description": "Steps whose last journal state is SUCCEEDED or SKIPPED." },
+    "interrupted": { "type": "array", "items": { "type": "string" }, "description": "Steps last seen PENDING, RUNNING or FAILED." },
+    "rolledBack": { "type": "array", "items": { "type": "string" }, "description": "Steps last seen ROLLED_BACK or ROLLBACK_FAILED." },
+    "notStarted": { "type": "array", "items": { "type": "string" }, "description": "Steps of the stored plan the journal never reached." },
+    "serviceLeftStopped": { "type": "boolean", "description": "The run's last service step to succeed stopped the service." }
+  }
+}

@@ -238,6 +238,38 @@ class StateStoreTest {
         .hasMessageContaining("nope");
   }
 
+  /** Issue #350, ADR-0066: the end and its audit row are written together, or not at all. */
+  @Test
+  void should_end_a_pending_run_as_failed_with_an_audit_row_when_it_is_abandoned() {
+    store.recordRunStart("r1", "upgrade", Optional.of("p1"), NOW);
+    store.recordRunStart("r2", "upgrade", Optional.of("p2"), NOW);
+    store.recordRunEnd("r2", NOW.plusSeconds(5), TerminalState.SUCCEEDED, 0);
+
+    boolean first = store.abandonRun("r1", NOW.plusSeconds(9), 4, "operator");
+    boolean again = store.abandonRun("r1", NOW.plusSeconds(10), 4, "operator");
+    boolean ended = store.abandonRun("r2", NOW.plusSeconds(11), 4, "operator");
+    boolean unknown = store.abandonRun("nope", NOW.plusSeconds(12), 4, "operator");
+
+    assertThat(first).isTrue();
+    assertThat(again).isFalse();
+    assertThat(ended).isFalse();
+    assertThat(unknown).isFalse();
+    RunRecord r1 = store.run("r1").orElseThrow();
+    assertThat(r1.terminalState()).contains(TerminalState.FAILED);
+    assertThat(r1.exitCode()).contains(4);
+    assertThat(r1.endedAt()).contains(NOW.plusSeconds(9));
+    assertThat(store.abandonedRunIds()).containsExactly("r1");
+    assertThat(store.auditRows(10))
+        .filteredOn(a -> a.action().equals("runs.abandon"))
+        .singleElement()
+        .satisfies(
+            a -> {
+              assertThat(a.actor()).isEqualTo("operator");
+              assertThat(a.detail()).contains("r1");
+            });
+    assertThat(store.run("r2").orElseThrow().terminalState()).contains(TerminalState.SUCCEEDED);
+  }
+
   @Test
   void should_save_load_consume_once_and_expire_plans_when_managing_plans() {
     StoredPlan plan =

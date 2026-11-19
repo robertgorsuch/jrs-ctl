@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jaspersoft.jrsctl.core.JrsctlHome;
 import com.jaspersoft.jrsctl.core.engine.Plan;
+import com.jaspersoft.jrsctl.core.engine.RunLock;
 import com.jaspersoft.jrsctl.core.engine.TerminalState;
 import com.jaspersoft.jrsctl.core.json.Json;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
@@ -318,6 +319,130 @@ class RunsCommandTest {
         InitCommandTest.run("runs", "recover", "r-1", "--home", home.toString());
 
     assertThat(run.code()).isEqualTo(ExitCodes.USAGE);
+  }
+
+  private static InitCommandTest.Run withStdin(
+      String text, java.util.function.Supplier<InitCommandTest.Run> body) {
+    java.io.InputStream saved = System.in;
+    System.setIn(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)));
+    try {
+      return body.get();
+    } finally {
+      System.setIn(saved);
+    }
+  }
+
+  /** A pending run that stopped the service and was interrupted before it started it again. */
+  private void seedPendingRunThatStoppedTheService(StateStore store) {
+    seedPendingRun(store, "r-2", "plan-2");
+    store.appendTransition(
+        "r-2", "stop-service", "apply", Optional.empty(), "PENDING", Optional.empty());
+    store.appendTransition(
+        "r-2", "stop-service", "apply", Optional.of("PENDING"), "RUNNING", Optional.empty());
+    store.appendTransition(
+        "r-2", "stop-service", "apply", Optional.of("RUNNING"), "SUCCEEDED", Optional.empty());
+  }
+
+  /** Issue #350, ADR-0066. */
+  @Test
+  void should_close_a_pending_run_as_it_stands_when_abandon_is_confirmed() throws Exception {
+    int transitionsBefore;
+    try (StateStore store = open()) {
+      seedPendingRunThatStoppedTheService(store);
+      transitionsBefore = store.transitions("r-2").size();
+    }
+
+    InitCommandTest.Run run =
+        InitCommandTest.run("runs", "abandon", "r-2", "--yes", "--home", home.toString());
+
+    assertThat(run.code()).as(run.err()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(run.out())
+        .contains("completed:   verify-signature, stop-service")
+        .contains("interrupted: validate-manifest")
+        .contains("WARNING: this run stopped the service")
+        .contains("run r-2 abandoned");
+    assertThat(fake.executed).isEmpty();
+    try (StateStore store = open()) {
+      assertThat(store.run("r-2").orElseThrow().terminalState()).contains(TerminalState.FAILED);
+      assertThat(store.run("r-2").orElseThrow().exitCode()).contains(4);
+      assertThat(store.abandonedRunIds()).containsExactly("r-2");
+      assertThat(store.pendingRuns()).isEmpty();
+      assertThat(store.transitions("r-2")).hasSize(transitionsBefore);
+    }
+    InitCommandTest.Run list = InitCommandTest.run("runs", "list", "--home", home.toString());
+    assertThat(list.out()).contains("ABANDONED (exit 4)");
+    InitCommandTest.Run json =
+        InitCommandTest.run("runs", "show", "r-2", "--json", "--home", home.toString());
+    JsonNode doc = Json.mapper().readTree(json.out());
+    assertThat(doc.path("run").path("abandoned").asBoolean()).isTrue();
+    assertThat(doc.path("run").path("terminalState").asText()).isEqualTo("FAILED");
+  }
+
+  @Test
+  void should_change_nothing_when_abandon_is_not_confirmed_and_prompts_are_off() {
+    try (StateStore store = open()) {
+      seedPendingRun(store, "r-2", "plan-2");
+    }
+
+    InitCommandTest.Run run =
+        InitCommandTest.run(
+            "runs", "abandon", "r-2", "--non-interactive", "--home", home.toString());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("confirmation required").contains("--yes");
+    try (StateStore store = open()) {
+      assertThat(store.run("r-2").orElseThrow().pending()).isTrue();
+      assertThat(store.abandonedRunIds()).isEmpty();
+    }
+  }
+
+  @Test
+  void should_change_nothing_when_the_operator_answers_no_to_abandon() {
+    try (StateStore store = open()) {
+      seedPendingRun(store, "r-2", "plan-2");
+    }
+
+    InitCommandTest.Run run =
+        withStdin(
+            "n\n", () -> InitCommandTest.run("runs", "abandon", "r-2", "--home", home.toString()));
+
+    assertThat(run.code()).isEqualTo(ExitCodes.SUCCESS);
+    assertThat(run.out()).contains("not abandoned; nothing has changed");
+    try (StateStore store = open()) {
+      assertThat(store.run("r-2").orElseThrow().pending()).isTrue();
+    }
+  }
+
+  @Test
+  void should_exit_2_when_abandoning_a_run_that_already_ended() {
+    try (StateStore store = open()) {
+      seedFinishedRun(store);
+    }
+
+    InitCommandTest.Run run =
+        InitCommandTest.run("runs", "abandon", "r-1", "--yes", "--home", home.toString());
+
+    assertThat(run.code()).isEqualTo(ExitCodes.PRECHECK_FAILED);
+    assertThat(run.err()).contains("already ended").contains("SUCCEEDED");
+  }
+
+  @Test
+  void should_exit_9_and_change_nothing_when_abandoning_while_the_run_lock_is_held()
+      throws Exception {
+    try (StateStore store = open()) {
+      seedPendingRun(store, "r-2", "plan-2");
+    }
+
+    InitCommandTest.Run run;
+    try (RunLock held = new RunLock(new JrsctlHome(home), "r-2", T0)) {
+      run = InitCommandTest.run("runs", "abandon", "r-2", "--yes", "--home", home.toString());
+    }
+
+    assertThat(run.code()).isEqualTo(ExitCodes.LOCK_HELD);
+    assertThat(run.err()).contains("is executing now");
+    try (StateStore store = open()) {
+      assertThat(store.run("r-2").orElseThrow().pending()).isTrue();
+    }
   }
 
   @Test

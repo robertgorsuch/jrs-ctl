@@ -80,6 +80,7 @@ public final class SupportBundle {
     Map<String, Object> runDoc =
         RunsCommand.showTree(
             run,
+            store.abandonedRunIds().contains(run.runId()),
             plan.map(p -> RunsCommand.parse(p.planJson())),
             store.transitions(run.runId()),
             store.snapshots(run.runId()),

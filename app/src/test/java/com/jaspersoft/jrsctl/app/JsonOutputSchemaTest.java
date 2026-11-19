@@ -1679,6 +1679,26 @@ class JsonOutputSchemaTest {
             }));
     s.add(
         of(
+            "runs abandon --yes",
+            "runs abandon",
+            0,
+            dir -> {
+              Path home = emptyHome(dir);
+              seedPendingRun(home, fakeHotfix(), bundle(dir));
+              return run("runs", "abandon", "r-2", "--yes", "--json", "--home", home.toString());
+            }));
+    s.add(
+        of(
+            "runs abandon without --yes",
+            "runs abandon",
+            2,
+            dir -> {
+              Path home = emptyHome(dir);
+              seedPendingRun(home, fakeHotfix(), bundle(dir));
+              return run("runs", "abandon", "r-2", "--json", "--home", home.toString());
+            }));
+    s.add(
+        of(
             "runs recover of a finished run",
             "runs recover",
             2,

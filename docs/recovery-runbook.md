@@ -30,7 +30,13 @@ is recovered, and prints the exact command.
    `RUNNING` or `FAILED`) and then every succeeded step, newest first, and exits 3. Choose this
    when the precheck of the interrupted step fails (resume then offers only rollback), when the
    operator has changed their mind, or when the step cannot be trusted to converge.
-4. Export and import runs are rebuilt from their stored arguments: the archive must still be where
+4. `jrsctl runs abandon <id>` closes the run as it is, when the server was already put right
+   another way (a restore, a redeploy, the remaining steps done by hand) or when compensating
+   would undo a state that is now good (ADR-0066). It lists the steps completed, interrupted and
+   never started, warns when the run left the service stopped (abandoning does not start it), and
+   asks. Nothing runs or is undone: the run is recorded as ended (`ABANDONED`, exit 4) and its
+   backups stay until pruning removes them.
+5. Export and import runs are rebuilt from their stored arguments: the archive must still be where
    it was.
 
 Two runs cannot be pending at once, because the second could not have started.

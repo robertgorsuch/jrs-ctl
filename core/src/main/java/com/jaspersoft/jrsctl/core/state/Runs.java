@@ -8,8 +8,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Runs: the run rows, including which of them are still pending. Invariant: one aggregate of the
@@ -38,6 +40,63 @@ final class Runs {
             ps.executeUpdate();
           }
           return null;
+        });
+  }
+
+  /**
+   * Issue #350, ADR-0066: ends a pending run as FAILED with {@code exitCode} and appends the {@code
+   * runs.abandon} audit row naming it, in one transaction, so a run is never shown abandoned
+   * without having ended or ended by an abandon without the row. False, with nothing written, when
+   * the run is unknown or already ended.
+   */
+  boolean abandon(String runId, Instant endedAt, int exitCode, String actor, Instant at) {
+    return db.write(
+        c -> {
+          try (PreparedStatement ps =
+              c.prepareStatement(
+                  "UPDATE runs SET ended_at=?, terminal_state=?, exit_code=?"
+                      + " WHERE run_id=? AND terminal_state IS NULL")) {
+            ps.setString(1, Timestamps.encode(endedAt));
+            ps.setString(2, TerminalState.FAILED.name());
+            ps.setInt(3, exitCode);
+            ps.setString(4, runId);
+            if (ps.executeUpdate() == 0) {
+              return false;
+            }
+          }
+          try (PreparedStatement ps =
+              c.prepareStatement("INSERT INTO audit(ts, actor, action, detail) VALUES (?,?,?,?)")) {
+            ps.setString(1, Timestamps.encode(at));
+            ps.setString(2, actor);
+            ps.setString(3, ABANDON_ACTION);
+            ps.setString(4, runId);
+            ps.executeUpdate();
+          }
+          return true;
+        });
+  }
+
+  /** The audit action that marks a run abandoned; its detail is exactly the run id. */
+  static final String ABANDON_ACTION = "runs.abandon";
+
+  /** Ids of every run ended by {@link #abandon}. */
+  Set<String> abandonedRunIds() {
+    return db.read(
+        c -> {
+          Set<String> ids = new HashSet<>();
+          try (PreparedStatement ps =
+              c.prepareStatement("SELECT detail FROM audit WHERE action=?")) {
+            ps.setString(1, ABANDON_ACTION);
+            try (ResultSet rs = ps.executeQuery()) {
+              while (rs.next()) {
+                String id = rs.getString(1);
+                if (id != null) {
+                  ids.add(id);
+                }
+              }
+            }
+          }
+          return Set.copyOf(ids);
         });
   }
 

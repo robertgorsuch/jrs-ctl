@@ -190,7 +190,10 @@ final class PlanExecutor {
             + first
             + " --resume` to continue it, or `jrsctl runs recover "
             + first
-            + " --rollback` to undo it";
+            + " --rollback` to undo it, or, when the server was already put right another way,"
+            + " `jrsctl runs abandon "
+            + first
+            + "` to close it as it is";
     if (global.json()) {
       List<Map<String, Object>> rows = new ArrayList<>();
       for (RunRecord run : pending) {

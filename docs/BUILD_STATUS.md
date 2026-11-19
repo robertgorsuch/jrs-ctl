@@ -43,6 +43,8 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 **#348 (2026-11-19):** review follow-ups to #338: `--test` no longer judges the source JDK, the refusal names `--export` only for newdb, a database rollback refuses an unfit source JDK before the server is stopped (the starting version is now also in the vendor-started marker), `doctor` WARNs instead of passing when only `vendor.sourceJavaHome` fits and judges that key whenever it is set; one shared JDK check. Fakes only.
 
+**#350 (2026-11-19):** `runs abandon <id>` (ADR-0066, ported from jrs-hotfix #61) closes a pending run as it is: preview of completed/interrupted/not-started steps and a service-left-stopped warning, confirmation, then FAILED/exit 4 plus a `runs.abandon` audit row in one transaction under the run lock; `runs list`/`show` print ABANDONED, JSON adds `abandoned`; the exit-8 message and the guided menu offer it. No schema change.
+
 ## Environment facts
 
 - Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.10.0 through the wrapper. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.

@@ -191,7 +191,8 @@ class Phase8CrashRecoveryTest {
     assertThat(blocked.stderr())
         .contains("needs recovery")
         .contains("jrsctl runs recover " + crashedRunId + " --resume")
-        .contains("jrsctl runs recover " + crashedRunId + " --rollback");
+        .contains("jrsctl runs recover " + crashedRunId + " --rollback")
+        .contains("jrsctl runs abandon " + crashedRunId);
     assertThat(crashed.outDir.resolve("other.zip")).doesNotExist();
 
     assertThat(lockIsFree(crashed.home.resolve("runs.lock")))
@@ -305,6 +306,40 @@ class Phase8CrashRecoveryTest {
     assertThat(lockIsFree(f.home.resolve("runs.lock")))
         .as("the lock is released when the first process ends")
         .isTrue();
+  }
+
+  /**
+   * Issue #350, ADR-0066: a crashed run abandoned as it is ends without anything running or being
+   * undone. The service the run stopped stays stopped and is named in the warning, the files are
+   * exactly as the crash left them, and new work is no longer blocked.
+   */
+  @Test
+  @Order(6)
+  void abandon_after_crash_closes_the_run_and_changes_nothing_else() throws Exception {
+    Fixture f = new Fixture("crash-abandon");
+
+    Cli.Running run = f.startExport(f.output);
+    String runId = crashMidExport(f, 1, run);
+    Map<String, String> afterCrash = fileState(f);
+
+    Cli.Result abandoned = f.jrsctl("runs", "abandon", runId, "--yes");
+    abandoned.assertExit(0);
+
+    assertThat(abandoned.stdout())
+        .contains("interrupted: " + HUNG_STEP)
+        .contains("WARNING: this run stopped the service")
+        .contains("run " + runId + " abandoned");
+    assertThat(terminalState(f, runId)).isEqualTo("FAILED");
+    assertThat(runRow(f, runId).get("abandoned").asBoolean()).isTrue();
+    assertThat(lastState(f, runId, HUNG_STEP)).as("nothing compensated").isEqualTo("RUNNING");
+    assertThat(f.tomcatRunning()).as("abandoning does not start the service").isFalse();
+    assertThat(fileState(f)).as("nothing on disk changed").isEqualTo(afterCrash);
+    assertThat(pendingRuns(f)).isEmpty();
+    List<String> planOnly = new ArrayList<>(List.of(exportArgs(f.outDir.resolve("after.zip"))));
+    planOnly.add("--plan");
+    assertThat(f.jrsctl(planOnly.toArray(String[]::new)).exitCode())
+        .as("no pending run blocks new work any more")
+        .isNotEqualTo(8);
   }
 
   // ---------------------------------------------------------------- crash mechanics
