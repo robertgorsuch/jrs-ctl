@@ -508,7 +508,9 @@ public final class ConfigLoader {
             text(database, "username"),
             text(database, "passwordRef").map(v -> secretRef("database.passwordRef", v)),
             text(database, "driverDir").map(v -> path("database.driverDir", v, env))),
-        new Config.Vendor(text(vendor, "javaHome").map(v -> path("vendor.javaHome", v, env))),
+        new Config.Vendor(
+            text(vendor, "javaHome").map(v -> path("vendor.javaHome", v, env)),
+            text(vendor, "sourceJavaHome").map(v -> path("vendor.sourceJavaHome", v, env))),
         new Config.Network(
             text(network, "mode")
                 .map(v -> yamlEnum("network.mode", Config.NetworkMode.class, v))

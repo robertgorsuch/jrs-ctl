@@ -117,7 +117,9 @@ class ConfigWriterTest {
             Optional.of("jasperdb"),
             Optional.of(new SecretRef.Enc("db")),
             Optional.empty()),
-        new Config.Vendor(Optional.of(Path.of("/opt/jrs/java"))),
+        // ADR-0065: the source JDK round-trips with the target one
+        new Config.Vendor(
+            Optional.of(Path.of("/opt/jrs/java")), Optional.of(Path.of("/opt/jdk-11"))),
         new Config.Network(
             Config.NetworkMode.PUBLIC,
             new Config.Proxy(

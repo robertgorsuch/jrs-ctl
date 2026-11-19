@@ -285,6 +285,25 @@ final class ServerChecks {
     }
     int found = probe.feature().get();
     if (!allowed.contains(found)) {
+      // ADR-0065 (issue #338): before an 8.x to 10.x upgrade vendor.javaHome is the target's JDK
+      // and this version's own tools run on vendor.sourceJavaHome; either one fitting passes
+      Optional<Path> source = s.config().vendor().sourceJavaHome();
+      if (source.isPresent()) {
+        JavaVersion.Probe sp = JavaVersion.probe(s.platform().processes(), source.get());
+        if (sp.feature().isPresent() && allowed.contains(sp.feature().get())) {
+          return ReportItem.pass(
+              "vendor-java",
+              "vendor.sourceJavaHome "
+                  + source.get()
+                  + " is Java "
+                  + sp.feature().get()
+                  + " for this version's tools; vendor.javaHome "
+                  + javaHome.get()
+                  + " (Java "
+                  + found
+                  + ") is for the upgrade target");
+        }
+      }
       return ReportItem.fail(
           "vendor-java",
           javaHome.get()
@@ -293,8 +312,16 @@ final class ServerChecks {
               + "; JRS "
               + c.identity().version()
               + " needs "
-              + need,
-          "set vendor.javaHome to a " + need + " JDK");
+              + need
+              + source
+                  .map(p -> ", and vendor.sourceJavaHome " + p + " is not one either")
+                  .orElse(""),
+          "set vendor.javaHome to a "
+              + need
+              + " JDK, or, when vendor.javaHome is an upgrade target's JDK, set"
+              + " vendor.sourceJavaHome to a "
+              + need
+              + " JDK");
     }
     return ReportItem.pass(
         "vendor-java",

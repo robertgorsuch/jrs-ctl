@@ -136,6 +136,7 @@ public final class ConfigWriter {
 
     ObjectNode vendor = root.putObject("vendor");
     path(c.vendor().javaHome(), vendor, "javaHome");
+    path(c.vendor().sourceJavaHome(), vendor, "sourceJavaHome");
 
     ObjectNode network = root.putObject("network");
     network.put("mode", c.network().mode().yamlValue());

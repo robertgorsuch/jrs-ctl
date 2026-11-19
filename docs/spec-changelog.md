@@ -1,5 +1,10 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-18 (`vendor.sourceJavaHome` for the version an upgrade starts from; ADR-0065, issue #338)
+
+- §5.1: new optional key `vendor.sourceJavaHome`, the JDK for the tools of the version an upgrade starts from; unset, nothing changes. `doctor`'s `vendor-java` passes when either key fits the detected version.
+- §10.1: the point-B `full-export` and `upgrade rollback --restore-database`'s `rebuild-database` and `reimport-full-export` run on it when set; `verify-target-package` refuses, before anything is stopped, a source JDK the installed version does not support, unless `--export` supplies the export.
+
 ## Draft 1.2 amendment — 2026-11-18 (upgrade stages the repository database password; ADR-0064, issue #339)
 
 - §7.4: a second exception to "jrsctl never adds a key whose name contains `pass`": `write-master-properties` writes `dbPassword` from `database.passwordRef` (resolved at execute time, redacted) when the operator's file in the target buildomatic names none; with neither it refuses before the service stops. Passwords in the installed file are still never copied.

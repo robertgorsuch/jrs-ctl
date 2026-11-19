@@ -308,6 +308,8 @@ class UpgradeStepIdempotencyTest {
   void should_migrate_once_when_migrate_passwords_executes_twice() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
       f.fake.adapter.identity = com.jaspersoft.jrsctl.ops.FakeJrsAdapter.identity("10.0.0");
+      // a 10.0 server's own tools run on Java 17, so its source JDK is 17 (ADR-0065)
+      f.sourceJavaVersion("openjdk version \"17.0.2\" 2022-01-18");
       // the fake vendor run deploys webapp-new; the target must be what --to says
       Files.writeString(f.packageDir.resolve("webapp-new").resolve("version.txt"), "10.1.0");
       // a 10.1 commercial target wants the licence in the user home, and the migration utility

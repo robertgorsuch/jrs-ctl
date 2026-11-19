@@ -53,7 +53,12 @@ final class ConfigKeys {
               "database.passwordRef",
               "Repository database password: enc:NAME, env:NAME or file:/path"),
           Map.entry("database.driverDir", "Directory holding the JDBC driver jar"),
-          Map.entry("vendor.javaHome", "JDK buildomatic runs with (not the Java jrsctl runs on)"),
+          Map.entry(
+              "vendor.javaHome",
+              "JDK buildomatic runs with (not the Java jrsctl runs on); an upgrade's target version"),
+          Map.entry(
+              "vendor.sourceJavaHome",
+              "JDK for the tools of the version an upgrade starts from, when it differs (8.x to 10)"),
           Map.entry(
               "network.mode", "isolated: only server.baseUrl is contacted; public: proxy allowed"),
           Map.entry("network.proxy.host", "HTTP proxy host (network.mode public)"),
@@ -85,6 +90,7 @@ final class ConfigKeys {
           "server.tomcatDir",
           "server.buildomaticDir",
           "vendor.javaHome",
+          "vendor.sourceJavaHome",
           "database.driverDir");
   private static final java.util.Set<String> FILE_KEYS =
       java.util.Set.of("service.scriptPath", "network.trustStore.path");

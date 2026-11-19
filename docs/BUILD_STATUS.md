@@ -39,6 +39,7 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 **8.0.4 → 10.0.0 field dry run (2026-11-18, Windows WAR install, `--tomcat-dir`, `service.kind manual`):** the vendor upgrade, the events import and the 10.0 start in the new Tomcat 10.1.62 all succeeded, but three workarounds were needed, filed as #338, #339, #340 and #341 (the #341 minor findings are fixed: fingerprint options, adopted-export rollback text, archives in `runs show`, service re-registration text). #340 (the start step watched the old Tomcat) is fixed by ADR-0062 and #343 (`server.installDir` left on the old Tomcat) by ADR-0063, both tested against the fakes only; the next `--tomcat-dir` field run is their live check.
 **#339 (2026-11-18):** `write-master-properties` now writes `dbPassword` from `database.passwordRef` unless the target's file has one, and refuses before the stop when neither exists (ADR-0064); tested against the fakes only.
+**#338 (2026-11-18):** `vendor.sourceJavaHome` (ADR-0065) runs the installed version's tools: the point-B `js-export` and the old buildomatic of `upgrade rollback --restore-database`; preflight refuses a source JDK that version does not support, and `doctor` passes `vendor-java` when either JDK fits. With this, the 8.0.4 → 10.0.0 dry run needs none of its four workarounds; tested against the fakes only.
 
 ## Environment facts
 

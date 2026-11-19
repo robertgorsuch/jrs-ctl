@@ -204,7 +204,65 @@ final class PreflightSteps {
       return in.target().dir()
           + ": vendor scripts, webapp, default_master.properties keeps the installation type (and"
           + " names dbVersion for Oracle from 10.1), upgrade path in the compat matrix,"
-          + " vendor.javaHome, host Tomcat";
+          + " vendor.javaHome, the JDK of the installed version's export (vendor.sourceJavaHome"
+          + " when set), host Tomcat";
+    }
+
+    /**
+     * ADR-0065: the JDK the installed version's {@code js-export} will run with ({@code
+     * vendor.sourceJavaHome}, else {@code vendor.javaHome}) must be one that version supports.
+     */
+    private Optional<CheckResult> sourceJdkProblem(String current) {
+      Set<Integer> allowed;
+      try {
+        allowed = rt.services().matrix().javaRequiredFor(current);
+      } catch (UnsupportedVersionException e) {
+        // the upgrade path check already judged an unknown current version
+        return Optional.empty();
+      }
+      String required = CompatMatrix.describeJava(allowed);
+      boolean fromSource = rt.config().vendor().sourceJavaHome().isPresent();
+      String key = fromSource ? "vendor.sourceJavaHome" : "vendor.javaHome";
+      Optional<Path> jdk = rt.config().vendor().sourceToolsJavaHome();
+      String remedy =
+          "set vendor.sourceJavaHome to a "
+              + required
+              + " JDK for the installed "
+              + current
+              + "'s js-export (jrsctl config set vendor.sourceJavaHome <dir>), or take the full"
+              + " export yourself with that JDK and pass --export <file>";
+      if (jdk.isEmpty() || !Files.isDirectory(jdk.get())) {
+        return Optional.of(
+            CheckResult.fail(
+                key + " " + jdk.map(Path::toString).orElse("(not set)") + " is not a directory",
+                remedy));
+      }
+      Optional<Integer> found;
+      try {
+        found = VendorJava.detect(jdk.get(), rt.services().platform().processes());
+      } catch (RuntimeException e) {
+        found = Optional.empty();
+      }
+      if (found.isEmpty()) {
+        return Optional.of(
+            CheckResult.fail(
+                "cannot determine the Java version of " + key + " " + jdk.get(), remedy));
+      }
+      if (!allowed.contains(found.get())) {
+        return Optional.of(
+            CheckResult.fail(
+                key
+                    + " "
+                    + jdk.get()
+                    + " is Java "
+                    + found.get()
+                    + "; the installed "
+                    + current
+                    + "'s js-export, which takes the point-B full export, needs "
+                    + required,
+                remedy));
+      }
+      return Optional.empty();
     }
 
     @Override
@@ -318,6 +376,14 @@ final class PreflightSteps {
                 + " needs "
                 + required,
             "set vendor.javaHome to a " + required + " JDK");
+      }
+      // ADR-0065 (issue #338): the plan's own point-B export runs the installed version's
+      // js-export, which 8.x cannot do on 10.x's Java; refused here, before anything is stopped
+      if (in.options().existingExport().isEmpty()) {
+        Optional<CheckResult> source = sourceJdkProblem(current);
+        if (source.isPresent()) {
+          return source.get();
+        }
       }
       // review §2.1: 10.0 moved to Jakarta EE, so the Tomcat that will host the target must be
       // one the platform sheet certifies for it
