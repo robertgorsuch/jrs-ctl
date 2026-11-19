@@ -29,6 +29,13 @@ class ServiceSwitchTest {
         .contains("C:\\jrs\\apache-tomcat\\bin\\service.bat remove jasperreportsTomcat")
         .contains("C:\\tomcat-11\\bin\\service.bat install jasperreportsTomcat")
         .contains("//ES//jasperreportsTomcat");
+    // issue #341: the form that worked in the field, and the check before configuring
+    assertThat(steps)
+        .contains("CATALINA_HOME to C:\\tomcat-11")
+        .contains("cmd /c \"C:\\tomcat-11\\bin\\service.bat install jasperreportsTomcat\"")
+        .contains("sc.exe query jasperreportsTomcat")
+        .contains("reads no setenv.bat")
+        .contains("//US//jasperreportsTomcat");
   }
 
   @Test

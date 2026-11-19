@@ -966,6 +966,46 @@ class UpgradePlanTest {
     }
   }
 
+  /**
+   * Issue #341 (field run 2026-11-18): a plan with {@code --export} had the same fingerprint as one
+   * without, and its rollback line still said the export is taken here.
+   */
+  @Test
+  void should_fingerprint_the_adopted_export_and_describe_it_in_the_rollback_point()
+      throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
+      Path export = f.fakeExport("earlier.zip");
+      Plan plain = f.ops().planUpgrade(newdb(f));
+
+      Plan adopting = f.ops().planUpgrade(newdb(f).withExistingExport(export));
+
+      assertThat(adopting.fingerprint().inputs())
+          .containsEntry("export", export.toAbsolutePath().normalize().toString());
+      assertThat(adopting.fingerprint().value()).isNotEqualTo(plain.fingerprint().value());
+      assertThat(plain.fingerprint().inputs()).doesNotContainKey("export");
+      assertThat(adopting.summary().rollbackPointsByPhase().get(Phases.VENDOR_UPGRADE))
+          .contains("adopted from " + export.toAbsolutePath().normalize())
+          .doesNotContain("taken here");
+      assertThat(plain.summary().rollbackPointsByPhase().get(Phases.VENDOR_UPGRADE))
+          .contains("the full export is taken here");
+    }
+  }
+
+  /** Issue #341: a run into a new Tomcat is a different plan from one in place. */
+  @Test
+  void should_fingerprint_the_new_tomcat_when_tomcat_dir_is_given() throws Exception {
+    try (UpgradeFixture f = UpgradeFixture.createWithManualService(tmp)) {
+      Plan inPlace = f.ops().planUpgrade(newdb(f));
+
+      Plan sideBySide = f.ops().planUpgrade(withNewTomcat(f));
+
+      assertThat(sideBySide.fingerprint().inputs())
+          .containsEntry("tomcatDir", f.newTomcatDir.toAbsolutePath().normalize().toString());
+      assertThat(sideBySide.fingerprint().value()).isNotEqualTo(inPlace.fingerprint().value());
+      assertThat(inPlace.fingerprint().inputs()).doesNotContainKey("tomcatDir");
+    }
+  }
+
   @Test
   void should_refuse_export_with_exit_1_when_mode_is_samedb() throws Exception {
     try (UpgradeFixture f = UpgradeFixture.create(tmp)) {
