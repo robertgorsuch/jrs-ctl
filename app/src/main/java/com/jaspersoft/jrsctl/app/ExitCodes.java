@@ -3,6 +3,7 @@ package com.jaspersoft.jrsctl.app;
 import com.jaspersoft.jrsctl.core.compat.UnsupportedVersionException;
 import com.jaspersoft.jrsctl.core.config.ConfigException;
 import com.jaspersoft.jrsctl.core.engine.LockHeldException;
+import com.jaspersoft.jrsctl.core.engine.RunLockUnavailableException;
 import com.jaspersoft.jrsctl.core.platform.UnsupportedPlatformException;
 import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.core.secrets.SecretException;
@@ -162,10 +163,10 @@ public final class ExitCodes {
 
   /**
    * Maps uncaught exceptions to an exit code: configuration, secret and reachability problems are
-   * precheck failures (2, nothing mutated), a held run lock is 9, an unsupported version 6, and
-   * every other unexpected exception is reported as rollback-incomplete (4) so nothing is silently
-   * reported as success. The message is redacted before it is printed; with {@code --json} it is
-   * the error document on standard output.
+   * precheck failures (2, nothing mutated), as is a run lock that cannot be taken at all; a held
+   * run lock is 9, an unsupported version 6, and every other unexpected exception is reported as
+   * rollback-incomplete (4) so nothing is silently reported as success. The message is redacted
+   * before it is printed; with {@code --json} it is the error document on standard output.
    */
   static final class Handler implements IExecutionExceptionHandler {
     @Override
@@ -178,6 +179,8 @@ public final class ExitCodes {
         // redacted by its appenders) and the operator is told where it is
         LOG.error("unexpected {}: {}", ex.getClass().getName(), messageOf(ex), ex);
         remediation = Optional.of("see " + logFile() + " for the stack trace");
+      } else if (ex instanceof RunLockUnavailableException lock) {
+        remediation = Optional.of(lock.remediation());
       }
       if (jsonRequested(parseResult)) {
         JsonOut.print(
@@ -199,6 +202,7 @@ public final class ExitCodes {
           || ex instanceof RestException
           || ex instanceof SecretException
           || ex instanceof LockHeldException
+          || ex instanceof RunLockUnavailableException
           || ex instanceof UnsupportedVersionException
           || ex instanceof UnsupportedPlatformException;
     }
@@ -223,6 +227,10 @@ public final class ExitCodes {
       }
       if (ex instanceof LockHeldException) {
         return LOCK_HELD;
+      }
+      if (ex instanceof RunLockUnavailableException) {
+        // #351: the lock is taken before anything runs, so this is a refusal, not exit 4
+        return PRECHECK_FAILED;
       }
       if (ex instanceof UnsupportedVersionException) {
         return UNSUPPORTED;

@@ -50,6 +50,14 @@ rather than trusting the pid in the file), and the next mutating command simply 
 delete `state.db`; the lock file alone is safe to remove when its holder is dead, but nothing
 requires it.
 
+## Exit 2: "the jrsctl home ... is not a folder" or "cannot take the run lock"
+
+Nothing ran: the home is checked before anything is opened under it, and the run lock is taken
+before the run's first journal row. The home named is a file, a link to nothing, or a folder this
+user cannot write, or `runs.lock` inside it is a folder. Point jrsctl at the right folder with
+`--home <dir>` or `JRSCTL_HOME`, or move the thing in the way aside, then run the command again.
+`jrsctl home show` says which home is in use and why.
+
 ## Exit 3: "run failed, rolled back"
 
 The step named in the outcome block failed; jrsctl undid that step's partial work first, then

@@ -37,6 +37,25 @@ class PlatformDetectionTest {
 
   private final Platform platform = Platforms.detect();
 
+  /** #351: the shared host check reads os.name each time and agrees with detection. */
+  @Test
+  void should_report_the_host_family_from_os_name_when_asked() {
+    boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+
+    assertThat(Platforms.hostIsWindows()).isEqualTo(windows);
+    assertThat(Platforms.hostFamily()).contains(platform.os());
+    String saved = System.getProperty("os.name");
+    try {
+      System.setProperty("os.name", windows ? "Linux" : "Windows Server 2022");
+      assertThat(Platforms.hostIsWindows()).isEqualTo(!windows);
+      System.setProperty("os.name", "Mac OS X");
+      assertThat(Platforms.hostFamily()).isEmpty();
+      assertThat(Platforms.hostIsWindows()).isFalse();
+    } finally {
+      System.setProperty("os.name", saved);
+    }
+  }
+
   @Test
   void should_detect_layout_when_install_dir_has_pro_webapp(@TempDir Path install)
       throws IOException {

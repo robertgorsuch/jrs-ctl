@@ -102,6 +102,21 @@ public final class Platforms {
     return n.contains("linux") ? Optional.of(Platform.OsFamily.LINUX) : Optional.empty();
   }
 
+  /**
+   * The family of the machine this JVM runs on, read from {@code os.name} on every call (never
+   * cached, so a test that overrides the property sees the change). Empty outside Windows and
+   * Linux. This is the host, not the platform a configuration names; code that acts on the server
+   * goes through {@link Platform#os()} instead.
+   */
+  public static Optional<Platform.OsFamily> hostFamily() {
+    return osFamily(System.getProperty("os.name", ""));
+  }
+
+  /** True when this JVM runs on Windows; the one host check main code shares (#351). */
+  public static boolean hostIsWindows() {
+    return hostFamily().orElse(null) == Platform.OsFamily.WINDOWS;
+  }
+
   /** Maps an {@code os.arch} value ({@code amd64}, {@code x86_64}) to an architecture. */
   public static Platform.Arch arch(String osArch) {
     String a = osArch.toLowerCase(Locale.ROOT);

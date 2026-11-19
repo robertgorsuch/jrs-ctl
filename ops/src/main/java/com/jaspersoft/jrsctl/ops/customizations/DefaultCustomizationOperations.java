@@ -1,5 +1,6 @@
 package com.jaspersoft.jrsctl.ops.customizations;
 
+import com.jaspersoft.jrsctl.core.platform.Platforms;
 import com.jaspersoft.jrsctl.core.platform.Trees;
 import com.jaspersoft.jrsctl.core.snapshot.Snapshot;
 import com.jaspersoft.jrsctl.core.snapshot.SnapshotManifest;
@@ -523,7 +524,7 @@ public final class DefaultCustomizationOperations implements CustomizationOperat
   /** {@code cust-<16 hex chars>} derived from the normalised path (case-folded on Windows). */
   public static String runIdFor(Path file) {
     String key = normalise(file).toString();
-    if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+    if (Platforms.hostIsWindows()) {
       key = key.toLowerCase(Locale.ROOT);
     }
     try {

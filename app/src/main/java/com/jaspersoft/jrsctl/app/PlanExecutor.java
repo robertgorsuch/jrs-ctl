@@ -6,6 +6,7 @@ import com.jaspersoft.jrsctl.core.engine.Context;
 import com.jaspersoft.jrsctl.core.engine.LockHeldException;
 import com.jaspersoft.jrsctl.core.engine.Plan;
 import com.jaspersoft.jrsctl.core.engine.PlanFingerprint;
+import com.jaspersoft.jrsctl.core.engine.RunLockUnavailableException;
 import com.jaspersoft.jrsctl.core.engine.RunOptions;
 import com.jaspersoft.jrsctl.core.engine.RunOutcome;
 import com.jaspersoft.jrsctl.core.engine.RunRecord;
@@ -287,6 +288,14 @@ final class PlanExecutor {
             "run lock is held by run " + held.holderRunId() + " (pid " + held.holderPid() + ")",
             Optional.of("wait for it to finish or check `jrsctl runs list`"),
             Map.of("holderRunId", held.holderRunId(), "holderPid", held.holderPid()));
+      }
+      if (thrown instanceof RunLockUnavailableException unavailable) {
+        // #351: the lock is the run's first act, so nothing has changed although the run started
+        return fail(
+            ExitCodes.PRECHECK_FAILED,
+            unavailable.getMessage(),
+            Optional.of(unavailable.remediation()),
+            Map.of());
       }
       throw thrown;
     }

@@ -141,6 +141,31 @@ class RunLockTest {
   }
 
   @Test
+  void should_refuse_with_a_remedy_when_the_home_is_a_file() throws Exception {
+    Path file = Files.writeString(tmp.resolve("home"), "not a folder");
+
+    assertThatThrownBy(() -> new RunLock(new JrsctlHome(file), "r-1", NOW))
+        .isInstanceOf(RunLockUnavailableException.class)
+        .hasMessageContaining("the jrsctl home " + file.toAbsolutePath() + " is not a folder")
+        .satisfies(
+            e ->
+                assertThat(((RunLockUnavailableException) e).remediation())
+                    .contains("--home <dir> or JRSCTL_HOME")
+                    .endsWith("nothing was changed"));
+  }
+
+  @Test
+  void should_refuse_when_the_lock_file_is_a_folder() throws Exception {
+    JrsctlHome home = new JrsctlHome(tmp.resolve("home"));
+    Files.createDirectories(home.runLock());
+
+    assertThatThrownBy(() -> new RunLock(home, "r-1", NOW))
+        .isInstanceOf(RunLockUnavailableException.class)
+        .hasMessageContaining("is a folder, not a file");
+    assertThat(RunLock.heldBy(home.runLock())).isEmpty();
+  }
+
+  @Test
   void should_create_missing_home_directory_when_acquiring() {
     JrsctlHome home = new JrsctlHome(tmp.resolve("nested").resolve("home"));
     try (RunLock lock = new RunLock(home, "r-1", NOW)) {

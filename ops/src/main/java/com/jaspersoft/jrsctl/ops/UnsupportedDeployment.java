@@ -1,5 +1,7 @@
 package com.jaspersoft.jrsctl.ops;
 
+import com.jaspersoft.jrsctl.core.platform.Platform;
+import com.jaspersoft.jrsctl.core.platform.Platforms;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -33,9 +35,9 @@ public final class UnsupportedDeployment {
 
     /** This host: the file-system root and the process environment. */
     public static Probe host() {
-      String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
       boolean check =
-          os.contains("linux") && !"false".equals(System.getProperty("jrsctl.containerCheck"));
+          Platforms.hostFamily().orElse(null) == Platform.OsFamily.LINUX
+              && !"false".equals(System.getProperty("jrsctl.containerCheck"));
       return new Probe(Path.of("/"), System.getenv(), check);
     }
   }

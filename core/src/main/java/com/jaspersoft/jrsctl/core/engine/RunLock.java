@@ -8,6 +8,7 @@ import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
@@ -22,13 +23,14 @@ import org.slf4j.LoggerFactory;
  * runId pid startedAt} so a contender can name the holder; the locked byte range lies far beyond
  * the content so the holder text stays readable by other processes; contention in another process
  * ({@code tryLock() == null}) and in the same JVM both surface as {@link LockHeldException}; {@link
- * #close()} truncates and releases. A process that holds the lock never opens a second handle on
- * the file: on Linux the lock is a POSIX record lock, which the kernel drops the moment any
- * descriptor of the process on that file is closed, so a doctor probe that read the holder text
- * through {@code Files.readString} released the live run's lock (assessment item E1). The locks
- * this process holds are kept in a registry keyed by lock file, and {@link #heldBy} and {@link
- * #readHolder} answer from it before touching the file; every open of the file happens under one
- * monitor so a probe and an acquisition never overlap.
+ * #close()} truncates and releases. A lock file that cannot be opened at all raises {@link
+ * RunLockUnavailableException}, a refusal, since nothing has run yet. A process that holds the lock
+ * never opens a second handle on the file: on Linux the lock is a POSIX record lock, which the
+ * kernel drops the moment any descriptor of the process on that file is closed, so a doctor probe
+ * that read the holder text through {@code Files.readString} released the live run's lock
+ * (assessment item E1). The locks this process holds are kept in a registry keyed by lock file, and
+ * {@link #heldBy} and {@link #readHolder} answer from it before touching the file; every open of
+ * the file happens under one monitor so a probe and an acquisition never overlap.
  */
 public final class RunLock implements AutoCloseable {
 
@@ -98,7 +100,7 @@ public final class RunLock implements AutoCloseable {
           }
         }
         closeQuietly(ch);
-        throw new IllegalStateException("cannot acquire run lock " + file, e);
+        throw unavailable(file, e);
       }
       this.channel = ch;
       this.lock = acquired;
@@ -236,6 +238,44 @@ public final class RunLock implements AutoCloseable {
     if (failure != null) {
       LOG.warn("run lock {} was not released cleanly: {}", file, failure.getMessage());
     }
+  }
+
+  /**
+   * Why the lock file could not be opened, phrased for the operator (#351). The home is inspected
+   * without following a link first, so a dangling link reads as one rather than as a missing
+   * folder.
+   */
+  static RunLockUnavailableException unavailable(Path lockFile, IOException cause) {
+    Path abs = lockFile.toAbsolutePath();
+    Path home = abs.getParent();
+    String choose = "choose a folder with --home <dir> or JRSCTL_HOME";
+    String message;
+    String remediation;
+    if (home != null && Files.exists(home, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(home)) {
+      message =
+          Files.exists(home)
+              ? "the jrsctl home " + home + " is not a folder"
+              : "the jrsctl home " + home + " is a link to nothing";
+      remediation = choose + ", or move it aside; nothing was changed";
+    } else if (Files.isDirectory(abs)) {
+      message = "the run lock " + abs + " is a folder, not a file";
+      remediation = "move it aside; nothing was changed";
+    } else {
+      message =
+          "cannot take the run lock "
+              + abs
+              + ": "
+              + (cause.getMessage() == null
+                  ? cause.getClass().getSimpleName()
+                  : cause.getMessage());
+      remediation =
+          "check that this user can create and write files in "
+              + (home == null ? abs : home)
+              + ", or "
+              + choose
+              + "; nothing was changed";
+    }
+    return new RunLockUnavailableException(message, remediation, cause);
   }
 
   private static void closeQuietly(FileChannel ch) {

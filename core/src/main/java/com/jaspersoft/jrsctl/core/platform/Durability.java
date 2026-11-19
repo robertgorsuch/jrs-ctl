@@ -13,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,8 +23,8 @@ import org.slf4j.LoggerFactory;
  * visible after a crash can always roll the run back. Invariants: {@link #copy} and {@link
  * #copyHashing} return only after the target's bytes and length have been forced; {@link #sync}
  * forces a file that was written earlier; {@link #syncDirectory} makes a completed rename durable
- * and is a logged no-op where the platform refuses to open a directory as a channel (Windows, whose
- * file systems journal the directory change themselves). Nothing here holds a whole file in memory.
+ * and is skipped on a Windows host, which refuses to open a directory as a channel and whose file
+ * systems journal the directory change themselves. Nothing here holds a whole file in memory.
  *
  * <p>{@link #move} is here for the same reason: publishing a file is a rename, and on Windows a
  * rename is denied for a moment after the handle that wrote the file is closed, which forcing the
@@ -35,6 +36,9 @@ public final class Durability {
   private static final Logger LOG = LoggerFactory.getLogger(Durability.class);
   private static final int MOVE_ATTEMPTS = 20;
   private static final long MOVE_RETRY_DELAY_MS = 50;
+
+  /** Set once the Windows skip in {@link #syncDirectory} has been logged by this process. */
+  private static final AtomicBoolean WINDOWS_SKIP_LOGGED = new AtomicBoolean();
 
   private Durability() {}
 
@@ -59,11 +63,18 @@ public final class Durability {
 
   /**
    * Forces the directory entry, so a rename that has already returned cannot be lost. POSIX needs
-   * this; Windows cannot open a directory as a channel and does not need to, so a failure here is
-   * logged rather than propagated.
+   * this; Windows cannot open a directory as a channel and does not need to (NTFS journals the
+   * rename itself), so on a Windows host the open is not attempted and that is logged once per
+   * process (#351). Elsewhere a failure is logged rather than propagated.
    */
   public static void syncDirectory(Path dir) {
     if (dir == null) {
+      return;
+    }
+    if (Platforms.hostIsWindows()) {
+      if (WINDOWS_SKIP_LOGGED.compareAndSet(false, true)) {
+        LOG.debug("directory sync is skipped on Windows; the file system journals renames itself");
+      }
       return;
     }
     try (FileChannel channel = FileChannel.open(dir, StandardOpenOption.READ)) {

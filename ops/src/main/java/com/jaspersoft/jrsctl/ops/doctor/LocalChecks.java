@@ -413,8 +413,7 @@ final class LocalChecks {
    */
   static ReportItem serviceManager(Services s) {
     // the check is about the machine doctor runs on, not the platform the configuration names
-    if (Platforms.osFamily(System.getProperty("os.name", "")).orElse(null)
-        == Platform.OsFamily.WINDOWS) {
+    if (Platforms.hostIsWindows()) {
       return ReportItem.pass(SERVICE_MANAGER, "Windows service control manager");
     }
     return serviceManagerItem(s.config().service().kind(), LinuxInit.detect());

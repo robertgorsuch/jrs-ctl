@@ -3,7 +3,6 @@ package com.jaspersoft.jrsctl.core.platform;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -45,7 +44,7 @@ public final class DefaultHome {
   /** The system base for this OS: {@code %ProgramData%} on Windows, {@code /var/lib} elsewhere. */
   public static Path systemBase(Map<String, String> env) {
     Objects.requireNonNull(env, "env");
-    boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    boolean windows = Platforms.hostIsWindows();
     return windows
         ? Path.of(env.getOrDefault(PROGRAM_DATA, "C:\\ProgramData"))
         : Path.of("/var/lib");
