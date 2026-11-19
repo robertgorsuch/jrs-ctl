@@ -201,11 +201,15 @@ final class Explain {
 
   /**
    * Prints the explanation and exits 0 when {@code --explain} was given anywhere; otherwise runs
-   * the last command like picocli's default {@link CommandLine.RunLast}.
+   * the last command like picocli's default {@link CommandLine.RunLast}. Either way the global
+   * options given before the subcommand are first carried down to it ({@link
+   * GlobalOptionsInheritance}, #354).
    */
   static final class Strategy implements IExecutionStrategy {
     @Override
     public int execute(ParseResult parseResult) {
+      // #354: options given before the subcommand reach the command that runs
+      GlobalOptionsInheritance.apply(parseResult);
       Integer help = CommandLine.executeHelpRequest(parseResult);
       if (help != null) {
         return help;

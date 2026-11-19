@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * Decides where the JSON log goes before any logger exists (spec §5.1: everything lives under
- * {@code $JRSCTL_HOME}). Invariants: the home is derived from {@code --home}, then {@code
+ * {@code $JRSCTL_HOME}). Invariants: the home is derived from the last {@code --home}, then {@code
  * JRSCTL_HOME}, then the platform default, using only the argument list and the environment so no
  * class that owns a logger is loaded first; an explicit {@code -Djrsctl.log.file} is never
  * overridden; a home that exists and is not a folder sets nothing, leaving logback's own default.
@@ -64,15 +64,19 @@ public final class LogFile {
   }
 
   static Path home(String[] args, Map<String, String> env) {
+    // #354: the last --home wins, as GlobalOptionsInheritance lets the subcommand's own override
+    // one given before it, so the log and the state store agree on the home
+    String given = null;
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       if (arg.equals("--home") && i + 1 < args.length) {
-        return HomeRedirect.follow(Path.of(UserPaths.expand(args[i + 1], env)));
+        given = args[++i];
+      } else if (arg.startsWith("--home=")) {
+        given = arg.substring("--home=".length());
       }
-      if (arg.startsWith("--home=")) {
-        return HomeRedirect.follow(
-            Path.of(UserPaths.expand(arg.substring("--home=".length()), env)));
-      }
+    }
+    if (given != null) {
+      return HomeRedirect.follow(Path.of(UserPaths.expand(given, env)));
     }
     String fromEnv = env.get("JRSCTL_HOME");
     if (fromEnv != null && !fromEnv.isBlank()) {
