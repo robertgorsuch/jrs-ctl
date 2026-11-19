@@ -67,6 +67,7 @@ cd /opt/jrsctl-2.9.0
 > **How to type the commands.** This guide writes every command as `jrsctl …`.
 > On **Windows** type `bin\jrsctl.cmd …` and on **Linux** type `bin/jrsctl …`.
 > For example, `jrsctl doctor` becomes `bin\jrsctl.cmd doctor` on Windows.
+> Options such as `--home <dir>` or `--json` can go before or after the command name; `jrsctl --home D:\jrsctl runs list` and `jrsctl runs list --home D:\jrsctl` are the same.
 > For scheduled or scripted runs on Windows, use `powershell -NoProfile -ExecutionPolicy Bypass -File bin\jrsctl.ps1 …` instead: pressing Ctrl-C during a batch-file run makes Windows ask a question that stops the script from finishing.
 
 ### Step 2: Check the tool itself
@@ -298,7 +299,7 @@ jrsctl finishes every job by saying what happened and what to do next. The numbe
 | Result | What it means | What to do |
 |:---:|---|---|
 | **0** | Done | Nothing |
-| **2** | A check failed before anything changed | Read the message, fix it, run the command again |
+| **2** | A check failed before anything changed, for example the jrsctl home is not a folder | Read the message, fix it, run the command again |
 | **3** | A step failed, and jrsctl put everything back | Read the message, fix the cause, run it again |
 | **4** | A step failed, and jrsctl could not put everything back | Follow the "next action" in the message. `jrsctl docs recovery-runbook` walks you through it |
 | **5** | You cancelled it, and jrsctl put everything back | Nothing |
