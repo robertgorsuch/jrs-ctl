@@ -193,9 +193,12 @@ public final class DefaultUpgradeOperations implements UpgradeOperations {
         .orElse("(unknown version)");
   }
 
+  /** Issue #339, ADR-0064: where the vendor scripts' database password comes from, and stays. */
   static final String PASSWORD_WARNING =
-      "database passwords are not copied into the target default_master.properties (spec §7.4);"
-          + " add them there before running if the vendor scripts need them";
+      "no password is copied from the installed default_master.properties (spec §7.4); dbPassword"
+          + " in the target's default_master.properties comes from database.passwordRef unless"
+          + " that file already has one, and after a successful run it stays there in plain text,"
+          + " as the vendor's buildomatic expects: restrict who can read that file";
 
   private final UpgradeRuntime rt;
   private final Path userHome;

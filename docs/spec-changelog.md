@@ -1,5 +1,9 @@
 # jrsctl spec changelog
 
+## Draft 1.2 amendment — 2026-11-18 (upgrade stages the repository database password; ADR-0064, issue #339)
+
+- §7.4: a second exception to "jrsctl never adds a key whose name contains `pass`": `write-master-properties` writes `dbPassword` from `database.passwordRef` (resolved at execute time, redacted) when the operator's file in the target buildomatic names none; with neither it refuses before the service stops. Passwords in the installed file are still never copied.
+
 ## Draft 1.2 amendment — 2026-11-18 (point-config-at-target moves `server.installDir` on a WAR install; ADR-0063, issue #343)
 
 - §10.1: with `--tomcat-dir`, `point-config-at-target` also sets `server.installDir` to the new Tomcat when the installation is the old Tomcat directory itself; an installation that holds its Tomcat keeps the key, and the plan warns with the command to set it. `upgrade rollback` restores it with the rest of `config.yaml`.
