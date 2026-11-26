@@ -48,7 +48,7 @@ final class DoctorCommand implements Callable<Integer> {
               computed.counts(),
               gate.exit(computed.exitCode(), computed.items()));
       if (global.json()) {
-        out.println(redactor.redact(JsonOut.write(report)));
+        out.println(JsonOut.writeRedacted(redactor, report));
         out.flush();
       } else {
         ReportPrinter.print(

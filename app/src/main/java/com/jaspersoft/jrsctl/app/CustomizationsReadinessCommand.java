@@ -160,7 +160,7 @@ final class CustomizationsReadinessCommand implements Callable<Integer> {
         return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
       }
       if (global.json()) {
-        out.println(redactor.redact(JsonOut.write(json(r))));
+        out.println(JsonOut.writeRedacted(redactor, json(r)));
       } else {
         print(out, redactor, r);
       }

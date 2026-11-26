@@ -151,7 +151,7 @@ final class HotfixCommand implements Runnable {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (global.json()) {
-          out.println(redactor.redact(JsonOut.write(report)));
+          out.println(JsonOut.writeRedacted(redactor, report));
           out.flush();
         } else {
           Report r = Report.of(items(report));
@@ -436,7 +436,7 @@ final class HotfixCommand implements Runnable {
           doc.put("state", row.state());
           doc.put("origin", row.origin());
           doc.put("recordedAt", row.installedAt());
-          out.println(redactor.redact(JsonOut.write(doc)));
+          out.println(JsonOut.writeRedacted(redactor, doc));
         } else {
           out.println(
               redactor.redact(
@@ -493,7 +493,7 @@ final class HotfixCommand implements Runnable {
             row.put("origin", h.origin());
             rows.add(row);
           }
-          out.println(redactor.redact(JsonOut.write(rows)));
+          out.println(JsonOut.writeRedacted(redactor, rows));
           out.flush();
           return ExitCodes.SUCCESS;
         }

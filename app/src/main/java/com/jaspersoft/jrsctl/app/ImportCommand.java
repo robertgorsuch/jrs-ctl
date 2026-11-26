@@ -313,7 +313,7 @@ final class ImportCommand implements Callable<Integer> {
                 computed.missing(),
                 computed.content());
         if (global.json()) {
-          out.println(redactor.redact(JsonOut.write(uris ? report : trimmed(report))));
+          out.println(JsonOut.writeRedacted(redactor, uris ? report : trimmed(report)));
           out.flush();
         } else {
           ReportPrinter.print(

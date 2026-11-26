@@ -311,7 +311,7 @@ final class ExportCommand implements Callable<Integer> {
           sidecar.flags().keyAlias().ifPresent(a -> tree.put("keyAlias", a));
           sidecar.sourceDatabase().ifPresent(d -> tree.put("sourceDatabase", d));
           sidecar.jobs().ifPresent(j -> tree.put("jobs", jobsJson(j)));
-          outWriter.println(redactor.redact(JsonOut.write(tree)));
+          outWriter.println(JsonOut.writeRedacted(redactor, tree));
         } else {
           outWriter.println(redactor.redact("sidecar written to " + recorded.file()));
           outWriter.println("  archive SHA-256   " + sidecar.sha256());

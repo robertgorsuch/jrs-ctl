@@ -2,6 +2,7 @@ package com.jaspersoft.jrsctl.ops.passwords;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jaspersoft.jrsctl.core.redact.Redactor;
 import com.jaspersoft.jrsctl.ops.ReportItem;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +61,20 @@ class PasswordStatusTest {
       assertThat(byName(report).get("password-config").status()).isEqualTo(ReportItem.Status.WARN);
       assertThat(report.strategy()).contains("legacy");
       assertThat(report.exitCode()).isEqualTo(0);
+    }
+  }
+
+  @Test
+  void should_keep_the_strategy_setting_readable_when_the_report_passes_the_redactor()
+      throws Exception {
+    // review of 2.9.1: every output stream redacts, and password.strategy=... is not a secret
+    try (PasswordFixture f = PasswordFixture.createWithStrategy(tmp, "legacy")) {
+      ReportItem config = byName(f.ops().status()).get("password-config");
+      String shown = Redactor.global().redact(config.detail() + " " + config.remediation());
+
+      assertThat(shown)
+          .contains("password.strategy=legacy", "set password.strategy=modern")
+          .doesNotContain("[redacted]");
     }
   }
 

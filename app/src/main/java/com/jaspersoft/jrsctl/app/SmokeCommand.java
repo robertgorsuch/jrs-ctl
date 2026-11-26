@@ -46,7 +46,7 @@ final class SmokeCommand implements Callable<Integer> {
               gate.exit(computed.exitCode(), computed.items()),
               computed.runId());
       if (global.json()) {
-        out.println(redactor.redact(JsonOut.write(report)));
+        out.println(JsonOut.writeRedacted(redactor, report));
         out.flush();
       } else {
         ReportPrinter.print(

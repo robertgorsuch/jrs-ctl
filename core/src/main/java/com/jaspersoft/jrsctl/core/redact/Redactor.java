@@ -1,5 +1,12 @@
 package com.jaspersoft.jrsctl.core.redact;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -31,7 +38,9 @@ import java.util.regex.Pattern;
  * underscore touches it, so {@code org.postgresql} and {@code jdbc:postgresql:} stay readable and
  * the mask does not spell out what it hides (issue #199); any other value, and every encoded form,
  * is masked wherever it occurs. Registered values are held as strings for matching, which is the
- * one place the process keeps a secret in immutable memory; the set is never exposed.
+ * one place the process keeps a secret in immutable memory; the set is never exposed. A JSON
+ * document is masked as a tree before it is serialised ({@link #redact(JsonNode)}, {@link
+ * #redactJson}), never by running the text rules over its serialised form (#369).
  */
 public final class Redactor {
 
@@ -42,25 +51,39 @@ public final class Redactor {
   private static final Redactor GLOBAL = new Redactor();
 
   /**
-   * A value after a secret key: a JSON-escaped double-quoted string ({@code \"x\"}, how an XML
-   * attribute appears once a diff is serialised to JSON, issue #369), a quoted string, or a bare
-   * run. A bare run ends at a backslash that starts a JSON escape ({@code \n}, {@code \"} and the
-   * others), so it neither stops at the backslash of an escaped quote and leaves the value in clear
-   * text, nor runs across an escaped line break into the lines after it; an escaped backslash
-   * ({@code \\}) and any other backslash stay part of the value.
+   * A value after a secret key in plain text: a quoted string or a bare run, backslashes included.
+   * These rules see raw text only; JSON documents are masked value by value through {@link
+   * #redact(JsonNode)} before they are written, so no rule has to understand JSON escapes (2.9.1
+   * tried that and masked plain-text values only up to a backslash, review of #369). A quoted value
+   * ends on its own line, and a quote left open is masked as a bare run, so it cannot reach across
+   * a line break to the next line's quote and leave that line's value in clear text.
    */
   private static final String QUOTED_OR_BARE =
-      "(\\\\\"(?:[^\"\\\\]|\\\\[^\"])*\\\\\"|\"[^\"]*\"|'[^']*'"
-          + "|(?:[^\\s&;,\"'\\\\]|\\\\\\\\|\\\\(?![\"/bfnrtu\\\\]))+)";
+      "(\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[\"']?[^\\s&;,\"']+)";
+
+  /** The words that name a secret, as the start of a {@code key=value} rule. */
+  private static final String SECRET_WORDS =
+      "(?:password|passwd|keystorepasswd|storepass|keypass|console\\.token)";
+
+  /**
+   * A JSON field whose name ends in a secret word (also {@code Authorization} and {@code
+   * JSESSIONID}), optionally followed by {@code .escapeXML}; its text value is masked whole. {@code
+   * passwordRef}, {@code passwords} and {@code password.strategy} do not match.
+   */
+  private static final Pattern SECRET_FIELD =
+      Pattern.compile(
+          "(?i).*(?:password|passwd|keystorepasswd|storepass|keypass|console\\.token"
+              + "|authorization|jsessionid)(?:\\.escapexml)?");
+
+  private static final ObjectMapper JSON = new ObjectMapper();
 
   private static final List<Pattern> KEY_VALUE_RULES =
       List.of(
-          // key=value / key: value, also as a quoted JSON key; a dotted suffix such as
-          // password.escapeXML (js.jdbc.properties, issue #369) is still the secret's key
+          // key=value / key: value, also as a quoted JSON key; password.escapeXML
+          // (js.jdbc.properties, issue #369) holds the same secret, but no other dotted suffix
+          // does: password.strategy=modern must stay readable
           Pattern.compile(
-              "(?i)((?:password|passwd|keystorepasswd|storepass|keypass|console\\.token)"
-                  + "(?:\\.[A-Za-z0-9_]+)*[\"']?\\s*[=:]\\s*)"
-                  + QUOTED_OR_BARE),
+              "(?i)(" + SECRET_WORDS + "(?:\\.escapeXML)?[\"']?\\s*[=:]\\s*)" + QUOTED_OR_BARE),
           // keytool style: -storepass x -keypass y
           Pattern.compile("(?i)((?:keystorepasswd|storepass|keypass)\\s+)" + QUOTED_OR_BARE),
           Pattern.compile("(?i)((?:JSESSIONID)[\"']?\\s*[=:]\\s*)([^\\s;,\"']+)"),
@@ -180,15 +203,75 @@ public final class Redactor {
     return out;
   }
 
+  /**
+   * A copy of {@code node} with every secret masked: a text value under a {@linkplain #SECRET_FIELD
+   * secret field name} becomes {@link #MASK}, every other text value and every field name passes
+   * {@link #redact(String)}. Masking the values of the tree, not its serialised text, means no rule
+   * meets a JSON escape, and the document written from the result is always valid JSON (#369).
+   */
+  public JsonNode redact(JsonNode node) {
+    Objects.requireNonNull(node, "node");
+    if (node.isObject()) {
+      ObjectNode out = JsonNodeFactory.instance.objectNode();
+      for (Map.Entry<String, JsonNode> field : node.properties()) {
+        JsonNode value = field.getValue();
+        boolean secret =
+            value.isTextual()
+                && !value.asText().isEmpty()
+                && SECRET_FIELD.matcher(field.getKey()).matches();
+        out.set(redact(field.getKey()), secret ? TextNode.valueOf(MASK) : redact(value));
+      }
+      return out;
+    }
+    if (node.isArray()) {
+      ArrayNode out = JsonNodeFactory.instance.arrayNode(node.size());
+      for (JsonNode element : node) {
+        out.add(redact(element));
+      }
+      return out;
+    }
+    if (node.isTextual()) {
+      return TextNode.valueOf(redact(node.asText()));
+    }
+    return node;
+  }
+
+  /**
+   * {@code value} serialised by {@code mapper} with every secret masked ({@link
+   * #redact(JsonNode)}): the one way a JSON document leaves the process.
+   */
+  public String redactJson(ObjectMapper mapper, Object value) {
+    Objects.requireNonNull(mapper, "mapper");
+    try {
+      return mapper.writeValueAsString(redact(mapper.<JsonNode>valueToTree(value)));
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("cannot serialise a redacted document", e);
+    }
+  }
+
+  /**
+   * One line of text that may be a JSON document, such as a line of the JSON log: masked through
+   * the tree and written compact when it parses as a JSON object, otherwise as plain text.
+   */
+  public String redactJsonLine(String line) {
+    if (line == null || line.isEmpty()) {
+      return line == null ? "" : line;
+    }
+    String trimmed = line.strip();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        return JSON.writeValueAsString(redact(JSON.readTree(trimmed)));
+      } catch (JsonProcessingException e) {
+        // not JSON after all: fall back to the text rules below
+      }
+    }
+    return redact(line);
+  }
+
   private static String maskValue(MatchResult m) {
     String value = m.group(2);
     String masked;
-    if (value.length() >= 4 && value.startsWith("\\\"") && value.endsWith("\\\"")) {
-      // keep the escaped quotes so the surrounding JSON string stays well formed (issue #369)
-      masked = "\\\"" + MASK + "\\\"";
-    } else if (value.length() >= 2
-        && value.charAt(0) == '"'
-        && value.charAt(value.length() - 1) == '"') {
+    if (value.length() >= 2 && value.charAt(0) == '"' && value.charAt(value.length() - 1) == '"') {
       masked = "\"" + MASK + "\"";
     } else if (value.length() >= 2
         && value.charAt(0) == '\''

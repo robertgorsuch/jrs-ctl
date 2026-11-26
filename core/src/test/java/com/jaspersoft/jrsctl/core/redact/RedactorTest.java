@@ -2,10 +2,15 @@ package com.jaspersoft.jrsctl.core.redact;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jaspersoft.jrsctl.core.secrets.Secret;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RedactorTest {
@@ -85,36 +90,111 @@ class RedactorTest {
         .isEqualTo("{\"password\": \"[redacted]\"}");
   }
 
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
   @Test
-  void should_mask_a_quoted_attribute_when_it_is_json_escaped() {
-    // context.xml diff line as it appears inside a JSON string (issue #369)
-    String json = "\"+  username=\\\"postgres\\\" password=\\\"s3cr\\\\et!\\\" driver=\\\"x\\\"\"";
+  void should_mask_a_quoted_attribute_when_a_json_value_quotes_a_file() throws Exception {
+    // a context.xml diff line inside a JSON document (issue #369)
+    Map<String, Object> doc = new LinkedHashMap<>();
+    doc.put("diff", "+  username=\"postgres\" password=\"s3cr\\et!\" driver=\"x\"\n+ next line");
 
-    String out = redactor.redact(json);
+    String out = redactor.redactJson(MAPPER, doc);
 
-    assertThat(out)
-        .isEqualTo("\"+  username=\\\"postgres\\\" password=\\\"[redacted]\\\" driver=\\\"x\\\"\"")
-        .doesNotContain("s3cr");
+    assertThat(out).doesNotContain("s3cr");
+    assertThat(MAPPER.readTree(out).get("diff").asText())
+        .isEqualTo("+  username=\"postgres\" password=\"[redacted]\" driver=\"x\"\n+ next line");
   }
 
   @Test
-  void should_mask_a_property_with_a_dotted_suffix_when_the_key_names_a_password() {
+  void should_mask_a_property_with_the_escape_xml_suffix_when_the_key_names_a_password() {
     assertThat(redactor.redact("metadata.jdbc.password.escapeXML=hunter2"))
         .isEqualTo("metadata.jdbc.password.escapeXML=[redacted]");
   }
 
   @Test
-  void should_stop_a_bare_value_at_an_escaped_line_break_when_the_text_is_json() {
-    String json = "\"a.password=hunter2\\nb.url=jdbc:x\\n# keep me\"";
-
-    assertThat(redactor.redact(json))
-        .isEqualTo("\"a.password=[redacted]\\nb.url=jdbc:x\\n# keep me\"");
+  void should_leave_password_settings_readable_when_the_dotted_key_is_not_a_secret() {
+    // review of 2.9.1: passwords status prints these, and they are not secrets
+    assertThat(redactor.redact("set password.strategy=modern and restart"))
+        .isEqualTo("set password.strategy=modern and restart");
+    assertThat(redactor.redact("password.algorithm=PBKDF2")).isEqualTo("password.algorithm=PBKDF2");
   }
 
   @Test
-  void should_keep_backslashes_inside_a_bare_value_when_they_are_not_json_escapes() {
-    assertThat(redactor.redact("password=ab\\cd e")).isEqualTo("password=[redacted] e");
-    assertThat(redactor.redact("\"password=ab\\\\cd\"")).isEqualTo("\"password=[redacted]\"");
+  void should_mask_a_whole_bare_value_when_it_holds_a_backslash() {
+    // review of 2.9.1: the tail after a backslash leaked in plain-text logs
+    assertThat(redactor.redact("password=abc\\test end")).isEqualTo("password=[redacted] end");
+    assertThat(redactor.redact("-storepass ab\\nc -keypass k\\/x"))
+        .isEqualTo("-storepass [redacted] -keypass [redacted]");
+  }
+
+  @Test
+  void should_mask_each_line_on_its_own_when_a_json_value_holds_an_unclosed_quote()
+      throws Exception {
+    // review of 2.9.1: an unclosed quote ran on to the next line's value
+    Map<String, Object> doc = Map.of("diff", "- a password=\"open\n+ x password=\"new\"");
+
+    String out = redactor.redactJson(MAPPER, doc);
+
+    assertThat(out).doesNotContain("open").doesNotContain("\"new");
+    assertThat(MAPPER.readTree(out).get("diff").asText()).endsWith("password=\"[redacted]\"");
+  }
+
+  @Test
+  void should_mask_a_json_password_field_whole_when_its_value_holds_an_escaped_quote()
+      throws Exception {
+    String out = redactor.redactJson(MAPPER, Map.of("password", "ab\"cd", "user", "u1"));
+
+    JsonNode tree = MAPPER.readTree(out);
+    assertThat(tree.get("password").asText()).isEqualTo("[redacted]");
+    assertThat(tree.get("user").asText()).isEqualTo("u1");
+    assertThat(out).doesNotContain("cd");
+  }
+
+  @Test
+  void should_mask_secret_fields_by_name_but_leave_references_and_flags_when_redacting_a_tree() {
+    ObjectNode node = MAPPER.createObjectNode();
+    node.put("dbPassword", "hunter2");
+    node.put("Authorization", "Bearer abc.def");
+    node.put("password.escapeXML", "hunter2");
+    node.put("passwordRef", "env:JRS_PASSWORD");
+    node.put("passwordSet", true);
+    node.putArray("passwords").add("status ok");
+
+    JsonNode out = redactor.redact(node);
+
+    assertThat(out.get("dbPassword").asText()).isEqualTo("[redacted]");
+    assertThat(out.get("Authorization").asText()).isEqualTo("[redacted]");
+    assertThat(out.get("password.escapeXML").asText()).isEqualTo("[redacted]");
+    assertThat(out.get("passwordRef").asText()).isEqualTo("env:JRS_PASSWORD");
+    assertThat(out.get("passwordSet").asBoolean()).isTrue();
+    assertThat(out.get("passwords").get(0).asText()).isEqualTo("status ok");
+  }
+
+  @Test
+  void should_mask_registered_values_in_field_names_and_nested_values_when_redacting_a_tree() {
+    redactor.register("Zq9-secret");
+    ObjectNode node = MAPPER.createObjectNode();
+    node.putObject("Zq9-secret").put("note", "value Zq9-secret here");
+
+    String out = redactor.redact(node).toString();
+
+    assertThat(out).doesNotContain("Zq9").contains("[redacted]");
+  }
+
+  @Test
+  void should_mask_a_json_log_line_through_its_tree_and_plain_text_otherwise() throws Exception {
+    String logLine =
+        MAPPER.writeValueAsString(
+            Map.of("message", "attr password=\"x1y2\" done", "level", "INFO"));
+
+    String out = redactor.redactJsonLine(logLine);
+
+    assertThat(MAPPER.readTree(out).get("message").asText())
+        .isEqualTo("attr password=\"[redacted]\" done");
+    assertThat(redactor.redactJsonLine("plain password=x1y2"))
+        .isEqualTo("plain password=[redacted]");
+    assertThat(redactor.redactJsonLine("{not json; password=x1y2 }"))
+        .isEqualTo("{not json; password=[redacted] }");
   }
 
   @Test

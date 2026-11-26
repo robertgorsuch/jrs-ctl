@@ -85,11 +85,13 @@ public final class SupportBundle {
             store.transitions(run.runId()),
             store.snapshots(run.runId()),
             services.clock());
+    // the JSON documents are masked as trees here and written as they are (#369): running the text
+    // rules over serialised JSON would meet its escapes
     return new Prepared(
         run,
-        withRunId(Json.writePretty(runDoc), run.runId()),
-        Json.writePretty(serverDocument()),
-        JsonOut.write(new DoctorOperation(services).run(DoctorOptions.DEFAULT)),
+        withRunId(redactor.redactJson(Json.pretty(), runDoc), run.runId()),
+        redactor.redactJson(Json.pretty(), serverDocument()),
+        JsonOut.writeRedacted(redactor, new DoctorOperation(services).run(DoctorOptions.DEFAULT)),
         ConfigShow.render(services.config()));
   }
 
@@ -115,25 +117,26 @@ public final class SupportBundle {
     RunRecord run = prepared.run();
     StateStore store = services.stateStore().get();
     try (ZipOutputStream zip = new ZipOutputStream(target, StandardCharsets.UTF_8)) {
-      text(zip, "run.json", prepared.runJson());
+      redactedJson(zip, "run.json", prepared.runJson());
       zip.putNextEntry(new ZipEntry("transitions.jsonl"));
       for (Transition t : store.transitions(run.runId())) {
-        line(zip, Json.write(t));
+        redactedLine(zip, redactor.redactJson(Json.mapper(), t));
       }
       zip.closeEntry();
-      text(zip, "server.json", prepared.serverJson());
-      text(zip, "doctor.json", prepared.doctorJson());
+      redactedJson(zip, "server.json", prepared.serverJson());
+      redactedJson(zip, "doctor.json", prepared.doctorJson());
       text(zip, "config-redacted.yaml", prepared.configYaml());
       Path log = logFile();
       if (Files.isRegularFile(log)) {
+        // the log is one JSON object per line: each is masked through its tree
         zip.putNextEntry(new ZipEntry("logs/" + log.getFileName()));
         for (String l : runLines(log, run, LOG_TAIL_LINES)) {
-          line(zip, l);
+          redactedLine(zip, redactor.redactJsonLine(l));
         }
         zip.closeEntry();
         zip.putNextEntry(new ZipEntry("logs/tail-" + log.getFileName()));
         for (String l : tail(log, LOG_CONTEXT_LINES)) {
-          line(zip, l);
+          redactedLine(zip, redactor.redactJsonLine(l));
         }
         zip.closeEntry();
       }
@@ -316,7 +319,20 @@ public final class SupportBundle {
   }
 
   private void line(ZipOutputStream zip, String content) throws IOException {
-    zip.write(redactor.redact(content).getBytes(StandardCharsets.UTF_8));
+    redactedLine(zip, redactor.redact(content));
+  }
+
+  /** A JSON document already masked through its tree ({@link Redactor#redactJson}). */
+  private static void redactedJson(ZipOutputStream zip, String name, String content)
+      throws IOException {
+    zip.putNextEntry(new ZipEntry(name));
+    zip.write(content.getBytes(StandardCharsets.UTF_8));
+    zip.closeEntry();
+  }
+
+  /** A line that has already been masked, through the text rules or through its tree. */
+  private static void redactedLine(ZipOutputStream zip, String content) throws IOException {
+    zip.write(content.getBytes(StandardCharsets.UTF_8));
     zip.write('\n');
   }
 }
