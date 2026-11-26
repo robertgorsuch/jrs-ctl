@@ -49,6 +49,8 @@ The full `scripts/mvn.sh verify` (all modules, all eight acceptance phases) was 
 
 **#350 (2026-11-19):** `runs abandon <id>` (ADR-0066, ported from jrs-hotfix #61) closes a pending run as it is: preview of completed/interrupted/not-started steps and a service-left-stopped warning, confirmation, then FAILED/exit 4 plus a `runs.abandon` audit row in one transaction under the run lock; `runs list`/`show` print ABANDONED, JSON adds `abandoned`; the exit-8 message and the guided menu offer it. No schema change.
 
+**#369 (2026-11-26, field report on 2.8.0):** the redaction patterns missed secrets in serialised JSON: an XML attribute `password=\"x\"` inside a JSON string had only its backslash masked (value in clear, JSON no longer parsed), `password.escapeXML=` keys were not matched (text output too), and a bare value ran across escaped `\n` into the lines after it. The key rule now takes a dotted suffix, a value can be a JSON-escaped quoted string, and a bare value stops at a JSON escape. Fixed in `Redactor`, so every `--json` output and the support bundle get it; tested with an INSTALLER-diff fixture in `--json` and text.
+
 ## Environment facts
 
 - Development machine: Windows 11, JDK 21 (Microsoft build) selected by `scripts/mvn.cmd`, Maven 3.10.1 through the wrapper. No Docker, so `needs-docker` and `needs-jrs` tests are excluded locally and run in CI only.

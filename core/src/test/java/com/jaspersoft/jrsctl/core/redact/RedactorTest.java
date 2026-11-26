@@ -86,6 +86,38 @@ class RedactorTest {
   }
 
   @Test
+  void should_mask_a_quoted_attribute_when_it_is_json_escaped() {
+    // context.xml diff line as it appears inside a JSON string (issue #369)
+    String json = "\"+  username=\\\"postgres\\\" password=\\\"s3cr\\\\et!\\\" driver=\\\"x\\\"\"";
+
+    String out = redactor.redact(json);
+
+    assertThat(out)
+        .isEqualTo("\"+  username=\\\"postgres\\\" password=\\\"[redacted]\\\" driver=\\\"x\\\"\"")
+        .doesNotContain("s3cr");
+  }
+
+  @Test
+  void should_mask_a_property_with_a_dotted_suffix_when_the_key_names_a_password() {
+    assertThat(redactor.redact("metadata.jdbc.password.escapeXML=hunter2"))
+        .isEqualTo("metadata.jdbc.password.escapeXML=[redacted]");
+  }
+
+  @Test
+  void should_stop_a_bare_value_at_an_escaped_line_break_when_the_text_is_json() {
+    String json = "\"a.password=hunter2\\nb.url=jdbc:x\\n# keep me\"";
+
+    assertThat(redactor.redact(json))
+        .isEqualTo("\"a.password=[redacted]\\nb.url=jdbc:x\\n# keep me\"");
+  }
+
+  @Test
+  void should_keep_backslashes_inside_a_bare_value_when_they_are_not_json_escapes() {
+    assertThat(redactor.redact("password=ab\\cd e")).isEqualTo("password=[redacted] e");
+    assertThat(redactor.redact("\"password=ab\\\\cd\"")).isEqualTo("\"password=[redacted]\"");
+  }
+
+  @Test
   void should_leave_secret_references_visible_when_they_are_not_values() {
     assertThat(redactor.redact("passwordRef: env:JRS_PASSWORD"))
         .isEqualTo("passwordRef: env:JRS_PASSWORD");

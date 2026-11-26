@@ -41,13 +41,25 @@ public final class Redactor {
   private static final int MAX_PASSES = 4;
   private static final Redactor GLOBAL = new Redactor();
 
-  private static final String QUOTED_OR_BARE = "(\"[^\"]*\"|'[^']*'|[^\\s&;,\"']+)";
+  /**
+   * A value after a secret key: a JSON-escaped double-quoted string ({@code \"x\"}, how an XML
+   * attribute appears once a diff is serialised to JSON, issue #369), a quoted string, or a bare
+   * run. A bare run ends at a backslash that starts a JSON escape ({@code \n}, {@code \"} and the
+   * others), so it neither stops at the backslash of an escaped quote and leaves the value in clear
+   * text, nor runs across an escaped line break into the lines after it; an escaped backslash
+   * ({@code \\}) and any other backslash stay part of the value.
+   */
+  private static final String QUOTED_OR_BARE =
+      "(\\\\\"(?:[^\"\\\\]|\\\\[^\"])*\\\\\"|\"[^\"]*\"|'[^']*'"
+          + "|(?:[^\\s&;,\"'\\\\]|\\\\\\\\|\\\\(?![\"/bfnrtu\\\\]))+)";
+
   private static final List<Pattern> KEY_VALUE_RULES =
       List.of(
-          // key=value / key: value, also as a quoted JSON key
+          // key=value / key: value, also as a quoted JSON key; a dotted suffix such as
+          // password.escapeXML (js.jdbc.properties, issue #369) is still the secret's key
           Pattern.compile(
               "(?i)((?:password|passwd|keystorepasswd|storepass|keypass|console\\.token)"
-                  + "[\"']?\\s*[=:]\\s*)"
+                  + "(?:\\.[A-Za-z0-9_]+)*[\"']?\\s*[=:]\\s*)"
                   + QUOTED_OR_BARE),
           // keytool style: -storepass x -keypass y
           Pattern.compile("(?i)((?:keystorepasswd|storepass|keypass)\\s+)" + QUOTED_OR_BARE),
@@ -171,7 +183,12 @@ public final class Redactor {
   private static String maskValue(MatchResult m) {
     String value = m.group(2);
     String masked;
-    if (value.length() >= 2 && value.charAt(0) == '"' && value.charAt(value.length() - 1) == '"') {
+    if (value.length() >= 4 && value.startsWith("\\\"") && value.endsWith("\\\"")) {
+      // keep the escaped quotes so the surrounding JSON string stays well formed (issue #369)
+      masked = "\\\"" + MASK + "\\\"";
+    } else if (value.length() >= 2
+        && value.charAt(0) == '"'
+        && value.charAt(value.length() - 1) == '"') {
       masked = "\"" + MASK + "\"";
     } else if (value.length() >= 2
         && value.charAt(0) == '\''
