@@ -2,7 +2,7 @@
 
 **The safe way to look after JasperReports Server.** From  Jaspersoft.
 
-> **Actively maintained.** The current release is [2.9.1](https://github.com/robertgorsuch/jrsctl/releases/tag/v2.9.1). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
+> **Actively maintained.** The current release is [2.9.1](https://github.com/robertgorsuch/jrs-ctl/releases/tag/v2.9.1). Report bugs and requests as GitHub issues ([CONTRIBUTING.md](CONTRIBUTING.md), "Reporting a problem").
 >
 > - Supported: JasperReports Server 7.1 to 10.x on Apache Tomcat, the rows of the bundled compatibility matrix (`core/src/main/resources/compat/matrix.yaml`). `doctor` fails any other version with exit 6 (`--allow-unsupported` turns that into a warning, for diagnosis only), and `upgrade` refuses a path the matrix does not list with exit 6.
 > - Each archive bundles a Java 21 runtime; `jrsctl selfcheck` shows which update.
@@ -45,7 +45,7 @@ It comes as one download with everything it needs inside. There is nothing else 
 
 ### Step 1: Download and unpack
 
-Download the archive for your system from the [releases page](https://github.com/robertgorsuch/jrsctl/releases):
+Download the archive for your system from the [releases page](https://github.com/robertgorsuch/jrs-ctl/releases):
 
 - Windows: `jrsctl-<version>-windows-x64.zip`
 - Linux: `jrsctl-<version>-linux-x64.tar.gz`

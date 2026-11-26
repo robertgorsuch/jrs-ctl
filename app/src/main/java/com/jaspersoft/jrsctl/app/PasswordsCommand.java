@@ -82,7 +82,7 @@ final class PasswordsCommand implements Runnable {
           return ExitCodes.reportPlanningFailure(out, err, global.json(), e);
         }
         if (global.json()) {
-          out.println(redactor.redact(JsonOut.write(report)));
+          out.println(JsonOut.writeRedacted(redactor, report));
           out.flush();
         } else {
           ReportPrinter.print(

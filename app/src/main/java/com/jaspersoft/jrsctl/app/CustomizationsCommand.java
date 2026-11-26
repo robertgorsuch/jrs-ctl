@@ -189,7 +189,7 @@ final class CustomizationsCommand implements Runnable {
           for (Customization c : all) {
             rows.add(row(c));
           }
-          out.println(redactor.redact(JsonOut.write(rows)));
+          out.println(JsonOut.writeRedacted(redactor, rows));
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -251,7 +251,7 @@ final class CustomizationsCommand implements Runnable {
           tree.put("currentSha256", diff.currentSha256());
           tree.put("identical", diff.identical());
           tree.put("lines", diff.lines());
-          out.println(redactor.redact(JsonOut.write(tree)));
+          out.println(JsonOut.writeRedacted(redactor, tree));
         } else if (diff.identical()) {
           out.println(redactor.redact(diff.path() + " matches its registered copy"));
         } else {
@@ -475,7 +475,7 @@ final class CustomizationsCommand implements Runnable {
             }
             tree.put("tomcat", files);
           }
-          out.println(redactor.redact(JsonOut.write(tree)));
+          out.println(JsonOut.writeRedacted(redactor, tree));
         } else if (!registered.isEmpty()) {
           out.println(
               "registered "

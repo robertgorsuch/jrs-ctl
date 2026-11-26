@@ -40,9 +40,19 @@ final class JsonOut {
     }
   }
 
+  /**
+   * {@code value} as a JSON document with every secret masked value by value before it is written
+   * ({@link Redactor#redactJson}), so the result is valid JSON whatever the values hold (#369).
+   * Never pass {@link #write}'s output to {@link Redactor#redact(String)} instead: the text rules
+   * do not understand JSON escapes.
+   */
+  static String writeRedacted(Redactor redactor, Object value) {
+    return redactor.redactJson(MAPPER, value);
+  }
+
   /** Writes one redacted JSON document to {@code out} and flushes. */
   static void print(PrintWriter out, Object value) {
-    out.println(Redactor.global().redact(write(value)));
+    out.println(writeRedacted(Redactor.global(), value));
     out.flush();
   }
 

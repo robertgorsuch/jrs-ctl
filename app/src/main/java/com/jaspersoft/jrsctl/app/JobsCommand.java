@@ -102,7 +102,7 @@ final class JobsCommand implements Runnable {
           return ExitCodes.reportPlanningFailure(stdout, err, global.json(), e);
         }
         if (global.json()) {
-          stdout.println(redactor.redact(Json.write(json(report))));
+          stdout.println(redactor.redactJson(Json.mapper(), json(report)));
         } else {
           stdout.println(
               redactor.redact(

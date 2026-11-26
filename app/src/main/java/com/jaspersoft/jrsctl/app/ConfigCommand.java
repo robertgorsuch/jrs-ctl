@@ -91,7 +91,7 @@ final class ConfigCommand implements Runnable {
           return ExitCodes.SUCCESS;
         }
         if (global.json()) {
-          out.println(redactor.redact(JsonOut.write(ConfigWriter.toTree(config)).stripTrailing()));
+          out.println(JsonOut.writeRedacted(redactor, ConfigWriter.toTree(config)).stripTrailing());
           out.flush();
           return ExitCodes.SUCCESS;
         }

@@ -116,7 +116,7 @@ final class PlanExecutor {
     if (global.json()) {
       // the stored (pretty) document re-emitted as one line so the whole run is JSONL:
       // plan, one event per line, then {"outcome": ...} or {"error": ...}
-      out.println(redactor.redact(Json.write(Json.read(planJson, JsonNode.class))));
+      out.println(redactor.redactJson(Json.mapper(), Json.read(planJson, JsonNode.class)));
       out.flush();
     } else {
       PlanPrinter.print(out, plan, ansi, redactor);

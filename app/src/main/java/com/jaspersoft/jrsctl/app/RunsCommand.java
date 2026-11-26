@@ -225,7 +225,7 @@ final class RunsCommand implements Runnable {
           for (RunRecord r : runs) {
             rows.add(runTree(r, abandoned.contains(r.runId()), services.clock()));
           }
-          out.println(redactor.redact(JsonOut.write(rows)));
+          out.println(JsonOut.writeRedacted(redactor, rows));
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -434,7 +434,7 @@ final class RunsCommand implements Runnable {
         return switch (outcome) {
           case RunAbandon.Outcome.Abandoned a -> {
             if (global.json()) {
-              out.println(redactor.redact(JsonOut.write(tree(preview))));
+              out.println(JsonOut.writeRedacted(redactor, tree(preview)));
             } else {
               out.println(
                   redactor.redact(
@@ -671,7 +671,7 @@ final class RunsCommand implements Runnable {
           }
         }
         if (global.json()) {
-          out.println(redactor.redact(JsonOut.write(tree(result))));
+          out.println(JsonOut.writeRedacted(redactor, tree(result)));
           out.flush();
           return ExitCodes.SUCCESS;
         }
@@ -830,7 +830,7 @@ final class RunsCommand implements Runnable {
           doc.put("path", target.toString());
           doc.put("entries", entries);
           doc.put("bytes", Files.size(target));
-          o.println(redactor.redact(JsonOut.write(doc)));
+          o.println(JsonOut.writeRedacted(redactor, doc));
         } else {
           o.println(
               redactor.redact(
